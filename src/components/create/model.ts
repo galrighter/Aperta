@@ -1,0 +1,275 @@
+// מודל מסע היצירה — טיפוסים, תמחור, המרות גאומטריה ובניית הפרומפט למנוע.
+// מקור: handoff_design_flow/HANDOFF.md
+import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
+import { he } from "@/i18n/he";
+
+const d = he.design;
+
+export type Product = "bracelet" | "ring";
+export type Fit = "tight" | "regular" | "loose";
+export type Symmetry = "symmetric" | "asymmetric";
+export type Density = "low" | "medium" | "high";
+export type Feel = "delicate" | "balanced" | "massive";
+export type ImageRole = "inspiration" | "sketch" | "ready";
+export type Region = "right" | "center" | "left" | "all";
+export type ResultMode = "render" | "flat";
+
+export type Screen =
+  | "product" | "sizes" | "brief" | "processing"
+  | "result" | "summary" | "checkout" | "done";
+
+/** ששת השלבים בסרגל. "processing" אינו שלב עצמאי — הוא מוצג תחת "עיצוב". */
+export const RAIL: Array<{ key: keyof typeof d.steps; screens: Screen[] }> = [
+  { key: "product", screens: ["product"] },
+  { key: "sizes", screens: ["sizes"] },
+  { key: "brief", screens: ["brief", "processing"] },
+  { key: "result", screens: ["result"] },
+  { key: "summary", screens: ["summary"] },
+  { key: "checkout", screens: ["checkout", "done"] },
+];
+
+/** טווחי רוחב לפי ה-handoff §2 (מיושרים גם ב-fabrication.config). */
+export const WIDTH = {
+  bracelet: { min: 5, max: 80, def: 18 },
+  ring: { min: 4, max: 18, def: 6 },
+} as const;
+
+/** הפתח נגזר מסוג הישיבה — הלקוחה לא מזינה תוספת להיקף (handoff §3.3). */
+export const FIT_GAP_MM: Record<Fit, number> = { tight: 18, regular: 25, loose: 33 };
+export const RING_GAP_MM = 6;
+
+export interface ImageFile {
+  dataUrl: string;
+  name: string;
+}
+
+export interface EditEntry {
+  versionId: string;
+  versionNo: number;
+  region: Region | null;
+  text: string;
+  svg: string;
+  report: ValidationReport | null;
+  geometry: { material: MultiPolygon } | null;
+}
+
+export interface Addr {
+  name: string; street: string; city: string;
+  zip: string; phone: string; email: string;
+}
+
+export interface CreateState {
+  screen: Screen;
+  product: Product | null;
+
+  // מידות
+  wristPreset: string;
+  circ: string;
+  fit: Fit;
+  braceletWidth: number;
+  ringPreset: string;
+  ringSize: string;
+  ringWidth: number;
+  guideOpen: boolean;
+
+  // עיצוב
+  symmetry: Symmetry;
+  density: Density;
+  feel: Feel;
+  image: ImageFile | null;
+  imageRole: ImageRole | null;
+  brief: string;
+
+  // מנוע
+  designId: string | null;
+  edits: EditEntry[];
+  activeEdit: number;
+  procError: string | null;
+  applying: boolean;
+
+  // תוצאה
+  resultMode: ResultMode;
+  region: Region | null;
+  editReq: string;
+  cutDensity: number;
+  bridgeMm: number;
+
+  // סיכום ותשלום
+  terms: boolean;
+  addr: Addr;
+  sending: boolean;
+  sendError: string | null;
+  orderNo: string | null;
+}
+
+export const INITIAL: CreateState = {
+  screen: "product",
+  product: null,
+  wristPreset: "medium",
+  circ: "",
+  fit: "regular",
+  braceletWidth: WIDTH.bracelet.def,
+  ringPreset: "medium",
+  ringSize: "",
+  ringWidth: WIDTH.ring.def,
+  guideOpen: false,
+  symmetry: "symmetric",
+  density: "medium",
+  feel: "balanced",
+  image: null,
+  imageRole: null,
+  brief: "",
+  designId: null,
+  edits: [],
+  activeEdit: -1,
+  procError: null,
+  applying: false,
+  resultMode: "render",
+  region: null,
+  editReq: "",
+  cutDensity: 9,
+  bridgeMm: 2,
+  terms: false,
+  addr: { name: "", street: "", city: "", zip: "", phone: "", email: "" },
+  sending: false,
+  sendError: null,
+  orderNo: null,
+};
+
+/* ===== נגזרות מידה ===== */
+
+export const widthOf = (s: CreateState): number =>
+  s.product === "ring" ? s.ringWidth : s.braceletWidth;
+
+/** ההיקף בפועל: קלט מדויק גובר על הכפתור הסטנדרטי (handoff §3.3). */
+export function circumferenceMm(s: CreateState): number {
+  if (s.product === "ring") {
+    const exact = parseFloat(s.ringSize);
+    // מידת טבעת (4–13) מומרת להיקף; מעל 30 — הוזן היקף במ"מ ישירות.
+    if (!Number.isNaN(exact) && exact > 0) return exact > 30 ? exact : 44.8 + exact * 1.6;
+    return d.ringPresets.find((p) => p.id === s.ringPreset)?.mm ?? 55;
+  }
+  const exact = parseFloat(s.circ);
+  if (!Number.isNaN(exact) && exact > 0) return exact;
+  return d.wristPresets.find((p) => p.id === s.wristPreset)?.mm ?? 165;
+}
+
+export const gapOf = (s: CreateState): number =>
+  s.product === "ring" ? RING_GAP_MM : FIT_GAP_MM[s.fit];
+
+/** אורך הרצועה השטוחה = היקף − פתח (הטבעת/הצמיד פתוחים). */
+export function stripLengthMm(s: CreateState): number {
+  const raw = circumferenceMm(s) - gapOf(s);
+  const [lo, hi] = s.product === "ring" ? [30, 70] : [110, 200];
+  return Math.round(Math.min(hi, Math.max(lo, raw)) * 10) / 10;
+}
+
+/** האם הוזנה מידה מדויקת (ולכן הכפתור הסטנדרטי מבוטל). */
+export const hasExactSize = (s: CreateState): boolean => {
+  const v = parseFloat(s.product === "ring" ? s.ringSize : s.circ);
+  return !Number.isNaN(v) && v > 0;
+};
+
+/* ===== תמחור (handoff §7) ===== */
+
+export interface Price {
+  base: number; widthAdd: number; complexity: number;
+  packaging: number; shipping: number; tax: number; total: number;
+}
+
+export const PACKAGING = 25;
+export const SHIPPING = 35;
+const COMPLEXITY: Record<Density, number> = { low: 0, medium: 45, high: 110 };
+
+export function priceOf(s: CreateState): Price {
+  const ring = s.product === "ring";
+  const base = ring ? 240 : 320;
+  const perMm = ring ? 14 : 5;
+  const def = ring ? WIDTH.ring.def : WIDTH.bracelet.def;
+  const widthAdd = Math.round(Math.max(0, widthOf(s) - def) * perMm);
+  const complexity = COMPLEXITY[s.density];
+  const subtotal = base + widthAdd + complexity;
+  const tax = Math.round((subtotal + PACKAGING + SHIPPING) * 0.17);
+  return {
+    base, widthAdd, complexity,
+    packaging: PACKAGING, shipping: SHIPPING, tax,
+    total: subtotal + PACKAGING + SHIPPING + tax,
+  };
+}
+
+/* ===== גאומטריה ===== */
+
+/** MultiPolygon → מחרוזת path אחת (fill-rule evenodd מייצר את החורים). */
+export function mpToPath(mp: MultiPolygon | null | undefined): string {
+  if (!mp?.length) return "";
+  const parts: string[] = [];
+  for (const poly of mp) {
+    for (const ring of poly) {
+      if (ring.length < 3) continue;
+      parts.push(
+        "M" + ring.map(([x, y]) => `${round(x)},${round(y)}`).join("L") + "Z",
+      );
+    }
+  }
+  return parts.join(" ");
+}
+
+const round = (n: number) => Math.round(n * 100) / 100;
+
+/** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts). */
+export function countCuts(svg: string | null): number {
+  if (!svg) return 0;
+  const g = /<g id="cutouts"[^>]*>([\s\S]*?)<\/g>/.exec(svg);
+  const inner = g?.[1] ?? "";
+  return (inner.match(/<(path|circle|rect|ellipse|polygon)\b/g) ?? []).length;
+}
+
+/* ===== המצב הפעיל ===== */
+
+export const activeEntry = (s: CreateState): EditEntry | null =>
+  s.edits[s.activeEdit >= 0 ? s.activeEdit : s.edits.length - 1] ?? null;
+
+/* ===== בניית הפרומפט למנוע ===== */
+
+const SYM_HE: Record<Symmetry, string> = {
+  symmetric: "סימטרי",
+  asymmetric: "א-סימטרי",
+};
+const DENS_HE: Record<Density, string> = {
+  low: "צפיפות נמוכה — מעט חיתוכים, הרבה מתכת",
+  medium: "צפיפות בינונית",
+  high: "צפיפות גבוהה — הרבה חיתוכים עדינים",
+};
+const FEEL_HE: Record<Feel, string> = {
+  delicate: "תחושה עדינה ודקה",
+  balanced: "תחושה מאוזנת",
+  massive: "תחושה מאסיבית ונוכחת",
+};
+
+/** הפרומפט הראשוני. ב"קובץ מוכן לחיתוך" לא נבנה פרומפט — עוברים לוקטוריזציה. */
+export function buildPrompt(s: CreateState): string {
+  const parts = [
+    `עיצוב דוגמת ניקוב על ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח.`,
+    `${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`,
+  ];
+  if (s.brief.trim()) parts.push(`תיאור הלקוחה: ${s.brief.trim()}`);
+  if (s.image && s.imageRole === "inspiration") {
+    parts.push("התמונה המצורפת היא השראה בלבד — יש לקחת ממנה רוח וסגנון, לא להעתיק.");
+  }
+  if (s.image && s.imageRole === "sketch") {
+    parts.push("התמונה המצורפת היא סקיצה של הלקוחה — יש לצאת ממנה כבסיס לעיצוב.");
+  }
+  return parts.join(" ");
+}
+
+/** פרומפט לשינוי ממוקד אזור, כולל רמזי הכוונון המהיר. */
+export function buildEditPrompt(s: CreateState): string {
+  const where =
+    s.region && s.region !== "all"
+      ? `באזור ה${d.regions[s.region]} של הרצועה`
+      : "בעיצוב כולו";
+  return [
+    `שינוי ${where}: ${s.editReq.trim()}`,
+    `שמור על הכוונון: כ-${s.cutDensity} חיתוכים לאורך, ועובי גשרים של לפחות ${s.bridgeMm} מ"מ.`,
+  ].join(" ");
+}
