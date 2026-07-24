@@ -59,14 +59,17 @@ export const FAB = {
   applyBendAllowance: false,      // TODO שלב עתידי: BA = θ(r + K·t). ערכי K שמורים.
 
   products: {
+    // טווחי הרוחב מיושרים ל-handoff של מסע היצירה (צמיד 5–80, טבעת 4–18),
+    // כדי שהסטודיו והאתר יציעו את אותו טווח. אלה גבולות ממשק בלבד —
+    // הוולידציה עצמה נגזרת מ-resolveFab() ולא מהטווחים כאן.
     bracelet: {
       defaultLengthMm: 160, lengthRangeMm: [140, 200] as [number, number],
-      defaultWidthMm: 15,  widthRangeMm: [10, 30] as [number, number],
+      defaultWidthMm: 18,  widthRangeMm: [5, 80] as [number, number],
       defaultGapMm: 25,    gapRangeMm: [15, 40] as [number, number],
     },
     ring: {
       defaultLengthMm: 54, lengthRangeMm: [44, 70] as [number, number],   // לפי היקף אצבע
-      defaultWidthMm: 8,   widthRangeMm: [4, 12] as [number, number],
+      defaultWidthMm: 6,   widthRangeMm: [4, 18] as [number, number],
       defaultGapMm: 6,     gapRangeMm: [3, 12] as [number, number],
     },
   },
