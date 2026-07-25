@@ -23,6 +23,10 @@ from .core.validation import ValidatedImage, load_and_validate
 
 _MEDIUM_TOLERANCE_MM = 0.05
 
+# How many candidates carry their traced SVG in the debug bundle. The geometry
+# is what makes a rejection legible; capping it keeps the payload sane.
+SVG_DETAIL_COUNT = 3
+
 
 @dataclass
 class PipelineResult:
@@ -213,10 +217,20 @@ def build_debug(res: PipelineResult) -> dict:
             "score": round(c.score, 4),
             "rejected_reason": c.rejected_reason,
             "selected": c is res.selection.selected,
+            **({"metal_svg": c.metal_svg, "cutouts_svg": c.cutouts_svg}
+               if id(c) in svg_for else {}),
         }
 
     cands = sorted(res.candidates, key=lambda c: c.metrics.iou, reverse=True)
     sel = res.selection.selected
+
+    # The traced SVG is the only artefact that shows *what actually came out*.
+    # Numbers alone cannot explain a rejection — attach the geometry for the
+    # candidates worth looking at (the best few, plus whichever was selected)
+    # so a failed run can be inspected by eye instead of inferred from metrics.
+    svg_for = {id(c) for c in cands[:SVG_DETAIL_COUNT]}
+    if sel is not None:
+        svg_for.add(id(sel))
 
     # staged pass/fail timeline — first non-ok stage is the failure point.
     stages = []

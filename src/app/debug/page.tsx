@@ -10,7 +10,7 @@ type Candidate = {
   candidate_id: string; iou: number; mean_dev_mm: number; max_dev_mm: number;
   source_holes: number; vector_holes: number; anchors: number; topology_ok: boolean;
   hole_budget?: number; source_components?: number; vector_components?: number;
-  component_budget?: number;
+  component_budget?: number; metal_svg?: string; cutouts_svg?: string;
   score: number; rejected_reason: string | null; selected: boolean;
 };
 type DebugMeta = {
@@ -308,6 +308,9 @@ function Diagnostics({ images, renderModel, svg, debug }: {
   const candidates = debug?.candidates ?? [];
   const gates = debug?.gates ?? {};
   const warnings = debug?.warnings ?? [];
+  // הגאומטריה של מועמד נבחר — מה שיצא בפועל מהמעקב, לבדיקה בעין.
+  const [svgView, setSvgView] = useState<{ id: string; metal: string; cutouts: string } | null>(null);
+  const [svgLayer, setSvgLayer] = useState<"metal" | "cutouts">("metal");
   return (
     <div className="grid gap-4">
       {/* timeline */}
@@ -360,7 +363,7 @@ function Diagnostics({ images, renderModel, svg, debug }: {
                 <th className="p-1">חורים (מקור/וקטור)</th>
                 <th className="p-1">חתיכות מתכת</th>
                 <th className="p-1">טופולוגיה</th><th className="p-1">עוגנים</th>
-                <th className="p-1">ציון</th><th className="p-1">נדחה</th>
+                <th className="p-1">ציון</th><th className="p-1">נדחה</th><th className="p-1">שרטוט</th>
               </tr>
             </thead>
             <tbody>
@@ -384,10 +387,60 @@ function Diagnostics({ images, renderModel, svg, debug }: {
                   <td className="p-1">{c.anchors}</td>
                   <td className="p-1">{c.score}</td>
                   <td className="p-1 text-red-600">{c.rejected_reason ?? ""}</td>
+                  <td className="p-1">
+                    {c.metal_svg ? (
+                      <button
+                        type="button"
+                        onClick={() => setSvgView({ id: c.candidate_id, metal: c.metal_svg!, cutouts: c.cutouts_svg ?? "" })}
+                        className="rounded-[2px] border border-cobalt px-2 py-0.5 text-cobalt hover:bg-cobalt/5"
+                      >
+                        הצג
+                      </button>
+                    ) : (
+                      <span className="text-ink60">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* גאומטריה של המועמד שנבחר לצפייה */}
+      {svgView && (
+        <div className="rounded-[2px] border border-cobalt/40 bg-white p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="font-semibold">שרטוט מהמעקב · {svgView.id}</div>
+            <div className="flex items-center gap-2">
+              {(["metal", "cutouts"] as const).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setSvgLayer(l)}
+                  className={`rounded-[2px] border px-2 py-0.5 text-xs ${
+                    svgLayer === l ? "border-graphite bg-graphite text-porcelain" : "border-graphite/30"}`}
+                >
+                  {l === "metal" ? "מתכת" : "חיתוכים"}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setSvgView(null)}
+                className="rounded-[2px] border border-graphite/30 px-2 py-0.5 text-xs"
+              >
+                סגירה
+              </button>
+            </div>
+          </div>
+          <SvgCard
+            title={svgLayer === "metal" ? "המתכת שנשארת" : "מה שנחתך"}
+            svg={svgLayer === "metal" ? svgView.metal : svgView.cutouts}
+          />
+          <p className="mt-2 text-xs text-ink60">
+            כך נראה התוצר בפועל. השוו למסכה הדו־גונית למעלה — עיוות במתאר החיצוני
+            מוריד את ה-IoU ומקפיץ את הסטייה המקסימלית, גם כשהתבנית עצמה נראית תקינה.
+          </p>
         </div>
       )}
     </div>
