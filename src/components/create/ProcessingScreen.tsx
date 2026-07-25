@@ -2,12 +2,22 @@
 
 // handoff §5 — מסך עיבוד. הפרוגרס אמיתי-למראה אך ההמתנה היא לתשובת המנוע
 // (לא טיימר, כנדרש ב-§5). מצב הכשל נוסף כאן — §11.2 מסמן אותו כחסר.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { he } from "@/i18n/he";
 import { GhostBtn, PrimaryBtn } from "./ui";
 
 const d = he.design;
-const QUOTE_MS = 3200;
+const QUOTE_MS = 7000;
+
+/** ערבוב Fisher-Yates — סדר אקראי בלי חזרות עד שהרשימה מוצתה. */
+function shuffled<T>(items: readonly T[]): T[] {
+  const a = [...items];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 export function ProcessingScreen({
   error, onRetry, onBack,
@@ -16,22 +26,25 @@ export function ProcessingScreen({
   onRetry: () => void;
   onBack: () => void;
 }) {
+  // סדר אקראי נקבע פעם אחת לכל כניסה למסך; המסך נטען רק אחרי פעולת
+  // המשתמשת, ולכן אין כאן חשש ל-hydration mismatch.
+  const order = useMemo(() => shuffled(d.procQuotes), []);
   const [qi, setQi] = useState(0);
   const [fade, setFade] = useState(true);
   const [progress, setProgress] = useState(4);
 
-  // החלפת ציטוטים כל 3.2 שניות עם fade
+  // החלפת ציטוטים כל 7 שניות עם fade
   useEffect(() => {
     if (error) return;
     const t = setInterval(() => {
       setFade(false);
       setTimeout(() => {
-        setQi((i) => (i + 1) % d.procQuotes.length);
+        setQi((i) => (i + 1) % order.length);
         setFade(true);
       }, 320);
     }, QUOTE_MS);
     return () => clearInterval(t);
-  }, [error]);
+  }, [error, order.length]);
 
   // התקדמות אסימפטוטית עד 96% — מושלמת ל-100% רק כשהמנוע חוזר
   useEffect(() => {
@@ -62,7 +75,7 @@ export function ProcessingScreen({
     );
   }
 
-  const q = d.procQuotes[qi];
+  const q = order[qi];
 
   return (
     <section className="mx-auto flex max-w-[620px] flex-col items-center px-5 py-24 text-center sm:px-10">
