@@ -62,6 +62,10 @@ class Settings:
     # Chaikin corner-cutting passes applied to the trace (0 = off). Smooths
     # raster staircases into flowing curves without fattening thin bridges.
     smooth_iters: int = _i("SMOOTH_ITERS", 2)
+    # Cap on how far one smoothing pass may move the boundary. Without it a
+    # corner is cut by a quarter of its edge, which bends the four-corner strip
+    # outline into a lens (measured: 5.11mm pull-in against a 4mm gate).
+    max_smooth_cut_mm: float = _f("MAX_SMOOTH_CUT_MM", 0.4)
 
     # storage / lifecycle
     job_storage_dir: str = os.environ.get("JOB_STORAGE_DIR", "/tmp/raster-to-svg")
