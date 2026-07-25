@@ -4,8 +4,8 @@
 export const SITE = {
   // כתובת האתר בייצור (מוגדר ב-wrangler.jsonc כ-custom domain).
   url: "https://rmjewel.com",
-  // כתובת יצירת קשר. placeholder עד שתיקבע כתובת רשמית לדומיין.
-  contactEmail: "hello@forme.co.il",
+  // כתובת יצירת קשר הרשמית של המותג, על דומיין האתר.
+  contactEmail: "info@rmjewel.com",
   // רשתות חברתיות — להוסיף כשקיימות (null = לא מוצג).
   instagram: null as string | null,
 } as const;
