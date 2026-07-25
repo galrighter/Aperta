@@ -250,7 +250,9 @@ export default function DesignPage() {
   const showRail = s.screen !== "done";
 
   return (
-    <div className="rm-scope min-h-screen">
+    // בלי rm-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
+    // את הגריד ואת הזוהר הקובלטי פעמיים זה על זה במסך המרכזי של המשפך.
+    <div className="min-h-screen">
       {showRail && (
         <StepRail
           screen={s.screen}

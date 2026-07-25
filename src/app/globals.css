@@ -44,12 +44,10 @@ body {
 .rm-scope {
   font-family: var(--font-body);
   color: var(--color-graphite);
-  /* רקע פורצלן + גריד שרטוט עדין + זוהר קובלט */
-  background:
-    linear-gradient(rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px,
-    linear-gradient(90deg, rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px,
-    radial-gradient(circle at 78% 12%, rgba(49, 91, 255, 0.05), transparent 42%),
-    var(--color-porcelain);
+  /* הגריד והזוהר עברו לשכבה הקבועה (ArchBackground). כשהם ישבו כאן הם גללו
+     עם התוכן בעוד הצורות הדקורטיביות היו position:fixed — כך ששתי שכבות הרקע
+     החליקו זו מול זו לאורך כל הגלילה (נמדד: 605px היסט על גלילה של 605px).
+     הרקע השטוח מגיע מ-body (bg-porcelain). */
 }
 /* צבע הקישור הוא ברירת מחדל, ולכן חייב לשבת ב-@layer base.
    ללא השכבה הכלל אינו-שכבתי (unlayered) וגובר על @layer utilities של Tailwind —
