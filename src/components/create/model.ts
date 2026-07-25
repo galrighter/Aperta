@@ -125,7 +125,7 @@ export const INITIAL: CreateState = {
   procError: null,
   applying: false,
   resultMode: "render",
-  region: null,
+  region: "all",
   editReq: "",
   cutDensity: 9,
   bridgeMm: 2,

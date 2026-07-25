@@ -63,7 +63,7 @@ export function SummaryScreen({
             <Row k={d.specKeys.type} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.specKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
             <Row k={d.specKeys.width} v={`${W} ${d.mm}`} />
-            {!ring && <Row k={d.specKeys.fit} v={d.fits[s.fit]} />}
+            <Row k={d.specKeys.fit} v={ring ? d.ringFitVal : d.fits[s.fit]} />
             <Row k={d.specKeys.material} v={d.specMaterial} />
             <Row k={d.specKeys.thickness} v={d.specThickness} />
             <Row k={d.specKeys.finish} v={d.specFinish} />

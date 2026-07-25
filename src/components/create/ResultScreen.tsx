@@ -38,7 +38,7 @@ export function ResultScreen({
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
       <Eyebrow>{d.resultEyebrow}</Eyebrow>
-      <ScreenTitle>{d.resultTitle}</ScreenTitle>
+      <ScreenTitle>{s.imageRole === "ready" ? d.resultTitleReady : d.resultTitle}</ScreenTitle>
 
       {/* מתג מצב תצוגה */}
       <div className="mb-6 mt-6 flex gap-2">
@@ -62,7 +62,7 @@ export function ResultScreen({
         })}
       </div>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[1.5fr_1fr]">
+      <div className={`grid items-start gap-8 ${flat ? "lg:grid-cols-[1.5fr_1fr]" : "lg:grid-cols-1"}`}>
         {/* ===== תצוגה ===== */}
         <div>
           <div className="border border-graphite/10 bg-white">
@@ -98,10 +98,7 @@ export function ResultScreen({
 
           {/* בקשה למודל */}
           <div className="mt-4 border border-graphite/10 bg-white p-5">
-            <CardLabel>
-              {d.editReqTitle}
-              {s.region ? ` · ${d.regions[s.region]}` : ""}
-            </CardLabel>
+            <CardLabel>{`${d.editReqTitle} · ${d.regions[s.region ?? "all"]}`}</CardLabel>
             <textarea
               value={s.editReq}
               onChange={(e) => set({ editReq: e.target.value })}

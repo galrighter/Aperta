@@ -16,9 +16,10 @@ export function DoneScreen({ orderNo }: { orderNo: string }) {
       >
         ✓
       </div>
-      <h1 className="mb-4 text-[28px] font-semibold tracking-tight text-graphite sm:text-[34px]">
+      <h1 className="mb-2 text-[28px] font-semibold tracking-tight text-graphite sm:text-[34px]">
         {d.doneTitle}
       </h1>
+      <p className="mb-6 font-display text-xs tracking-[0.18em] text-mist">{d.doneSub}</p>
 
       <div className="mb-7 border border-graphite/15 bg-white px-7 py-4">
         <div className="font-display text-xs tracking-[0.18em] text-mist">{d.doneOrderNo}</div>

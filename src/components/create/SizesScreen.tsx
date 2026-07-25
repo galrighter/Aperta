@@ -27,7 +27,10 @@ export function SizesScreen({
         <div>
           <Eyebrow>{d.sizesEyebrow}</Eyebrow>
           <div className="mb-8 flex flex-wrap items-baseline justify-between gap-3">
-            <ScreenTitle>{ring ? d.sizesTitleRing : d.sizesTitleBracelet}</ScreenTitle>
+            <div>
+              <ScreenTitle>{ring ? d.sizesTitleRing : d.sizesTitleBracelet}</ScreenTitle>
+              <p className="text-[15px] text-ink60">{ring ? d.sizesSubRing : d.sizesSubBracelet}</p>
+            </div>
             <button
               type="button"
               onClick={() => set({ guideOpen: true })}
@@ -52,6 +55,11 @@ export function SizesScreen({
               >
                 <div className="font-display text-lg font-semibold text-graphite">{p.name}</div>
                 <div className="mt-1 text-xs text-ink60">{p.sub}</div>
+                {p.id === "medium" && (
+                  <div className="mt-1 font-display text-[10px] tracking-[0.12em] text-mist">
+                    {d.presetDefaultTag}
+                  </div>
+                )}
               </OptionBtn>
             ))}
           </div>
@@ -74,7 +82,8 @@ export function SizesScreen({
               <div className="flex gap-3">
                 {(Object.keys(d.fits) as Fit[]).map((f) => (
                   <OptionBtn key={f} on={s.fit === f} onClick={() => set({ fit: f })}>
-                    <span className="text-sm text-graphite">{d.fits[f]}</span>
+                    <div className="text-sm font-semibold text-graphite">{d.fits[f]}</div>
+                    <div className="mt-1 text-xs text-ink60">{d.fitSubs[f]}</div>
                   </OptionBtn>
                 ))}
               </div>

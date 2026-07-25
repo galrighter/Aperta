@@ -40,30 +40,30 @@ export function CheckoutScreen({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <TextInput
-                  label={d.addrFields.name} required
+                  label={d.addrFields.name} required placeholder={d.addrPlaceholders.name}
                   value={s.addr.name} onChange={(v) => setAddr({ name: v })}
                 />
               </div>
               <div className="sm:col-span-2">
                 <TextInput
-                  label={d.addrFields.street} required
+                  label={d.addrFields.street} required placeholder={d.addrPlaceholders.street}
                   value={s.addr.street} onChange={(v) => setAddr({ street: v })}
                 />
               </div>
               <TextInput
-                label={d.addrFields.city} required
+                label={d.addrFields.city} required placeholder={d.addrPlaceholders.city}
                 value={s.addr.city} onChange={(v) => setAddr({ city: v })}
               />
               <TextInput
-                label={d.addrFields.zip}
+                label={d.addrFields.zip} placeholder={d.addrPlaceholders.zip}
                 value={s.addr.zip} onChange={(v) => setAddr({ zip: v })}
               />
               <TextInput
-                label={d.addrFields.phone} required type="tel"
+                label={d.addrFields.phone} required type="tel" placeholder={d.addrPlaceholders.phone}
                 value={s.addr.phone} onChange={(v) => setAddr({ phone: v })}
               />
               <TextInput
-                label={d.addrFields.email} required type="email"
+                label={d.addrFields.email} required type="email" placeholder={d.addrPlaceholders.email}
                 value={s.addr.email} onChange={(v) => setAddr({ email: v })}
               />
             </div>

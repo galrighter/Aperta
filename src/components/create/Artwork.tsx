@@ -137,7 +137,7 @@ export function RegionChips({
 }: {
   region: Region | null; onRegion: (r: Region) => void;
 }) {
-  const all: Region[] = ["right", "center", "left", "all"];
+  const all: Region[] = ["all", "right", "center", "left"];
   return (
     <div className="flex flex-wrap gap-2">
       {all.map((r) => {
@@ -180,7 +180,7 @@ export function WidthPreview({
   const limbPx = limbMm * scale;
   const bandPx = widthMm * scale;
 
-  const H = 250;
+  const H = ring ? 250 : 270;
   const W = 300;
   const cx = W / 2;
 
@@ -239,8 +239,11 @@ export function WidthPreview({
           </text>
         </svg>
       </div>
-      <p className="mt-3 text-[13px] text-ink60">
+      <p className="mt-3 text-[13px] font-semibold text-ink80">
         {ring ? d.widthPreviewRing : d.widthPreviewBracelet}
+      </p>
+      <p className="mt-0.5 text-[12px] text-ink60">
+        {ring ? d.widthPreviewRingBase : d.widthPreviewBraceletBase}
       </p>
       <p className="mt-1 text-[12px] text-mist">{d.widthPreviewNote}</p>
     </div>
