@@ -7,3 +7,6 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# סמן reflect-before-merge — פר-ענף, נצרך בשימוש (SPEC §7)
+.claude/state/
