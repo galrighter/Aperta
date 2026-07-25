@@ -13,7 +13,7 @@ export default function FaqAccordion({ items }: { items: readonly FaqItem[] }) {
         const open = openIdx === i;
         return (
           <div key={i}>
-            <h3>
+            <h2>
               <button
                 type="button"
                 onClick={() => setOpenIdx(open ? null : i)}
@@ -36,7 +36,7 @@ export default function FaqAccordion({ items }: { items: readonly FaqItem[] }) {
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </button>
-            </h3>
+            </h2>
             {open && (
               <div className="px-6 pb-5 text-sm leading-relaxed text-ink60">
                 {item.a}
