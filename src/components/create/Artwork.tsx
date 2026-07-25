@@ -3,11 +3,39 @@
 // תצוגות העיצוב: הדמיית ערגול+זהב, שרטוט פריסה עם סימון אזורים, ותצוגת רוחב.
 // מקור: handoff §3.5, §6.
 import { useId } from "react";
+import Image from "next/image";
 import { he } from "@/i18n/he";
 import { COBALT } from "./ui";
 import type { Region } from "./model";
 
 const d = he.design;
+
+// כיול תצוגת הרוחב על גבי הצילומים (handoff v3 §3). היחס נעול לגודל האמיתי של
+// הקובץ כדי ש-object-fit:cover לא יחתוך ויסיט את הקואורדינטות המכוילות.
+const PREVIEW = {
+  bracelet: {
+    src: "/hand-wrist.webp",
+    alt: he.design.widthPreviewBraceletAlt,
+    aspect: "1000 / 1268",
+    left: "43%",
+    top: "63%",
+    width: "34%",
+    rotate: "-48deg",
+    radius: 10,
+    tag: "WRIST · AVG 165mm",
+  },
+  ring: {
+    src: "/hand-ring.webp",
+    alt: he.design.widthPreviewRingAlt,
+    aspect: "1000 / 1250",
+    left: "29%",
+    top: "53%",
+    width: "15%",
+    rotate: "-20deg",
+    radius: 6,
+    tag: "FINGER · AVG 17mm Ø",
+  },
+} as const;
 
 /* ===== 6.1 הדמיה — הפס מעורגל, גרדיאנט זהב, החיתוכים כחורים שקופים ===== */
 
@@ -170,74 +198,47 @@ export function WidthPreview({
 }: {
   product: "bracelet" | "ring"; widthMm: number;
 }) {
-  const uid = useId().replace(/:/g, "");
   const ring = product === "ring";
+  const cfg = ring ? PREVIEW.ring : PREVIEW.bracelet;
 
-  // צמיד: פרק כף יד ממוצע, היקף 165 מ"מ → קוטר ≈ 52.5 מ"מ; 2.6px/מ"מ.
-  // טבעת: אצבע ממוצעת בקוטר 17 מ"מ; 9px/מ"מ.
-  const scale = ring ? 9 : 2.6;
-  const limbMm = ring ? 17 : 165 / Math.PI;
-  const limbPx = limbMm * scale;
-  const bandPx = widthMm * scale;
-
-  const H = ring ? 250 : 270;
-  const W = 300;
-  const cx = W / 2;
+  // גובה הפס כאחוז מגובה התיבה. הצילומים מכוילים אנטומית (פרק כף יד ≈ 55 מ״מ
+  // לרוחב, אצבע ≈ 17 מ״מ קוטר), ולכן 0.44% לכל מ״מ נותן פרופורציה נכונה בכל רוחב
+  // תצוגה. התיבה נעולה ליחס הצילום כדי שהקואורדינטות יישארו מכוילות.
+  const bandH = `${(widthMm * 0.44).toFixed(2)}%`;
 
   return (
     <div>
-      <div className="flex items-center justify-center overflow-hidden border border-graphite/10 bg-porcelain">
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={d.widthPreviewTitle}>
-          <defs>
-            <linearGradient id={`skin-${uid}`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#d8d2c8" />
-              <stop offset="45%" stopColor="#e7e1d6" />
-              <stop offset="100%" stopColor="#cfc8bc" />
-            </linearGradient>
-            <linearGradient id={`band-${uid}`} x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#9C7C2C" />
-              <stop offset="30%" stopColor="#E4C877" />
-              <stop offset="55%" stopColor="#F0DA9A" />
-              <stop offset="100%" stopColor="#C9A34E" />
-            </linearGradient>
-          </defs>
-
-          {/* האיבר (פרק כף יד / אצבע) — אנכי */}
-          <rect
-            x={cx - limbPx / 2}
-            y={0}
-            width={limbPx}
-            height={H}
-            rx={ring ? limbPx / 2.6 : limbPx / 5}
-            fill={`url(#skin-${uid})`}
-          />
-
-          {/* הפס הנבחר — ממורכז אנכית */}
-          <rect
-            x={cx - limbPx / 2 - 3}
-            y={H / 2 - bandPx / 2}
-            width={limbPx + 6}
-            height={Math.max(2, bandPx)}
-            rx={1}
-            fill={`url(#band-${uid})`}
-          />
-
-          {/* קו מידה */}
-          <g stroke="rgba(32,35,38,0.5)" strokeWidth="1">
-            <line x1={cx + limbPx / 2 + 18} y1={H / 2 - bandPx / 2} x2={cx + limbPx / 2 + 18} y2={H / 2 + bandPx / 2} />
-            <line x1={cx + limbPx / 2 + 14} y1={H / 2 - bandPx / 2} x2={cx + limbPx / 2 + 22} y2={H / 2 - bandPx / 2} />
-            <line x1={cx + limbPx / 2 + 14} y1={H / 2 + bandPx / 2} x2={cx + limbPx / 2 + 22} y2={H / 2 + bandPx / 2} />
-          </g>
-          <text
-            x={cx + limbPx / 2 + 28}
-            y={H / 2 + 4}
-            fontSize="12"
-            fontFamily="ui-monospace, monospace"
-            fill="#6b6f73"
-          >
-            {widthMm} {d.mm}
-          </text>
-        </svg>
+      <div
+        className="relative overflow-hidden border border-graphite/10"
+        style={{ aspectRatio: cfg.aspect }}
+      >
+        <Image
+          src={cfg.src}
+          alt={cfg.alt}
+          fill
+          sizes="(max-width: 768px) 100vw, 340px"
+          className="object-cover object-center"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute"
+          style={{
+            left: cfg.left,
+            top: cfg.top,
+            width: cfg.width,
+            height: bandH,
+            transform: `translate(-50%, -50%) rotate(${cfg.rotate})`,
+            background:
+              "linear-gradient(180deg, rgba(240,218,154,0.95), rgba(201,163,78,0.96) 45%, rgba(156,124,44,0.95))",
+            borderRadius: cfg.radius,
+            boxShadow:
+              "0 5px 16px rgba(32,35,38,0.35), inset 0 1px 2px rgba(255,255,255,0.5)",
+            transition: "height 0.25s ease",
+          }}
+        />
+        <div className="absolute bottom-3 right-3.5 whitespace-nowrap bg-porcelain/80 px-2 py-[3px] font-display text-[11px] tracking-[0.08em] text-ink60">
+          {cfg.tag}
+        </div>
       </div>
       <p className="mt-3 text-[13px] font-semibold text-ink80">
         {ring ? d.widthPreviewRing : d.widthPreviewBracelet}

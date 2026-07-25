@@ -1,17 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { he } from "@/i18n/he";
 import { NAV } from "@/lib/site.config";
-import Monogram from "./Monogram";
+import BrandMark from "./BrandMark";
 
 const s = he.site;
+
+// טיפול ה-CTA זהה בדסקטופ ובמובייל. קודם הדסקטופ קיבל כפתור מתאר והמובייל
+// כפתור מלא — אותה פעולה בשני משקלים היררכיים שונים.
+const CTA_CLASS =
+  "rounded-[2px] border border-graphite px-4 py-1.5 font-medium text-graphite transition-colors hover:border-cobalt hover:text-cobalt";
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const menuId = useId();
+
+  // סגירה במעבר עמוד — לא להסתמך על onClick בלבד (ניווט אחורה/קדימה בדפדפן).
+  useEffect(() => setOpen(false), [pathname]);
+
+  // Escape סוגר את התפריט — ציפייה בסיסית מכל תפריט נפתח.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const links = NAV.map((item) => {
     const active = pathname === item.href;
@@ -35,7 +54,7 @@ export default function SiteHeader() {
       <nav className="flex items-center justify-between px-5 py-5 sm:px-10">
         {/* לוגו */}
         <Link href="/" className="flex items-center gap-3.5" onClick={() => setOpen(false)}>
-          <Monogram />
+          <BrandMark size={38} />
           <span className="whitespace-nowrap font-display text-[15px] font-semibold tracking-[0.25em] text-graphite">
             {s.brand}
           </span>
@@ -44,10 +63,7 @@ export default function SiteHeader() {
         {/* ניווט דסקטופ */}
         <div className="hidden items-center gap-7 text-sm md:flex">
           {links}
-          <Link
-            href="/design"
-            className="rounded-[2px] border border-graphite px-4 py-1.5 font-medium text-graphite transition-colors hover:border-cobalt hover:text-cobalt"
-          >
+          <Link href="/design" className={CTA_CLASS}>
             {s.ctaStart}
           </Link>
         </div>
@@ -58,9 +74,10 @@ export default function SiteHeader() {
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? s.closeMenu : s.openMenu}
           aria-expanded={open}
+          aria-controls={menuId}
           className="flex h-10 w-10 items-center justify-center rounded-[2px] text-graphite hover:bg-graphite/5 md:hidden"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
             {open ? (
               <>
                 <line x1="6" y1="6" x2="18" y2="18" />
@@ -79,14 +96,10 @@ export default function SiteHeader() {
 
       {/* תפריט מובייל נפתח */}
       {open && (
-        <div className="border-t border-graphite/10 bg-porcelain md:hidden">
-          <div className="flex flex-col gap-4 px-5 py-4 text-base sm:px-10">
+        <div id={menuId} className="border-t border-graphite/10 bg-porcelain md:hidden">
+          <div className="flex flex-col items-start gap-4 px-5 py-4 text-base sm:px-10">
             {links}
-            <Link
-              href="/design"
-              onClick={() => setOpen(false)}
-              className="rounded-[2px] bg-graphite px-4 py-2.5 text-center font-medium text-porcelain"
-            >
+            <Link href="/design" onClick={() => setOpen(false)} className={CTA_CLASS}>
               {s.ctaStart}
             </Link>
           </div>
