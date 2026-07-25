@@ -157,7 +157,7 @@ export function BriefScreen({
             <ChipRow label={d.symmetryLabel}>
               {(Object.keys(d.syms) as Symmetry[]).map((v) => (
                 <Chip key={v} on={s.symmetry === v} disabled={locked} onClick={() => set({ symmetry: v })}>
-                  {d.syms[v]}
+                  {d.syms[v]}{v === "symmetric" ? " ·" : ""}
                 </Chip>
               ))}
             </ChipRow>
@@ -165,7 +165,7 @@ export function BriefScreen({
             <ChipRow label={d.densityLabel}>
               {(Object.keys(d.densities) as Density[]).map((v) => (
                 <Chip key={v} on={s.density === v} disabled={locked} onClick={() => set({ density: v })}>
-                  {d.densities[v]}
+                  {d.densities[v]}{v === "medium" ? " ·" : ""}
                 </Chip>
               ))}
             </ChipRow>
@@ -173,10 +173,14 @@ export function BriefScreen({
             <ChipRow label={d.feelLabel}>
               {(Object.keys(d.feels) as Feel[]).map((v) => (
                 <Chip key={v} on={s.feel === v} disabled={locked} onClick={() => set({ feel: v })}>
-                  {d.feels[v]}
+                  {d.feels[v]}{v === "balanced" ? " ·" : ""}
                 </Chip>
               ))}
             </ChipRow>
+
+            <p className="mt-1 text-[12px] leading-relaxed text-mist">
+              {locked ? d.readyLockNote : d.attrsDefaultNote}
+            </p>
           </div>
 
           <div className="mt-6">
