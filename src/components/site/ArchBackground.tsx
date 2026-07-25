@@ -1,10 +1,26 @@
 // שכבת רקע דקורטיבית גיאומטרית נועזת — לפי ה-handoff.
 // fixed, מתחת לכל התוכן (z-0), pointer-events:none. הכרטיסים אטומים ולכן נשארים נקיים.
+//
+// הגריד והזוהר הקובלטי יושבים כאן ולא על .rm-scope: כך כל הדקורציה נעולה לאותה
+// שכבה קבועה וזזה יחד. קודם הצורות היו fixed בעוד הגריד גלל עם התוכן, והשתיים
+// החליקו זו מול זו. שכבה fixed אחת גם זולה יותר מ-background-attachment: fixed.
+const GRID_AND_GLOW =
+  "linear-gradient(rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px," +
+  "linear-gradient(90deg, rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px," +
+  "radial-gradient(circle at 78% 12%, rgba(49, 91, 255, 0.05), transparent 42%)";
+
 export default function ArchBackground() {
   return (
     <div
       aria-hidden="true"
-      style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        zIndex: 0,
+        background: GRID_AND_GLOW,
+      }}
     >
       {/* לוח אבן אלכסוני */}
       <div style={{ position: "absolute", bottom: "-25vh", left: "-12vw", width: "62vw", height: "135vh", background: "var(--color-porcelain-slab)", transform: "rotate(-19deg)" }} />
