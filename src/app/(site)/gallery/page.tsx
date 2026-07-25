@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { he } from "@/i18n/he";
@@ -30,10 +31,12 @@ export default function GalleryPage() {
       {/* צילום מוצר אמיתי — בלוק מוביל, נבדל מרשת האיורים שמתחת */}
       <figure className="mt-10 grid overflow-hidden border border-graphite/10 bg-white sm:grid-cols-2">
         <div className="flex items-center justify-center bg-porcelain p-4 sm:p-6">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/ring-brass.png"
+          <Image
+            src="/ring-hero.webp"
             alt={s.galleryFeaturedAlt}
+            width={1122}
+            height={1402}
+            sizes="(max-width: 640px) 100vw, 448px"
             className="h-auto w-full max-w-md object-contain"
           />
         </div>

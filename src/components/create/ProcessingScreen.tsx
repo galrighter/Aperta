@@ -66,7 +66,14 @@ export function ProcessingScreen({
           {d.procErrorTitle}
         </h1>
         <p className="mb-3 text-[17px] leading-relaxed text-ink60">{d.procErrorBody}</p>
-        <p className="mb-9 font-mono text-[13px] text-mist">{error}</p>
+        {/* הודעת השגיאה עצמה — ink80 ולא mist: זה הטקסט שמסביר למה נכשל,
+            והוא צריך להיות הקריא ביותר במסך, לא החיוור ביותר. */}
+        <p
+          role="alert"
+          className="mx-auto mb-9 max-w-md border-s-2 border-cobalt bg-white px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
+        >
+          {error}
+        </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>
           <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>

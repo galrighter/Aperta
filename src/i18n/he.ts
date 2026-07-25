@@ -130,26 +130,25 @@ export const he = {
     openMenu: "פתיחת תפריט",
     closeMenu: "סגירת תפריט",
 
-    // Hero (עמוד בית) — לפי ה-handoff של RM JEWEL
-    heroEyebrow: "CUSTOM · LASER-CUT · MADE AROUND YOU",
-    heroTitleLine1: "תכשיט שנבנה",
-    heroTitleLine2: "סביבך.",
-    heroTitle: "תכשיט שנבנה סביבך.",
+    // Hero (עמוד בית) — handoff v3: הצהרה רגשית, CTA יחיד, בלי הסבר תהליך.
+    heroEyebrow: "ONE OF ONE · MADE AROUND YOU",
+    heroTitleLine1: "אינסוף צורות.",
+    heroTitleLine2: "אחת שלך.",
+    heroTitle: "אינסוף צורות. אחת שלך.",
     heroEnglishTagline: "Precision jewelry, formed around you.",
     heroSubtitle:
+      "תכשיט לא בוחרים מתוך מדף. הוא מתחיל בקו שרק את רואה — ונגמר בחפץ שאין עוד אחד כמוהו בעולם.",
+    heroSubtitleSeo:
       "עצבו צמיד או טבעת פתוחים משלכם. התחילו מרעיון, שרטוט או תמונה — נהלו שיחה קצרה עם מנוע העיצוב, קבלו חלופות וערכו אותן עד לתכשיט שהוא רק שלכם.",
-    heroPriceNote: "החל מ־₪310 · 10–14 ימי עבודה",
-    heroCtaPrimary: "התחלת עיצוב",
-    heroCtaSecondary: "איך זה עובד",
+    heroPriceNote: "מ־₪240",
+    heroCtaPrimary: "ליצור את שלי",
+    heroImageAlt: "צמיד פליז פתוח עם חיתוכי לייזר אלכסוניים",
+    heroPieceTag: "PIECE Nº 001 — YOURS",
 
-    // רצועת "איך מתחילים" (עמוד בית)
-    startTitle: "איך מתחילים",
-    start1Title: "כתיבת רעיון",
-    start1Body: "תארו במילים מה תרצו — סגנון, תחושה, פרטים.",
-    start2Title: "העלאת שרטוט",
-    start2Body: "סקיצה ידנית או קובץ וקטורי כנקודת פתיחה.",
-    start3Title: "תמונת השראה",
-    start3Body: "תמונה שמשמשת כהשראה בלבד — לא כהעתק.",
+    // רצועת מניפסט (עמוד בית) — מחליפה את הסברי התהליך.
+    manifestoLine: "העיצוב שלך. הידיים שלנו. חפץ אחד בעולם.",
+    manifestoTag1: "חיתוך לייזר",
+    manifestoTag2: "עבודת יד",
 
     // רצועת ערך (עמוד בית)
     valuesTitle: "מהרעיון למתכת, בלי מתווכים",
@@ -414,7 +413,9 @@ export const he = {
     widthPreviewBraceletBase: "היקף פרק כף יד 165 מ״מ",
     widthPreviewRing: "על אצבע ממוצעת",
     widthPreviewRingBase: "אצבע בקוטר 17 מ״מ",
-    widthPreviewNote: "תצוגה סכמטית להמחשת הפרופורציה.",
+    widthPreviewNote: "התצוגה להמחשת הפרופורציה בלבד.",
+    widthPreviewBraceletAlt: "פרק כף יד נשי, להמחשת רוחב הצמיד",
+    widthPreviewRingAlt: "יד נשית, להמחשת רוחב הטבעת",
 
     // מדריך מדידה
     guideTitleBracelet: "איך מודדים את היקף פרק כף היד",

@@ -1,6 +1,7 @@
 "use client";
 
 // handoff §2 — שני כרטיסים; בחירה מגדירה product ומנתבת ישירות למידות.
+import Image from "next/image";
 import { he } from "@/i18n/he";
 import { Eyebrow, ScreenTitle } from "./ui";
 import type { Product } from "./model";
@@ -17,7 +18,7 @@ export function ProductScreen({ onPick }: { onPick: (p: Product) => void }) {
       <div className="grid gap-6 md:grid-cols-2">
         <Item
           onClick={() => onPick("bracelet")}
-          img="/bracelet-hero.png"
+          img="/bracelet-hero.webp"
           objectPosition="center 62%"
           name={d.braceletName}
           price={d.braceletPrice}
@@ -26,7 +27,7 @@ export function ProductScreen({ onPick }: { onPick: (p: Product) => void }) {
         />
         <Item
           onClick={() => onPick("ring")}
-          img="/ring-brass.png"
+          img="/ring-hero.webp"
           objectPosition="center 55%"
           name={d.ringName}
           price={d.ringPrice}
@@ -50,9 +51,15 @@ function Item({
       onClick={onClick}
       className="group block border border-graphite/[0.16] bg-white text-start transition-all hover:-translate-y-[3px] hover:border-cobalt"
     >
-      <div className="overflow-hidden border-b border-graphite/10" style={{ aspectRatio: "16 / 10" }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={img} alt={name} className="h-full w-full object-cover" style={{ objectPosition }} />
+      <div className="relative overflow-hidden border-b border-graphite/10" style={{ aspectRatio: "16 / 10" }}>
+        <Image
+          src={img}
+          alt={name}
+          fill
+          sizes="(max-width: 768px) 100vw, 530px"
+          className="object-cover"
+          style={{ objectPosition }}
+        />
       </div>
       <div className="p-[26px]">
         <div className="mb-2.5 flex items-baseline justify-between gap-3">

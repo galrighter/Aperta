@@ -8,7 +8,7 @@ const s = he.site;
 
 export const metadata: Metadata = {
   title: `${s.brand} — ${s.tagline}`,
-  description: s.heroSubtitle,
+  description: s.heroSubtitleSeo,
 };
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
