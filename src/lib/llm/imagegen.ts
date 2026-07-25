@@ -43,6 +43,11 @@ export function buildRenderPrompt(userPrompt: string, productType: RenderProduct
     piece.strip,
     "The cut-out openings are fully cut through, showing the same pure white background through them.",
     "Design intent for the cut-out pattern: " + userPrompt + ".",
+    // אילוץ מסגרת — הסיבה המדודה לכשלי הווקטוריזציה. פתח שנוגע בקצה הפס נגזם
+    // בשלב ה-crop, מתמזג עם הרקע, ומספר החורים משתנה — מה שמפיל את שער
+    // הטופולוגיה גם כשכל מדדי הנאמנות עוברים. ניסוי: פתחים סגורים לגמרי
+    // העלו את שיעור האישור מ-1/7 ל-2/4, והפיקו את הרנדר הראשון ששימר טופולוגיה.
+    "FRAMING (important): an unbroken border of solid brass surrounds the whole pattern. Every opening is fully enclosed by metal — none of them touches, crosses, or runs off the strip's outer edge, and none is clipped by the edge of the frame. Leave a continuous solid brass margin along the top and bottom edges roughly a quarter of the strip's height, and a solid uncut section of brass at each of the two ends. Within that border the pattern is free to be as expressive as the design intent asks.",
     piece.scale + " Suitable for laser-cutting in 1.5mm brass. Avoid hair-thin lines, densely packed fine detail, or bands that nearly touch; keep clear space between adjacent openings.",
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no text, no border framing.",
