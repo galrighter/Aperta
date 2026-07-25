@@ -9,6 +9,8 @@ type Stage = { name: string; status: string; detail: string };
 type Candidate = {
   candidate_id: string; iou: number; mean_dev_mm: number; max_dev_mm: number;
   source_holes: number; vector_holes: number; anchors: number; topology_ok: boolean;
+  hole_budget?: number; source_components?: number; vector_components?: number;
+  component_budget?: number;
   score: number; rejected_reason: string | null; selected: boolean;
 };
 type DebugMeta = {
@@ -355,7 +357,9 @@ function Diagnostics({ images, renderModel, svg, debug }: {
             <thead className="text-ink60">
               <tr>
                 <th className="p-1">מזהה</th><th className="p-1">IoU</th><th className="p-1">ממוצע</th><th className="p-1">מקס</th>
-                <th className="p-1">חורים (מקור/וקטור)</th><th className="p-1">טופולוגיה</th><th className="p-1">עוגנים</th>
+                <th className="p-1">חורים (מקור/וקטור)</th>
+                <th className="p-1">חתיכות מתכת</th>
+                <th className="p-1">טופולוגיה</th><th className="p-1">עוגנים</th>
                 <th className="p-1">ציון</th><th className="p-1">נדחה</th>
               </tr>
             </thead>
@@ -366,7 +370,16 @@ function Diagnostics({ images, renderModel, svg, debug }: {
                   <td className="p-1">{c.iou}</td>
                   <td className="p-1">{c.mean_dev_mm}</td>
                   <td className="p-1">{c.max_dev_mm}</td>
-                  <td className="p-1">{c.source_holes}/{c.vector_holes}</td>
+                  <td className="p-1">
+                    {c.source_holes}/{c.vector_holes}
+                    {c.hole_budget != null && <span className="text-ink60"> (≤{c.hole_budget})</span>}
+                  </td>
+                  <td className={`p-1 ${
+                    c.vector_components != null && c.source_components != null &&
+                    Math.abs(c.vector_components - c.source_components) > (c.component_budget ?? 1)
+                      ? "font-semibold text-red-600" : ""}`}>
+                    {c.source_components != null ? `${c.source_components}/${c.vector_components}` : "—"}
+                  </td>
                   <td className="p-1">{c.topology_ok ? "✓" : "✗"}</td>
                   <td className="p-1">{c.anchors}</td>
                   <td className="p-1">{c.score}</td>
