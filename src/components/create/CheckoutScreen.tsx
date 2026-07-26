@@ -6,7 +6,7 @@
 // שליחת ההזמנה ותיאום תשלום אישי (§12 ממילא מסמן תמחור/תשלום כפער פתוח).
 import { he } from "@/i18n/he";
 import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, TextInput } from "./ui";
-import { circumferenceMm, priceOf, widthOf, type Addr, type CreateState } from "./model";
+import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
 
 const d = he.design;
 
@@ -24,6 +24,7 @@ export function CheckoutScreen({
 }) {
   const p = priceOf(s);
   const ring = s.product === "ring";
+  const width = frameWidthMm(s, activeEntry(s));
   const ok = addrValid(s.addr);
   const setAddr = (patch: Partial<Addr>) => set({ addr: { ...s.addr, ...patch } });
 
@@ -87,7 +88,7 @@ export function CheckoutScreen({
             <CardLabel>{d.checkoutSummaryTitle}</CardLabel>
             <Row k={d.checkoutKeys.item} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.checkoutKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
-            <Row k={d.checkoutKeys.width} v={`${widthOf(s)} ${d.mm}`} />
+            <Row k={d.checkoutKeys.width} v={`${mmLabel(width)} ${d.mm}`} />
             <Row k={d.checkoutKeys.delivery} v={d.deliveryVal} />
 
             <div className="mt-3 flex items-baseline justify-between border-t border-graphite/15 pt-3.5">

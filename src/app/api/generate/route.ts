@@ -65,8 +65,8 @@ export async function POST(req: Request) {
     }
 
     // 1) יצירת רנדר של הצמיד מהתיאור (מותאם לסוג המוצר — צמיד/טבעת).
-    // המידות נכנסות לפרומפט: הווקטורייזר גוזר את אורך הפס מיחס הצדדים של
-    // הרנדר, ולכן היחס חייב להיות מוצהר ולא מנוחש.
+    // המידות נכנסות לפרומפט כבקשה; מה שהמודל באמת מצייר נמדד אחר כך, ו-
+    // ingestCutouts מותח את התוצאה אל האורך שהוזמן.
     const render = await generateRenderPng(body.userPrompt, inspiration, design.product_type, {
       lengthMm: Number(design.length_mm),
       widthMm: Number(design.width_mm),
@@ -106,10 +106,9 @@ export async function POST(req: Request) {
     }
 
     // 5) ולידציה ושמירת גרסה דרך הצינור הקיים.
-    const { version, report, geometry, lengthMm } = await ingestCutouts({
+    const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,
       cutoutsSvg: vec.cutoutsSvg,
-      derivedLength: vec.widthMm,
       userPrompt: body.userPrompt,
       renderPngPath,
       metrics: vec.metrics,
@@ -127,6 +126,7 @@ export async function POST(req: Request) {
       report,
       geometry,
       lengthMm,
+      widthMm,
       render: { model: render.model, url: renderUrl },
       vectorizer: vec.metrics,
     });

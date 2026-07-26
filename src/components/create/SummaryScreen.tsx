@@ -5,7 +5,7 @@ import { he } from "@/i18n/he";
 import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT } from "./ui";
 import {
   activeEntry, circumferenceMm, countCuts, cutoutsInner, frameLengthMm,
-  priceOf, widthOf, type CreateState,
+  frameWidthMm, mmLabel, priceOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -20,7 +20,7 @@ export function SummaryScreen({
   const entry = activeEntry(s);
   const cutouts = cutoutsInner(entry?.svg);
   const L = frameLengthMm(s, entry);
-  const W = widthOf(s);
+  const W = frameWidthMm(s, entry);
   const p = priceOf(s);
   const ring = s.product === "ring";
   const cuts = countCuts(entry?.svg ?? null);
@@ -63,7 +63,7 @@ export function SummaryScreen({
             <CardLabel>{d.specTitle}</CardLabel>
             <Row k={d.specKeys.type} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.specKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
-            <Row k={d.specKeys.width} v={`${W} ${d.mm}`} />
+            <Row k={d.specKeys.width} v={`${mmLabel(W)} ${d.mm}`} />
             <Row k={d.specKeys.fit} v={ring ? d.ringFitVal : d.fits[s.fit]} />
             <Row k={d.specKeys.material} v={d.specMaterial} />
             <Row k={d.specKeys.thickness} v={d.specThickness} />

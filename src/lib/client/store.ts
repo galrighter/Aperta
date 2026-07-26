@@ -6,6 +6,7 @@ import { api, ClientApiError } from "./api";
 import type {
   Annotation, AnnotationTool, Design, GenStatus, Geometry, Profile, Version,
 } from "./types";
+import { svgFrame } from "@/lib/geometry/frame";
 
 interface StudioState {
   profiles: Profile[];
@@ -250,11 +251,14 @@ async function loadGeometry(
   v: Version,
 ) {
   try {
+    // המסגרת נקראת מה-SVG של הגרסה ולא מהרשומה: הרוחב בפועל עשוי להיבדל
+    // מהרוחב שהוזמן עד כדי הסטייה המותרת, והוולידציה דורשת התאמה מדויקת.
+    const frame = svgFrame(v.svg);
     const res = await api.validate({
       svg: v.svg,
       productType: design.product_type,
-      lengthMm: Number(design.length_mm),
-      widthMm: Number(design.width_mm),
+      lengthMm: frame?.lengthMm ?? Number(design.length_mm),
+      widthMm: frame?.widthMm ?? Number(design.width_mm),
       thicknessMm: Number(design.thickness_mm),
     });
     set({ geometry: res.geometry });

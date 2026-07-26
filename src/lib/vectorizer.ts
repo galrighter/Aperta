@@ -1,8 +1,8 @@
 import { ApiError } from "@/lib/api";
 import { type DesignRow, type VersionRow, insertVersion } from "@/lib/db/designs";
-import { supabaseAdmin } from "@/lib/db/supabase";
 import { validateDesign, type DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
+import { rescaleCutoutsSvg, svgFrame } from "@/lib/geometry/frame";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // לקוח לשירות ה-vectorizer (רץ על Hetzner). מקבל תמונת רנדר ומחזיר cutouts SVG
@@ -136,44 +136,61 @@ export interface IngestResult {
   report: ValidationReport;
   geometry: { material: ReturnType<typeof difference>; cutUnion: unknown } | null;
   lengthMm: number;
+  widthMm: number;
 }
 
+/** כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7. */
+const WIDTH_TOLERANCE = 0.05;
+
 /**
- * מריץ cutouts SVG שהתקבל מה-vectorizer דרך מנוע הוולידציה, מעדכן את אורך הצמיד
- * לפרופורציות שנגזרו, ושומר גרסה. משותף למסלול ההעלאה ולמסלול ה-AI.
+ * מריץ cutouts SVG שהתקבל מה-vectorizer דרך מנוע הוולידציה ושומר גרסה.
+ * משותף למסלול ההעלאה ולמסלול ה-AI.
+ *
+ * האורך שהלקוחה הזמינה הוא מדידה ולא הצעה: הוא נקבע מהיקף היד/האצבע, ופריט
+ * באורך אחר פשוט לא נסגר. לכן הדוגמה נמתחת אל האורך שהוזמן במקום שהאורך יוסט
+ * אל מה שמודל התמונה צייר (שקודם נכתב על השדה — ומחק את מה שהוזמן).
+ *
+ * המתיחה מתחלקת בין שני הצירים: עד 5% מהפער נבלעים ברוחב, ושם זו הגדלה אחידה
+ * שאינה מעוותת את הדוגמה כלל; רק מה שנשאר מעבר לזה נמתח אופקית. הוולידציה רצה
+ * על המסגרת הסופית, כך שאם המתיחה שברה מינימום ייצור — הגרסה נדחית.
+ *
  * renderPngPath (אם קיים) נשמר בתוך דוח הוולידציה כדי להציג את ההדמיה בלי שינוי סכימה.
  */
 export async function ingestCutouts(opts: {
   design: DesignRow;
   cutoutsSvg: string;
-  derivedLength: number;
   userPrompt: string | null;
   renderPngPath: string | null;
   metrics?: VectorizeResult["metrics"];
 }): Promise<IngestResult> {
-  const { design, cutoutsSvg, derivedLength } = opts;
-  const lengthMm = derivedLength > 0 ? derivedLength : Number(design.length_mm);
+  const { design, cutoutsSvg } = opts;
+  const lengthMm = Number(design.length_mm);
+  const orderedWidth = Number(design.width_mm);
+
+  // המסגרת שהמודל צייר בפועל, כפי שה-vectorizer מסר אותה.
+  const drawn = svgFrame(cutoutsSvg) ?? { lengthMm, widthMm: orderedWidth };
+  // הגורם שמחזיר את הדוגמה לאורך שהוזמן. 1 = המודל פגע ביחס המבוקש.
+  const correction = drawn.lengthMm > 0 ? lengthMm / drawn.lengthMm : 1;
+  const widthMm =
+    Math.round(
+      Math.min(
+        Math.max(drawn.widthMm * correction, orderedWidth * (1 - WIDTH_TOLERANCE)),
+        orderedWidth * (1 + WIDTH_TOLERANCE),
+      ) * 100,
+    ) / 100;
+  const framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
 
   const vDims: DesignDims = {
     productType: design.product_type,
     lengthMm,
-    widthMm: Number(design.width_mm),
+    widthMm,
     thicknessMm: Number(design.thickness_mm),
   };
-  const { report, normalized } = validateDesign(cutoutsSvg, vDims);
-
-  if (lengthMm !== Number(design.length_mm)) {
-    const sb = supabaseAdmin();
-    const { error } = await sb
-      .from("designs")
-      .update({ length_mm: lengthMm, updated_at: new Date().toISOString() })
-      .eq("id", design.id);
-    if (error) throw new Error(error.message);
-  }
+  const { report, normalized } = validateDesign(framedSvg, vDims);
 
   const version = await insertVersion({
     design_id: design.id,
-    svg: normalized?.canonicalSvg ?? cutoutsSvg,
+    svg: normalized?.canonicalSvg ?? framedSvg,
     source: "generate",
     user_prompt: opts.userPrompt,
     annotation_png_path: null,
@@ -184,13 +201,10 @@ export async function ingestCutouts(opts: {
 
   const geometry = normalized
     ? {
-        material: difference(
-          [rectPolygon(0, 0, lengthMm, Number(design.width_mm))],
-          normalized.cutUnion,
-        ),
+        material: difference([rectPolygon(0, 0, lengthMm, widthMm)], normalized.cutUnion),
         cutUnion: normalized.cutUnion,
       }
     : null;
 
-  return { version, report, geometry, lengthMm };
+  return { version, report, geometry, lengthMm, widthMm };
 }

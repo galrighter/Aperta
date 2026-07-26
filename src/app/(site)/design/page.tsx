@@ -22,7 +22,7 @@ import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
-  countCuts, frameLengthMm, gapOf, mpToPath, priceOf, stripLengthMm, widthOf,
+  countCuts, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf, stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -107,7 +107,7 @@ export default function DesignPage() {
         svg: entry.svg,
         productType: s.product ?? "bracelet",
         lengthMm: frameLengthMm(s, entry),
-        widthMm: widthOf(s),
+        widthMm: frameWidthMm(s, entry),
         thicknessMm: FAB.defaultThicknessMm,
       })
       .then(({ geometry }) => {
@@ -297,7 +297,7 @@ export default function DesignPage() {
     const entry = activeEntry(s);
     const lines = [
       `מוצר: ${s.product === "ring" ? d.ringName : d.braceletName}`,
-      `היקף: ${Math.round(circumferenceMm(s))} ${d.mm} · רוחב: ${widthOf(s)} ${d.mm}`,
+      `היקף: ${Math.round(circumferenceMm(s))} ${d.mm} · רוחב: ${mmLabel(frameWidthMm(s, entry))} ${d.mm}`,
       s.product === "ring" ? "" : `ישיבה: ${d.fits[s.fit]}`,
       `חיתוכים: ${countCuts(entry?.svg ?? null)}`,
       `מזהה עיצוב: ${s.designId ?? "—"}`,

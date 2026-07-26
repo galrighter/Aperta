@@ -2,6 +2,7 @@
 // מקור: handoff_design_flow/HANDOFF.md
 import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
+import { svgFrame } from "@/lib/geometry/frame";
 
 const d = he.design;
 
@@ -46,8 +47,8 @@ export interface ImageFile {
 export interface EditEntry {
   versionId: string;
   versionNo: number;
-  /** האורך שהמנוע קבע בפועל — הווקטורייזר גוזר אותו מיחס הרנדר ודורס את
-   *  מה שביקשנו, ולכן זה מה שקובע את מסגרת התצוגה, לא הערך מהטופס. */
+  /** האורך שהגרסה נשמרה בו. שווה למה שהוזמן — הדוגמה נמתחת אליו. נשמר
+   *  כגיבוי בלבד: מסגרת התצוגה נקראת מה-viewBox של ה-SVG. */
   lengthMm: number | null;
   region: Region | null;
   text: string;
@@ -229,9 +230,17 @@ export function cutoutsInner(svg: string | null | undefined): string {
   return /<g id="cutouts"[^>]*>([\s\S]*?)<\/g>/.exec(svg)?.[1] ?? "";
 }
 
-/** מסגרת התצוגה: אורך מהמנוע אם יש, אחרת החישוב מהטופס. */
+/** מסגרת התצוגה. מקור האמת הוא ה-viewBox של הגרסה עצמה — שם יושבות המידות
+ *  שנחתכות בפועל. האורך שווה למה שהוזמן; הרוחב עשוי להיבדל ממנו עד כדי
+ *  הסטייה שנבלעה במתיחה, ולכן אסור לקחת אותו מהטופס כשקיימת גרסה. */
 export const frameLengthMm = (s: CreateState, e: EditEntry | null): number =>
-  e?.lengthMm && e.lengthMm > 0 ? e.lengthMm : stripLengthMm(s);
+  svgFrame(e?.svg)?.lengthMm ?? (e?.lengthMm && e.lengthMm > 0 ? e.lengthMm : stripLengthMm(s));
+
+export const frameWidthMm = (s: CreateState, e: EditEntry | null): number =>
+  svgFrame(e?.svg)?.widthMm ?? widthOf(s);
+
+/** מידה לתצוגה: ספרה אחת אחרי הנקודה, בלי אפס נגרר. */
+export const mmLabel = (n: number): string => String(Math.round(n * 10) / 10);
 
 /** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts).
  *  סופרים תת-מסלולים ולא אלמנטים: הווקטורייזר פולט path אחד שמכיל את כל
