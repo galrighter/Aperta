@@ -63,10 +63,10 @@ export function buildRenderPrompt(
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
-    "The piece is a single rectangular strip of solid warm-gold brass with a decorative pattern cut through it.",
+    "The piece is a single rectangular strip of solid warm-gold brass with a pattern cut through it.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
-    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally: the pattern's longest extent runs along the strip's length, and its widest extent spans the strip's width. It is a long narrow band, never square and never a thick slab. Show the whole strip, unclipped, with plain white all around it.`,
+    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally: the pattern's longest extent runs along the strip's length, and its widest extent spans the strip's width. Show the whole strip, unclipped, with plain white all around it.`,
 
     "The cut-out openings are fully cut through, showing the same pure white background through them.",
     "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
