@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { decodeDataUrl } from "@/lib/db/storage";
+import { FAB } from "@/lib/fabrication.config";
 import { generateRenderPng } from "@/lib/llm/imagegen";
 import { vectorizeImageDebug } from "@/lib/vectorizer";
 import { persistRun } from "@/lib/runs/persist";
@@ -17,6 +18,9 @@ const schema = z.object({
   prompt: z.string().max(4000).optional(),
   image: z.object({ dataUrl: z.string().max(8_000_000) }).nullable().optional(),
   heightMm: z.number().min(1).max(100).default(15),
+  /** אורך הפס — נכנס לפרומפט כפרופורציה. ברירת מחדל: הערך של המוצר. */
+  lengthMm: z.number().min(10).max(300).optional(),
+  thicknessMm: z.number().min(0.5).max(5).optional(),
   colorKey: z.enum(["warm", "dark", "saturation", "auto"]).default("auto"),
   productType: z.enum(["bracelet", "ring"]).default("bracelet"),
 });
@@ -48,7 +52,11 @@ export async function POST(req: Request) {
     } else {
       // מסלול פרומפט: מייצרים הדמיה קודם (מותאם לסוג המוצר).
       const inspiration: LlmImage | null = null;
-      const render = await generateRenderPng(body.prompt!, inspiration, body.productType);
+      const render = await generateRenderPng(body.prompt!, inspiration, body.productType, {
+        lengthMm: body.lengthMm ?? FAB.products[body.productType].defaultLengthMm,
+        widthMm: body.heightMm,
+        thicknessMm: body.thicknessMm ?? FAB.defaultThicknessMm,
+      });
       renderDataUrl = `data:${render.mediaType};base64,${render.base64}`;
       renderModel = render.model;
       const dec = decodeDataUrl(renderDataUrl);

@@ -65,7 +65,13 @@ export async function POST(req: Request) {
     }
 
     // 1) יצירת רנדר של הצמיד מהתיאור (מותאם לסוג המוצר — צמיד/טבעת).
-    const render = await generateRenderPng(body.userPrompt, inspiration, design.product_type);
+    // המידות נכנסות לפרומפט: הווקטורייזר גוזר את אורך הפס מיחס הצדדים של
+    // הרנדר, ולכן היחס חייב להיות מוצהר ולא מנוחש.
+    const render = await generateRenderPng(body.userPrompt, inspiration, design.product_type, {
+      lengthMm: Number(design.length_mm),
+      widthMm: Number(design.width_mm),
+      thicknessMm: Number(design.thickness_mm),
+    });
     const renderBytes = decodeDataUrl(`data:${render.mediaType};base64,${render.base64}`).bytes;
 
     // 2) שמירת ההדמיה כדי להציג אותה לצד השרטוט.
