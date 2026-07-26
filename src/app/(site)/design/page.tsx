@@ -175,6 +175,7 @@ export default function DesignPage() {
         svg: res.version.svg,
         report: res.report,
         geometry: res.geometry,
+        candidates: "candidates" in res ? res.candidates : undefined,
       });
       go("result");
     } catch (e) {
@@ -216,6 +217,34 @@ export default function DesignPage() {
       set({ applying: false });
     }
   }, [s, set, pushEntry]);
+
+  /* ===== בחירת הצעה אחרת מאותה יצירה ===== */
+  const chooseCandidate = useCallback(
+    async (svg: string) => {
+      const entry = activeEntry(s);
+      if (!s.designId || !entry || svg === entry.svg) return;
+      set({ applying: true });
+      try {
+        const res = await api.chooseCandidate(s.designId, svg);
+        pushEntry(s, {
+          versionId: res.version.id,
+          versionNo: res.version.version_no,
+          lengthMm: res.lengthMm ?? null,
+          region: null,
+          text: "",
+          svg: res.version.svg,
+          report: res.report,
+          geometry: res.geometry,
+          // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה.
+          candidates: entry.candidates,
+        });
+        set({ applying: false });
+      } catch {
+        set({ applying: false });
+      }
+    },
+    [s, set, pushEntry],
+  );
 
   /* ===== המשך עיצוב שמור ===== */
   const resume = useCallback(
@@ -392,6 +421,7 @@ export default function DesignPage() {
             s={s}
             set={set}
             onApply={applyEdit}
+          onChooseCandidate={chooseCandidate}
             onRestore={(i) => set({ activeEdit: i })}
             onOrder={() => go("summary")}
           />

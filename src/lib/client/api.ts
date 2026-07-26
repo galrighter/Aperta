@@ -78,8 +78,20 @@ export const api = {
       report: ValidationReport;
       geometry: Geometry | null;
       lengthMm?: number;
+      widthMm?: number;
+      /** הצעות נוספות מאותה יצירה, מדורגות. הראשונה היא הגרסה שנשמרה. */
+      candidates?: Array<{ svg: string; report: ValidationReport; drawnRatio: number; stretch: number }>;
       render?: { model: string; url: string | null };
     }>("/api/generate", { method: "POST", body: JSON.stringify(input) }),
+
+  chooseCandidate: (designId: string, svg: string) =>
+    call<{
+      version: Version;
+      report: ValidationReport;
+      geometry: Geometry | null;
+      lengthMm: number;
+      widthMm: number;
+    }>(`/api/designs/${designId}/choose`, { method: "POST", body: JSON.stringify({ svg }) }),
 
   vectorize: (input: {
     designId: string;

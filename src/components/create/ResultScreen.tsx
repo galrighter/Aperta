@@ -15,13 +15,14 @@ import {
 const d = he.design;
 
 export function ResultScreen({
-  s, set, onApply, onRestore, onOrder,
+  s, set, onApply, onRestore, onOrder, onChooseCandidate,
 }: {
   s: CreateState;
   set: (patch: Partial<CreateState>) => void;
   onApply: () => void;
   onRestore: (i: number) => void;
   onOrder: () => void;
+  onChooseCandidate: (svg: string) => void;
 }) {
   const entry = activeEntry(s);
   const cutouts = cutoutsInner(entry?.svg);
@@ -95,6 +96,38 @@ export function ResultScreen({
               </div>
             )}
           </div>
+
+          {/* ההצעות מאותה יצירה. כל אחת היא פס שלם — בחירה שומרת אותה כגרסה. */}
+          {(entry?.candidates?.length ?? 0) > 1 && (
+            <div className="mt-4">
+              <CardLabel>{d.candidatesLabel}</CardLabel>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {entry!.candidates!.map((c, i) => {
+                  const on = c.svg === entry!.svg;
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={s.applying}
+                      onClick={() => onChooseCandidate(c.svg)}
+                      aria-pressed={on}
+                      aria-label={`${d.candidatesLabel} ${i + 1}`}
+                      className={`border bg-white p-2 transition ${
+                        on ? "border-graphite" : "border-graphite/15 hover:border-graphite/40"
+                      } ${s.applying ? "opacity-50" : ""}`}
+                    >
+                      <svg viewBox={`-1 -1 ${L + 2} ${W + 2}`} className="h-auto w-full" role="img">
+                        <rect x="0" y="0" width={L} height={W} fill="none"
+                          stroke="rgba(32,35,38,0.3)" strokeWidth={Math.max(0.2, W / 90)} />
+                        <g dangerouslySetInnerHTML={{ __html: cutoutsInner(c.svg) }}
+                          fill="none" stroke={COBALT} strokeWidth={Math.max(0.2, W / 110)} />
+                      </svg>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {!flat && (
             <p className="mt-3 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>

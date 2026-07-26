@@ -6,7 +6,8 @@ import { getDesign, countTodayGenerations } from "@/lib/db/designs";
 import { uploadFile, decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { generateRenderPng } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
-import { vectorizeImageFull, ingestCutouts } from "@/lib/vectorizer";
+import { vectorizeImageFull, ingestCutouts, frameCutouts } from "@/lib/vectorizer";
+import { CANDIDATE_TARGET, planRender, splitRender } from "@/lib/render/panels";
 import { persistRun } from "@/lib/runs/persist";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של הצמיד) →
@@ -64,28 +65,49 @@ export async function POST(req: Request) {
       }
     }
 
-    // 1) יצירת רנדר של הצמיד מהתיאור (מותאם לסוג המוצר — צמיד/טבעת).
-    // המידות נכנסות לפרומפט כבקשה; מה שהמודל באמת מצייר נמדד אחר כך, ו-
-    // ingestCutouts מותח את התוצאה אל האורך שהוזמן.
-    const render = await generateRenderPng(body.userPrompt, inspiration, design.product_type, {
+    // 1) הדמיות. כמה, ובאיזו פריסה, נגזר מהיחס שהוזמן: מודל התמונה לא מצייר
+    // יחס שמבקשים ממנו אלא נמשך ליחס נוח לו, וצורת הקנבס היא מה שמזיז אותו —
+    // חלוקה ל-N שורות מכריחה כל שורה להיות צרה. כל שורה היא גם מועמד לבחירת
+    // הלקוחה, ולכן כשמספיקה שורה אחת המועמדים מגיעים מקריאות נפרדות.
+    // הנימוקים והמדידות: src/lib/render/panels.ts.
+    const dims = {
       lengthMm: Number(design.length_mm),
       widthMm: Number(design.width_mm),
       thicknessMm: Number(design.thickness_mm),
-    });
-    const renderBytes = decodeDataUrl(`data:${render.mediaType};base64,${render.base64}`).bytes;
+    };
+    const plan = planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
+    const renders = await Promise.all(
+      Array.from({ length: plan.calls }, () =>
+        generateRenderPng(body.userPrompt, inspiration, design.product_type, dims, null, plan.rows),
+      ),
+    );
 
-    // 2) שמירת ההדמיה כדי להציג אותה לצד השרטוט.
-    const renderPngPath = `renders/${design.id}/${Date.now()}.png`;
-    await uploadFile(renderPngPath, renderBytes, render.mediaType);
+    // 2) שמירת ההדמיות כדי להציג אותן לצד השרטוט.
+    const stamp = Date.now();
+    const renderPaths = await Promise.all(
+      renders.map(async (r, i) => {
+        const path = `renders/${design.id}/${stamp}-${i}.png`;
+        await uploadFile(path, decodeDataUrl(`data:${r.mediaType};base64,${r.base64}`).bytes, r.mediaType);
+        return path;
+      }),
+    );
+    const renderPngPath = renderPaths[0];
 
-    // 3) המרת ההדמיה ל-cutouts SVG נקי (מצב debug כדי לשמור את כל שלבי הביניים).
+    // 3) חיתוך כל הדמיה לפסים, והמרת כל פס ל-cutouts SVG נקי.
     // ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark" (255 פחות גווני
     // האפור). "warm" — ההפרש בין ערוץ אדום לכחול — מחזיר אפס על שחור, כלומר
     // המפתח והפרומפט חייבים להשתנות יחד.
-    const vec = await vectorizeImageFull(renderBytes, render.mediaType, {
-      heightMm: Number(design.width_mm),
-      colorKey: "dark",
-    });
+    const panels = (
+      await Promise.all(
+        renders.map((r) => splitRender(decodeDataUrl(`data:${r.mediaType};base64,${r.base64}`).bytes)),
+      )
+    ).flat();
+    const vecs = await Promise.all(
+      panels.map((bytes) =>
+        vectorizeImageFull(bytes, "image/png", { heightMm: dims.widthMm, colorKey: "dark" }),
+      ),
+    );
+    const vec = vecs.find((v) => v.status === "approved" && v.cutoutsSvg) ?? vecs[0];
 
     // 4) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
     await persistRun({
@@ -96,19 +118,27 @@ export async function POST(req: Request) {
       prompt: body.userPrompt,
       colorKey: "dark",
       startedAt,
-      render: { path: renderPngPath, model: render.model },
-      vectorizer: vec.raw,
+      render: { path: renderPngPath, model: renders[0].model },
+      vectorizer: { ...vec.raw, panels: panels.length, rows: plan.rows, calls: plan.calls },
     });
     persisted = true;
 
-    if (vec.status !== "approved" || !vec.cutoutsSvg) {
-      throw new ApiError("vectorize_failed", `Vectorizer did not approve: ${vec.status}`, 422);
+    // 5) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
+    // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
+    const RANK = { pass: 0, warn: 1, fail: 2 } as const;
+    const candidates = vecs
+      .filter((v) => v.status === "approved" && v.cutoutsSvg)
+      .map((v) => frameCutouts(design, v.cutoutsSvg!))
+      .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+
+    if (candidates.length === 0) {
+      throw new ApiError("vectorize_failed", `Vectorizer did not approve any panel: ${vec.status}`, 422);
     }
 
-    // 5) ולידציה ושמירת גרסה דרך הצינור הקיים.
+    // 6) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה.
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,
-      cutoutsSvg: vec.cutoutsSvg,
+      cutoutsSvg: candidates[0].framedSvg,
       userPrompt: body.userPrompt,
       renderPngPath,
       metrics: vec.metrics,
@@ -127,7 +157,13 @@ export async function POST(req: Request) {
       geometry,
       lengthMm,
       widthMm,
-      render: { model: render.model, url: renderUrl },
+      candidates: candidates.map((c) => ({
+        svg: c.framedSvg,
+        report: c.report,
+        drawnRatio: Math.round(c.drawnRatio * 100) / 100,
+        stretch: Math.round(c.stretch * 1000) / 1000,
+      })),
+      render: { model: renders[0].model, url: renderUrl },
       vectorizer: vec.metrics,
     });
   } catch (err) {
