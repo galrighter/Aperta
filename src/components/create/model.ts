@@ -239,6 +239,9 @@ export const frameLengthMm = (s: CreateState, e: EditEntry | null): number =>
 export const frameWidthMm = (s: CreateState, e: EditEntry | null): number =>
   svgFrame(e?.svg)?.widthMm ?? widthOf(s);
 
+/** מידה לתצוגה: ספרה אחת אחרי הנקודה, בלי אפס נגרר. */
+export const mmLabel = (n: number): string => String(Math.round(n * 10) / 10);
+
 /** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts).
  *  סופרים תת-מסלולים ולא אלמנטים: הווקטורייזר פולט path אחד שמכיל את כל
  *  התבנית, ולכן ספירת אלמנטים החזירה 1 לכל עיצוב שנוצר במסלול הזה. */
