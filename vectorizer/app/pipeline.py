@@ -23,9 +23,10 @@ from .core.validation import ValidatedImage, load_and_validate
 
 _MEDIUM_TOLERANCE_MM = 0.05
 
-# How many candidates carry their traced SVG in the debug bundle. The geometry
-# is what makes a rejection legible; capping it keeps the payload sane.
-SVG_DETAIL_COUNT = 3
+# Every candidate carries its traced SVG in the debug bundle. Comparing them
+# side by side is how a threshold/tolerance choice becomes visible, so the
+# earlier cap only got in the way; the SVGs are small next to the render PNG.
+SVG_DETAIL_COUNT = None
 
 
 @dataclass
@@ -228,7 +229,7 @@ def build_debug(res: PipelineResult) -> dict:
     # Numbers alone cannot explain a rejection — attach the geometry for the
     # candidates worth looking at (the best few, plus whichever was selected)
     # so a failed run can be inspected by eye instead of inferred from metrics.
-    svg_for = {id(c) for c in cands[:SVG_DETAIL_COUNT]}
+    svg_for = {id(c) for c in (cands if SVG_DETAIL_COUNT is None else cands[:SVG_DETAIL_COUNT])}
     if sel is not None:
         svg_for.add(id(sel))
 
