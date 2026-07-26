@@ -75,10 +75,10 @@ export function buildRenderPrompt(
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
-    "The piece is a single rectangular strip of solid matte black metal with a pattern cut through it.",
+    "The piece is a single strip of solid matte black metal with a pattern cut through it. Its outer edge is not fixed: the pattern may cut into the long edges and the two ends and shape the silhouette, so the outline can wave, taper or be scalloped rather than stay a plain rectangle.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
-    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally: the pattern's longest extent runs along the strip's length, and its widest extent spans the strip's width. Show the whole strip, unclipped, with plain white all around it.`,
+    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally. Show the whole strip, unclipped, with plain white all around it.`,
 
     "The cut-out openings are fully cut through, showing the same pure white background through them.",
     "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
@@ -87,7 +87,7 @@ export function buildRenderPrompt(
     `MANUFACTURING (physical constraint): the strip is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the openings are cut. At this scale nothing can be cut finer than ${fab.minHole}mm, and no strip of remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the pattern is free to be whatever the design intent asks.`,
 
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
-    "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no text, no border framing.",
+    "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props. Nothing may be added around the piece: no caption, no label, no watermark, no dimension annotation and no frame around the image — but lettering that is itself part of the cut pattern is welcome when the design asks for it.",
     "Maximum contrast: the metal is one deep, uniform matte black (about #111111) with no sheen, no highlight and no colour cast, so it separates from the pure white background and from the openings as sharply as possible.",
   ].join(" ");
 }

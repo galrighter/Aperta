@@ -65,7 +65,6 @@ export async function POST(req: Request) {
     const { version, report, geometry, lengthMm } = await ingestCutouts({
       design,
       cutoutsSvg: vec.cutoutsSvg,
-      derivedLength: vec.widthMm,
       userPrompt: null,
       renderPngPath,
       metrics: vec.metrics,

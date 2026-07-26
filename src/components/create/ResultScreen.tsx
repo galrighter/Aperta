@@ -9,7 +9,7 @@ import {
 import { FlatDrawing, RegionChips } from "./Artwork";
 import { RolledStage } from "./RolledStage";
 import {
-  activeEntry, cutoutsInner, frameLengthMm, gapOf, widthOf, type CreateState,
+  activeEntry, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -26,7 +26,7 @@ export function ResultScreen({
   const entry = activeEntry(s);
   const cutouts = cutoutsInner(entry?.svg);
   const L = frameLengthMm(s, entry);
-  const W = widthOf(s);
+  const W = frameWidthMm(s, entry);
   const report = entry?.report ?? null;
   const flat = s.resultMode === "flat";
 

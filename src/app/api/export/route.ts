@@ -6,6 +6,7 @@ import { getDesign, getVersion } from "@/lib/db/designs";
 import { uploadFile } from "@/lib/db/storage";
 import { normalizeSvg } from "@/lib/geometry/normalize";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
+import { svgFrame } from "@/lib/geometry/frame";
 import { buildDxf, buildExportSvg } from "@/lib/dxf/dxf";
 
 // ייצוא ייצור — סעיף 10. זמין בסטטוס pass; ב-warn רק עם forced=true; fail חסום.
@@ -28,8 +29,11 @@ export async function POST(req: Request) {
       throw new ApiError("export_needs_confirmation", "Design has warnings — confirm forced export", 409);
     }
 
-    const L = Number(design.length_mm);
-    const W = Number(design.width_mm);
+    // המסגרת של הגרסה עצמה קובעת מה נחתך. האורך שווה תמיד למה שהוזמן;
+    // הרוחב עשוי להיבדל ממנו עד כדי הסטייה המותרת שנבלעה במתיחה.
+    const frame = svgFrame(version.svg);
+    const L = frame?.lengthMm ?? Number(design.length_mm);
+    const W = frame?.widthMm ?? Number(design.width_mm);
     const normalized = normalizeSvg(version.svg, L, W);
 
     // גבול המתכת האמיתי (כולל קצה גלי אם חיתוך מגיע לקצה)
