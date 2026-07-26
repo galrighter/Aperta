@@ -21,7 +21,9 @@ export async function GET() {
         const data = (await res.json()) as { data?: Array<{ id: string }> };
         openaiModels = (data.data ?? [])
           .map((m) => m.id)
-          .filter((id) => id.startsWith("gpt-5") || id.startsWith("o"))
+          // גם דגמי התמונה: הם מה שעולה כסף, והשאלה "האם הדגם הזול זמין למפתח
+          // הזה" צריכה להיענות בלחיצה ולא בהרצה ששולחת חיוב.
+          .filter((id) => id.startsWith("gpt-5") || id.startsWith("o") || id.includes("image"))
           .sort();
       }
     } catch (e) {

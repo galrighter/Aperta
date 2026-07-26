@@ -300,7 +300,7 @@ export default function DebugPage() {
             <select className="rounded border border-graphite/20 p-1" value={colorKey} onChange={(e) => setColorKey(e.target.value)}>
               <option value="auto">אוטומטי</option>
               <option value="warm">warm (פליז)</option>
-              <option value="dark">dark</option>
+              <option value="dark">dark (מתכת כהה — כמו ההדמיות שנוצרות)</option>
               <option value="saturation">saturation</option>
             </select>
           </label>

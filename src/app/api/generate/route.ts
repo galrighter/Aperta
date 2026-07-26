@@ -79,9 +79,12 @@ export async function POST(req: Request) {
     await uploadFile(renderPngPath, renderBytes, render.mediaType);
 
     // 3) המרת ההדמיה ל-cutouts SVG נקי (מצב debug כדי לשמור את כל שלבי הביניים).
+    // ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark" (255 פחות גווני
+    // האפור). "warm" — ההפרש בין ערוץ אדום לכחול — מחזיר אפס על שחור, כלומר
+    // המפתח והפרומפט חייבים להשתנות יחד.
     const vec = await vectorizeImageFull(renderBytes, render.mediaType, {
       heightMm: Number(design.width_mm),
-      colorKey: "warm",
+      colorKey: "dark",
     });
 
     // 4) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
@@ -91,7 +94,7 @@ export async function POST(req: Request) {
       designId: design.id,
       productType: design.product_type,
       prompt: body.userPrompt,
-      colorKey: "warm",
+      colorKey: "dark",
       startedAt,
       render: { path: renderPngPath, model: render.model },
       vectorizer: vec.raw,
@@ -135,7 +138,7 @@ export async function POST(req: Request) {
         source: "studio",
         designId,
         prompt: userPrompt,
-        colorKey: "warm",
+        colorKey: "dark",
         startedAt,
         error: err instanceof Error ? err.message : String(err),
         vectorizer: null,
