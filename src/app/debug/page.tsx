@@ -33,10 +33,17 @@ type LogItem = {
   prompt: string | null; colorKey: string | null; status: string; error: string | null;
   durationMs: number | null; renderModel: string | null; renderUrl: string | null;
   stages: { conditioned: string | null; overlay: string | null; difference: string | null; rendered: string | null };
-  svg: string | null;
+  /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
+  hasSvg: boolean;
   metrics: { iou?: number; holes?: number; meanDeviationMm?: number; maxDeviationMm?: number } | null;
   debug: DebugMeta | null;
 };
+
+/** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
+type LogDetail = { svg: string | null; debug: DebugMeta | null };
+
+const detailOf = (d: LogDetail | "loading" | "error" | undefined): LogDetail | null =>
+  d && d !== "loading" && d !== "error" ? d : null;
 
 const STATUS_COLOR: Record<string, string> = {
   ok: "bg-green-100 text-green-800 border-green-300",
@@ -79,6 +86,7 @@ export default function DebugPage() {
   const [log, setLog] = useState<LogItem[] | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [details, setDetails] = useState<Record<string, LogDetail | "loading" | "error">>({});
 
   const debug = (result?.debug ?? null) as RunDebug | null;
   const svg = (result?.metal_svg ?? result?.cutouts_svg ?? null) as string | null;
@@ -115,16 +123,41 @@ export default function DebugPage() {
     }
   };
 
+  const [logError, setLogError] = useState<string | null>(null);
+
   const loadLog = async () => {
     setLogBusy(true);
+    setLogError(null);
     try {
       const resp = await fetch("/api/debug/log");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       setLog(data.items ?? []);
-    } catch {
-      setLog([]);
+    } catch (e) {
+      // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
+      // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
+      setLogError((e as Error).message);
     } finally {
       setLogBusy(false);
+    }
+  };
+
+  /** פירוט הרצה (SVG סופי + SVG לכל מועמד) — נטען רק בפתיחה. */
+  const toggleExpand = async (id: string) => {
+    if (expanded === id) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(id);
+    if (details[id] && details[id] !== "error") return;
+    setDetails((d) => ({ ...d, [id]: "loading" }));
+    try {
+      const resp = await fetch(`/api/debug/log/${id}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as LogDetail;
+      setDetails((d) => ({ ...d, [id]: { svg: data.svg ?? null, debug: data.debug ?? null } }));
+    } catch {
+      setDetails((d) => ({ ...d, [id]: "error" }));
     }
   };
 
@@ -165,6 +198,11 @@ export default function DebugPage() {
             {logBusy && <span className="text-xs text-ink60">טוען…</span>}
             {log && <span className="text-xs text-mist">{log.length} הרצות</span>}
           </div>
+          {logError && (
+            <div className="rounded-[2px] border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
+              טעינת היומן נכשלה: {logError}
+            </div>
+          )}
           {(log ?? []).map((it) => (
             <div key={it.id} className="overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
               {/* שורת סיכום */}
@@ -190,7 +228,7 @@ export default function DebugPage() {
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   <button className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
-                    onClick={() => setExpanded(expanded === it.id ? null : it.id)}>{expanded === it.id ? "סגור" : "שלבים"}</button>
+                    onClick={() => void toggleExpand(it.id)}>{expanded === it.id ? "סגור" : "שלבים"}</button>
                   {it.renderUrl && (
                     <button className="rounded-[2px] border border-amber-400 bg-amber-50 px-2 py-1 text-xs text-amber-800 hover:bg-amber-100"
                       onClick={() => void openInDebug(it.renderUrl!)}>הרץ מחדש</button>
@@ -200,6 +238,10 @@ export default function DebugPage() {
               {/* פירוט מלא */}
               {expanded === it.id && (
                 <div className="border-t border-graphite/10 bg-porcelain p-3">
+                  {details[it.id] === "loading" && <div className="text-xs text-ink60">טוען פירוט…</div>}
+                  {details[it.id] === "error" && (
+                    <div className="text-xs text-red-600">טעינת הפירוט נכשלה. אפשר לסגור ולפתוח שוב.</div>
+                  )}
                   <Diagnostics
                     images={{
                       render: it.renderUrl,
@@ -209,8 +251,9 @@ export default function DebugPage() {
                       rendered: it.stages.rendered,
                     }}
                     renderModel={it.renderModel}
-                    svg={it.svg}
-                    debug={it.debug}
+                    svg={detailOf(details[it.id])?.svg ?? null}
+                    // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
+                    debug={detailOf(details[it.id])?.debug ?? it.debug}
                   />
                 </div>
               )}

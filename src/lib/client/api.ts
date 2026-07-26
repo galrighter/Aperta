@@ -21,10 +21,17 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ClientApiError("network", he.errNetwork, 0);
   }
   let body: unknown = null;
+  let parseFailed = false;
   try {
     body = await res.json();
   } catch {
-    /* ריק */
+    // גוף לא־תקין. על תשובת שגיאה זה צפוי (יש קוד סטטוס); על 200 זו תשובה
+    // שנקטעה — ובלי הבחנה כאן היא הוחזרה כ-null, והקורא נפל על TypeError
+    // מאוחר יותר עם "משהו השתבש" שאי אפשר לאבחן ממנו כלום.
+    parseFailed = true;
+  }
+  if (res.ok && parseFailed) {
+    throw new ClientApiError("truncated", he.errNetwork, res.status);
   }
   if (!res.ok) {
     const err = (body as { error?: { code?: string; message?: string } })?.error;
@@ -68,7 +75,7 @@ export const api = {
       report: ValidationReport;
       geometry: Geometry | null;
       lengthMm?: number;
-      render?: { model: string; dataUrl: string };
+      render?: { model: string; url: string | null };
     }>("/api/generate", { method: "POST", body: JSON.stringify(input) }),
 
   vectorize: (input: {
