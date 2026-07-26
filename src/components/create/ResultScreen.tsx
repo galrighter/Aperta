@@ -6,9 +6,10 @@ import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, Slider, COBALT,
 } from "./ui";
-import { FlatDrawing, RegionChips, RolledPreview } from "./Artwork";
+import { FlatDrawing, RegionChips } from "./Artwork";
+import { RolledStage } from "./RolledStage";
 import {
-  activeEntry, cutoutsInner, frameLengthMm, widthOf, type CreateState,
+  activeEntry, cutoutsInner, frameLengthMm, gapOf, widthOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -84,7 +85,13 @@ export function ResultScreen({
               />
             ) : (
               <div style={{ background: "linear-gradient(180deg,#efeae1,#e0d9cd)" }}>
-                <RolledPreview cutouts={cutouts} lengthMm={L} widthMm={W} />
+                <RolledStage
+                  material={entry?.geometry?.material ?? null}
+                  cutouts={cutouts}
+                  lengthMm={L}
+                  widthMm={W}
+                  gapMm={gapOf(s)}
+                />
               </div>
             )}
           </div>

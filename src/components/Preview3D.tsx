@@ -10,11 +10,26 @@ import type { MultiPolygon } from "@/lib/geometry/types";
 
 // הדמיה תלת-ממדית — סעיף 9: טריאנגולציה של ה-material (earcut עם חורים),
 // אקסטרוזיה לעובי, כיפוף לקשת R=(L+gap)/(2π), חומר בגוון פליז.
+//
+// Rolled3D מקבל הכל ב-props כדי שגם מסע היצירה של הלקוחה יוכל להשתמש בו;
+// Preview3D הוא העטיפה של הסטודיו שמזינה אותו מה-store.
 
-export function Preview3D() {
-  const s = useStudio();
-  const design = s.design;
-  const geometry = s.geometry;
+export interface Rolled3DProps {
+  material: MultiPolygon;
+  lengthMm: number;
+  widthMm: number;
+  gapMm: number;
+  thicknessMm: number;
+  /** צבע רקע לסצנה. null = שקוף, כדי שהרקע של המיכל יעבור מבעד. */
+  background?: number | null;
+  /** כיבוי אינטראקציה (הסיבוב האוטומטי ממשיך) — לשער המגע במובייל. */
+  enabled?: boolean;
+}
+
+export function Rolled3D({
+  material, lengthMm, widthMm, gapMm, thicknessMm,
+  background = 0xf4f1eb, enabled = true,
+}: Rolled3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -34,7 +49,7 @@ export function Preview3D() {
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf4f1eb);
+    scene.background = background === null ? null : new THREE.Color(background);
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
@@ -82,23 +97,36 @@ export function Preview3D() {
       mount.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
+    // הסצנה נבנית פעם אחת; ה-background מסונכרן באפקט נפרד.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // שער האינטראקציה — הסיבוב האוטומטי ממשיך גם כשהשליטה כבויה.
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (ctx) ctx.controls.enabled = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (ctx) ctx.scene.background = background === null ? null : new THREE.Color(background);
+  }, [background]);
 
   // עדכון המודל בכל שינוי גרסה/גיאומטריה
   useEffect(() => {
     const ctx = sceneRef.current;
-    if (!ctx || !design || !geometry) return;
+    if (!ctx || !material.length) return;
     if (ctx.mesh) {
       ctx.scene.remove(ctx.mesh);
       ctx.mesh.geometry.dispose();
       (ctx.mesh.material as THREE.Material).dispose();
       ctx.mesh = null;
     }
-    const L = Number(design.length_mm);
-    const gap = Number(design.gap_mm);
-    const t = Number(design.thickness_mm);
-    const W = Number(design.width_mm);
-    const geo = buildBentGeometry(geometry.material, L, W, gap, t);
+    const L = lengthMm;
+    const gap = gapMm;
+    const t = thicknessMm;
+    const W = widthMm;
+    const geo = buildBentGeometry(material, L, W, gap, t);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xd9b14c,
       metalness: 1.0,
@@ -114,14 +142,28 @@ export function Preview3D() {
     ctx.controls.target.set(0, 0, 0);
     ctx.camera.position.set(0, R * 1.6, R * 4.2);
     ctx.controls.update();
-  }, [design, geometry]);
+  }, [material, lengthMm, widthMm, gapMm, thicknessMm]);
 
+  return <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }} />;
+}
+
+/** עטיפת הסטודיו — מזינה את ההדמיה מה-store. */
+export function Preview3D() {
+  const s = useStudio();
+  const design = s.design;
+  const geometry = s.geometry;
+
+  if (!design || !geometry) {
+    return <div className="flex h-full items-center justify-center text-sm text-mist">…</div>;
+  }
   return (
-    <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }}>
-      {!geometry && (
-        <div className="flex h-full items-center justify-center text-sm text-mist">…</div>
-      )}
-    </div>
+    <Rolled3D
+      material={geometry.material}
+      lengthMm={Number(design.length_mm)}
+      widthMm={Number(design.width_mm)}
+      gapMm={Number(design.gap_mm)}
+      thicknessMm={Number(design.thickness_mm)}
+    />
   );
 }
 

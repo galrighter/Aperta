@@ -3,8 +3,9 @@
 // מסע היצירה — handoff_design_flow/HANDOFF.md.
 // מחובר למנוע האמיתי: יצירת עיצוב, גנרציה, ולידציה וגרסאות עוברים דרך ה-API,
 // ולא דרך state מדומה. שמירת העיצובים נוספה מעבר ל-handoff (לבקשת גל).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
+import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError } from "@/lib/client/api";
 import {
   listMyDesigns, removeMyDesign, saveMyDesign, type SavedDesign,
@@ -21,7 +22,7 @@ import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
-  countCuts, gapOf, mpToPath, priceOf, stripLengthMm, widthOf,
+  countCuts, frameLengthMm, gapOf, mpToPath, priceOf, stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -72,6 +73,38 @@ export default function DesignPage() {
     },
     [],
   );
+
+  /* ===== גאומטריה להדמיה המעורגלת =====
+     ההדמיה בתלת-ממד צריכה את ה-material, וגרסאות שנשלפו מיומן הגרסאות (או
+     מעיצוב שמור) מגיעות בלעדיו. משלימים אותו לפי דרישה מהוולידציה. */
+  const geomTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (s.screen !== "result" || s.resultMode !== "render") return;
+    const entry = activeEntry(s);
+    if (!entry?.svg || entry.geometry || geomTried.current.has(entry.versionId)) return;
+    geomTried.current.add(entry.versionId);
+
+    api
+      .validate({
+        svg: entry.svg,
+        productType: s.product ?? "bracelet",
+        lengthMm: frameLengthMm(s, entry),
+        widthMm: widthOf(s),
+        thicknessMm: FAB.defaultThicknessMm,
+      })
+      .then(({ geometry }) => {
+        if (!geometry) return;
+        setState((prev) => ({
+          ...prev,
+          edits: prev.edits.map((e) =>
+            e.versionId === entry.versionId && !e.geometry ? { ...e, geometry } : e,
+          ),
+        }));
+      })
+      .catch(() => {
+        // נשארים עם התצוגה השטוחה — עדיף מלהפיל את המסך.
+      });
+  }, [s]);
 
   /* ===== יצירה ראשונה ===== */
   const startGeneration = useCallback(async () => {
