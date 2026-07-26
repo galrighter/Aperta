@@ -126,7 +126,7 @@ export default function DesignPage() {
 
   /* ===== יצירה ראשונה ===== */
   const startGeneration = useCallback(async () => {
-    const st = { ...s, screen: "processing" as Screen, procError: null };
+    const st = { ...s, screen: "processing" as Screen, procError: null, procErrorDetail: null };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
     if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -178,8 +178,14 @@ export default function DesignPage() {
       });
       go("result");
     } catch (e) {
-      const msg = e instanceof ClientApiError ? e.message : he.errGeneric;
-      setState((prev) => ({ ...prev, procError: msg }));
+      const apiErr = e instanceof ClientApiError ? e : null;
+      setState((prev) => ({
+        ...prev,
+        procError: apiErr?.message ?? he.errGeneric,
+        procErrorDetail: apiErr
+          ? `${apiErr.code} · ${apiErr.status}`
+          : ((e as Error)?.message?.slice(0, 80) ?? null),
+      }));
     }
   }, [s, go, pushEntry, remember]);
 
@@ -372,9 +378,10 @@ export default function DesignPage() {
         {s.screen === "processing" && (
           <ProcessingScreen
             error={s.procError}
+            detail={s.procErrorDetail}
             onRetry={startGeneration}
             onBack={() => {
-              set({ procError: null });
+              set({ procError: null, procErrorDetail: null });
               go("brief");
             }}
           />

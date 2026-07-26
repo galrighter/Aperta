@@ -20,9 +20,11 @@ function shuffled<T>(items: readonly T[]): T[] {
 }
 
 export function ProcessingScreen({
-  error, onRetry, onBack,
+  error, detail, onRetry, onBack,
 }: {
   error: string | null;
+  /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
+  detail?: string | null;
   onRetry: () => void;
   onBack: () => void;
 }) {
@@ -73,6 +75,9 @@ export function ProcessingScreen({
           className="mx-auto mb-9 max-w-md border-s-2 border-cobalt bg-white px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
         >
           {error}
+          {/* מזהה טכני — בלי זה כשל אצל הלקוחה מגיע אלינו כ"משהו השתבש"
+              ואי אפשר להבדיל בין דחיית ווקטורייזר, תשובה קטועה, וקריסת שרת. */}
+          {detail && <span className="mt-1.5 block text-[11px] text-mist">{detail}</span>}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>

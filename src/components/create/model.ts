@@ -88,6 +88,8 @@ export interface CreateState {
   edits: EditEntry[];
   activeEdit: number;
   procError: string | null;
+  /** מזהה טכני של הכשל (code · status) — לאבחון מצילום מסך. */
+  procErrorDetail: string | null;
   applying: boolean;
 
   // תוצאה
@@ -126,6 +128,7 @@ export const INITIAL: CreateState = {
   edits: [],
   activeEdit: -1,
   procError: null,
+  procErrorDetail: null,
   applying: false,
   resultMode: "render",
   region: "all",

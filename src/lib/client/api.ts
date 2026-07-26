@@ -39,6 +39,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     let message: string = he.errGeneric;
     if (code === "rate_limited") message = he.errRateLimit;
     else if (code === "llm_error" || code === "network") message = code === "network" ? he.errNetwork : he.errLlmNotSvg;
+    // דחיית ווקטורייזר היא תוצאה לגיטימית ולא תקלה — הרנדר לא עבר את שערי
+    // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
+    else if (code === "vectorize_failed") message = he.errVectorizeFailed;
     throw new ClientApiError(code, message, res.status);
   }
   return body as T;
