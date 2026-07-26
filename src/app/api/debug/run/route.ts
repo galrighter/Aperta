@@ -16,6 +16,9 @@ export const maxDuration = 300;
 
 const schema = z.object({
   prompt: z.string().max(4000).optional(),
+  /** פרומפט מלא שנשלח למודל התמונה כמו שהוא, במקום הפרומפט הבנוי.
+   *  מעבדת ניסוחים: מאפשר להשוות גרסאות פרומפט בלי מחזור פריסה. */
+  promptOverride: z.string().max(8000).optional(),
   image: z.object({ dataUrl: z.string().max(8_000_000) }).nullable().optional(),
   heightMm: z.number().min(1).max(100).default(15),
   /** אורך הפס — נכנס לפרומפט כפרופורציה. ברירת מחדל: הערך של המוצר. */
@@ -33,7 +36,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await parseBody(req, schema);
-    if (!body.prompt && !body.image) {
+    if (!body.prompt && !body.image && !body.promptOverride) {
       throw new ApiError("bad_request", "Provide a prompt or an image", 400);
     }
 
@@ -52,11 +55,17 @@ export async function POST(req: Request) {
     } else {
       // מסלול פרומפט: מייצרים הדמיה קודם (מותאם לסוג המוצר).
       const inspiration: LlmImage | null = null;
-      const render = await generateRenderPng(body.prompt!, inspiration, body.productType, {
-        lengthMm: body.lengthMm ?? FAB.products[body.productType].defaultLengthMm,
-        widthMm: body.heightMm,
-        thicknessMm: body.thicknessMm ?? FAB.defaultThicknessMm,
-      });
+      const render = await generateRenderPng(
+        body.prompt ?? "",
+        inspiration,
+        body.productType,
+        {
+          lengthMm: body.lengthMm ?? FAB.products[body.productType].defaultLengthMm,
+          widthMm: body.heightMm,
+          thicknessMm: body.thicknessMm ?? FAB.defaultThicknessMm,
+        },
+        body.promptOverride,
+      );
       renderDataUrl = `data:${render.mediaType};base64,${render.base64}`;
       renderModel = render.model;
       const dec = decodeDataUrl(renderDataUrl);

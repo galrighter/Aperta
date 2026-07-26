@@ -121,11 +121,13 @@ export async function generateRenderPng(
   inspiration: LlmImage | null,
   productType: RenderProductType = "bracelet",
   dims?: RenderDims,
+  /** עוקף את הפרומפט הבנוי — לבק־אופיס בלבד, כדי לנסות ניסוחים בלי לפרוס. */
+  promptOverride?: string | null,
 ): Promise<RenderResult> {
   const key = openaiKey();
   if (!key) throw new LlmError("OPENAI_KEY is not configured for image generation", false);
 
-  const prompt = buildRenderPrompt(userPrompt, productType, dims);
+  const prompt = promptOverride?.trim() || buildRenderPrompt(userPrompt, productType, dims);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
   const errors: string[] = [];
