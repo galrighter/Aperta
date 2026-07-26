@@ -2,11 +2,21 @@ import { LlmError, type LlmImage } from "./core";
 import { decodeDataUrl } from "@/lib/db/storage";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 
-// יצירת רנדר של הצמיד מטקסט/השראה דרך OpenAI Images API (gpt-image-1).
+// יצירת רנדר של הצמיד מטקסט/השראה דרך OpenAI Images API.
 // הרנדר נשלח אחר כך ל-vectorizer להמרה ל-SVG. זה החצי ש-LLM ישיר לא הצליח בו:
 // מודל התמונה מייצר הדמיה יפה, וה-vectorizer הופך אותה לוקטור נקי.
-
-const IMAGE_MODELS = ["gpt-image-1", "dall-e-3"] as const;
+//
+// עלות (הפרמטר היקר ביותר בצינור — נמצא כאן במספרים כדי שלא ייעלם שוב):
+//   gpt-image-1-mini · high · 1536x1024  ≈ $0.05 להרצה   ← מה שרץ
+//   gpt-image-1      · high · 1536x1024  ≈ $0.25 להרצה   ← נסיגה בלבד, פי חמישה
+// ה-mini מספיק כאן כי מה שנדרש מהתמונה אינו ריאליזם אלא הפרדה נקייה בין מתכת
+// שחורה לרקע לבן. הורדת quality ל-medium/low תחסוך עוד, אבל היא משנה את מה
+// שהווקטורייזר רואה ולכן דורשת השוואת IoU לפני שמשנים.
+//
+// נתיב הנסיגה הוא gpt-image-1 ולא dall-e-3: dall-e-2/3 הוסרו מה-API ב-12.5.2026,
+// כלומר הנסיגה הקודמת לא הייתה שבורה אלא לא-קיימת (וזה מה שהתגלה כשהתקציב נגמר
+// ב-26.7 והיא נקראה בפעם הראשונה). gpt-image-1 עצמו מיועד להסרה ב-23.10.2026.
+const IMAGE_MODELS = ["gpt-image-1-mini", "gpt-image-1"] as const;
 const IMAGE_TIMEOUT_MS = 120_000;
 
 export interface RenderResult {
@@ -39,7 +49,10 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  *     (נמדד: בקשה ל-140 מ"מ חזרה כ-81).
  *  2. ייצור — חיתוך לייזר מגיליון אחד: כל המתכת חייבת להישאר מחוברת, ואי אפשר
  *     לחתוך מתחת למינימומים של resolveFab().
- *  3. רנדור — מה שהווקטורייזר צריך כדי להפריד מתכת מרקע (לבן שטוח, בלי צללים).
+ *  3. רנדור — מה שהווקטורייזר צריך כדי להפריד מתכת מרקע: מתכת שחורה מט על לבן
+ *     שטוח, בלי צללים. שחור-על-לבן הוא ההפרדה הגדולה ביותר שיש, ולכן הצינור
+ *     עובר ל-color_key="dark" (255 פחות גווני האפור) במקום "warm" (R פחות B,
+ *     שעל מתכת שחורה מחזיר אפס).
  * מה שאינו אחד מהשלושה הוא החלטת עיצוב ושייך ללקוחה, לא לפרומפט.
  */
 export function buildRenderPrompt(
@@ -58,12 +71,12 @@ export function buildRenderPrompt(
 
   const object =
     productType === "ring"
-      ? "a laser-cut brass ring band, unrolled and laid out perfectly flat and straight (this is the flat blank that gets rolled into a ring)"
-      : "a laser-cut brass bracelet cuff, laid out perfectly straight and unrolled";
+      ? "a laser-cut matte black metal ring band, unrolled and laid out perfectly flat and straight (this is the flat blank that gets rolled into a ring)"
+      : "a laser-cut matte black metal bracelet cuff, laid out perfectly straight and unrolled";
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
-    "The piece is a single rectangular strip of solid warm-gold brass with a pattern cut through it.",
+    "The piece is a single rectangular strip of solid matte black metal with a pattern cut through it.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
     `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally: the pattern's longest extent runs along the strip's length, and its widest extent spans the strip's width. Show the whole strip, unclipped, with plain white all around it.`,
@@ -72,11 +85,11 @@ export function buildRenderPrompt(
     "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
-    `MANUFACTURING (physical constraint): the strip is cut from one sheet of ${d.thicknessMm}mm brass with a laser, so all the brass must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the openings are cut. At this scale nothing can be cut finer than ${fab.minHole}mm, and no strip of remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the pattern is free to be whatever the design intent asks.`,
+    `MANUFACTURING (physical constraint): the strip is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the openings are cut. At this scale nothing can be cut finer than ${fab.minHole}mm, and no strip of remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the pattern is free to be whatever the design intent asks.`,
 
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no text, no border framing.",
-    "High contrast: the brass is a clearly saturated warm gold, distinctly warmer and darker than the pure white, so the metal separates cleanly from the openings.",
+    "Maximum contrast: the metal is one deep, uniform matte black (about #111111) with no sheen, no highlight and no colour cast, so it separates from the pure white background and from the openings as sharply as possible.",
   ].join(" ");
 }
 
@@ -102,7 +115,7 @@ async function callImages(
 
 /**
  * מייצר רנדר PNG של הצמיד. אם ניתנה תמונת השראה — משתמש ב-edits עם התמונה כרפרנס;
- * אחרת generations מטקסט. מנסה gpt-image-1 ואז dall-e-3.
+ * אחרת generations מטקסט. מנסה gpt-image-1-mini ואז gpt-image-1 (יקר פי חמישה).
  */
 export async function generateRenderPng(
   userPrompt: string,
@@ -120,8 +133,8 @@ export async function generateRenderPng(
 
   try {
     for (const model of IMAGE_MODELS) {
-      // dall-e-3 אינו תומך ב-edits עם רפרנס — משתמשים בו רק ל-generations.
-      const useEdit = inspiration !== null && model === "gpt-image-1";
+      // שני הדגמים תומכים ב-edits, כך שתמונת השראה נשמרת גם בנסיגה.
+      const useEdit = inspiration !== null;
       try {
         let attempt: Attempt;
         if (useEdit && inspiration) {
@@ -142,10 +155,10 @@ export async function generateRenderPng(
             model,
             prompt,
             n: 1,
-            size: model === "gpt-image-1" ? "1536x1024" : "1792x1024",
+            // היחס 3:2 הוא מה שנשלח; הפרופורציה של הפס עצמו נאמרת בפרומפט.
+            size: "1536x1024",
+            quality: "high",
           };
-          if (model === "gpt-image-1") body.quality = "high";
-          else body.response_format = "b64_json";
           attempt = await callImages("generations", {
             method: "POST",
             headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },

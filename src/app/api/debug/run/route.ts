@@ -64,8 +64,8 @@ export async function POST(req: Request) {
       mediaType = dec.mediaType;
     }
 
-    // generated renders are always brass -> warm; uploads use the chosen key.
-    const colorKey = body.image ? body.colorKey : "warm";
+    // הדמיה שנוצרה כאן היא תמיד מתכת שחורה -> dark; העלאה משתמשת במפתח שנבחר.
+    const colorKey = body.image ? body.colorKey : "dark";
     const result = await vectorizeImageDebug(bytes, mediaType, { heightMm: body.heightMm, colorKey });
 
     // שומרים את ההרצה ליומן (best-effort) כדי שנוכל לשוחח עליה בבק־אופיס.
