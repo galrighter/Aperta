@@ -31,6 +31,11 @@ const d = he.design;
 /** המסך הראשון של כל שלב בסרגל — לניווט מהסרגל. */
 const RAIL_TARGET: Screen[] = RAIL.map((r) => r.screens[0]);
 
+/** ערך מהאחסון המקומי חוזר כמחרוזת — מאמתים אותו מול הקבוצה המותרת. */
+function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
 export default function DesignPage() {
   const [s, setState] = useState<CreateState>(INITIAL);
   const [maxReached, setMaxReached] = useState(0);
@@ -51,27 +56,40 @@ export default function DesignPage() {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   }, []);
 
+  /** הרשומה המקומית של עיצוב. נכתבת פעמיים: פעם עם יצירת העיצוב (pending),
+   *  ושוב עם כל גרסה שחוזרת. בלי הכתיבה הראשונה, כל הפרעה בין היצירה לתשובה
+   *  מנתקת את הלקוחה מעיצוב שכבר קיים בשרת — וזה בדיוק מה שקרה. */
+  const remember = useCallback((st: CreateState, entry: EditEntry | null) => {
+    if (!st.designId) return;
+    const path = entry ? mpToPath(entry.geometry?.material) : "";
+    saveMyDesign({
+      id: st.designId,
+      name: `${st.product === "ring" ? he.ring : he.bracelet} ${Math.round(circumferenceMm(st))}`,
+      product: st.product ?? "bracelet",
+      circMm: Math.round(circumferenceMm(st)),
+      widthMm: widthOf(st),
+      cuts: entry ? countCuts(entry.svg) : 0,
+      updatedAt: new Date().toISOString(),
+      path: path && path.length < 40_000 ? path : undefined,
+      lengthMm: entry?.lengthMm && entry.lengthMm > 0 ? entry.lengthMm : stripLengthMm(st),
+      pending: entry ? undefined : true,
+      brief: st.brief.trim() || undefined,
+      symmetry: st.symmetry,
+      density: st.density,
+      feel: st.feel,
+      fit: st.fit,
+    });
+    setSaved(listMyDesigns());
+  }, []);
+
   /** רישום גרסה שחזרה מהמנוע + שמירה מקומית. */
   const pushEntry = useCallback(
     (st: CreateState, entry: EditEntry) => {
       const edits = [...st.edits, entry];
       setState((prev) => ({ ...prev, edits, activeEdit: edits.length - 1 }));
-      if (!st.designId) return;
-      const path = mpToPath(entry.geometry?.material);
-      saveMyDesign({
-        id: st.designId,
-        name: `${st.product === "ring" ? he.ring : he.bracelet} ${Math.round(circumferenceMm(st))}`,
-        product: st.product ?? "bracelet",
-        circMm: Math.round(circumferenceMm(st)),
-        widthMm: widthOf(st),
-        cuts: countCuts(entry.svg),
-        updatedAt: new Date().toISOString(),
-        path: path.length < 40_000 ? path : undefined,
-        lengthMm: stripLengthMm(st),
-      });
-      setSaved(listMyDesigns());
+      remember(st, entry);
     },
-    [],
+    [remember],
   );
 
   /* ===== גאומטריה להדמיה המעורגלת =====
@@ -108,7 +126,7 @@ export default function DesignPage() {
 
   /* ===== יצירה ראשונה ===== */
   const startGeneration = useCallback(async () => {
-    const st = { ...s, screen: "processing" as Screen, procError: null };
+    const st = { ...s, screen: "processing" as Screen, procError: null, procErrorDetail: null };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
     if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -131,6 +149,8 @@ export default function DesignPage() {
 
       const withId = { ...st, designId: design.id };
       setState(withId);
+      // נרשם עכשיו, לפני הגנרציה — כדי שהעיצוב יהיה בר-איתור גם אם היא נקטעת.
+      remember(withId, null);
 
       // "קובץ מוכן לחיתוך" → וקטוריזציה ישירה; אחרת גנרציה מהתיאור.
       const res =
@@ -158,10 +178,16 @@ export default function DesignPage() {
       });
       go("result");
     } catch (e) {
-      const msg = e instanceof ClientApiError ? e.message : he.errGeneric;
-      setState((prev) => ({ ...prev, procError: msg }));
+      const apiErr = e instanceof ClientApiError ? e : null;
+      setState((prev) => ({
+        ...prev,
+        procError: apiErr?.message ?? he.errGeneric,
+        procErrorDetail: apiErr
+          ? `${apiErr.code} · ${apiErr.status}`
+          : ((e as Error)?.message?.slice(0, 80) ?? null),
+      }));
     }
-  }, [s, go, pushEntry]);
+  }, [s, go, pushEntry, remember]);
 
   /* ===== שינוי ממוקד אזור ===== */
   const applyEdit = useCallback(async () => {
@@ -193,13 +219,40 @@ export default function DesignPage() {
 
   /* ===== המשך עיצוב שמור ===== */
   const resume = useCallback(
-    async (id: string) => {
+    async (item: SavedDesign) => {
+      const id = item.id;
       setResumingId(id);
       setResumeError(null);
       try {
         const { design, versions } = await api.getDesign(id);
         const last = versions[versions.length - 1];
-        if (!last) throw new Error("no version");
+        const ringP = design.product_type === "ring";
+        const circP = Number(design.length_mm) + Number(design.gap_mm);
+        const sizes = ringP
+          ? { ringSize: String(Math.round(circP)), ringWidth: Number(design.width_mm) }
+          : { circ: String(Math.round(circP)), braceletWidth: Number(design.width_mm) };
+
+        // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
+        // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס.
+        if (!last) {
+          setState({
+            ...INITIAL,
+            screen: "brief",
+            product: design.product_type,
+            designId: design.id,
+            ...sizes,
+            brief: item.brief ?? "",
+            symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
+            density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
+            feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
+            fit: pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit),
+          });
+          setMaxReached(2);
+          setResumingId(null);
+          if (typeof window !== "undefined") window.scrollTo(0, 0);
+          return;
+        }
+
         const val = await api.validate({
           svg: last.svg,
           productType: design.product_type,
@@ -207,16 +260,13 @@ export default function DesignPage() {
           widthMm: Number(design.width_mm),
           thicknessMm: Number(design.thickness_mm),
         });
-        const ring = design.product_type === "ring";
-        const circ = Number(design.length_mm) + Number(design.gap_mm);
         setState({
           ...INITIAL,
           screen: "result",
           product: design.product_type,
           designId: design.id,
-          ...(ring
-            ? { ringSize: String(Math.round(circ)), ringWidth: Number(design.width_mm) }
-            : { circ: String(Math.round(circ)), braceletWidth: Number(design.width_mm) }),
+          ...sizes,
+          brief: item.brief ?? "",
           edits: versions.map((v, i) => ({
             versionId: v.id,
             versionNo: v.version_no,
@@ -328,9 +378,10 @@ export default function DesignPage() {
         {s.screen === "processing" && (
           <ProcessingScreen
             error={s.procError}
+            detail={s.procErrorDetail}
             onRetry={startGeneration}
             onBack={() => {
-              set({ procError: null });
+              set({ procError: null, procErrorDetail: null });
               go("brief");
             }}
           />

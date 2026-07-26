@@ -18,6 +18,15 @@ export interface SavedDesign {
   /** תצוגה מקדימה: path של החומר במ"מ + מידות התיבה */
   path?: string;
   lengthMm?: number;
+  /** עוד אין גרסה — היצירה לא הושלמה. הרשומה נכתבת כבר עם יצירת העיצוב,
+   *  כדי שהפרעה באמצע לא תנתק את הלקוחה מעיצוב שכבר קיים בשרת. */
+  pending?: boolean;
+  /** מה שהוזן בטופס, כדי שאפשר יהיה לחזור ולנסות שוב עם אותם פרטים. */
+  brief?: string;
+  symmetry?: string;
+  density?: string;
+  feel?: string;
+  fit?: string;
 }
 
 function read(): SavedDesign[] {

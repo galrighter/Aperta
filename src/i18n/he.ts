@@ -95,6 +95,8 @@ export const he = {
   errLlmNotSvg: "ה-AI החזיר פלט שאינו עיצוב תקין. נסו שוב.",
   errRateLimit: "הגעתם למכסת הבקשות היומית לפרופיל זה. נסו שוב מחר.",
   errGeneric: "משהו השתבש. נסו שוב.",
+  errVectorizeFailed:
+    "ההדמיה שיצאה לא הומרה לתבנית חיתוך נקייה. זה קורה לפעמים — אפשר לנסות שוב, או לנסח את התיאור מעט אחרת.",
   retry: "נסה שוב",
 
   // Validation messages by check id — הפרמטרים מוזרקים בקוד
@@ -655,6 +657,8 @@ export const he = {
     savedShow: "הצגה",
     savedHide: "הסתרה",
     savedResume: "המשך עיצוב",
+    savedFinish: "להשלים את היצירה",
+    savedPending: "טרם הושלם",
     savedRemove: "הסרה",
     savedRemoveConfirm: "להסיר את העיצוב מהרשימה? הפעולה לא מוחקת אותו מהשרת.",
     savedLoading: "טוען עיצוב...",

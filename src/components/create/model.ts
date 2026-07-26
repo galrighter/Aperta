@@ -88,6 +88,8 @@ export interface CreateState {
   edits: EditEntry[];
   activeEdit: number;
   procError: string | null;
+  /** מזהה טכני של הכשל (code · status) — לאבחון מצילום מסך. */
+  procErrorDetail: string | null;
   applying: boolean;
 
   // תוצאה
@@ -126,6 +128,7 @@ export const INITIAL: CreateState = {
   edits: [],
   activeEdit: -1,
   procError: null,
+  procErrorDetail: null,
   applying: false,
   resultMode: "render",
   region: "all",
@@ -230,12 +233,19 @@ export function cutoutsInner(svg: string | null | undefined): string {
 export const frameLengthMm = (s: CreateState, e: EditEntry | null): number =>
   e?.lengthMm && e.lengthMm > 0 ? e.lengthMm : stripLengthMm(s);
 
-/** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts). */
+/** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts).
+ *  סופרים תת-מסלולים ולא אלמנטים: הווקטורייזר פולט path אחד שמכיל את כל
+ *  התבנית, ולכן ספירת אלמנטים החזירה 1 לכל עיצוב שנוצר במסלול הזה. */
 export function countCuts(svg: string | null): number {
-  if (!svg) return 0;
-  const g = /<g id="cutouts"[^>]*>([\s\S]*?)<\/g>/.exec(svg);
-  const inner = g?.[1] ?? "";
-  return (inner.match(/<(path|circle|rect|ellipse|polygon)\b/g) ?? []).length;
+  const inner = cutoutsInner(svg);
+  if (!inner) return 0;
+  let n = 0;
+  for (const m of inner.matchAll(/<(path|circle|rect|ellipse|polygon)\b([^>]*)>/g)) {
+    if (m[1] !== "path") { n += 1; continue; }
+    const d = /\bd="([^"]*)"/.exec(m[2])?.[1] ?? "";
+    n += (d.match(/[Mm]/g) ?? []).length || 1;
+  }
+  return n;
 }
 
 /* ===== המצב הפעיל ===== */
