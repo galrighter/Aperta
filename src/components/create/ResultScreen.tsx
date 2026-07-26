@@ -14,6 +14,8 @@ import {
 
 const d = he.design;
 
+const STATUS_COLOR = { pass: "#4a8f5c", warn: "#b9762e", fail: "#c0413b" } as const;
+
 export function ResultScreen({
   s, set, onApply, onRestore, onOrder, onChooseCandidate,
 }: {
@@ -34,8 +36,7 @@ export function ResultScreen({
   const status = report?.status ?? "pass";
   const statusText =
     status === "pass" ? d.fabOk : status === "warn" ? d.fabWarn : d.fabFail;
-  const statusColor =
-    status === "pass" ? "#4a8f5c" : status === "warn" ? "#b9762e" : "#c0413b";
+  const statusColor = STATUS_COLOR[status];
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
@@ -111,11 +112,19 @@ export function ResultScreen({
                       disabled={s.applying}
                       onClick={() => onChooseCandidate(c.svg)}
                       aria-pressed={on}
-                      aria-label={`${d.candidatesLabel} ${i + 1}`}
+                      aria-label={`${d.candidatesLabel} ${i + 1} — ${
+                        c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail
+                      }`}
+                      title={c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail}
                       className={`border bg-white p-2 transition ${
                         on ? "border-graphite" : "border-graphite/15 hover:border-graphite/40"
                       } ${s.applying ? "opacity-50" : ""}`}
                     >
+                      <span
+                        aria-hidden
+                        className="mb-1 block h-1.5 w-1.5 rounded-full"
+                        style={{ background: STATUS_COLOR[c.report.status] }}
+                      />
                       <svg viewBox={`-1 -1 ${L + 2} ${W + 2}`} className="h-auto w-full" role="img">
                         <rect x="0" y="0" width={L} height={W} fill="none"
                           stroke="rgba(32,35,38,0.3)" strokeWidth={Math.max(0.2, W / 90)} />
