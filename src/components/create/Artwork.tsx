@@ -40,13 +40,14 @@ const PREVIEW = {
 /* ===== 6.1 הדמיה — הפס מעורגל, גרדיאנט זהב, החיתוכים כחורים שקופים ===== */
 
 export function RolledPreview({
-  path, lengthMm, widthMm,
+  cutouts, lengthMm, widthMm,
 }: {
-  path: string; lengthMm: number; widthMm: number;
+  cutouts: string; lengthMm: number; widthMm: number;
 }) {
   const uid = useId().replace(/:/g, "");
   const gold = `gold-${uid}`;
   const sheen = `sheen-${uid}`;
+  const mask = `mask-${uid}`;
 
   return (
     <div className="flex w-full items-center justify-center overflow-hidden px-2 py-8">
@@ -70,28 +71,24 @@ export function RolledPreview({
               <stop offset="64%" stopColor="#E4C877" />
               <stop offset="100%" stopColor="#9C7C2C" />
             </linearGradient>
-            {/* הבהוב אורכי עדין */}
             <linearGradient id={sheen} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor="#000" stopOpacity="0.22" />
               <stop offset="26%" stopColor="#fff" stopOpacity="0.16" />
               <stop offset="72%" stopColor="#fff" stopOpacity="0.04" />
               <stop offset="100%" stopColor="#000" stopOpacity="0.22" />
             </linearGradient>
-            <clipPath id={`clip-${uid}`}>
-              <path d={path} fillRule="evenodd" />
-            </clipPath>
+            {/* החיתוכים כחורים אמיתיים: לבן = מתכת, שחור = מוסר.
+                נגזר מה-SVG של הגרסה, שתמיד קיים — לא מ-geometry שעשוי לחזור ריק. */}
+            <mask id={mask} maskUnits="userSpaceOnUse" x="0" y="0" width={lengthMm} height={widthMm}>
+              <rect x="0" y="0" width={lengthMm} height={widthMm} fill="#fff" />
+              <g fill="#000" stroke="none" dangerouslySetInnerHTML={{ __html: cutouts }} />
+            </mask>
           </defs>
 
-          {path ? (
-            <>
-              <path d={path} fillRule="evenodd" fill={`url(#${gold})`} />
-              <g clipPath={`url(#clip-${uid})`}>
-                <rect x="0" y="0" width={lengthMm} height={widthMm} fill={`url(#${sheen})`} />
-              </g>
-            </>
-          ) : (
+          <g mask={`url(#${mask})`}>
             <rect x="0" y="0" width={lengthMm} height={widthMm} fill={`url(#${gold})`} />
-          )}
+            <rect x="0" y="0" width={lengthMm} height={widthMm} fill={`url(#${sheen})`} />
+          </g>
         </svg>
       </div>
     </div>
@@ -108,9 +105,9 @@ const ZONES: Array<{ id: Exclude<Region, "all">; from: number; to: number }> = [
 ];
 
 export function FlatDrawing({
-  path, lengthMm, widthMm, region, onRegion,
+  cutouts, lengthMm, widthMm, region, onRegion,
 }: {
-  path: string; lengthMm: number; widthMm: number;
+  cutouts: string; lengthMm: number; widthMm: number;
   region: Region | null; onRegion: (r: Region) => void;
 }) {
   return (
@@ -126,15 +123,14 @@ export function FlatDrawing({
           x="0" y="0" width={lengthMm} height={widthMm}
           fill="none" stroke="rgba(32,35,38,0.35)" strokeWidth={Math.max(0.25, widthMm / 90)}
         />
-        {/* החיתוכים בקו כחול */}
-        {path && (
-          <path
-            d={path}
-            fillRule="evenodd"
+        {/* החיתוכים בקו כחול, ישירות מה-SVG של הגרסה */}
+        {cutouts && (
+          <g
             fill="none"
             stroke={COBALT}
             strokeWidth={Math.max(0.2, widthMm / 110)}
             strokeLinejoin="round"
+            dangerouslySetInnerHTML={{ __html: cutouts }}
           />
         )}
         {/* אזורים לחיצים */}

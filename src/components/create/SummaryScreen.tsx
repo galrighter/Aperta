@@ -4,8 +4,8 @@
 import { he } from "@/i18n/he";
 import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT } from "./ui";
 import {
-  activeEntry, circumferenceMm, countCuts, mpToPath, priceOf,
-  stripLengthMm, widthOf, type CreateState,
+  activeEntry, circumferenceMm, countCuts, cutoutsInner, frameLengthMm,
+  priceOf, widthOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -18,8 +18,8 @@ export function SummaryScreen({
   onNext: () => void;
 }) {
   const entry = activeEntry(s);
-  const path = mpToPath(entry?.geometry?.material);
-  const L = stripLengthMm(s);
+  const cutouts = cutoutsInner(entry?.svg);
+  const L = frameLengthMm(s, entry);
   const W = widthOf(s);
   const p = priceOf(s);
   const ring = s.product === "ring";
@@ -47,10 +47,11 @@ export function SummaryScreen({
                   x="0" y="0" width={L} height={W}
                   fill="none" stroke="rgba(32,35,38,0.35)" strokeWidth={Math.max(0.25, W / 90)}
                 />
-                {path && (
-                  <path
-                    d={path} fillRule="evenodd" fill="none"
-                    stroke={COBALT} strokeWidth={Math.max(0.2, W / 110)} strokeLinejoin="round"
+                {cutouts && (
+                  <g
+                    fill="none" stroke={COBALT}
+                    strokeWidth={Math.max(0.2, W / 110)} strokeLinejoin="round"
+                    dangerouslySetInnerHTML={{ __html: cutouts }}
                   />
                 )}
               </svg>

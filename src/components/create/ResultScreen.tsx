@@ -8,7 +8,7 @@ import {
 } from "./ui";
 import { FlatDrawing, RegionChips, RolledPreview } from "./Artwork";
 import {
-  activeEntry, mpToPath, stripLengthMm, widthOf, type CreateState,
+  activeEntry, cutoutsInner, frameLengthMm, widthOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -23,8 +23,8 @@ export function ResultScreen({
   onOrder: () => void;
 }) {
   const entry = activeEntry(s);
-  const path = mpToPath(entry?.geometry?.material);
-  const L = stripLengthMm(s);
+  const cutouts = cutoutsInner(entry?.svg);
+  const L = frameLengthMm(s, entry);
   const W = widthOf(s);
   const report = entry?.report ?? null;
   const flat = s.resultMode === "flat";
@@ -66,9 +66,17 @@ export function ResultScreen({
         {/* ===== תצוגה ===== */}
         <div>
           <div className="border border-graphite/10 bg-white">
-            {flat ? (
+            {/* אין תבנית — לומר את זה במפורש במקום להציג פס חלק כאילו זו התוצאה. */}
+            {!cutouts ? (
+              <div className="px-6 py-16 text-center">
+                <div className="mb-2 text-lg font-semibold text-graphite">{d.resultEmptyTitle}</div>
+                <p className="mx-auto max-w-[420px] text-sm leading-relaxed text-ink60">
+                  {d.resultEmptyBody}
+                </p>
+              </div>
+            ) : flat ? (
               <FlatDrawing
-                path={path}
+                cutouts={cutouts}
                 lengthMm={L}
                 widthMm={W}
                 region={s.region}
@@ -76,7 +84,7 @@ export function ResultScreen({
               />
             ) : (
               <div style={{ background: "linear-gradient(180deg,#efeae1,#e0d9cd)" }}>
-                <RolledPreview path={path} lengthMm={L} widthMm={W} />
+                <RolledPreview cutouts={cutouts} lengthMm={L} widthMm={W} />
               </div>
             )}
           </div>
