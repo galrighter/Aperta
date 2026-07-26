@@ -46,6 +46,9 @@ export interface ImageFile {
 export interface EditEntry {
   versionId: string;
   versionNo: number;
+  /** האורך שהמנוע קבע בפועל — הווקטורייזר גוזר אותו מיחס הרנדר ודורס את
+   *  מה שביקשנו, ולכן זה מה שקובע את מסגרת התצוגה, לא הערך מהטופס. */
+  lengthMm: number | null;
   region: Region | null;
   text: string;
   svg: string;
@@ -215,6 +218,17 @@ export function mpToPath(mp: MultiPolygon | null | undefined): string {
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** תוכן שכבת ה-cutouts מתוך ה-SVG הקנוני — מקור האמת לציור.
+ *  ה-SVG תמיד קיים על הגרסה; geometry עשוי לחזור ריק. */
+export function cutoutsInner(svg: string | null | undefined): string {
+  if (!svg) return "";
+  return /<g id="cutouts"[^>]*>([\s\S]*?)<\/g>/.exec(svg)?.[1] ?? "";
+}
+
+/** מסגרת התצוגה: אורך מהמנוע אם יש, אחרת החישוב מהטופס. */
+export const frameLengthMm = (s: CreateState, e: EditEntry | null): number =>
+  e?.lengthMm && e.lengthMm > 0 ? e.lengthMm : stripLengthMm(s);
 
 /** ספירת החיתוכים מתוך ה-SVG הקנוני (שכבת cutouts). */
 export function countCuts(svg: string | null): number {

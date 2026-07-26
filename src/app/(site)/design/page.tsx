@@ -116,6 +116,7 @@ export default function DesignPage() {
       pushEntry(withId, {
         versionId: res.version.id,
         versionNo: res.version.version_no,
+        lengthMm: res.lengthMm ?? null,
         region: null,
         text: "",
         svg: res.version.svg,
@@ -144,6 +145,7 @@ export default function DesignPage() {
       pushEntry(s, {
         versionId: res.version.id,
         versionNo: res.version.version_no,
+        lengthMm: res.lengthMm ?? null,
         region: s.region,
         text: s.editReq.trim(),
         svg: res.version.svg,
@@ -185,6 +187,7 @@ export default function DesignPage() {
           edits: versions.map((v, i) => ({
             versionId: v.id,
             versionNo: v.version_no,
+            lengthMm: Number(design.length_mm),
             region: null,
             text: i === 0 ? "" : (v.user_prompt ?? ""),
             svg: v.svg,

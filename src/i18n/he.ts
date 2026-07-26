@@ -519,6 +519,9 @@ export const he = {
 
     // ---- מסך תוצאה ----
     resultEyebrow: "שלב 4 · תוצאה",
+    resultEmptyTitle: "העיצוב חזר ריק",
+    resultEmptyBody:
+      "המנוע לא החזיר תבנית חיתוך לגרסה הזו. אפשר לנסות שוב מהעיצוב — הפרטים שמילאת נשמרו.",
     resultTitle: "העיצוב שלך מוכן",
     resultTitleReady: "הקובץ שלך מוכן",
     modeRender: "הדמיה",
