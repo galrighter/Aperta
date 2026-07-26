@@ -1,5 +1,6 @@
 import { LlmError, type LlmImage } from "./core";
 import { decodeDataUrl } from "@/lib/db/storage";
+import { FAB, resolveFab } from "@/lib/fabrication.config";
 
 // יצירת רנדר של הצמיד מטקסט/השראה דרך OpenAI Images API (gpt-image-1).
 // הרנדר נשלח אחר כך ל-vectorizer להמרה ל-SVG. זה החצי ש-LLM ישיר לא הצליח בו:
@@ -20,35 +21,59 @@ function openaiKey(): string | undefined {
 
 export type RenderProductType = "bracelet" | "ring";
 
+/** מידות הפס השטוח שההדמיה מתארת. הן קובעות את הפרופורציה ואת המינימומים. */
+export interface RenderDims {
+  lengthMm: number;
+  widthMm: number;
+  thicknessMm: number;
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
 /**
  * פרומפט מכוון: רנדר שטוח, top-down, פליז חם על רקע לבן — קלט אידיאלי ל-vectorizer.
- * מותאם לסוג המוצר: צמיד = רצועה ארוכה; טבעת = רצועה קצרה ורחבה־יחסית (הטבעת
- * נחתכת שטוחה בלייזר ואז מגולגלת), כדי שההדמיה תתאים לפרופורציות של המוצר.
+ *
+ * שלוש קבוצות אילוצים, ובכוונה רק שלוש:
+ *  1. פרופורציה — הווקטורייזר גוזר את אורך הפס מיחס הצדדים של הרנדר, ולכן
+ *     היחס הוא נתון ייצור ולא טעם. בלי אמירה מפורשת המודל מצייר פס עבה מדי
+ *     (נמדד: בקשה ל-140 מ"מ חזרה כ-81).
+ *  2. ייצור — חיתוך לייזר מגיליון אחד: כל המתכת חייבת להישאר מחוברת, ואי אפשר
+ *     לחתוך מתחת למינימומים של resolveFab().
+ *  3. רנדור — מה שהווקטורייזר צריך כדי להפריד מתכת מרקע (לבן שטוח, בלי צללים).
+ * מה שאינו אחד מהשלושה הוא החלטת עיצוב ושייך ללקוחה, לא לפרומפט.
  */
-export function buildRenderPrompt(userPrompt: string, productType: RenderProductType = "bracelet"): string {
-  const piece =
+export function buildRenderPrompt(
+  userPrompt: string,
+  productType: RenderProductType = "bracelet",
+  dims?: RenderDims,
+): string {
+  const product = FAB.products[productType];
+  const d: RenderDims = dims ?? {
+    lengthMm: product.defaultLengthMm,
+    widthMm: product.defaultWidthMm,
+    thicknessMm: FAB.defaultThicknessMm,
+  };
+  const fab = resolveFab(d.thicknessMm, productType);
+  const ratio = round1(d.lengthMm / d.widthMm);
+
+  const object =
     productType === "ring"
-      ? {
-          object: "a laser-cut brass ring band, unrolled and laid out perfectly flat and straight as a short horizontal strip (this is the flat blank that gets rolled into a ring)",
-          strip: "The ring band is a single short horizontal strip of solid warm-gold brass with a decorative cut-out pattern running along it.",
-          scale: "Because a ring band is narrow and short, keep the cut-out pattern simple and boldly sized relative to the small strip — a few clear repeating openings, not fine dense detail.",
-        }
-      : {
-          object: "a laser-cut brass bracelet cuff, laid out perfectly straight and unrolled",
-          strip: "The bracelet is a single long horizontal strip of solid warm-gold brass with an intricate decorative cut-out pattern.",
-          scale: "Render the pattern as bold, cleanly separated cut-outs with generous openings and sturdy connecting metal bands.",
-        };
+      ? "a laser-cut brass ring band, unrolled and laid out perfectly flat and straight (this is the flat blank that gets rolled into a ring)"
+      : "a laser-cut brass bracelet cuff, laid out perfectly straight and unrolled";
+
   return [
-    `A flat, top-down, orthographic product image of ${piece.object}, filling the full width of the frame edge to edge, on a completely flat pure #FFFFFF white background.`,
-    piece.strip,
+    `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
+    "The piece is a single rectangular strip of solid warm-gold brass with a pattern cut through it.",
+
+    // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
+    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally: the pattern's longest extent runs along the strip's length, and its widest extent spans the strip's width. Show the whole strip, unclipped, with plain white all around it.`,
+
     "The cut-out openings are fully cut through, showing the same pure white background through them.",
-    "Design intent for the cut-out pattern: " + userPrompt + ".",
-    // אילוץ מסגרת — הסיבה המדודה לכשלי הווקטוריזציה. פתח שנוגע בקצה הפס נגזם
-    // בשלב ה-crop, מתמזג עם הרקע, ומספר החורים משתנה — מה שמפיל את שער
-    // הטופולוגיה גם כשכל מדדי הנאמנות עוברים. ניסוי: פתחים סגורים לגמרי
-    // העלו את שיעור האישור מ-1/7 ל-2/4, והפיקו את הרנדר הראשון ששימר טופולוגיה.
-    "FRAMING (important): an unbroken border of solid brass surrounds the whole pattern. Every opening is fully enclosed by metal — none of them touches, crosses, or runs off the strip's outer edge, and none is clipped by the edge of the frame. Leave a continuous solid brass margin along the top and bottom edges roughly a quarter of the strip's height, and a solid uncut section of brass at each of the two ends. Within that border the pattern is free to be as expressive as the design intent asks.",
-    piece.scale + " Suitable for laser-cutting in 1.5mm brass. Avoid hair-thin lines, densely packed fine detail, or bands that nearly touch; keep clear space between adjacent openings.",
+    "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+
+    // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
+    `MANUFACTURING (physical constraint): the strip is cut from one sheet of ${d.thicknessMm}mm brass with a laser, so all the brass must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the openings are cut. At this scale nothing can be cut finer than ${fab.minHole}mm, and no strip of remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the pattern is free to be whatever the design intent asks.`,
+
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no text, no border framing.",
     "High contrast: the brass is a clearly saturated warm gold, distinctly warmer and darker than the pure white, so the metal separates cleanly from the openings.",
@@ -83,11 +108,12 @@ export async function generateRenderPng(
   userPrompt: string,
   inspiration: LlmImage | null,
   productType: RenderProductType = "bracelet",
+  dims?: RenderDims,
 ): Promise<RenderResult> {
   const key = openaiKey();
   if (!key) throw new LlmError("OPENAI_KEY is not configured for image generation", false);
 
-  const prompt = buildRenderPrompt(userPrompt, productType);
+  const prompt = buildRenderPrompt(userPrompt, productType, dims);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
   const errors: string[] = [];
