@@ -7,16 +7,15 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 // מודל התמונה מייצר הדמיה יפה, וה-vectorizer הופך אותה לוקטור נקי.
 //
 // עלות (הפרמטר היקר ביותר בצינור — נמצא כאן במספרים כדי שלא ייעלם שוב):
-//   gpt-image-1-mini · high · 1536x1024  ≈ $0.05 להרצה   ← מה שרץ
-//   gpt-image-1      · high · 1536x1024  ≈ $0.25 להרצה   ← נסיגה בלבד, פי חמישה
-// ה-mini מספיק כאן כי מה שנדרש מהתמונה אינו ריאליזם אלא הפרדה נקייה בין מתכת
-// שחורה לרקע לבן. הורדת quality ל-medium/low תחסוך עוד, אבל היא משנה את מה
-// שהווקטורייזר רואה ולכן דורשת השוואת IoU לפני שמשנים.
+//   gpt-image-1-mini · low  · 1536x1024  ≈ $0.006 להרצה  ← מה שרץ, הזול ביותר
+//   gpt-image-1-mini · high · 1536x1024  ≈ $0.05
+//   gpt-image-1      · high · 1536x1024  ≈ $0.25          ← מה שהיה עד 26.7
+// אין נסיגה לדגם יקר יותר, בכוונה: נסיגה שקטה שעולה פי ארבעים היא בדיוק סוג
+// ההוצאה שאי אפשר לראות בקוד. כשל מחזיר שגיאה מפורשת ולא חשבון מפתיע.
 //
-// נתיב הנסיגה הוא gpt-image-1 ולא dall-e-3: dall-e-2/3 הוסרו מה-API ב-12.5.2026,
-// כלומר הנסיגה הקודמת לא הייתה שבורה אלא לא-קיימת (וזה מה שהתגלה כשהתקציב נגמר
-// ב-26.7 והיא נקראה בפעם הראשונה). gpt-image-1 עצמו מיועד להסרה ב-23.10.2026.
-const IMAGE_MODELS = ["gpt-image-1-mini", "gpt-image-1"] as const;
+// dall-e-3, שהיה כאן כנסיגה, לא היה שבור אלא לא-קיים: dall-e-2/3 הוסרו מה-API
+// ב-12.5.2026, וזה התגלה כשהתקציב נגמר ב-26.7 והענף נקרא בפעם הראשונה.
+const IMAGE_MODELS = ["gpt-image-1-mini"] as const;
 const IMAGE_TIMEOUT_MS = 120_000;
 
 export interface RenderResult {
@@ -115,7 +114,7 @@ async function callImages(
 
 /**
  * מייצר רנדר PNG של הצמיד. אם ניתנה תמונת השראה — משתמש ב-edits עם התמונה כרפרנס;
- * אחרת generations מטקסט. מנסה gpt-image-1-mini ואז gpt-image-1 (יקר פי חמישה).
+ * אחרת generations מטקסט. דגם אחד בלבד — gpt-image-1-mini ב-quality נמוך.
  */
 export async function generateRenderPng(
   userPrompt: string,
@@ -133,7 +132,6 @@ export async function generateRenderPng(
 
   try {
     for (const model of IMAGE_MODELS) {
-      // שני הדגמים תומכים ב-edits, כך שתמונת השראה נשמרת גם בנסיגה.
       const useEdit = inspiration !== null;
       try {
         let attempt: Attempt;
@@ -143,6 +141,9 @@ export async function generateRenderPng(
           form.append("model", model);
           form.append("prompt", prompt);
           form.append("size", "1536x1024");
+          // ברירת המחדל של edits היא quality גבוה — נאמר במפורש, אחרת נתיב
+          // ההשראה משלם פי עשרה מנתיב הטקסט על אותה תמונה.
+          form.append("quality", "low");
           form.append("image", new Blob([bytes as BlobPart], { type: inspiration.mediaType }), "inspiration.png");
           attempt = await callImages("edits", {
             method: "POST",
@@ -157,7 +158,7 @@ export async function generateRenderPng(
             n: 1,
             // היחס 3:2 הוא מה שנשלח; הפרופורציה של הפס עצמו נאמרת בפרומפט.
             size: "1536x1024",
-            quality: "high",
+            quality: "low",
           };
           attempt = await callImages("generations", {
             method: "POST",
