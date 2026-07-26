@@ -37,6 +37,8 @@ export function Rolled3D({
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     mesh: THREE.Mesh | null;
+    /** ממסגר את המצלמה סביב התיבה של המודל. נקרא גם בכל שינוי גודל. */
+    fit: (() => void) | null;
   } | null>(null);
 
   // הקמת הסצנה פעם אחת
@@ -53,7 +55,10 @@ export function Rolled3D({
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    const camera = new THREE.PerspectiveCamera(40, 1, 1, 2000);
+    // עדשה ארוכה (28°) ולא רחבה: ב-40° הצד הקרוב של הטבעת יושב בערך פי 1.6
+    // קרוב מהצד הרחוק, והדופן הקדמית נראית עבה בהרבה ממה שהיא. צילום תכשיטים
+    // נעשה בעדשה ארוכה בדיוק מהסיבה הזה. המרחק גדל בהתאם, אז המסגור נשמר.
+    const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 2000);
     camera.position.set(0, 40, 110);
 
     const dir = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -74,6 +79,9 @@ export function Rolled3D({
       renderer.setSize(r.width, r.height);
       camera.aspect = r.width / r.height;
       camera.updateProjectionMatrix();
+      // המסגור תלוי ביחס הצדדים: בקנבס צר שדה הראייה האופקי קטן מהאנכי,
+      // ולכן מסגור שנקבע פעם אחת בלבד גולש מהמסגרת ברגע שהמידות משתנות.
+      sceneRef.current?.fit?.();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -87,7 +95,7 @@ export function Rolled3D({
     };
     loop();
 
-    sceneRef.current = { renderer, scene, camera, controls, mesh: null };
+    sceneRef.current = { renderer, scene, camera, controls, mesh: null, fit: null };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -137,11 +145,34 @@ export function Rolled3D({
     ctx.scene.add(mesh);
     ctx.mesh = mesh;
 
-    // מיקום מצלמה יחסי לגודל
-    const R = (L + gap) / (2 * Math.PI);
-    ctx.controls.target.set(0, 0, 0);
-    ctx.camera.position.set(0, R * 1.6, R * 4.2);
-    ctx.controls.update();
+    // מסגור לפי התיבה של המודל עצמו ולא לפי נוסחה על הרדיוס: רוחב הרצועה
+    // (עד 80 מ"מ בצמיד) לא נכנס ל-R בכלל, ולכן מסגור שנגזר מ-R בלבד חתך את
+    // המודל ברגע שהרצועה רחבה או שהקנבס צר. כאן המרכז והמרחק נמדדים.
+    geo.computeBoundingSphere();
+    const sphere = geo.boundingSphere;
+    if (sphere) {
+      const fit = () => {
+        const cam = ctx.camera;
+        const vFov = (cam.fov * Math.PI) / 180;
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * cam.aspect);
+        // הציר הצר קובע: בקנבס אנכי זה האופקי, בקנבס רחב זה האנכי.
+        const dist = (sphere.radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.12;
+        const c = sphere.center;
+        ctx.controls.target.copy(c);
+        // שמירה על כיוון הצפייה הקיים (הגרירה של המשתמש) — רק המרחק מתעדכן.
+        const dirTo = cam.position.clone().sub(c);
+        if (dirTo.lengthSq() < 1e-6) dirTo.set(0, 0.34, 1);
+        cam.position.copy(c).add(dirTo.normalize().multiplyScalar(dist));
+        cam.near = Math.max(0.1, dist - sphere.radius * 2);
+        cam.far = dist + sphere.radius * 4;
+        cam.updateProjectionMatrix();
+        ctx.controls.update();
+      };
+      // מסגור ראשון מזווית קבועה — מעט מלמעלה, כדי שהפתח יפנה למצלמה.
+      ctx.camera.position.set(sphere.center.x, sphere.center.y + sphere.radius * 0.34, sphere.center.z + sphere.radius);
+      ctx.fit = fit;
+      fit();
+    }
   }, [material, lengthMm, widthMm, gapMm, thicknessMm]);
 
   return <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }} />;
