@@ -181,7 +181,7 @@ export const useStudio = create<StudioState>((set, get) => ({
         versions,
         versionIdx: idx >= 0 ? idx : versions.length - 1,
         geometry: res.geometry,
-        renderUrl: res.render?.dataUrl ?? null,
+        renderUrl: res.render?.url ?? null,
         genStatus: "idle",
         annotations: [],
         validationOpen: res.report.status !== "pass",

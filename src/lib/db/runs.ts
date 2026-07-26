@@ -90,3 +90,11 @@ export async function listRuns(limit = 80): Promise<GenerationRunRow[]> {
   if (error) throw new Error(error.message);
   return (data ?? []) as GenerationRunRow[];
 }
+
+/** שורה בודדת מהיומן — לפירוט מלא (כולל ה-SVG של כל מועמד). */
+export async function getRun(id: string): Promise<GenerationRunRow | null> {
+  const sb = supabaseAdmin();
+  const { data, error } = await sb.from("generation_runs").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as GenerationRunRow | null) ?? null;
+}

@@ -3,8 +3,13 @@ import { handleRouteError } from "@/lib/api";
 import { listRuns, type RunStagePaths } from "@/lib/db/runs";
 import { signedUrl } from "@/lib/db/storage";
 
-// בק־אופיס: יומן כל הרצות הצינור (מכל המסלולים) — הדמיה, שלבי ביניים, SVG, סטטוס
+// בק־אופיס: יומן כל הרצות הצינור (מכל המסלולים) — הדמיה, שלבי ביניים, סטטוס
 // ומדדים, כדי לאבחן בעיות מתלונות משתמשים ולכייל יחד את איכות ההמרה.
+//
+// רשימה בלבד, בכוונה: ה-SVG הסופי ושלושה־עשר ה-SVG של המועמדים נשארים בחוץ.
+// כשכל מועמד נשא את ה-SVG שלו התשובה הגיעה ל-19.7MB אחרי 38 הרצות, הדפדפן נפל
+// עליה, והדף — שמתרגם כל כשל ל-log=[] — הציג "אין הרצות". הפירוט המלא של הרצה
+// אחת יושב ב-/api/debug/log/<id> ונטען רק בפתיחה.
 
 export const maxDuration = 60;
 
@@ -15,6 +20,18 @@ async function sign(path: string | null | undefined): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** מסיר את ה-SVG הכבדים מה-debug ומשאיר את כל המדדים שהרשימה מציגה. */
+function slimDebug(debug: unknown): unknown {
+  if (!debug || typeof debug !== "object") return debug;
+  const d = debug as Record<string, unknown>;
+  if (!Array.isArray(d.candidates)) return d;
+  const candidates = (d.candidates as Array<Record<string, unknown>>).map((c) => {
+    const { metal_svg, cutouts_svg, ...rest } = c;
+    return { ...rest, has_svg: Boolean(metal_svg || cutouts_svg) };
+  });
+  return { ...d, candidates };
 }
 
 export async function GET() {
@@ -43,9 +60,10 @@ export async function GET() {
           renderModel: r.render_model,
           renderUrl,
           stages: { conditioned, overlay, difference, rendered },
-          svg: r.svg,
+          /** ה-SVG הסופי נטען בפירוט; ברשימה רק האם הוא קיים. */
+          hasSvg: Boolean(r.svg),
           metrics: r.metrics,
-          debug: r.debug,
+          debug: slimDebug(r.debug),
         };
       }),
     );

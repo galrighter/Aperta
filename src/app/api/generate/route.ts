@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB } from "@/lib/fabrication.config";
 import { getDesign, countTodayGenerations } from "@/lib/db/designs";
-import { uploadFile, decodeDataUrl } from "@/lib/db/storage";
+import { uploadFile, decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { generateRenderPng } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { vectorizeImageFull, ingestCutouts } from "@/lib/vectorizer";
@@ -112,13 +112,19 @@ export async function POST(req: Request) {
       metrics: vec.metrics,
     });
 
+    // ההדמיה חוזרת כקישור חתום ולא כ-data URL. ה-PNG שוקל ~2.3MB, כלומר ~3.1MB
+    // בבסיס64 — פי עשרה משאר התשובה, ומסע היצירה של הלקוחה אפילו לא קורא אותו
+    // (רק טאב הרנדר בסטודיו). תשובה כבדה על חיבור אטי נקטעת, וה-client מתרגם
+    // גוף לא־תקין לשגיאה כללית — "היצירה נכשלה" על הרצה שהצליחה בשרת.
+    const renderUrl = await signedUrl(renderPngPath, 3600).catch(() => null);
+
     return NextResponse.json({
       runId,
       version,
       report,
       geometry,
       lengthMm,
-      render: { model: render.model, dataUrl: `data:${render.mediaType};base64,${render.base64}` },
+      render: { model: render.model, url: renderUrl },
       vectorizer: vec.metrics,
     });
   } catch (err) {
