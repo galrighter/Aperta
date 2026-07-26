@@ -16,6 +16,5 @@ export const NAV = [
   { href: "/how-it-works", key: "navHowItWorks" as const },
   { href: "/gallery", key: "navGallery" as const },
   { href: "/faq", key: "navFaq" as const },
-  { href: "/order", key: "orderNav" as const },
   { href: "/contact", key: "navContact" as const },
 ] as const;

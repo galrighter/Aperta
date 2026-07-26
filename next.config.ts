@@ -4,6 +4,19 @@ const nextConfig: NextConfig = {
   // Server-side geometry/LLM work only; no image optimization needed on Workers.
   images: { unoptimized: true },
 
+  async redirects() {
+    return [
+      {
+        // /order הוסר: הטופס שלו כתב ל-`inquiries`, טבלה שלא קיימת בייצור, ולכן
+        // כל שליחה החזירה 500 והבקשה אבדה. 308 ולא 404 — הכתובת פורסמה ב-sitemap
+        // וייתכן שנאספה, ומבקר שמגיע אליה צריך לנחות במסלול שעובד.
+        source: "/order",
+        destination: "/contact",
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

@@ -294,28 +294,8 @@ export const he = {
       ],
     },
 
-    // הזמנה / בקשת הצעת מחיר
-    orderNav: "הזמנה",
-    orderTitle: "בקשת הזמנה / הצעת מחיר",
-    orderSubtitle: "ספרו לנו מה תרצו — סוג הפריט, רעיון לעיצוב וכמה פרטים ליצירת קשר — ונחזור אליכם עם הצעה.",
-    orderProductType: "סוג פריט",
-    orderProductAny: "עדיין לא בטוח/ה",
-    orderName: "שם",
-    orderEmail: "אימייל",
-    orderPhone: "טלפון (רשות)",
-    orderMessage: "מה תרצו לעצב?",
-    orderMessagePlaceholder: "למשל: צמיד עם דוגמה גיאומטרית עדינה, או רעיון משלכם…",
-    orderNamePlaceholder: "השם שלכם",
-    orderPhonePlaceholder: "050-0000000",
-    orderSubmit: "שליחת בקשה",
-    orderSubmitting: "שולח…",
-    orderSuccessTitle: "הבקשה נשלחה",
-    orderSuccessBody: "תודה! קיבלנו את הפנייה ונחזור אליכם בהקדם.",
-    orderErrorRequired: "נא למלא שם, אימייל ותיאור.",
-    orderErrorEmail: "כתובת האימייל אינה תקינה.",
-    orderErrorGeneric: "שליחת הבקשה נכשלה. נסו שוב.",
-    orderErrorRate: "נשלחו יותר מדי בקשות מהאימייל הזה היום. נסו שוב מחר.",
-    orderCta: "לבקשת הזמנה",
+    // (עמוד /order והמחרוזות שלו הוסרו — הטופס כתב לטבלה שלא קיימת בייצור.
+    //  יצירת קשר עוברת דרך /contact; ההזמנה עצמה נסגרת בסוף משפך /design.)
 
     // אדמין (מוגן ב-ADMIN_TOKEN)
     adminTitle: "ניהול פניות",
