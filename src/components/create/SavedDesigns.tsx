@@ -15,7 +15,7 @@ export function SavedDesigns({
   items, onResume, onRemove, loadingId, error,
 }: {
   items: SavedDesign[];
-  onResume: (id: string) => void;
+  onResume: (item: SavedDesign) => void;
   onRemove: (id: string) => void;
   loadingId: string | null;
   error: string | null;
@@ -97,17 +97,18 @@ export function SavedDesigns({
                     {it.product === "ring" ? he.ring : he.bracelet} · {it.circMm} {d.mm}
                   </div>
                   <div className="mt-0.5 text-[12px] text-ink60">
-                    {it.widthMm} {d.mm} · {it.cuts} {d.savedCuts}
+                    {it.widthMm} {d.mm}
+                    {it.pending ? ` · ${d.savedPending}` : ` · ${it.cuts} ${d.savedCuts}`}
                   </div>
 
                   <div className="mt-2.5 flex items-center justify-between gap-2">
                     <button
                       type="button"
-                      onClick={() => onResume(it.id)}
+                      onClick={() => onResume(it)}
                       disabled={loadingId === it.id}
                       className="text-[13px] font-semibold text-cobalt underline-offset-4 hover:underline disabled:opacity-60"
                     >
-                      {loadingId === it.id ? d.savedLoading : d.savedResume}
+                      {loadingId === it.id ? d.savedLoading : it.pending ? d.savedFinish : d.savedResume}
                     </button>
                     <button
                       type="button"

@@ -655,6 +655,8 @@ export const he = {
     savedShow: "הצגה",
     savedHide: "הסתרה",
     savedResume: "המשך עיצוב",
+    savedFinish: "להשלים את היצירה",
+    savedPending: "טרם הושלם",
     savedRemove: "הסרה",
     savedRemoveConfirm: "להסיר את העיצוב מהרשימה? הפעולה לא מוחקת אותו מהשרת.",
     savedLoading: "טוען עיצוב...",
