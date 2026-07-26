@@ -648,6 +648,10 @@ export const he = {
     // ---- העיצובים שלי (תוספת מעבר ל-handoff §12) ----
     savedTitle: "העיצובים שלי",
     savedSubtitle: "עיצובים ששמרת במכשיר הזה. אפשר להמשיך מאיפה שהפסקת.",
+    savedCountOne: "עיצוב אחד שמור",
+    savedCountMany: "עיצובים שמורים",
+    savedShow: "הצגה",
+    savedHide: "הסתרה",
     savedResume: "המשך עיצוב",
     savedRemove: "הסרה",
     savedRemoveConfirm: "להסיר את העיצוב מהרשימה? הפעולה לא מוחקת אותו מהשרת.",

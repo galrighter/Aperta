@@ -26,12 +26,14 @@ export default function SiteFooter() {
                 {s[item.key]}
               </Link>
             ))}
+            {/* bdi ולא dir="ltr": dir על האלמנט הופך גם את text-align:start שלו,
+                והמייל היה נצמד לשמאל בזמן ששאר העמודה ימנית. bdi מבודד את
+                הכיווניות של הטקסט בלבד ומשאיר את היישור של העמודה. */}
             <a
               href={`mailto:${SITE.contactEmail}`}
               className="text-ink60 transition-colors hover:text-cobalt"
-              dir="ltr"
             >
-              {SITE.contactEmail}
+              <bdi>{SITE.contactEmail}</bdi>
             </a>
           </nav>
 
