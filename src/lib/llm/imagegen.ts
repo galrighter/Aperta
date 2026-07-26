@@ -39,6 +39,9 @@ export interface RenderDims {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** מודל התמונה מציית למילה טוב יותר מלספרה כשמדובר בכמות. */
+const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX" };
+
 /**
  * פרומפט מכוון: רנדר שטוח, top-down, פליז חם על רקע לבן — קלט אידיאלי ל-vectorizer.
  *
@@ -58,6 +61,9 @@ export function buildRenderPrompt(
   userPrompt: string,
   productType: RenderProductType = "bracelet",
   dims?: RenderDims,
+  /** כמה פסים בתמונה אחת. ראה src/lib/render/panels.ts — צורת הקנבס היא
+   *  הידית האמיתית על יחס הצדדים, והשורות הן גם מועמדים לבחירת הלקוחה. */
+  rows = 1,
 ): string {
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
@@ -67,6 +73,15 @@ export function buildRenderPrompt(
   };
   const fab = resolveFab(d.thicknessMm, productType);
   const ratio = round1(d.lengthMm / d.widthMm);
+  const layout =
+    rows <= 1
+      ? " Show the whole strip, unclipped, with plain white all around it."
+      : ` LAYOUT: the image contains exactly ${WORD[rows] ?? rows} separate strips, stacked one above another as ` +
+        `${WORD[rows] ?? rows} evenly spaced horizontal rows, with plain white space between them and no line, frame, ` +
+        "divider or caption of any kind. Each strip is a complete piece on its own, drawn at exactly the proportion " +
+        "above, spanning almost the full width of the image with a thin white margin at each end. Each row is a " +
+        "different variation of the same design intent: the same spirit, a different arrangement of the cuts. " +
+        "Show every strip whole and unclipped.";
 
   const object =
     productType === "ring"
@@ -78,7 +93,7 @@ export function buildRenderPrompt(
     "The piece is a single strip of solid matte black metal with a pattern cut through it. Its outer edge is not fixed: the pattern may cut into the long edges and the two ends and shape the silhouette, so the outline can wave, taper or be scalloped rather than stay a plain rectangle.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
-    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally. Show the whole strip, unclipped, with plain white all around it.`,
+    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally. Do not thicken the band to fill the picture — it must look long and narrow, with plenty of plain white above and below it.` + layout,
 
     "The cut-out openings are fully cut through, showing the same pure white background through them.",
     "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
@@ -123,11 +138,12 @@ export async function generateRenderPng(
   dims?: RenderDims,
   /** עוקף את הפרומפט הבנוי — לבק־אופיס בלבד, כדי לנסות ניסוחים בלי לפרוס. */
   promptOverride?: string | null,
+  rows = 1,
 ): Promise<RenderResult> {
   const key = openaiKey();
   if (!key) throw new LlmError("OPENAI_KEY is not configured for image generation", false);
 
-  const prompt = promptOverride?.trim() || buildRenderPrompt(userPrompt, productType, dims);
+  const prompt = promptOverride?.trim() || buildRenderPrompt(userPrompt, productType, dims, rows);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
   const errors: string[] = [];

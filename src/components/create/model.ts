@@ -55,6 +55,8 @@ export interface EditEntry {
   svg: string;
   report: ValidationReport | null;
   geometry: { material: MultiPolygon } | null;
+  /** ההצעות שחזרו באותה יצירה — הלקוחה יכולה לעבור ביניהן. */
+  candidates?: Array<{ svg: string; report: ValidationReport }>;
 }
 
 export interface Addr {

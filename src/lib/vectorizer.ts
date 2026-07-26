@@ -139,6 +139,57 @@ export interface IngestResult {
   widthMm: number;
 }
 
+
+export interface FramedCutouts {
+  /** ה-SVG אחרי מתיחה למסגרת שהוזמנה. */
+  framedSvg: string;
+  lengthMm: number;
+  widthMm: number;
+  /** היחס שהמודל צייר בפועל, לפני המתיחה. */
+  drawnRatio: number;
+  /** פי כמה נמתחה הדוגמה אופקית מעבר למה שהרוחב בלע. 1 = בלי עיוות. */
+  stretch: number;
+  report: ValidationReport;
+  normalized: ReturnType<typeof validateDesign>["normalized"];
+}
+
+/**
+ * מותח cutouts גולמיים למסגרת שהוזמנה ומריץ ולידציה — בלי לשמור כלום.
+ * משמש גם להערכת מועמדים לפני שבוחרים אחד מהם.
+ */
+export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutouts {
+  const lengthMm = Number(design.length_mm);
+  const orderedWidth = Number(design.width_mm);
+
+  // המסגרת שהמודל צייר בפועל, כפי שה-vectorizer מסר אותה.
+  const drawn = svgFrame(cutoutsSvg) ?? { lengthMm, widthMm: orderedWidth };
+  // הגורם שמחזיר את הדוגמה לאורך שהוזמן. 1 = המודל פגע ביחס המבוקש.
+  const correction = drawn.lengthMm > 0 ? lengthMm / drawn.lengthMm : 1;
+  const widthMm =
+    Math.round(
+      Math.min(
+        Math.max(drawn.widthMm * correction, orderedWidth * (1 - WIDTH_TOLERANCE)),
+        orderedWidth * (1 + WIDTH_TOLERANCE),
+      ) * 100,
+    ) / 100;
+  const framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
+  const { report, normalized } = validateDesign(framedSvg, {
+    productType: design.product_type,
+    lengthMm,
+    widthMm,
+    thicknessMm: Number(design.thickness_mm),
+  });
+  return {
+    framedSvg,
+    lengthMm,
+    widthMm,
+    drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
+    stretch: correction / (widthMm / orderedWidth),
+    report,
+    normalized,
+  };
+}
+
 /** כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7. */
 const WIDTH_TOLERANCE = 0.05;
 
@@ -164,29 +215,8 @@ export async function ingestCutouts(opts: {
   metrics?: VectorizeResult["metrics"];
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
-  const lengthMm = Number(design.length_mm);
-  const orderedWidth = Number(design.width_mm);
-
-  // המסגרת שהמודל צייר בפועל, כפי שה-vectorizer מסר אותה.
-  const drawn = svgFrame(cutoutsSvg) ?? { lengthMm, widthMm: orderedWidth };
-  // הגורם שמחזיר את הדוגמה לאורך שהוזמן. 1 = המודל פגע ביחס המבוקש.
-  const correction = drawn.lengthMm > 0 ? lengthMm / drawn.lengthMm : 1;
-  const widthMm =
-    Math.round(
-      Math.min(
-        Math.max(drawn.widthMm * correction, orderedWidth * (1 - WIDTH_TOLERANCE)),
-        orderedWidth * (1 + WIDTH_TOLERANCE),
-      ) * 100,
-    ) / 100;
-  const framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
-
-  const vDims: DesignDims = {
-    productType: design.product_type,
-    lengthMm,
-    widthMm,
-    thicknessMm: Number(design.thickness_mm),
-  };
-  const { report, normalized } = validateDesign(framedSvg, vDims);
+  const framed = frameCutouts(design, cutoutsSvg);
+  const { lengthMm, widthMm, framedSvg, report, normalized } = framed;
 
   const version = await insertVersion({
     design_id: design.id,
