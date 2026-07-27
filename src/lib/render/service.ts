@@ -61,6 +61,9 @@ export interface RenderJobInput {
   /** רוחב הפס שהוזמן — ממנו הווקטורייזר גוזר את הסקאלה. */
   heightMm: number;
   colorKey: "warm" | "dark" | "saturation" | "auto";
+  /** הפתח המינימלי לייצור. חוקי הייצור נשארים כאן — הקופסה רק מיישמת את המספר,
+   *  ומשמיטה פתחים שהלייזר לא יכול לפתוח לפני שהם מגיעים ל-SVG. */
+  minHoleMm: number;
   inspiration: LlmImage | null;
   /** לאן ייכתבו ההדמיות ותמונות השלבים. אנחנו חותמים, השירות כותב. */
   renderPaths: string[];
@@ -93,6 +96,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
         rows: input.rows,
         height_mm: input.heightMm,
         color_key: input.colorKey,
+        min_hole_mm: input.minHoleMm,
         inspiration: input.inspiration
           ? { media_type: input.inspiration.mediaType, base64: input.inspiration.base64 }
           : null,

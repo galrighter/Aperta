@@ -9,7 +9,7 @@ import {
 import { FlatDrawing, RegionChips } from "./Artwork";
 import { RolledStage } from "./RolledStage";
 import {
-  activeEntry, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, type CreateState,
+  activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -106,7 +106,9 @@ export function ResultScreen({
           {picks.length > 1 && (
             <div className="mt-4">
               <CardLabel>{d.candidatesLabel}</CardLabel>
-              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {/* אחת בשורה, ברוחב מלא. הפס הוא ביחס של כ-5:1, ובגריד של 2–4
+                  בטלפון כל הצעה נמרחת לשערה שאי אפשר להשוות בין אחת לשנייה. */}
+              <div className="mt-2 flex flex-col gap-2">
                 {picks.map((c, i) => {
                   const on = c.svg === entry?.svg;
                   return (
@@ -118,17 +120,26 @@ export function ResultScreen({
                       aria-pressed={on}
                       aria-label={`${d.candidatesLabel} ${i + 1} — ${
                         c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail
-                      }`}
+                      }${on ? ` · ${d.candidateChosen}` : ""}`}
                       title={c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail}
-                      className={`border bg-white p-2 transition ${
-                        on ? "border-graphite" : "border-graphite/15 hover:border-graphite/40"
+                      className={`bg-white p-3 text-start transition ${
+                        on
+                          ? "border-2 border-graphite"
+                          : "border border-graphite/15 hover:border-graphite/40"
                       } ${s.applying ? "opacity-50" : ""}`}
                     >
-                      <span
-                        aria-hidden
-                        className="mb-1 block h-1.5 w-1.5 rounded-full"
-                        style={{ background: STATUS_COLOR[c.report.status] }}
-                      />
+                      <span className="mb-1.5 flex items-center gap-2">
+                        <span
+                          aria-hidden
+                          className="block h-1.5 w-1.5 rounded-full"
+                          style={{ background: STATUS_COLOR[c.report.status] }}
+                        />
+                        {on && (
+                          <span className="text-[11px] font-semibold tracking-wide text-graphite">
+                            {d.candidateChosen}
+                          </span>
+                        )}
+                      </span>
                       <svg viewBox={`-1 -1 ${L + 2} ${W + 2}`} className="h-auto w-full" role="img">
                         <rect x="0" y="0" width={L} height={W} fill="none"
                           stroke="rgba(32,35,38,0.3)" strokeWidth={Math.max(0.2, W / 90)} />
@@ -198,7 +209,7 @@ export function ResultScreen({
               v={report ? `${report.metrics.estWeightGrams.toFixed(1)} ${he.grams}` : "—"}
             />
             <Row k={d.fabFormat} v={d.fabFormatVal} />
-            <Row k={d.specCuts} v={String(entry ? countOf(entry.svg) : 0)} />
+            <Row k={d.specCuts} v={String(entry ? countCuts(entry.svg) : 0)} />
 
             {/* ממצאים מהוולידציה */}
             {report && report.checks.some((c) => c.status !== "pass") && (
@@ -295,7 +306,3 @@ function Row({ k, v }: { k: string; v: string }) {
   );
 }
 
-function countOf(svg: string): number {
-  const g = /<g id="cutouts"[^>]*>([\s\S]*?)<\/g>/.exec(svg);
-  return ((g?.[1] ?? "").match(/<(path|circle|rect|ellipse|polygon)\b/g) ?? []).length;
-}

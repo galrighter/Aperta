@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
-import { FAB } from "@/lib/fabrication.config";
+import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { getDesign, countTodayGenerations } from "@/lib/db/designs";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
@@ -93,6 +93,10 @@ export async function POST(req: Request) {
       rows: plan.rows,
       heightMm: dims.widthMm,
       colorKey: "dark",
+      // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה
+      // מיישמת אותם. בלי זה שערה של 0.17 מ"מ שהטרייסר משאיר לצד עלה נכנסת ל-SVG
+      // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
+      minHoleMm: resolveFab(dims.thicknessMm, design.product_type).minHole,
       inspiration,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {

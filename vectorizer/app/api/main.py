@@ -46,6 +46,7 @@ async def create_job(
     output_mode: str = Form("both"),
     condition: bool = Form(False),
     color_key: str = Form("warm"),
+    min_hole_mm: float = Form(0.0),
     debug: bool = Form(False),
 ) -> JSONResponse:
     data = await image.read()
@@ -60,7 +61,9 @@ async def create_job(
 
     rec = STORE.create()
     try:
-        res = pipeline.run_pipeline(data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key)
+        res = pipeline.run_pipeline(
+            data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key, min_hole_mm
+        )
     except InputError as exc:
         rec.status = "rejected"
         rec.error_code = exc.code
@@ -126,6 +129,9 @@ class GenerateIn(BaseModel):
     rows: int = Field(default=1, ge=1, le=8)
     height_mm: float = Field(default=15.0, gt=0, le=100)
     color_key: str = "dark"
+    # forme's minimum opening (mm). It owns the fabrication rules; we only apply
+    # this one so openings the cutter cannot make never reach the SVG. 0 = keep all.
+    min_hole_mm: float = Field(default=0.0, ge=0, le=5)
     inspiration: InspirationIn | None = None
     artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
 
@@ -155,6 +161,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         height_mm=body.height_mm,
         color_key=body.color_key,
         inspiration=inspiration,
+        min_hole_mm=body.min_hole_mm,
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
 
