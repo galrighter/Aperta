@@ -71,10 +71,9 @@ const POLL_TIMEOUT_MS = 8 * 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * פותחת בקשת יצירה ומחכה לתוצאה. השרת מחזיר מזהה מיד וממשיך לעבוד ברקע, כך
- * שניתוק באמצע — סלולר שמתחלף, מסך שננעל — הוא רק הפסקה במשיכה: התוצאה כבר
- * נכתבה והמשיכה הבאה תמצא אותה. קודם זו הייתה בקשה אחת של דקה וחצי, וניתוק
- * בה איבד עבודה שהצליחה בשרת.
+ * פותחת בקשת יצירה ומחכה לתוצאה. ההרצה נמשכת ~30-90 שניות והשרת מחזיר אותה
+ * בתוך אותה בקשה. אם הרשת נופלת באמצע, המזהה שנוצר כאן מאפשר לשאול על השורה
+ * במקום להניח שההרצה אבדה.
  *
  * שגיאת רשת בזמן משיכה אינה כישלון של היצירה — ממשיכים לנסות עד הגבול.
  */
@@ -87,15 +86,32 @@ async function startAndAwaitGeneration(
   },
   onStage?: (stage: string | null) => void,
 ): Promise<GenerationResult> {
-  const started = await call<{ jobId?: string } & Partial<GenerationResult>>("/api/generate", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  // בחלון שבין הפריסה להגירה השרת עשוי לרוץ סינכרונית ולהחזיר את התוצאה
-  // עצמה. אין מה למשוך — היא כבר כאן.
+  // המזהה נקבע כאן ולא בשרת: אם הבקשה עצמה תיקטע, הוא מה שמאפשר לחזור ולשאול
+  // מה עלה בגורל ההרצה במקום להניח שאבדה.
+  const jobId = crypto.randomUUID();
+  let started: { jobId?: string } & Partial<GenerationResult>;
+  try {
+    started = await call<{ jobId?: string } & Partial<GenerationResult>>("/api/generate", {
+      method: "POST",
+      body: JSON.stringify({ ...input, jobId }),
+    });
+  } catch (e) {
+    // status 0 = הבקשה לא קיבלה תשובה בכלל (זה מה ש-call מסמן ככשל רשת).
+    // כל השאר הוא תשובה של השרת, כלומר שגיאת יצירה אמיתית — אין מה למשוך.
+    if (!(e instanceof ClientApiError) || e.status !== 0) throw e;
+    // ההרצה אולי ממשיכה בשרת; שואלים על השורה במקום להכריז על אובדן.
+    return pollJob(jobId, onStage);
+  }
+  // השרת מריץ בתוך הבקשה ומחזיר את התוצאה. 202 עם מזהה הוא מסלול ישן/חלופי.
   if (!started.jobId) return started as GenerationResult;
-  const jobId = started.jobId;
+  return pollJob(started.jobId, onStage);
+}
 
+/** מושכת את מצב ההרצה עד לתוצאה. */
+async function pollJob(
+  jobId: string,
+  onStage?: (stage: string | null) => void,
+): Promise<GenerationResult> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await sleep(POLL_MS);

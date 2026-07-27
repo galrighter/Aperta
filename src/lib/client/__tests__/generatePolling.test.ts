@@ -94,9 +94,31 @@ describe("generate — start and poll", () => {
 
 describe("generate — the deploy window", () => {
   it("accepts a result returned inline, with no job to poll", async () => {
-    // בין הפריסה להגירה השרת רץ סינכרונית ומחזיר את התוצאה עצמה.
+    // המסלול הרגיל: השרת מריץ בתוך הבקשה ומחזיר את התוצאה עצמה.
     fetchMock.mockResolvedValueOnce(json(RESULT));
     await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("generate — a connection that drops mid-request", () => {
+  it("asks about the job it named instead of giving up", async () => {
+    // הבקשה עצמה נופלת, לא המשיכה. המזהה נוצר בלקוחה לפני השליחה, ולכן יש את מי
+    // לשאול; בלעדיו הרצה שהסתיימה בשרת הייתה נראית כאובדן.
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json({ status: "done", result: RESULT }));
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+    const [, pollUrl] = fetchMock.mock.calls.map((c) => String(c[0]));
+    const sentJobId = JSON.parse(String(fetchMock.mock.calls[0][1].body)).jobId;
+    expect(pollUrl).toBe(`/api/generate/${sentJobId}`);
+  });
+
+  it("does not poll when the server answered with a real error", async () => {
+    fetchMock.mockResolvedValueOnce(json({ error: { code: "rate_limited" } }, 429));
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).code).toBe("rate_limited");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
