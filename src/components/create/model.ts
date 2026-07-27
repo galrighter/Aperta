@@ -281,10 +281,13 @@ const FEEL_HE: Record<Feel, string> = {
   massive: "תחושה מאסיבית ונוכחת",
 };
 
-/** הפרומפט הראשוני. ב"קובץ מוכן לחיתוך" לא נבנה פרומפט — עוברים לוקטוריזציה. */
+/** הפרומפט הראשוני. ב"קובץ מוכן לחיתוך" לא נבנה פרומפט — עוברים לוקטוריזציה.
+ *
+ *  הפתיחה מתארת פריט, לא "דוגמת ניקוב על" פריט: הניסוח הקודם מסר למודל שהעיצוב
+ *  הוא החורים בלבד ושהצללית נתונה מראש — וזה הגיע אליו לפני תיאור הלקוחה. */
 export function buildPrompt(s: CreateState): string {
   const parts = [
-    `עיצוב דוגמת ניקוב על ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח.`,
+    `עיצוב ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח שנחתך בלייזר מפס מתכת שטוח — הצורה החיצונית והחיתוכים כאחד.`,
     `${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`,
   ];
   if (s.brief.trim()) parts.push(`תיאור הלקוחה: ${s.brief.trim()}`);
@@ -301,7 +304,7 @@ export function buildPrompt(s: CreateState): string {
 export function buildEditPrompt(s: CreateState): string {
   const where =
     s.region && s.region !== "all"
-      ? `באזור ה${d.regions[s.region]} של הרצועה`
+      ? `באזור ה${d.regions[s.region]} של הפריט`
       : "בעיצוב כולו";
   return [
     `שינוי ${where}: ${s.editReq.trim()}`,
