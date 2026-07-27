@@ -168,6 +168,25 @@ def cutouts_from_metal(metal: BaseGeometry, width_mm: float, height_mm: float) -
     return diff if diff.is_valid else make_valid(diff)
 
 
+def drop_thin_cutouts(cutouts: BaseGeometry, min_hole_mm: float) -> BaseGeometry:
+    """Drop every opening the cutter cannot make, using forme's minimum.
+
+    Tracing a photographed pattern leaves hairlines along an edge — a 1.5x0.17mm
+    sliver beside a leaf. They read as design in the SVG but are far below what
+    the laser can open, so forme rejects the whole strip over one of them. The
+    minimum is forme's number, passed in per run; we only apply it.
+
+    The test is the same erosion forme validates with: an opening survives if it
+    still has area after being pulled in by half the minimum on every side.
+    """
+    if min_hole_mm <= 0:
+        return cutouts
+    kept = [p for p in _as_polygons(cutouts) if not p.buffer(-min_hole_mm / 2).is_empty]
+    if not kept:
+        return MultiPolygon()
+    return cleanup(MultiPolygon(kept) if len(kept) > 1 else kept[0])
+
+
 def geometry_stats(geom: BaseGeometry) -> GeometryStats:
     polys = _as_polygons(geom)
     anchors = 0

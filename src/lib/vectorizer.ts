@@ -31,13 +31,16 @@ function vectorizerUrl(): string {
 async function postJob(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: string; debug: boolean },
+  opts: { heightMm: number; colorKey: string; minHoleMm: number; debug: boolean },
 ): Promise<Record<string, unknown>> {
   const form = new FormData();
   form.append("image", new Blob([bytes as BlobPart], { type: mediaType }), "design.png");
   form.append("height_mm", String(opts.heightMm));
   form.append("condition", "true");
   form.append("color_key", opts.colorKey);
+  // הפתח המינימלי נשלח כמספר; חוקי הייצור נשארים כאן. פתח שהלייזר לא יכול לפתוח
+  // מושמט בקופסה לפני שהוא מגיע ל-SVG, במקום לפסול את הפס כולו ב-V5.
+  form.append("min_hole_mm", String(opts.minHoleMm));
   if (opts.debug) form.append("debug", "true");
 
   const headers: Record<string, string> = {};
@@ -90,9 +93,9 @@ function extractMetrics(d: VectorizerJson): VectorizeResult["metrics"] {
 export async function vectorizeImageFull(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeFull> {
-  const raw = await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, debug: true });
+  const raw = await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
   const d = raw as VectorizerJson;
   return {
     status: d.status || d.error_code || "unknown",
@@ -107,7 +110,7 @@ export async function vectorizeImageFull(
 export async function vectorizeImage(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeResult> {
   const full = await vectorizeImageFull(bytes, mediaType, opts);
   if (full.status !== "approved" || !full.cutoutsSvg) {
@@ -120,10 +123,10 @@ export async function vectorizeImage(
 export async function vectorizeImageDebug(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<Record<string, unknown>> {
   try {
-    return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, debug: true });
+    return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
   } catch (e) {
     // מחזירים את השגיאה כאובייקט כדי שהבק־אופיס יציג מה קרה במקום להיכשל.
     if (e instanceof ApiError) return { __error: e.code, __body: e.message };

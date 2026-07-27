@@ -39,6 +39,8 @@ class GenerateJob:
     height_mm: float = 15.0
     color_key: str = "dark"
     inspiration: Optional[tuple[bytes, str]] = None
+    # forme's minimum opening, in mm. 0 keeps every traced opening.
+    min_hole_mm: float = 0.0
 
 
 @dataclass
@@ -61,7 +63,7 @@ def _stage_images(res: pipeline.PipelineResult) -> dict[str, bytes]:
     return out
 
 
-def _trace(panel: bytes, height_mm: float, color_key: str) -> pipeline.PipelineResult:
+def _trace(panel: bytes, height_mm: float, color_key: str, min_hole_mm: float) -> pipeline.PipelineResult:
     return pipeline.run_pipeline(
         panel,
         0.0,
@@ -70,6 +72,7 @@ def _trace(panel: bytes, height_mm: float, color_key: str) -> pipeline.PipelineR
         output_mode="both",
         condition=True,
         color_key=color_key,
+        min_hole_mm=min_hole_mm,
     )
 
 
@@ -90,7 +93,9 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     async def trace(panel: bytes):
         async with limit:
             try:
-                return await anyio.to_thread.run_sync(_trace, panel, job.height_mm, job.color_key)
+                return await anyio.to_thread.run_sync(
+                    _trace, panel, job.height_mm, job.color_key, job.min_hole_mm
+                )
             except Exception:  # a panel the pipeline cannot read is not a failed run
                 return None
 

@@ -54,6 +54,7 @@ def _build_candidate(
     height_mm: float,
     threshold_offset: int,
     tolerance_mm: float,
+    min_hole_mm: float = 0.0,
 ) -> Optional[Candidate]:
     mm_per_px = _mm_per_px(image, width_mm, height_mm)
     tolerance_px = tolerance_mm / mm_per_px
@@ -72,6 +73,12 @@ def _build_candidate(
     if metal.is_empty:
         return None
     cutouts = geometry.cutouts_from_metal(metal, width_mm, height_mm)
+    if min_hole_mm > 0:
+        # Uncuttable slivers become metal again, so the metal is re-derived from
+        # the kept openings — the two stay exact complements, and the metrics
+        # below score the geometry we will actually cut.
+        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm)
+        metal = geometry.cutouts_from_metal(cutouts, width_mm, height_mm)
 
     metal_svg = svg_builder.build_metal_svg(metal, width_mm, height_mm)
     cutouts_svg = svg_builder.build_cutouts_svg(cutouts, width_mm, height_mm)
@@ -108,6 +115,7 @@ def run_pipeline(
     output_mode: str = "both",
     condition: bool = False,
     color_key: str = "warm",
+    min_hole_mm: float = 0.0,
 ) -> PipelineResult:
     # Optional conditioning: turn a raw shaded/coloured render into a clean
     # smooth two-tone image first. width_mm is derived from the cropped metal,
@@ -127,7 +135,7 @@ def run_pipeline(
     # Phase 1: sweep thresholds at medium tolerance. Track offset alongside.
     phase1: list[tuple[int, Candidate]] = []
     for off in THRESHOLD_OFFSETS:
-        c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, _MEDIUM_TOLERANCE_MM)
+        c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, _MEDIUM_TOLERANCE_MM, min_hole_mm)
         if c is not None:
             phase1.append((off, c))
             candidates.append(c)
@@ -140,7 +148,7 @@ def run_pipeline(
                 continue  # already built in phase 1
             if len(candidates) >= SETTINGS.max_candidates:
                 break
-            c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, tol)
+            c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, tol, min_hole_mm)
             if c is not None:
                 candidates.append(c)
 

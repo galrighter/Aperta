@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { decodeDataUrl } from "@/lib/db/storage";
-import { FAB } from "@/lib/fabrication.config";
+import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { generateRenderPng } from "@/lib/llm/imagegen";
 import { vectorizeImageDebug } from "@/lib/vectorizer";
 import { persistRun } from "@/lib/runs/persist";
@@ -75,7 +75,17 @@ export async function POST(req: Request) {
 
     // הדמיה שנוצרה כאן היא תמיד מתכת שחורה -> dark; העלאה משתמשת במפתח שנבחר.
     const colorKey = body.image ? body.colorKey : "dark";
-    const result = await vectorizeImageDebug(bytes, mediaType, { heightMm: body.heightMm, colorKey });
+    // הבק־אופיס מריץ את אותו כלל פתח מינימלי כמו הלקוחה, אחרת היומן מראה
+    // גיאומטריה שלא נשלחת לאף אחד.
+    const minHoleMm = resolveFab(
+      body.thicknessMm ?? FAB.defaultThicknessMm,
+      body.productType,
+    ).minHole;
+    const result = await vectorizeImageDebug(bytes, mediaType, {
+      heightMm: body.heightMm,
+      colorKey,
+      minHoleMm,
+    });
 
     // שומרים את ההרצה ליומן (best-effort) כדי שנוכל לשוחח עליה בבק־אופיס.
     const runError = (result as { __error?: string }).__error

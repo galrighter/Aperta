@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { getDesign } from "@/lib/db/designs";
+import { resolveFab } from "@/lib/fabrication.config";
 import { decodeDataUrl, uploadFile } from "@/lib/db/storage";
 import { vectorizeImageFull, ingestCutouts } from "@/lib/vectorizer";
 import { persistRun } from "@/lib/runs/persist";
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
     const vec = await vectorizeImageFull(bytes, mediaType, {
       heightMm: Number(design.width_mm),
       colorKey: body.colorKey,
+      minHoleMm: resolveFab(Number(design.thickness_mm), design.product_type).minHole,
     });
 
     await persistRun({

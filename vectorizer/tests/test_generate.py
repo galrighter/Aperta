@@ -60,7 +60,7 @@ class FakeResult:
 
 
 def fake_trace(status: str = "approved", svg: str = "<svg/>"):
-    def _trace(panel: bytes, height_mm: float, color_key: str) -> FakeResult:
+    def _trace(panel: bytes, height_mm: float, color_key: str, min_hole_mm: float) -> FakeResult:
         return FakeResult(status, FakeSelection(FakeSelected(svg, FakeMetrics())))
 
     return _trace
@@ -114,7 +114,7 @@ def test_every_row_of_a_render_becomes_a_candidate(wired):
 
 
 def test_a_panel_the_tracer_chokes_on_does_not_fail_the_run(wired, monkeypatch):
-    def flaky(panel: bytes, height_mm: float, color_key: str):
+    def flaky(panel: bytes, height_mm: float, color_key: str, min_hole_mm: float):
         if flaky.n == 0:
             flaky.n += 1
             raise ValueError("no foreground found")
@@ -128,7 +128,7 @@ def test_a_panel_the_tracer_chokes_on_does_not_fail_the_run(wired, monkeypatch):
 
 
 def test_the_logged_run_is_the_first_approved_panel(wired, monkeypatch):
-    def mixed(panel: bytes, height_mm: float, color_key: str):
+    def mixed(panel: bytes, height_mm: float, color_key: str, min_hole_mm: float):
         mixed.n += 1
         approved = mixed.n == 2
         return FakeResult(
