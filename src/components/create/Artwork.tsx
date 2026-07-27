@@ -104,11 +104,20 @@ const ZONES: Array<{ id: Exclude<Region, "all">; from: number; to: number }> = [
   { id: "left", from: 0, to: 1 / 3 },
 ];
 
+/** מקום שהוולידציה סימנה, במ"מ על הפס — כדי שפסילה תראה איפה ולא רק שהיא קרתה. */
+export interface IssueMark {
+  x: number;
+  y: number;
+  r?: number;
+  status: "warn" | "fail";
+}
+
 export function FlatDrawing({
-  cutouts, lengthMm, widthMm, region, onRegion,
+  cutouts, lengthMm, widthMm, region, onRegion, issues = [],
 }: {
   cutouts: string; lengthMm: number; widthMm: number;
   region: Region | null; onRegion: (r: Region) => void;
+  issues?: IssueMark[];
 }) {
   return (
     <div className="w-full overflow-hidden px-2 py-8">
@@ -133,6 +142,21 @@ export function FlatDrawing({
             dangerouslySetInnerHTML={{ __html: cutouts }}
           />
         )}
+        {/* מה שהוולידציה פסלה, במקום שבו הוא יושב. אותו סימון כמו בסטודיו: עיגול
+            מקווקו סביב הממצא. בלי זה "פתח קטן מדי לחיתוך" הוא פסק דין בלי ראיה —
+            הלקוחה רואה תבנית עם עשרות פתחים גדולים ולא יכולה לדעת על מה מדובר. */}
+        {issues.map((h, i) => (
+          <circle
+            key={i}
+            cx={h.x}
+            cy={h.y}
+            r={Math.max(h.r ?? 0, widthMm / 12)}
+            fill="none"
+            stroke={h.status === "fail" ? "#c0413b" : "#b9762e"}
+            strokeWidth={Math.max(0.25, widthMm / 80)}
+            strokeDasharray={`${Math.max(0.6, widthMm / 30)} ${Math.max(0.4, widthMm / 45)}`}
+          />
+        ))}
         {/* אזורים לחיצים */}
         {ZONES.map((z) => {
           const on = region === z.id;

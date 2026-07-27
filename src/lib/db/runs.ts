@@ -80,15 +80,33 @@ export async function insertRun(run: NewRun): Promise<void> {
   if (error) throw new Error(`insert run failed: ${error.message}`);
 }
 
-export async function listRuns(limit = 80): Promise<GenerationRunRow[]> {
+/** שורה ברשימת היומן: הכול חוץ מה-SVG, שנטען רק בפתיחת הרצה. */
+export type RunListRow = Omit<GenerationRunRow, "svg"> & { has_svg: boolean };
+
+/** העמודות שהרשימה באמת מציגה. `svg` בכוונה בחוץ — הוא נשאל דרך has_svg
+ *  (עמודה מחושבת, migration 0004): 80 שורות עם ה-SVG המלא היו 451KB ו-13.7
+ *  שניות כדי לרנדר סימן וי. `select("*")` היה מחזיר אותו בכל פעם. */
+const LIST_COLUMNS =
+  "id, created_at, source, design_id, product_type, prompt, color_key, status, error, " +
+  "duration_ms, render_model, render_path, stage_paths, metrics, debug, has_svg";
+
+export async function listRuns(limit = 80): Promise<RunListRow[]> {
   const sb = supabaseAdmin();
-  const { data, error } = await sb
-    .from("generation_runs")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(limit);
-  if (error) throw new Error(error.message);
-  return (data ?? []) as GenerationRunRow[];
+  const query = (columns: string) =>
+    sb.from("generation_runs").select(columns).order("created_at", { ascending: false }).limit(limit);
+
+  const { data, error } = await query(LIST_COLUMNS);
+  if (!error) return (data ?? []) as unknown as RunListRow[];
+
+  // migrate.yml ו-deploy.yml נדלקים מאותו push ורצים במקביל, כך שיש חלון שבו
+  // ה-Worker כבר מבקש has_svg וה-DB עוד לא מכיר אותה. במקום להפיל את היומן על
+  // תלות בסדר, נופלים חזרה למסלול הישן — איטי, אבל עובד — עד שההגירה נוחתת.
+  if (!/has_svg/.test(error.message)) throw new Error(error.message);
+  const legacy = await query(`${LIST_COLUMNS.replace(", has_svg", "")}, svg`);
+  if (legacy.error) throw new Error(legacy.error.message);
+  return ((legacy.data ?? []) as unknown as Array<Omit<RunListRow, "has_svg"> & { svg: string | null }>).map(
+    ({ svg, ...rest }) => ({ ...rest, has_svg: svg !== null }),
+  );
 }
 
 /** שורה בודדת מהיומן — לפירוט מלא (כולל ה-SVG של כל מועמד). */

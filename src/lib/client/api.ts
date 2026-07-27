@@ -35,16 +35,90 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const err = (body as { error?: { code?: string; message?: string } })?.error;
-    const code = err?.code ?? "unknown";
-    let message: string = he.errGeneric;
-    if (code === "rate_limited") message = he.errRateLimit;
-    else if (code === "llm_error" || code === "network") message = code === "network" ? he.errNetwork : he.errLlmNotSvg;
-    // דחיית ווקטורייזר היא תוצאה לגיטימית ולא תקלה — הרנדר לא עבר את שערי
-    // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
-    else if (code === "vectorize_failed") message = he.errVectorizeFailed;
-    throw new ClientApiError(code, message, res.status);
+    throw new ClientApiError(err?.code ?? "unknown", messageFor(err?.code ?? "unknown"), res.status);
   }
   return body as T;
+}
+
+/** קוד שגיאה -> נוסח לעברית. משותף לתשובת שגיאה ולכישלון שמדווח בגוף של job. */
+function messageFor(code: string): string {
+  if (code === "rate_limited") return he.errRateLimit;
+  if (code === "network") return he.errNetwork;
+  if (code === "llm_error") return he.errLlmNotSvg;
+  // דחיית ווקטורייזר היא תוצאה לגיטימית ולא תקלה — הרנדר לא עבר את שערי
+  // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
+  if (code === "vectorize_failed") return he.errVectorizeFailed;
+  return he.errGeneric;
+}
+
+export interface GenerationResult {
+  version: Version;
+  report: ValidationReport;
+  geometry: Geometry | null;
+  lengthMm?: number;
+  widthMm?: number;
+  /** הצעות נוספות מאותה יצירה, מדורגות. הראשונה היא הגרסה שנשמרה. */
+  candidates?: Array<{ svg: string; report: ValidationReport; drawnRatio: number; stretch: number }>;
+  render?: { model: string; url: string | null };
+}
+
+/** כמה זמן לחכות בין משיכות. היצירה לוקחת ~30-90 שניות, אז שנייה וחצי היא
+ *  עדכון מהיר מספיק לעין ורחוק מספיק כדי לא להציף. */
+const POLL_MS = 1500;
+/** גבול בטיחות ללולאה, בנפרד מגבול ה"נתקע" שהשרת אוכף. */
+const POLL_TIMEOUT_MS = 8 * 60_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * פותחת בקשת יצירה ומחכה לתוצאה. השרת מחזיר מזהה מיד וממשיך לעבוד ברקע, כך
+ * שניתוק באמצע — סלולר שמתחלף, מסך שננעל — הוא רק הפסקה במשיכה: התוצאה כבר
+ * נכתבה והמשיכה הבאה תמצא אותה. קודם זו הייתה בקשה אחת של דקה וחצי, וניתוק
+ * בה איבד עבודה שהצליחה בשרת.
+ *
+ * שגיאת רשת בזמן משיכה אינה כישלון של היצירה — ממשיכים לנסות עד הגבול.
+ */
+async function startAndAwaitGeneration(
+  input: {
+    designId: string;
+    userPrompt: string;
+    currentSvg: string | null;
+    images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
+  },
+  onStage?: (stage: string | null) => void,
+): Promise<GenerationResult> {
+  const started = await call<{ jobId?: string } & Partial<GenerationResult>>("/api/generate", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  // בחלון שבין הפריסה להגירה השרת עשוי לרוץ סינכרונית ולהחזיר את התוצאה
+  // עצמה. אין מה למשוך — היא כבר כאן.
+  if (!started.jobId) return started as GenerationResult;
+  const jobId = started.jobId;
+
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_MS);
+    let state: { status: string; stage?: string | null; result?: GenerationResult; error?: { code?: string } };
+    try {
+      state = await call(`/api/generate/${jobId}`);
+    } catch (e) {
+      // 404 אומר שהמזהה לא קיים — אין טעם להמשיך. כל השאר (רשת, 5xx חולף)
+      // הוא כשל של המשיכה, לא של היצירה, והעבודה ממשיכה בשרת בלי קשר.
+      if (e instanceof ClientApiError && e.status === 404) throw e;
+      continue;
+    }
+    if (state.status === "done" && state.result) {
+      onStage?.(null);
+      return state.result;
+    }
+    if (state.status === "error") {
+      const code = state.error?.code ?? "unknown";
+      throw new ClientApiError(code, messageFor(code), 500);
+    }
+    onStage?.(state.stage ?? null);
+  }
+  throw new ClientApiError("timeout", he.errGeneric, 504);
 }
 
 export const api = {
@@ -67,22 +141,15 @@ export const api = {
   duplicateDesign: (id: string) =>
     call<{ design: Design }>(`/api/designs/${id}/duplicate`, { method: "POST" }),
 
-  generate: (input: {
-    designId: string;
-    userPrompt: string;
-    currentSvg: string | null;
-    images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
-  }) =>
-    call<{
-      version: Version;
-      report: ValidationReport;
-      geometry: Geometry | null;
-      lengthMm?: number;
-      widthMm?: number;
-      /** הצעות נוספות מאותה יצירה, מדורגות. הראשונה היא הגרסה שנשמרה. */
-      candidates?: Array<{ svg: string; report: ValidationReport; drawnRatio: number; stretch: number }>;
-      render?: { model: string; url: string | null };
-    }>("/api/generate", { method: "POST", body: JSON.stringify(input) }),
+  generate: (
+    input: {
+      designId: string;
+      userPrompt: string;
+      currentSvg: string | null;
+      images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
+    },
+    onStage?: (stage: string | null) => void,
+  ) => startAndAwaitGeneration(input, onStage),
 
   chooseCandidate: (designId: string, svg: string) =>
     call<{

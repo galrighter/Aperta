@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { samplePathToRings, ringToPathD } from "./paths";
-import { union, difference, intersection, rectPolygon, ringArea, multiPolygonArea } from "./poly";
+import { union, difference, intersection, offset, rectPolygon, ringArea, multiPolygonArea } from "./poly";
 import type { MultiPolygon, Polygon, Ring } from "./types";
 
 // נרמול SVG גולמי מה-LLM לפי החוזה (סעיף 5): פרסינג קפדני → המרת primitives
@@ -280,6 +280,35 @@ export function normalizeSvg(rawSvg: string, lengthMm: number, widthMm: number):
     `<g id="cutouts">${pathEls.join("")}</g></svg>`;
 
   return { canonicalSvg, lengthMm, widthMm, cutouts: outCutouts, cutUnion };
+}
+
+/**
+ * מסיר כל cutout שאי אפשר לחתוך — אותה בדיקה בדיוק ש-V5 מריץ: פתח שורד רק אם
+ * נשאר לו שטח אחרי כיווץ בחצי מהמינימום מכל צד.
+ *
+ * הווקטורייזר כבר מסנן בייצור, אבל גרסאות שנשמרו לפני כן עדיין נושאות שערות
+ * של 0.17–0.3 מ"מ ונפסלות. כאן זה חל על כל SVG שנכנס לגרסה — כולל עריכה של
+ * עיצוב ישן — כך שעיצוב קיים מתנקה כשהוא עובר במסלול, בלי יצירה מחדש.
+ *
+ * מחזיר את אותו אובייקט כשאין מה להסיר, כדי שהמסלול הנפוץ לא ישלם על בנייה
+ * מחדש של ה-SVG ולא ישנה את ה-d המקורי לחינם.
+ */
+export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): NormalizedDesign {
+  if (minHoleMm <= 0) return n;
+  const kept = n.cutouts.filter((mp) => multiPolygonArea(offset(mp, -minHoleMm / 2)) > 1e-9);
+  if (kept.length === n.cutouts.length) return n;
+
+  const cutUnion = union(...kept);
+  const pathEls = kept.flatMap((mp) => mp.map((poly) => `<path d="${polygonToPathD(poly)}" fill="black"/>`));
+  return {
+    canonicalSvg:
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(n.lengthMm)} ${fmt(n.widthMm)}">` +
+      `<g id="cutouts">${pathEls.join("")}</g></svg>`,
+    lengthMm: n.lengthMm,
+    widthMm: n.widthMm,
+    cutouts: kept,
+    cutUnion,
+  };
 }
 
 /** ניקוי קל של d מקורי: עיגול מספרים ל-3 ספרות, שמירת פקודות ועקומות */
