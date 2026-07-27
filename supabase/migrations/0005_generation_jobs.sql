@@ -30,3 +30,7 @@ create index if not exists idx_generation_jobs_created on generation_jobs(create
 
 -- RLS: אין גישת קליינט ישירה — הכול דרך service role שעוקף RLS.
 alter table generation_jobs enable row level security;
+
+-- הערה: ההגירה נכשלה ב-27.7 כי SUPABASE_DB_URL הצביע על החיבור הישיר
+-- (db.<ref>.supabase.co), שהוא IPv6-only, ו-runners של GitHub הם IPv4 —
+-- "Network is unreachable" על 0001, כלומר psql לא התחבר בכלל.

@@ -5,7 +5,10 @@ name: Apply Supabase migrations
 # (Connect → Session pooler; host: *.pooler.supabase.com, פורט 5432). זה IPv4.
 # אין להשתמש בחיבור הישיר (db.<ref>.supabase.co) — הוא IPv6-only ו-runners של
 # GitHub Actions נכשלים עליו עם "Network is unreachable".
-# תווים מיוחדים בסיסמה חייבים percent-encoding (למשל ! → %21).
+# בסיסמה: רק תווים שיש להם משמעות ב-URI חייבים percent-encoding — @ : / ? # % & +
+# ורווח. תווים כמו ! ~ * ' ( ) מותרים כמו שהם (libpq גם מפענח %21 בחזרה ל-!, אז
+# שתי הצורות עובדות). ההנחיה הקודמת כאן דרשה לקודד הכול, וזה שלח לחפש תקלה
+# בסיסמה במקום בכתובת — שהיא הדבר שבאמת נכשל.
 # בלי ה-secret הזה יש להריץ את קובצי ה-SQL ידנית ב-SQL Editor של Supabase.
 
 on:
