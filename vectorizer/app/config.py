@@ -74,6 +74,12 @@ class Settings:
     # optional bearer token; when set, /api/jobs* require Authorization: Bearer <token>
     auth_token: str = os.environ.get("VECTORIZER_TOKEN", "")
 
+    # /api/generate: the image-model key, and how many panels may be traced at
+    # once. Concurrency is a memory knob — each in-flight trace holds a decoded
+    # render — so it is capped here rather than by whatever forme asks for.
+    openai_key: str = os.environ.get("OPENAI_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
+    generate_concurrency: int = _i("GENERATE_CONCURRENCY", 4)
+
 
 SETTINGS = Settings()
 

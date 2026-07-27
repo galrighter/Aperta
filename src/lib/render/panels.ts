@@ -12,8 +12,10 @@
 // ובונוס שהוא בעצם העיקר: כל שורה היא וריאציה נפרדת, כלומר מועמד לבחירת הלקוחה
 // באותו מחיר. כשהיחס המבוקש נמוך ושורה אחת מספיקה, המועמדים מגיעים מקריאות
 // נפרדות במקום משורות.
-
-import { cropImage, decodePng, encodePng, type RawImage } from "./png";
+//
+// כאן נשאר רק התכנון. החיתוך עצמו עבר לקופסה (vectorizer/app/core/panels.py):
+// פענוח וכתיבה של PNG ב-JS נכתבו מלכתחילה רק כי sharp לא רץ על Workers, וארבעה
+// כאלה בבקשה אחת הם מה שהרג אותה. שם זה Pillow, והבייטים לא עוזבים את התהליך.
 
 /** היחס שהמודל מצייר בפועל כפונקציה של מספר השורות — מהמדידות שלמעלה. */
 const NATURAL_RATIO = (rows: number) => 5.3 + 1.25 * rows;
@@ -43,68 +45,4 @@ export function planRender(ratio: number, target: number): RenderPlan {
   }
   const calls = Math.max(1, Math.ceil(target / rows));
   return { rows, calls, candidates: rows * calls };
-}
-
-export interface Band {
-  y0: number;
-  y1: number;
-}
-
-/**
- * מוצא את פסי המתכת בתמונה: רצפים של שורות פיקסלים שיש בהן כהה.
- * הצל הרך שהמודל מוסיף בהיר מהסף ולכן אינו נספר.
- */
-export function findBands(img: RawImage, opts?: { threshold?: number; minCoverage?: number }): Band[] {
-  const threshold = opts?.threshold ?? 128;
-  const minPixels = Math.max(2, Math.round(img.width * (opts?.minCoverage ?? 0.005)));
-  const dark: boolean[] = new Array(img.height);
-  for (let y = 0; y < img.height; y++) {
-    let n = 0;
-    for (let x = 0; x < img.width; x++) {
-      const i = (y * img.width + x) * 4;
-      // luma מקורב; אלפא שקוף נחשב רקע.
-      const l = (img.data[i] * 299 + img.data[i + 1] * 587 + img.data[i + 2] * 114) / 1000;
-      if (img.data[i + 3] > 128 && l < threshold) n++;
-      if (n >= minPixels) break;
-    }
-    dark[y] = n >= minPixels;
-  }
-
-  const bands: Band[] = [];
-  let start: number | null = null;
-  for (let y = 0; y < img.height; y++) {
-    if (dark[y] && start === null) start = y;
-    if (!dark[y] && start !== null) {
-      bands.push({ y0: start, y1: y });
-      start = null;
-    }
-  }
-  if (start !== null) bands.push({ y0: start, y1: img.height });
-
-  // פסים שמופרדים ברווח זעיר הם אותו פס שהצל או החלקה קטעו.
-  const merged: Band[] = [];
-  const minGap = Math.max(4, Math.round(img.height * 0.01));
-  for (const b of bands) {
-    const last = merged[merged.length - 1];
-    if (last && b.y0 - last.y1 < minGap) last.y1 = b.y1;
-    else merged.push({ ...b });
-  }
-  const minHeight = Math.max(4, Math.round(img.height * 0.015));
-  return merged.filter((b) => b.y1 - b.y0 >= minHeight);
-}
-
-/**
- * חותך רנדר לתמונות מועמד — אחת לכל פס. משאיר שוליים לבנים סביב כל פס, כי
- * הווקטורייזר גוזר את המסגרת מהתיבה החוסמת של המתכת ולא מגודל הקובץ.
- */
-export async function splitRender(bytes: Uint8Array): Promise<Uint8Array[]> {
-  const img = await decodePng(bytes);
-  const bands = findBands(img);
-  if (bands.length <= 1) return [bytes];
-  const out: Uint8Array[] = [];
-  for (const b of bands) {
-    const pad = Math.max(4, Math.round((b.y1 - b.y0) * 0.15));
-    out.push(await encodePng(cropImage(img, 0, b.y0 - pad, img.width, b.y1 - b.y0 + pad * 2)));
-  }
-  return out;
 }

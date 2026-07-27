@@ -3,16 +3,22 @@ import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB } from "@/lib/fabrication.config";
 import { getDesign, countTodayGenerations } from "@/lib/db/designs";
-import { uploadFile, decodeDataUrl, signedUrl } from "@/lib/db/storage";
-import { generateRenderPng } from "@/lib/llm/imagegen";
+import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
+import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
-import { vectorizeImageFull, ingestCutouts, frameCutouts } from "@/lib/vectorizer";
-import { CANDIDATE_TARGET, planRender, splitRender } from "@/lib/render/panels";
+import { ingestCutouts, frameCutouts } from "@/lib/vectorizer";
+import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
+import { runRenderJob } from "@/lib/render/service";
 import { persistRun } from "@/lib/runs/persist";
 
-// יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של הצמיד) →
+// יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
 // קונדישנינג + vectorizer → cutouts SVG → צינור הוולידציה הקיים → גרסה.
-// זה מחליף את היצירה הישירה טקסט→SVG (ש-LLM לא הצליח בה) — עכשיו דרך הדמיה.
+//
+// החצי הכבד של הצינור רץ על הקופסה (src/lib/render/service.ts): שם ההדמיות
+// נוצרות, נחתכות לשורות, מומרות לווקטור ונכתבות ל-storage. כאן נשאר מה שדורש
+// ידע על ייצור — התכנון, הפרומפט, הוולידציה והגרסה — ובמונחי משאבים זו כמעט
+// כולה המתנה ל-I/O. זה ההבדל בין הרצה שנהרגת ב-1102 לבין תשובה.
+//
 // כל הרצה נשמרת ל-generation_runs (כולל דחייה/שגיאה) ליומן הבק־אופיס.
 
 export const maxDuration = 300;
@@ -65,51 +71,40 @@ export async function POST(req: Request) {
       }
     }
 
-    // 1) הדמיות. כמה, ובאיזו פריסה, נגזר מהיחס שהוזמן: מודל התמונה לא מצייר
-    // יחס שמבקשים ממנו אלא נמשך ליחס נוח לו, וצורת הקנבס היא מה שמזיז אותו —
-    // חלוקה ל-N שורות מכריחה כל שורה להיות צרה. כל שורה היא גם מועמד לבחירת
-    // הלקוחה, ולכן כשמספיקה שורה אחת המועמדים מגיעים מקריאות נפרדות.
-    // הנימוקים והמדידות: src/lib/render/panels.ts.
+    // 1) התכנון. כמה הדמיות, ובאיזו פריסה, נגזר מהיחס שהוזמן: מודל התמונה לא
+    // מצייר יחס שמבקשים ממנו אלא נמשך ליחס נוח לו, וצורת הקנבס היא מה שמזיז
+    // אותו. כל שורה היא גם מועמד לבחירת הלקוחה. הנימוקים והמדידות:
+    // src/lib/render/panels.ts.
     const dims = {
       lengthMm: Number(design.length_mm),
       widthMm: Number(design.width_mm),
       thicknessMm: Number(design.thickness_mm),
     };
     const plan = planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
-    const renders = await Promise.all(
-      Array.from({ length: plan.calls }, () =>
-        generateRenderPng(body.userPrompt, inspiration, design.product_type, dims, null, plan.rows),
-      ),
-    );
+    const prompt = buildRenderPrompt(body.userPrompt, design.product_type, dims, plan.rows);
 
-    // 2) שמירת ההדמיות כדי להציג אותן לצד השרטוט.
+    // 2) הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
+    // עצמם לא עוברים כאן. ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark"
+    // (255 פחות גווני האפור) — הוא והפרומפט חייבים להשתנות יחד.
     const stamp = Date.now();
-    const renderPaths = await Promise.all(
-      renders.map(async (r, i) => {
-        const path = `renders/${design.id}/${stamp}-${i}.png`;
-        await uploadFile(path, decodeDataUrl(`data:${r.mediaType};base64,${r.base64}`).bytes, r.mediaType);
-        return path;
-      }),
-    );
-    const renderPngPath = renderPaths[0];
+    const job = await runRenderJob({
+      prompt,
+      calls: plan.calls,
+      rows: plan.rows,
+      heightMm: dims.widthMm,
+      colorKey: "dark",
+      inspiration,
+      renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
+      stagePaths: {
+        conditioned: `runs/${runId}/conditioned.png`,
+        overlay: `runs/${runId}/overlay.png`,
+        difference: `runs/${runId}/difference.png`,
+        rendered: `runs/${runId}/rendered.png`,
+      },
+    });
+    const renderPngPath = job.renderPaths[0] ?? null;
 
-    // 3) חיתוך כל הדמיה לפסים, והמרת כל פס ל-cutouts SVG נקי.
-    // ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark" (255 פחות גווני
-    // האפור). "warm" — ההפרש בין ערוץ אדום לכחול — מחזיר אפס על שחור, כלומר
-    // המפתח והפרומפט חייבים להשתנות יחד.
-    const panels = (
-      await Promise.all(
-        renders.map((r) => splitRender(decodeDataUrl(`data:${r.mediaType};base64,${r.base64}`).bytes)),
-      )
-    ).flat();
-    const vecs = await Promise.all(
-      panels.map((bytes) =>
-        vectorizeImageFull(bytes, "image/png", { heightMm: dims.widthMm, colorKey: "dark" }),
-      ),
-    );
-    const vec = vecs.find((v) => v.status === "approved" && v.cutoutsSvg) ?? vecs[0];
-
-    // 4) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
+    // 3) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
     await persistRun({
       id: runId,
       source: "studio",
@@ -118,41 +113,50 @@ export async function POST(req: Request) {
       prompt: body.userPrompt,
       colorKey: "dark",
       startedAt,
-      render: { path: renderPngPath, model: renders[0].model },
-      vectorizer: { ...vec.raw, panels: panels.length, rows: plan.rows, calls: plan.calls },
+      render: { path: renderPngPath, model: job.model },
+      stagePaths: job.stagePaths,
+      vectorizer: job.raw,
     });
     persisted = true;
 
-    // 5) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
+    // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
     // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
-    const candidates = vecs
-      .filter((v) => v.status === "approved" && v.cutoutsSvg)
-      .map((v) => frameCutouts(design, v.cutoutsSvg!))
+    const candidates = job.candidates
+      .filter((c) => c.status === "approved" && c.cutoutsSvg)
+      .map((c) => frameCutouts(design, c.cutoutsSvg!))
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {
-      throw new ApiError("vectorize_failed", `Vectorizer did not approve any panel: ${vec.status}`, 422);
+      const status = String((job.raw as { status?: string }).status ?? "no candidate");
+      throw new ApiError("vectorize_failed", `Vectorizer did not approve any panel: ${status}`, 422);
     }
 
-    // 6) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה — אבל רק אלה שאפשר
+    // 5) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה — אבל רק אלה שאפשר
     // לייצר. הצעה שנכשלה בוולידציה אינה בחירה אלא מלכודת: היא נראית ככל השאר,
     // הלקוחה תבחר בה כי היא יפה, והמסע ייעצר בייצוא. אם *כל* המועמדים נכשלו
     // הרשימה מתרוקנת והמסך מציג את הגרסה השמורה עם הסיבה שאי אפשר לייצר אותה.
     const offered = candidates.filter((c) => c.report.status !== "fail");
+    const raw = (job.raw as { metrics?: Record<string, number> }).metrics;
+    const metrics = {
+      iou: raw?.iou,
+      holes: raw?.vector_holes,
+      meanDeviationMm: raw?.mean_contour_deviation_mm,
+      maxDeviationMm: raw?.max_contour_deviation_mm,
+    };
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,
       cutoutsSvg: candidates[0].framedSvg,
       userPrompt: body.userPrompt,
       renderPngPath,
-      metrics: vec.metrics,
+      metrics,
     });
 
     // ההדמיה חוזרת כקישור חתום ולא כ-data URL. ה-PNG שוקל ~2.3MB, כלומר ~3.1MB
     // בבסיס64 — פי עשרה משאר התשובה, ומסע היצירה של הלקוחה אפילו לא קורא אותו
     // (רק טאב הרנדר בסטודיו). תשובה כבדה על חיבור אטי נקטעת, וה-client מתרגם
     // גוף לא־תקין לשגיאה כללית — "היצירה נכשלה" על הרצה שהצליחה בשרת.
-    const renderUrl = await signedUrl(renderPngPath, 3600).catch(() => null);
+    const renderUrl = renderPngPath ? await signedUrl(renderPngPath, 3600).catch(() => null) : null;
 
     return NextResponse.json({
       runId,
@@ -167,11 +171,11 @@ export async function POST(req: Request) {
         drawnRatio: Math.round(c.drawnRatio * 100) / 100,
         stretch: Math.round(c.stretch * 1000) / 1000,
       })),
-      render: { model: renders[0].model, url: renderUrl },
-      vectorizer: vec.metrics,
+      render: { model: job.model, url: renderUrl },
+      vectorizer: metrics,
     });
   } catch (err) {
-    // אם עוד לא שמרנו הרצה (כשל מוקדם — יצירת הדמיה, vectorizer לא זמין) — נרשום שגיאה.
+    // אם עוד לא שמרנו הרצה (כשל מוקדם — שירות הרנדר לא זמין, מודל התמונה) — נרשום שגיאה.
     if (!persisted) {
       await persistRun({
         id: runId,
