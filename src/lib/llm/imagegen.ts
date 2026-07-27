@@ -98,14 +98,14 @@ export function buildRenderPrompt(
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
-    "It is one single piece of solid matte black metal, cut out of one flat sheet. Its whole shape is the design's to decide — the outer contour just as much as whatever is cut out of the middle. Nothing here fixes the outline.",
+    "It is one single piece of solid matte black metal, cut out of one flat sheet. Its whole shape is the design's — the outline as much as what is cut out of it. Nothing here fixes the outline.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
     // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
     `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
 
     "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
-    "Design intent, for the whole piece and its outline included: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+    "Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
     `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${fab.minHole}mm, and no part of the remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,

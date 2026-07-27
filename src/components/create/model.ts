@@ -287,7 +287,7 @@ const FEEL_HE: Record<Feel, string> = {
  *  הוא החורים בלבד ושהצללית נתונה מראש — וזה הגיע אליו לפני תיאור הלקוחה. */
 export function buildPrompt(s: CreateState): string {
   const parts = [
-    `עיצוב ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח שנחתך בלייזר מפס מתכת שטוח — הצורה החיצונית והחיתוכים כאחד.`,
+    `עיצוב ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח שנחתך בלייזר מפס מתכת שטוח.`,
     `${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`,
   ];
   if (s.brief.trim()) parts.push(`תיאור הלקוחה: ${s.brief.trim()}`);
