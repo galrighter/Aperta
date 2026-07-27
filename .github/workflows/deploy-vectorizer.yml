@@ -125,6 +125,15 @@ jobs:
             -m "admin@rmjewel.com" --redirect --keep-until-expiring
           nginx -t && systemctl reload nginx
           echo "verifying HTTPS locally:"; curl -fsS "https://$VDOMAIN/api/health" || (echo "health via HTTPS failed"; exit 1)
+          # /api/generate spends the OpenAI key, so prove the gate is armed rather
+          # than trusting that the token reached the container: no bearer must be
+          # rejected at auth (401), never fall through to body validation (422).
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$VDOMAIN/api/generate" \
+            -H 'content-type: application/json' -d '{}')
+          if [ "$code" != "401" ]; then
+            echo "generate is reachable without a token (HTTP $code) — refusing to leave it open"; exit 1
+          fi
+          echo "auth verified: unauthenticated generate returns 401"
           echo "deployed: vectorizer on 127.0.0.1:8000 behind nginx at https://$VDOMAIN"
           REMOTE
 
