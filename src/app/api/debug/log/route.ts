@@ -55,7 +55,7 @@ export async function GET() {
           rendered: stages.rendered ? image("rendered") : null,
         },
         /** ה-SVG הסופי נטען בפירוט; ברשימה רק האם הוא קיים. */
-        hasSvg: Boolean(r.svg),
+        hasSvg: r.has_svg,
         metrics: r.metrics,
         debug: slimDebug(r.debug),
       };

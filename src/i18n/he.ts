@@ -541,6 +541,10 @@ export const he = {
     fabWeight: "משקל משוער",
     fabFormat: "פורמט",
     fabFormatVal: "SVG שטוח",
+    /** כמה מקומות נכשלו — ממצא אחד ושמונה הם שני מצבים שונים לחלוטין. */
+    fabIssueCount: (n: number) => (n === 1 ? "מקום אחד" : `${n} מקומות`),
+    fabIssueMarked: "המקומות מסומנים בעיגול על הפריסה.",
+    fabIssueSeeFlat: "עברו לתצוגת פריסה כדי לראות איפה.",
     resultOrder: "בצע הזמנה",
 
     // ---- מסך סיכום ----

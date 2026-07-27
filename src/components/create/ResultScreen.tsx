@@ -6,7 +6,7 @@ import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, Slider, COBALT,
 } from "./ui";
-import { FlatDrawing, RegionChips } from "./Artwork";
+import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
 import { RolledStage } from "./RolledStage";
 import {
   activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, type CreateState,
@@ -35,6 +35,14 @@ export function ResultScreen({
   // הצעות שאפשר לייצר בלבד. השרת כבר מסנן; הסינון כאן שומר גם על תשובה ישנה
   // שנשמרה במצב לפני השינוי.
   const picks = (entry?.candidates ?? []).filter((c) => c.report.status !== "fail");
+
+  // כל מה שהוולידציה סימנה, כדי לצייר את זה על הפריסה. המנוע כבר מחשב מיקום
+  // לכל ממצא; עד עכשיו זה נזרק והלקוחה קיבלה פסק דין בלי ראיה.
+  const marks: IssueMark[] = (report?.checks ?? [])
+    .filter((c) => c.status !== "pass")
+    .flatMap((c) =>
+      c.locations.map((l) => ({ ...l, status: c.status as IssueMark["status"] })),
+    );
 
   const status = report?.status ?? "pass";
   const statusText =
@@ -87,6 +95,7 @@ export function ResultScreen({
                 widthMm={W}
                 region={s.region}
                 onRegion={(r) => set({ region: r })}
+                issues={marks}
               />
             ) : (
               <div style={{ background: "linear-gradient(180deg,#efeae1,#e0d9cd)" }}>
@@ -220,8 +229,18 @@ export function ResultScreen({
                   .map((c, i) => (
                     <li key={i} className="text-[13px] leading-snug" style={{ color: c.status === "fail" ? "#c0413b" : "#b9762e" }}>
                       {c.message}
+                      {/* כמה, ולא רק מה. "פתח קטן מדי" על ממצא אחד ועל שמונה
+                          הם שני מצבים שונים לגמרי מבחינת מה שצריך לעשות. */}
+                      {c.locations.length > 0 && (
+                        <span className="text-ink60"> · {d.fabIssueCount(c.locations.length)}</span>
+                      )}
                     </li>
                   ))}
+                {marks.length > 0 && (
+                  <li className="text-[12px] leading-snug text-ink60">
+                    {flat ? d.fabIssueMarked : d.fabIssueSeeFlat}
+                  </li>
+                )}
               </ul>
             )}
           </div>

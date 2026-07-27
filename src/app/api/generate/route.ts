@@ -10,6 +10,8 @@ import { ingestCutouts, frameCutouts } from "@/lib/vectorizer";
 import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
 import { runRenderJob } from "@/lib/render/service";
 import { persistRun } from "@/lib/runs/persist";
+import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
 // קונדישנינג + vectorizer → cutouts SVG → צינור הוולידציה הקיים → גרסה.
@@ -20,6 +22,11 @@ import { persistRun } from "@/lib/runs/persist";
 // כולה המתנה ל-I/O. זה ההבדל בין הרצה שנהרגת ב-1102 לבין תשובה.
 //
 // כל הרצה נשמרת ל-generation_runs (כולל דחייה/שגיאה) ליומן הבק־אופיס.
+//
+// הבקשה חוזרת מיד עם מזהה job, והעבודה ממשיכה ב-waitUntil. יצירה לוקחת ~30-90
+// שניות, וחיבור סלולרי שנקטע באמצע איבד עבודה שכבר הושלמה בשרת. עכשיו התוצאה
+// נכתבת ל-generation_jobs והלקוחה מושכת אותה; ניתוק הוא הפסקה במשיכה בלבד.
+// המצב נקרא מ-/api/generate/<jobId>.
 
 export const maxDuration = 300;
 
@@ -38,31 +45,73 @@ const schema = z.object({
 const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: Request) {
-  const runId = crypto.randomUUID();
-  const startedAt = Date.now();
-  let persisted = false;
-  // מוחזק בהיקף חיצוני כדי שאפשר לשמור הרצת שגיאה גם אם נכשלנו מוקדם.
-  let designId: string | null = null;
-  let userPrompt: string | null = null;
-
   try {
     const body = await parseBody(req, schema);
-    designId = body.designId;
-    userPrompt = body.userPrompt;
+    // האימותים שהלקוחה צריכה לדעת עליהם מיד — עיצוב קיים, מכסה יומית, תמונות
+    // תקינות — נשארים סינכרוניים. אין טעם להחזיר job שכבר ידוע שייכשל.
     const design = await getDesign(body.designId);
-
     const used = await countTodayGenerations(design.profile_id);
     if (used >= FAB.DAILY_GENERATION_LIMIT) {
       throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);
     }
-
-    // תמונת השראה (אם צורפה) משמשת רפרנס למודל התמונה.
-    let inspiration: LlmImage | null = null;
     for (const img of body.images) {
       const { mediaType } = decodeDataUrl(img.dataUrl);
       if (!ALLOWED_MEDIA.has(mediaType)) {
         throw new ApiError("bad_image", `Unsupported image type ${mediaType}`, 400);
       }
+    }
+
+    const jobId = crypto.randomUUID();
+    const runId = crypto.randomUUID();
+    try {
+      await createJob({ id: jobId, designId: design.id, runId });
+    } catch (e) {
+      // migrate.yml ו-deploy.yml נדלקים מאותו push ורצים במקביל, כך שיש חלון
+      // שבו הקוד כבר מכיר generation_jobs וה-DB עוד לא. יצירה היא מסלול של
+      // לקוחה — עדיף לרוץ סינכרונית כמו קודם מאשר להיכשל על סדר פריסה.
+      console.error("job table unavailable, running inline:", (e as Error).message);
+      return NextResponse.json(await runGeneration(body, runId, jobId));
+    }
+
+    const work = runGeneration(body, runId, jobId)
+      .then((payload) => finishJob(jobId, payload))
+      .catch(async (err) => {
+        const e =
+          err instanceof ApiError
+            ? { code: err.code, message: err.message }
+            : err instanceof LlmError
+              ? { code: "llm_error", message: err.message }
+              : { code: "internal", message: err instanceof Error ? err.message : String(err) };
+        await failJob(jobId, e);
+      });
+    // ה-isolate נסגר ברגע שהתשובה יוצאת; waitUntil משאיר אותו חי עד שהעבודה
+    // נגמרת. בלי זה הבקשה הייתה חוזרת והעבודה נקטעת מיד.
+    getCloudflareContext().ctx.waitUntil(work);
+
+    return NextResponse.json({ jobId, status: "running" }, { status: 202 });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
+
+/** העבודה עצמה. זורק ApiError/LlmError; הקורא כותב את התוצאה ל-job. */
+async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
+  const startedAt = Date.now();
+  let persisted = false;
+  let designId: string | null = null;
+  let userPrompt: string | null = null;
+
+  try {
+    designId = body.designId;
+    userPrompt = body.userPrompt;
+    const design = await getDesign(body.designId);
+
+    // תמונת השראה (אם צורפה) משמשת רפרנס למודל התמונה. סוג המדיה כבר אומת ב-POST.
+    let inspiration: LlmImage | null = null;
+    for (const img of body.images) {
+      const { mediaType } = decodeDataUrl(img.dataUrl);
       if (img.kind === "inspiration" && !inspiration) {
         inspiration = {
           mediaType: mediaType as LlmImage["mediaType"],
@@ -123,6 +172,9 @@ export async function POST(req: Request) {
     });
     persisted = true;
 
+    // הרנדר מאחורינו; מכאן זה מסגור, ולידציה ושמירה. הלקוחה רואה את המעבר.
+    await setJobStage(jobId, "saving");
+
     // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
     // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
@@ -162,7 +214,7 @@ export async function POST(req: Request) {
     // גוף לא־תקין לשגיאה כללית — "היצירה נכשלה" על הרצה שהצליחה בשרת.
     const renderUrl = renderPngPath ? await signedUrl(renderPngPath, 3600).catch(() => null) : null;
 
-    return NextResponse.json({
+    return {
       runId,
       version,
       report,
@@ -177,7 +229,7 @@ export async function POST(req: Request) {
       })),
       render: { model: job.model, url: renderUrl },
       vectorizer: metrics,
-    });
+    };
   } catch (err) {
     // אם עוד לא שמרנו הרצה (כשל מוקדם — שירות הרנדר לא זמין, מודל התמונה) — נרשום שגיאה.
     if (!persisted) {
@@ -192,9 +244,6 @@ export async function POST(req: Request) {
         vectorizer: null,
       });
     }
-    if (err instanceof LlmError) {
-      return handleRouteError(new ApiError("llm_error", err.message, err.retriable ? 502 : 500));
-    }
-    return handleRouteError(err);
+    throw err;
   }
 }

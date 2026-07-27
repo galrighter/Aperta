@@ -1,6 +1,8 @@
 import { ApiError } from "@/lib/api";
 import { type DesignRow, type VersionRow, insertVersion } from "@/lib/db/designs";
-import { validateDesign, type DesignDims } from "@/lib/geometry/validate";
+import { validateDesign, validateNormalized, type DesignDims } from "@/lib/geometry/validate";
+import { dropThinCutouts } from "@/lib/geometry/normalize";
+import { resolveFab } from "@/lib/fabrication.config";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import { rescaleCutoutsSvg, svgFrame } from "@/lib/geometry/frame";
 import type { ValidationReport } from "@/lib/geometry/types";
@@ -175,13 +177,28 @@ export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutou
         orderedWidth * (1 + WIDTH_TOLERANCE),
       ) * 100,
     ) / 100;
-  const framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
-  const { report, normalized } = validateDesign(framedSvg, {
+  const dims = {
     productType: design.product_type,
     lengthMm,
     widthMm,
     thicknessMm: Number(design.thickness_mm),
-  });
+  };
+  let framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
+  let { report, normalized } = validateDesign(framedSvg, dims);
+
+  // הווקטורייזר כבר מסנן פתחים שאי אפשר לחתוך, אבל לא כל SVG מגיע משם: גרסאות
+  // שנשמרו לפני הסינון עדיין נושאות שערות, וכל עריכה שלהן עוברת כאן. מפעילים
+  // את אותו כלל על מה שנכנס לגרסה, כך שעיצוב ישן מתנקה כשהוא עובר במסלול —
+  // ומה שמוצג ללקוחה הוא בדיוק מה שיישמר.
+  if (normalized) {
+    const cleaned = dropThinCutouts(normalized, resolveFab(dims.thicknessMm, dims.productType).minHole);
+    if (cleaned !== normalized) {
+      normalized = cleaned;
+      framedSvg = cleaned.canonicalSvg;
+      report = validateNormalized(cleaned, dims);
+    }
+  }
+
   return {
     framedSvg,
     lengthMm,
