@@ -56,6 +56,14 @@ const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE
  *     עובר ל-color_key="dark" (255 פחות גווני האפור) במקום "warm" (R פחות B,
  *     שעל מתכת שחורה מחזיר אפס).
  * מה שאינו אחד מהשלושה הוא החלטת עיצוב ושייך ללקוחה, לא לפרומפט.
+ *
+ * ומה שבכוונה *לא* נאמר כאן: הצללית. הפרומפט קרא למוצר "strip" שמונה פעמים,
+ * ביקש לצייר "exactly that proportion", ותיאר את בקשת הלקוחה כ"design intent
+ * for the cut-out pattern" — שלושתם אומרים "מלבן עם חורים", ומשפט היתר היחיד
+ * ("the outline can wave, taper or be scalloped") לא שרד מולם. שם עצם חוזר
+ * גובר על היתר חד-פעמי, ולכן המילה הוסרה במקום להוסיף עוד הנחיה: הפרופורציה
+ * מדברת על ה-bounding box, והבריף הוא לפריט כולו — הצללית בכלל זה.
+ * הרישום המלא: docs/REMOVED_CONSTRAINTS.md.
  */
 export function buildRenderPrompt(
   userPrompt: string,
@@ -75,31 +83,32 @@ export function buildRenderPrompt(
   const ratio = round1(d.lengthMm / d.widthMm);
   const layout =
     rows <= 1
-      ? " Show the whole strip, unclipped, with plain white all around it."
-      : ` LAYOUT: the image contains exactly ${WORD[rows] ?? rows} separate strips, stacked one above another as ` +
+      ? " Show the whole piece, unclipped, with plain white all around it."
+      : ` LAYOUT: the image contains exactly ${WORD[rows] ?? rows} separate pieces, stacked one above another as ` +
         `${WORD[rows] ?? rows} evenly spaced horizontal rows, with plain white space between them and no line, frame, ` +
-        "divider or caption of any kind. Each strip is a complete piece on its own, drawn at exactly the proportion " +
-        "above, spanning almost the full width of the image with a thin white margin at each end. Each row is a " +
-        "different variation of the same design intent: the same spirit, a different arrangement of the cuts. " +
-        "Show every strip whole and unclipped.";
+        "divider or caption of any kind. Each row is a complete piece on its own, taking up the same overall extent " +
+        "as above, spanning almost the full width of the image with a thin white margin at each end. Each row is a " +
+        "different variation of the same design intent: the same spirit, a different design. " +
+        "Show every piece whole and unclipped.";
 
   const object =
     productType === "ring"
-      ? "a laser-cut matte black metal ring band, unrolled and laid out perfectly flat and straight (this is the flat blank that gets rolled into a ring)"
-      : "a laser-cut matte black metal bracelet cuff, laid out perfectly straight and unrolled";
+      ? "a laser-cut matte black metal ring, opened out and lying completely flat (this is the flat blank that gets rolled into a ring)"
+      : "a laser-cut matte black metal bracelet cuff, opened out and lying completely flat";
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
-    "The piece is a single strip of solid matte black metal with a pattern cut through it. Its outer edge is not fixed: the pattern may cut into the long edges and the two ends and shape the silhouette, so the outline can wave, taper or be scalloped rather than stay a plain rectangle.",
+    "It is one single piece of solid matte black metal, cut out of one flat sheet. Its whole shape is the design's — the outline as much as what is cut out of it. Nothing here fixes the outline.",
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
-    `PROPORTIONS (this is a measurement, not a style): the strip is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — it is ${ratio} times longer than it is wide. Draw it at exactly that proportion, lying horizontally. Do not thicken the band to fill the picture — it must look long and narrow, with plenty of plain white above and below it.` + layout,
+    // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
+    `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
 
-    "The cut-out openings are fully cut through, showing the same pure white background through them.",
-    "Design intent for the cut-out pattern: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+    "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
+    "Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
-    `MANUFACTURING (physical constraint): the strip is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the openings are cut. At this scale nothing can be cut finer than ${fab.minHole}mm, and no strip of remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the pattern is free to be whatever the design intent asks.`,
+    `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${fab.minHole}mm, and no part of the remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
 
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props. Nothing may be added around the piece: no caption, no label, no watermark, no dimension annotation and no frame around the image — but lettering that is itself part of the cut pattern is welcome when the design asks for it.",
