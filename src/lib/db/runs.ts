@@ -37,7 +37,10 @@ export interface GenerationRunRow {
   stage_paths: RunStagePaths;
   svg: string | null;
   metrics: RunMetrics | null;
+  /** קל: מה שהרשימה מציגה. ה-SVG של כל מועמד יושב ב-debug_full. */
   debug: unknown;
+  /** ה-debug המלא כולל ה-SVG של כל מועמד — נקרא רק בפתיחת הרצה. */
+  debug_full: unknown;
 }
 
 export type NewRun = {
@@ -56,6 +59,7 @@ export type NewRun = {
   svg?: string | null;
   metrics?: RunMetrics | null;
   debug?: unknown;
+  debug_full?: unknown;
 };
 
 export async function insertRun(run: NewRun): Promise<void> {
@@ -76,12 +80,13 @@ export async function insertRun(run: NewRun): Promise<void> {
     svg: run.svg ?? null,
     metrics: run.metrics ?? null,
     debug: run.debug ?? null,
+    debug_full: run.debug_full ?? null,
   });
   if (error) throw new Error(`insert run failed: ${error.message}`);
 }
 
 /** שורה ברשימת היומן: הכול חוץ מה-SVG, שנטען רק בפתיחת הרצה. */
-export type RunListRow = Omit<GenerationRunRow, "svg"> & { has_svg: boolean };
+export type RunListRow = Omit<GenerationRunRow, "svg" | "debug_full"> & { has_svg: boolean };
 
 /** העמודות שהרשימה באמת מציגה. `svg` בכוונה בחוץ — הוא נשאל דרך has_svg
  *  (עמודה מחושבת, migration 0004): 80 שורות עם ה-SVG המלא היו 451KB ו-13.7

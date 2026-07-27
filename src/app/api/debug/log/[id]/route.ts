@@ -12,7 +12,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const { id } = await ctx.params;
     const row = await getRun(id);
     if (!row) throw new ApiError("not_found", `Run ${id} not found`, 404);
-    return NextResponse.json({ id: row.id, svg: row.svg, debug: row.debug });
+    // הפירוט הוא המקום שבו ה-SVG של כל מועמד באמת נחוץ, ולכן הוא נקרא מ-
+    // debug_full. שורות שנכתבו לפני הפיצול מוחזרות ל-debug (ההגירה מעבירה
+    // אותן, אבל הנפילה לאחור עולה שורה אחת ומכסה גם שורה שנכתבה בחלון).
+    return NextResponse.json({ id: row.id, svg: row.svg, debug: row.debug_full ?? row.debug });
   } catch (err) {
     return handleRouteError(err);
   }

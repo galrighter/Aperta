@@ -58,6 +58,17 @@ export interface PersistRunInput {
   error?: string | null;
 }
 
+/** מוריד את ה-SVG של כל מועמד ומשאיר את המדדים. אותו קילוף שהרשימה עשתה
+ *  בקריאה — עכשיו בכתיבה, כך שאין מה לשלוף מלכתחילה. */
+function slimCandidates(debug: Record<string, unknown>): unknown {
+  if (!Array.isArray(debug.candidates)) return debug;
+  const candidates = (debug.candidates as Array<Record<string, unknown>>).map((c) => {
+    const { metal_svg, cutouts_svg, ...rest } = c;
+    return { ...rest, has_svg: Boolean(metal_svg || cutouts_svg) };
+  });
+  return { ...debug, candidates };
+}
+
 /** שומר הרצה ליומן. מחזיר תמיד — נכשל בשקט אם ה-storage/DB לא זמינים. */
 export async function persistRun(input: PersistRunInput): Promise<void> {
   try {
@@ -86,12 +97,17 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       }
     }
 
-    // 3) מסירים את ה-base64 הכבד מה-debug; שומרים שלבים/מועמדים/שערים.
+    // 3) מסירים את ה-base64 הכבד מה-debug, ומפצלים: debug נשאר קל ומכיל את מה
+    // שהרשימה מציגה, ו-debug_full מחזיק את ה-SVG של כל מועמד ונקרא רק בפתיחת
+    // הרצה. בלי הפיצול הרשימה קוראת 80 שורות x עד 13 מועמדים x 2 SVG בשאילתה
+    // אחת, וחוטפת statement timeout.
     let debug: unknown = null;
+    let debugFull: unknown = null;
     if (vectorizer?.debug) {
       const { images: _drop, ...rest } = vectorizer.debug;
       void _drop;
-      debug = rest;
+      debugFull = rest;
+      debug = slimCandidates(rest);
     }
 
     const m = vectorizer?.metrics;
@@ -126,6 +142,7 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       svg: vectorizer?.cutouts_svg ?? null,
       metrics,
       debug,
+      debug_full: debugFull,
     });
   } catch (e) {
     // יומן הוא best-effort — לא מפילים את בקשת המשתמש בגלל כשל שמירה.
