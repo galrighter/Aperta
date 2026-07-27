@@ -60,8 +60,11 @@ jobs:
           VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
           # HTTPS hostname for the vectorizer (Cloudflare Workers can't call raw-IP HTTP).
           VDOMAIN: ${{ vars.VECTORIZER_DOMAIN || 'vec.rmjewel.com' }}
+          # /api/generate calls the image model from here. Storage needs no key:
+          # forme hands the box a signed upload URL per artefact.
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" "$USER@$HOST" "VTOKEN='$VTOKEN' VDOMAIN='$VDOMAIN' bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" "$USER@$HOST" "VTOKEN='$VTOKEN' VDOMAIN='$VDOMAIN' OPENAI_KEY='$OPENAI_KEY' bash -s" <<'REMOTE'
           set -euo pipefail
           if ! command -v docker >/dev/null 2>&1; then
             echo "Docker not found; installing via get.docker.com"; curl -fsSL https://get.docker.com | sh
@@ -72,6 +75,7 @@ jobs:
           # bind to localhost only; Caddy terminates TLS and reverse-proxies to it.
           docker run -d --name forme-vectorizer --restart unless-stopped \
             -e VECTORIZER_TOKEN="${VTOKEN:-}" \
+            -e OPENAI_KEY="${OPENAI_KEY:-}" \
             -p 127.0.0.1:8000:8000 forme-vectorizer
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then echo "vectorizer healthy"; break; fi

@@ -47,6 +47,12 @@ export interface PersistRunInput {
   colorKey?: string | null;
   startedAt: number;
   render?: { path?: string | null; bytes?: Uint8Array | null; mediaType?: string; model?: string | null } | null;
+  /**
+   * תמונות שלבים שכבר הועלו — מסלול היצירה: שירות הרנדר כותב אותן ישירות
+   * ל-storage דרך כתובות חתומות, ומוסר את הנתיבים. במסלול הזה אין כאן בייטים
+   * בכלל. מסלול הבק־אופיס עדיין שולח base64 ב-debug ומעלה למטה.
+   */
+  stagePaths?: RunStagePaths | null;
   /** התגובה הגולמית מה-vectorizer (מצב debug). null כשהצינור בכלל לא רץ (שגיאה מוקדמת). */
   vectorizer?: VectorizerPayload | null;
   error?: string | null;
@@ -64,8 +70,9 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       await uploadFile(renderPath, input.render.bytes, input.render.mediaType ?? "image/png");
     }
 
-    // 2) תמונות שלבי הביניים מתוך ה-debug — מעלים כל אחת ושומרים נתיב.
-    const stagePaths: RunStagePaths = {};
+    // 2) תמונות שלבי הביניים. אם הן כבר ב-storage (מסלול היצירה) לוקחים את
+    // הנתיבים כמו שהם; אחרת מעלים כאן מה-base64 שב-debug.
+    const stagePaths: RunStagePaths = { ...(input.stagePaths ?? {}) };
     const images = vectorizer?.debug?.images ?? {};
     for (const key of STAGE_KEYS) {
       const b64 = images[key];
