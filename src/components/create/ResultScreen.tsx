@@ -32,6 +32,9 @@ export function ResultScreen({
   const W = frameWidthMm(s, entry);
   const report = entry?.report ?? null;
   const flat = s.resultMode === "flat";
+  // הצעות שאפשר לייצר בלבד. השרת כבר מסנן; הסינון כאן שומר גם על תשובה ישנה
+  // שנשמרה במצב לפני השינוי.
+  const picks = (entry?.candidates ?? []).filter((c) => c.report.status !== "fail");
 
   const status = report?.status ?? "pass";
   const statusText =
@@ -98,13 +101,14 @@ export function ResultScreen({
             )}
           </div>
 
-          {/* ההצעות מאותה יצירה. כל אחת היא פס שלם — בחירה שומרת אותה כגרסה. */}
-          {(entry?.candidates?.length ?? 0) > 1 && (
+          {/* ההצעות מאותה יצירה. כל אחת היא פס שלם — בחירה שומרת אותה כגרסה.
+              מוצגות רק הצעות שאפשר לייצר; מה שנכשל בוולידציה לא מוצע לבחירה. */}
+          {picks.length > 1 && (
             <div className="mt-4">
               <CardLabel>{d.candidatesLabel}</CardLabel>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {entry!.candidates!.map((c, i) => {
-                  const on = c.svg === entry!.svg;
+                {picks.map((c, i) => {
+                  const on = c.svg === entry?.svg;
                   return (
                     <button
                       key={i}

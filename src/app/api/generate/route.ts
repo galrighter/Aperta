@@ -135,7 +135,11 @@ export async function POST(req: Request) {
       throw new ApiError("vectorize_failed", `Vectorizer did not approve any panel: ${vec.status}`, 422);
     }
 
-    // 6) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה.
+    // 6) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה — אבל רק אלה שאפשר
+    // לייצר. הצעה שנכשלה בוולידציה אינה בחירה אלא מלכודת: היא נראית ככל השאר,
+    // הלקוחה תבחר בה כי היא יפה, והמסע ייעצר בייצוא. אם *כל* המועמדים נכשלו
+    // הרשימה מתרוקנת והמסך מציג את הגרסה השמורה עם הסיבה שאי אפשר לייצר אותה.
+    const offered = candidates.filter((c) => c.report.status !== "fail");
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,
       cutoutsSvg: candidates[0].framedSvg,
@@ -157,7 +161,7 @@ export async function POST(req: Request) {
       geometry,
       lengthMm,
       widthMm,
-      candidates: candidates.map((c) => ({
+      candidates: offered.map((c) => ({
         svg: c.framedSvg,
         report: c.report,
         drawnRatio: Math.round(c.drawnRatio * 100) / 100,
