@@ -30,6 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A missing key does not fail the deploy — it ships a container that 404s
+      # nothing and 502s every /api/generate at runtime, hours after the green
+      # checkmark. Fail here instead, where the cause is still on screen.
+      - name: Require the runtime secrets
+        env:
+          VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        run: |
+          missing=""
+          [ -n "$VTOKEN" ] || missing="$missing VECTORIZER_TOKEN"
+          [ -n "$OPENAI_KEY" ] || missing="$missing OPENAI_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secret(s):$missing"
+            exit 1
+          fi
+
       - name: Set up SSH
         env:
           SSH_KEY: ${{ secrets.HETZNER_SSH }}
