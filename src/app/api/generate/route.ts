@@ -11,7 +11,6 @@ import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
 import { runRenderJob } from "@/lib/render/service";
 import { persistRun } from "@/lib/runs/persist";
 import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
 // קונדישנינג + vectorizer → cutouts SVG → צינור הוולידציה הקיים → גרסה.
@@ -23,10 +22,17 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 //
 // כל הרצה נשמרת ל-generation_runs (כולל דחייה/שגיאה) ליומן הבק־אופיס.
 //
-// הבקשה חוזרת מיד עם מזהה job, והעבודה ממשיכה ב-waitUntil. יצירה לוקחת ~30-90
-// שניות, וחיבור סלולרי שנקטע באמצע איבד עבודה שכבר הושלמה בשרת. עכשיו התוצאה
-// נכתבת ל-generation_jobs והלקוחה מושכת אותה; ניתוק הוא הפסקה במשיכה בלבד.
-// המצב נקרא מ-/api/generate/<jobId>.
+// העבודה רצה בתוך הבקשה. קודם היא הועברה ל-waitUntil וההחזרה הייתה 202 מיידי,
+// כדי שניתוק לא יאבד הרצה שהצליחה — ובפרודקשן העבודה פשוט לא רצה: כל יצירה
+// נתקעה על stage=rendering, לא נכתבה שום שורה ל-generation_runs, ואחרי שש דקות
+// הלקוחה קיבלה job_stalled. אין שגיאה כי לא היה מי שיכתוב אותה. מדוד על שלוש
+// הרצות (27.7, אחרי #61) מול הרצה ישירה של אותו צינור שהצליחה ב-20 שניות.
+//
+// מה שנשמר מ-#61: שורת generation_jobs עדיין נכתבת, והלקוחה מייצרת את המזהה
+// מראש — כך שאחרי ניתוק אפשר למשוך את התוצאה מ-/api/generate/<jobId> במקום
+// לגלות שהיא אבדה. מה שאבד: הרצה לא שורדת ניתוק שקוטע את הבקשה עצמה. הדרך
+// לקבל את זה בחזרה היא שהקופסה תחזיק את ה-job (יש לה כבר חנות + /api/jobs/<id>)
+// ושנמשוך ממנה — לא isolate שאמור לשרוד אחרי שהתשובה יצאה.
 
 export const maxDuration = 300;
 
@@ -37,6 +43,9 @@ const imageSchema = z.object({
 
 const schema = z.object({
   designId: z.string().uuid(),
+  /** מזהה ההרצה, מיוצר בלקוחה. מאפשר למשוך את התוצאה מ-/api/generate/<id>
+   *  אחרי שהחיבור נקטע, בלי לחכות שהשרת יחזיר אותו. */
+  jobId: z.string().uuid().optional(),
   userPrompt: z.string().min(1).max(4000),
   currentSvg: z.string().max(500_000).nullable().optional(),
   images: z.array(imageSchema).max(3).default([]),
@@ -61,37 +70,34 @@ export async function POST(req: Request) {
       }
     }
 
-    const jobId = crypto.randomUUID();
+    // מזהה שהלקוחה מייצרת מראש, כדי שתוכל למשוך את השורה גם אם הבקשה נקטעה.
+    const jobId = body.jobId ?? crypto.randomUUID();
     const runId = crypto.randomUUID();
+    // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה
+    // למיגרציה) היצירה עדיין רצה.
     try {
       await createJob({ id: jobId, designId: design.id, runId });
     } catch (e) {
-      // migrate.yml ו-deploy.yml נדלקים מאותו push ורצים במקביל, כך שיש חלון
-      // שבו הקוד כבר מכיר generation_jobs וה-DB עוד לא. יצירה היא מסלול של
-      // לקוחה — עדיף לרוץ סינכרונית כמו קודם מאשר להיכשל על סדר פריסה.
-      console.error("job table unavailable, running inline:", (e as Error).message);
-      return NextResponse.json(await runGeneration(body, runId, jobId));
+      console.error("job row unavailable, running without it:", (e as Error).message);
     }
 
-    const work = runGeneration(body, runId, jobId)
-      .then((payload) => finishJob(jobId, payload))
-      .catch(async (err) => {
-        const e =
-          err instanceof ApiError
-            ? { code: err.code, message: err.message }
-            : err instanceof LlmError
-              ? { code: "llm_error", message: err.message }
-              : { code: "internal", message: err instanceof Error ? err.message : String(err) };
-        await failJob(jobId, e);
-      });
-    // ה-isolate נסגר ברגע שהתשובה יוצאת; waitUntil משאיר אותו חי עד שהעבודה
-    // נגמרת. בלי זה הבקשה הייתה חוזרת והעבודה נקטעת מיד.
-    getCloudflareContext().ctx.waitUntil(work);
-
-    return NextResponse.json({ jobId, status: "running" }, { status: 202 });
+    try {
+      const payload = await runGeneration(body, runId, jobId);
+      await finishJob(jobId, payload);
+      return NextResponse.json(payload);
+    } catch (err) {
+      await failJob(jobId, toJobError(err));
+      throw err;
+    }
   } catch (err) {
     return handleRouteError(err);
   }
+}
+
+function toJobError(err: unknown) {
+  if (err instanceof ApiError) return { code: err.code, message: err.message };
+  if (err instanceof LlmError) return { code: "llm_error", message: err.message };
+  return { code: "internal", message: err instanceof Error ? err.message : String(err) };
 }
 
 type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
