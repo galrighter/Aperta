@@ -48,7 +48,16 @@ export function Rolled3D({
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    mount.appendChild(renderer.domElement);
+    // הקנבס נמדד ע"י ה-CSS, לא ע"י התכולה שלו. בלי זה הוא נולד עם ברירת המחדל
+    // של HTML — 300x150 כפול pixelRatio, כלומר 600px רוחב — ומכיוון שאלה
+    // *מאפיינים* ולא CSS, הוא מותח את ההורה ואיתו את כל העמוד: במסך של 393px
+    // המסמך יצא 622px, נוצרה גלילה אופקית, והכותרת נראתה זזה הצידה. שלושת
+    // הקווים האלה הם הרצפה — גם אם מדידה כלשהי תיכשל, הוא לא יכול לחרוג.
+    const canvas = renderer.domElement;
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    mount.appendChild(canvas);
 
     const scene = new THREE.Scene();
     scene.background = background === null ? null : new THREE.Color(background);
@@ -76,7 +85,9 @@ export function Rolled3D({
     const resize = () => {
       const r = mount.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) return;
-      renderer.setSize(r.width, r.height);
+      // updateStyle=false: הגודל הפיזי של הבאפר נגזר מהמדידה, אבל הגודל בפריסה
+      // נשאר 100% מהמיכל — כך הקנבס לעולם לא מכתיב רוחב למי שמעליו.
+      renderer.setSize(r.width, r.height, false);
       camera.aspect = r.width / r.height;
       camera.updateProjectionMatrix();
       // המסגור תלוי ביחס הצדדים: בקנבס צר שדה הראייה האופקי קטן מהאנכי,

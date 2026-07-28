@@ -195,7 +195,11 @@ export function StepRail({
   return (
     <nav
       aria-label={d.stepAria}
-      className="sticky top-0 z-20 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur sm:px-10"
+      // נעצר מתחת לכותרת ולא מאחוריה: שתיהן היו sticky top-0, וברגע שגללו
+      // הסרגל נעלם מתחת לכותרת השקופה למחצה — שתי שורות במקום אחת, ואף אחת
+      // מהן לא קריאה. הגובה מגיע כמשתנה שהכותרת מודדת על עצמה.
+      style={{ top: "var(--rm-header-h, 0px)" }}
+      className="sticky z-10 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur sm:px-10"
     >
       {RAIL.map((r, i) => {
         const done = cur > i;
