@@ -8,8 +8,11 @@ import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError } from "@/lib/client/api";
 import {
-  listMyDesigns, removeMyDesign, saveMyDesign, type SavedDesign,
+  clearMyDesigns, listMyDesigns, mergeMyDesign, removeMyDesign, saveMyDesign,
+  type SavedDesign,
 } from "@/lib/client/myDesigns";
+import { designCode } from "@/lib/designCode";
+import type { Account } from "@/lib/client/types";
 import { StepRail } from "@/components/create/ui";
 import { ProductScreen } from "@/components/create/ProductScreen";
 import { SizesScreen } from "@/components/create/SizesScreen";
@@ -20,6 +23,7 @@ import { SummaryScreen } from "@/components/create/SummaryScreen";
 import { CheckoutScreen } from "@/components/create/CheckoutScreen";
 import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
+import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
   countCuts, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf, stripLengthMm, widthOf,
@@ -43,11 +47,28 @@ export default function DesignPage() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
 
+  /* ===== זיהוי =====
+     החשבון נטען פעם אחת בכניסה; השער עצמו נפתח רק כשמבקשים ליצור. */
+  const [account, setAccount] = useState<Account | null>(null);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [gateBusy, setGateBusy] = useState(false);
+  const [gateError, setGateError] = useState<string | null>(null);
+  /** נדלק כשהשער נפתח מתוך ניסיון ליצור — כדי להמשיך אוטומטית אחרי הכניסה. */
+  const startAfterSignIn = useRef(false);
+
   const set = useCallback((patch: Partial<CreateState>) => {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   useEffect(() => setSaved(listMyDesigns()), []);
+
+  useEffect(() => {
+    api
+      .account()
+      .then(({ account: a }) => setAccount(a))
+      // אין חשבון או שהבדיקה נכשלה — השער ייפתח בזמן היצירה ממילא.
+      .catch(() => setAccount(null));
+  }, []);
 
   const go = useCallback((screen: Screen) => {
     setState((prev) => ({ ...prev, screen }));
@@ -64,6 +85,7 @@ export default function DesignPage() {
     const path = entry ? mpToPath(entry.geometry?.material) : "";
     saveMyDesign({
       id: st.designId,
+      serial: st.designSerial ?? undefined,
       name: `${st.product === "ring" ? he.ring : he.bracelet} ${Math.round(circumferenceMm(st))}`,
       product: st.product ?? "bracelet",
       circMm: Math.round(circumferenceMm(st)),
@@ -125,19 +147,25 @@ export default function DesignPage() {
   }, [s]);
 
   /* ===== יצירה ראשונה ===== */
-  const startGeneration = useCallback(async () => {
+  const startGeneration = useCallback(async (signedIn?: Account) => {
+    // עד כאן אפשר להתקדם בלי להזדהות. מכאן והלאה נוצרת רשומה שצריכה בעלים,
+    // ורצה הרצת מנוע שעולה כסף — ולכן זה הרגע שבו נפתח השער.
+    const who = signedIn ?? account;
+    if (!who) {
+      startAfterSignIn.current = true;
+      setGateError(null);
+      setGateOpen(true);
+      return;
+    }
+
     const st = { ...s, screen: "processing" as Screen, procError: null, procErrorDetail: null };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
     if (typeof window !== "undefined") window.scrollTo(0, 0);
 
     try {
-      const { profiles } = await api.profiles();
-      const profileId = profiles[0]?.id;
-      if (!profileId) throw new Error("no profile");
-
+      // בלי profileId: הבעלות נקבעת בשרת לפי העוגייה של החשבון.
       const { design } = await api.createDesign({
-        profileId,
         productType: st.product ?? "bracelet",
         name: `${st.product === "ring" ? he.ring : he.bracelet} · ${Math.round(circumferenceMm(st))}${d.mm}`,
       });
@@ -147,7 +175,7 @@ export default function DesignPage() {
         gapMm: gapOf(st),
       });
 
-      const withId = { ...st, designId: design.id };
+      const withId = { ...st, designId: design.id, designSerial: design.serial ?? null };
       setState(withId);
       // נרשם עכשיו, לפני הגנרציה — כדי שהעיצוב יהיה בר-איתור גם אם היא נקטעת.
       remember(withId, null);
@@ -188,7 +216,66 @@ export default function DesignPage() {
           : ((e as Error)?.message?.slice(0, 80) ?? null),
       }));
     }
-  }, [s, go, pushEntry, remember]);
+  }, [s, account, go, pushEntry, remember]);
+
+  /* ===== כניסה / החלפת משתמש ===== */
+  const onSignIn = useCallback(
+    async (v: { name: string; email: string; phone?: string; company?: string }) => {
+      setGateBusy(true);
+      setGateError(null);
+      try {
+        const { account: a } = await api.signIn(v);
+        setAccount(a);
+        // כניסה ממכשיר חדש: מושכים מהשרת את מה שכבר עוצב בחשבון הזה, אחרת
+        // "העיצובים שלי" ריק דווקא למי שיש לו הכי הרבה מה להמשיך.
+        try {
+          const { designs } = await api.myDesigns();
+          for (const dz of designs) {
+            mergeMyDesign({
+              id: dz.id,
+              serial: dz.serial ?? undefined,
+              name: dz.name,
+              product: dz.product_type,
+              circMm: Math.round(Number(dz.length_mm) + Number(dz.gap_mm)),
+              widthMm: Number(dz.width_mm),
+              cuts: 0,
+              updatedAt: dz.updated_at,
+              pending: dz.current_version_id ? undefined : true,
+            });
+          }
+          setSaved(listMyDesigns());
+        } catch {
+          // הסנכרון הוא בונוס; כישלון שלו לא אמור לחסום את היצירה.
+        }
+        setGateBusy(false);
+        setGateOpen(false);
+        if (startAfterSignIn.current) {
+          startAfterSignIn.current = false;
+          void startGeneration(a);
+        }
+      } catch (e) {
+        setGateBusy(false);
+        setGateError(e instanceof ClientApiError ? e.message : d.acctError);
+      }
+    },
+    [startGeneration],
+  );
+
+  /** החלפת משתמש. האינדקס המקומי נמחק — במכשיר משותף הוא של מי שנכנס עכשיו.
+   *  העיצובים עצמם נשארים בשרת וחוזרים בכניסה עם אותו מייל. */
+  const onSwitchAccount = useCallback(async () => {
+    try {
+      await api.signOut();
+    } catch {
+      /* גם אם הניקוי בשרת נכשל, ממשיכים לנקות מקומית */
+    }
+    clearMyDesigns();
+    setSaved([]);
+    setAccount(null);
+    setGateError(null);
+    startAfterSignIn.current = false;
+    setGateOpen(true);
+  }, []);
 
   /* ===== שינוי ממוקד אזור ===== */
   const applyEdit = useCallback(async () => {
@@ -269,6 +356,7 @@ export default function DesignPage() {
             screen: "brief",
             product: design.product_type,
             designId: design.id,
+            designSerial: design.serial ?? null,
             ...sizes,
             brief: item.brief ?? "",
             symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
@@ -294,6 +382,7 @@ export default function DesignPage() {
           screen: "result",
           product: design.product_type,
           designId: design.id,
+          designSerial: design.serial ?? null,
           ...sizes,
           brief: item.brief ?? "",
           edits: versions.map((v, i) => ({
@@ -329,6 +418,7 @@ export default function DesignPage() {
       `היקף: ${Math.round(circumferenceMm(s))} ${d.mm} · רוחב: ${mmLabel(frameWidthMm(s, entry))} ${d.mm}`,
       s.product === "ring" ? "" : `ישיבה: ${d.fits[s.fit]}`,
       `חיתוכים: ${countCuts(entry?.svg ?? null)}`,
+      `מספר עיצוב: ${designCode(s.designSerial) ?? "—"}`,
       `מזהה עיצוב: ${s.designId ?? "—"}`,
       `סה"כ: ${d.ils}${p.total}`,
       "",
@@ -350,9 +440,10 @@ export default function DesignPage() {
         }),
       });
       if (!res.ok) throw new Error("failed");
-      const body = (await res.json().catch(() => null)) as { inquiry?: { id?: string } } | null;
-      const raw = body?.inquiry?.id ?? s.designId ?? "";
-      const orderNo = `RM-${(raw.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || String(Date.now()).slice(-6)).toUpperCase()}`;
+      // מספר ההזמנה הוא מספר העיצוב. עד כה הוא נגזר מחיתוך של uuid — מחרוזת
+      // אקראית שאי אפשר להקריא בטלפון, ושלא הצביעה על שום דבר שאפשר לחפש.
+      const orderNo =
+        designCode(s.designSerial) ?? ((s.designId ?? "").slice(0, 8).toUpperCase() || "—");
       setState((prev) => ({ ...prev, sending: false, orderNo, screen: "done" }));
       setMaxReached(5);
       if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -380,6 +471,7 @@ export default function DesignPage() {
         {s.screen === "product" && (
           <>
             <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+              {account && <AccountBar name={account.name} onSwitch={onSwitchAccount} />}
               <SavedDesigns
                 items={saved}
                 onResume={resume}
@@ -402,13 +494,13 @@ export default function DesignPage() {
 
         {s.screen === "sizes" && <SizesScreen s={s} set={set} onNext={() => go("brief")} />}
 
-        {s.screen === "brief" && <BriefScreen s={s} set={set} onSubmit={startGeneration} />}
+        {s.screen === "brief" && <BriefScreen s={s} set={set} onSubmit={() => void startGeneration()} />}
 
         {s.screen === "processing" && (
           <ProcessingScreen
             error={s.procError}
             detail={s.procErrorDetail}
-            onRetry={startGeneration}
+            onRetry={() => void startGeneration()}
             onBack={() => {
               set({ procError: null, procErrorDetail: null });
               go("brief");
@@ -437,6 +529,17 @@ export default function DesignPage() {
 
         {s.screen === "done" && <DoneScreen orderNo={s.orderNo ?? "—"} />}
       </div>
+
+      <AccountGate
+        open={gateOpen}
+        onSubmit={onSignIn}
+        onCancel={() => {
+          startAfterSignIn.current = false;
+          setGateOpen(false);
+        }}
+        error={gateError}
+        busy={gateBusy}
+      />
     </div>
   );
 }

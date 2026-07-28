@@ -6,6 +6,7 @@
 // עכשיו זו שורה אחת בולטת שנפתחת בלחיצה.
 import { useId, useState } from "react";
 import { he } from "@/i18n/he";
+import { designCode } from "@/lib/designCode";
 import { COBALT } from "./ui";
 import type { SavedDesign } from "@/lib/client/myDesigns";
 
@@ -93,6 +94,12 @@ export function SavedDesigns({
                 </div>
 
                 <div className="flex flex-1 flex-col p-3.5">
+                  {/* המספר הסידורי קודם לשם: הוא מה שאומרים כשמדברים על העיצוב */}
+                  {designCode(it.serial) && (
+                    <div className="mb-1 font-display text-[11px] tracking-[0.14em] text-cobalt" dir="ltr">
+                      {designCode(it.serial)}
+                    </div>
+                  )}
                   <div className="text-sm font-semibold text-graphite">
                     {it.product === "ring" ? he.ring : he.bracelet} · {it.circMm} {d.mm}
                   </div>

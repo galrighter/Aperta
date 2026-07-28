@@ -7,9 +7,18 @@ export interface Profile {
   color: string;
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+}
+
 export interface Design {
   id: string;
   profile_id?: string;
+  /** המספר הסידורי הרץ. designCode() הופך אותו ל-"RM-0007". */
+  serial?: number | null;
   name: string;
   product_type: ProductType;
   length_mm: number;
