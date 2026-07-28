@@ -2,7 +2,7 @@
 
 // handoff §4 — מאפיינים, תמונה עם תפקיד, תיאור חופשי.
 // כלל קריטי (§4.2): "קובץ מוכן לחיתוך" מנטרל את המאפיינים ואת התיאור.
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, PrimaryBtn,
@@ -12,7 +12,13 @@ import type {
 } from "./model";
 
 const d = he.design;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * הגבול הוא של השרת, לא שלנו: `dataUrl` מוגבל שם ל-8,000,000 תווים, ו-base64
+ * מנפח קובץ בשליש. קובץ של 8MB היה עובר את הבדיקה כאן, מתנפח ל-~10.7M תווים,
+ * ונדחה בשרת. 5MB הוא הגודל הגדול ביותר שבטוח נכנס.
+ */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export function BriefScreen({
   s, set, onSubmit,
@@ -22,17 +28,26 @@ export function BriefScreen({
   onSubmit: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const locked = s.imageRole === "ready";
   const canSubmit = Boolean(s.brief.trim() || s.image || locked);
 
   const pickFile = (f: File | undefined) => {
-    if (!f || f.size > MAX_IMAGE_BYTES) return;
+    if (!f) return;
+    // קובץ גדול מדי נזרק כאן בשקט: המשתמש בחר תמונה, שום דבר לא קרה, ואין מה
+    // שיסביר. עכשיו אומרים מה הגבול ומה נבחר.
+    if (f.size > MAX_IMAGE_BYTES) {
+      setImageError(d.imageTooLarge(Math.round(f.size / 1024 / 1024), MAX_IMAGE_BYTES / 1024 / 1024));
+      return;
+    }
+    setImageError(null);
     const reader = new FileReader();
     reader.onload = () =>
       set({
         image: { dataUrl: String(reader.result), name: f.name },
         imageRole: s.imageRole ?? "inspiration",
       });
+    reader.onerror = () => setImageError(d.imageReadFailed);
     reader.readAsDataURL(f);
   };
 
@@ -113,6 +128,12 @@ export function BriefScreen({
                   </div>
                 </div>
               </>
+            )}
+
+            {imageError && (
+              <p role="alert" className="mt-3 text-[13px] leading-relaxed text-red-600">
+                {imageError}
+              </p>
             )}
           </div>
 
