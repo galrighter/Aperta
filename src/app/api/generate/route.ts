@@ -54,8 +54,16 @@ const schema = z.object({
 const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: Request) {
+  const startedAt = Date.now();
+  const runId = crypto.randomUUID();
+  let pipelineStarted = false;
+  let designId: string | null = null;
+  let userPrompt: string | null = null;
+
   try {
     const body = await parseBody(req, schema);
+    designId = body.designId;
+    userPrompt = body.userPrompt;
     // האימותים שהלקוחה צריכה לדעת עליהם מיד — עיצוב קיים, מכסה יומית, תמונות
     // תקינות — נשארים סינכרוניים. אין טעם להחזיר job שכבר ידוע שייכשל.
     const design = await getDesign(body.designId);
@@ -72,7 +80,6 @@ export async function POST(req: Request) {
 
     // מזהה שהלקוחה מייצרת מראש, כדי שתוכל למשוך את השורה גם אם הבקשה נקטעה.
     const jobId = body.jobId ?? crypto.randomUUID();
-    const runId = crypto.randomUUID();
     // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה
     // למיגרציה) היצירה עדיין רצה.
     try {
@@ -82,6 +89,7 @@ export async function POST(req: Request) {
     }
 
     try {
+      pipelineStarted = true;
       const payload = await runGeneration(body, runId, jobId);
       await finishJob(jobId, payload);
       return NextResponse.json(payload);
@@ -90,6 +98,22 @@ export async function POST(req: Request) {
       throw err;
     }
   } catch (err) {
+    // דחייה לפני שהצינור התחיל — מכסה יומית, תמונה לא נתמכת, עיצוב לא קיים,
+    // גוף בקשה פסול — לא השאירה עד עכשיו שום עקבה. המשתמש ראה שגיאה והיומן לא
+    // ראה כלום, כך שהתלונה "יצרתי ואין את זה ביומן" לא הייתה ניתנת לאבחון.
+    // אחרי שהצינור התחיל, runGeneration כבר כותב את השורה בעצמו.
+    if (!pipelineStarted) {
+      await persistRun({
+        id: runId,
+        source: "studio",
+        designId,
+        prompt: userPrompt,
+        colorKey: "dark",
+        startedAt,
+        error: err instanceof Error ? err.message : String(err),
+        vectorizer: null,
+      });
+    }
     return handleRouteError(err);
   }
 }

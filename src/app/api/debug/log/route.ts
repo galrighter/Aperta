@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { listRuns, type RunStagePaths } from "@/lib/db/runs";
+import { listRecentJobs } from "@/lib/db/jobs";
+import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 
 // בק־אופיס: יומן כל הרצות הצינור (מכל המסלולים) — הדמיה, שלבי ביניים, סטטוס
 // ומדדים, כדי לאבחן בעיות מתלונות משתמשים ולכייל יחד את איכות ההמרה.
@@ -60,7 +62,18 @@ export async function GET() {
         debug: slimDebug(r.debug),
       };
     });
-    return NextResponse.json({ items });
+    // ניסיון שלא הגיע לשורת הרצה. בלעדיו יצירה שנקטעה נעדרת מהיומן לגמרי,
+    // ו"אין שורה" נראה בדיוק כמו "לא היה ניסיון" — המקרה היחיד שאי אפשר לאבחן.
+    let orphans: OrphanItem[] = [];
+    try {
+      orphans = orphanJobs(await listRecentJobs(80), rows);
+    } catch (e) {
+      // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
+      console.error("orphan job lookup failed:", (e as Error).message);
+    }
+
+    const merged = [...items, ...orphans].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return NextResponse.json({ items: merged });
   } catch (err) {
     return handleRouteError(err);
   }

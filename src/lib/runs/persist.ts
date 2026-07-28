@@ -146,6 +146,27 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
     });
   } catch (e) {
     // יומן הוא best-effort — לא מפילים את בקשת המשתמש בגלל כשל שמירה.
-    console.error("persistRun failed:", (e as Error).message);
+    const message = (e as Error).message;
+    console.error("persistRun failed:", message);
+
+    // אבל שקט הוא לא best-effort, הוא אובדן: שורה שלא נכתבה נראית ביומן בדיוק
+    // כמו הרצה שלא קרתה. מנסים שוב בלי מה שכנראה הפיל את הכתיבה — התמונות,
+    // ה-SVG וה-debug — כדי שלפחות יישאר סימן שהניסיון היה, ולמה הוא חסר.
+    try {
+      await insertRun({
+        id: input.id,
+        source: input.source,
+        design_id: input.designId ?? null,
+        product_type: input.productType ?? null,
+        prompt: input.prompt ?? null,
+        color_key: input.colorKey ?? null,
+        status: "error",
+        error: input.error ?? `run happened, log write failed: ${message}`,
+        duration_ms: Date.now() - input.startedAt,
+        stage_paths: {},
+      });
+    } catch (e2) {
+      console.error("persistRun minimal fallback failed:", (e2 as Error).message);
+    }
   }
 }

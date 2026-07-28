@@ -59,6 +59,25 @@ export const setJobStage = (id: string, stage: JobStage) => patch(id, { stage })
 export const finishJob = (id: string, result: unknown) => patch(id, { status: "done", stage: null, result });
 export const failJob = (id: string, error: JobError) => patch(id, { status: "error", stage: null, error });
 
+/** בקשת יצירה כפי שהיומן צריך אותה — בלי `result`, שנושא את ה-SVG של כל מועמד. */
+export type JobListRow = Omit<GenerationJobRow, "result">;
+
+/**
+ * בקשות היצירה האחרונות. היומן מצליב אותן מול ההרצות כדי למצוא ניסיון שלא
+ * הגיע לשורת הרצה — בקשה שנקטעה באמצע משאירה רק את השורה הזאת, ובלעדיה היא
+ * נעלמת: ביומן היא נראית בדיוק כמו יצירה שלא קרתה מעולם.
+ */
+export async function listRecentJobs(limit = 80): Promise<JobListRow[]> {
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from("generation_jobs")
+    .select("id, created_at, updated_at, design_id, run_id, status, stage, error")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as JobListRow[];
+}
+
 export async function getJob(id: string): Promise<GenerationJobRow | null> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.from("generation_jobs").select("*").eq("id", id).maybeSingle();
