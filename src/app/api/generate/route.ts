@@ -207,10 +207,20 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
 
     // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
     // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
+    //
+    // מכל מועמד נשמר רק מה שהמסך צריך. `normalized` — גרף הפוליגונים המלא —
+    // נזרק מיד: כל עוד הוא מוחזק, הגאומטריה של כל המועמדים מוצמדת ואי אפשר
+    // לאסוף אותה בין אחד לשני. נמדד על ארבעה מועמדים אמיתיים: 45.1MB בתום
+    // הקריאה כשמחזיקים הכול, מול 16.5MB כשמחזיקים רק את אלה. ה-isolate נהרג
+    // על זיכרון (128MB) בבקשה יחידה, וזה המקצה הגדול ביותר בבקשה.
+    // הזוכה לא מפסיד כלום: ingestCutouts גוזר את הגאומטריה שלו ממילא מחדש.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
     const candidates = job.candidates
       .filter((c) => c.status === "approved" && c.cutoutsSvg)
-      .map((c) => frameCutouts(design, c.cutoutsSvg!))
+      .map((c) => {
+        const f = frameCutouts(design, c.cutoutsSvg!);
+        return { framedSvg: f.framedSvg, report: f.report, drawnRatio: f.drawnRatio, stretch: f.stretch };
+      })
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {
