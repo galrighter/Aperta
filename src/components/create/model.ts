@@ -95,6 +95,8 @@ export interface CreateState {
 
   // מנוע
   designId: string | null;
+  /** המספר הסידורי של העיצוב, כפי שהוקצה במסד. הרפרנס האנושי אליו. */
+  designSerial: number | null;
   edits: EditEntry[];
   activeEdit: number;
   procError: string | null;
@@ -138,6 +140,7 @@ export const INITIAL: CreateState = {
   imageRole: null,
   brief: "",
   designId: null,
+  designSerial: null,
   edits: [],
   activeEdit: -1,
   procError: null,

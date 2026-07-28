@@ -1,5 +1,5 @@
 import { he } from "@/i18n/he";
-import type { Design, Geometry, Profile, Version } from "./types";
+import type { Account, Design, Geometry, Profile, Version } from "./types";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // שכבת הקריאות לשרת. כל השגיאות מתורגמות ל-Error עם הודעה בעברית + code.
@@ -48,6 +48,10 @@ function messageFor(code: string): string {
   // דחיית ווקטורייזר היא תוצאה לגיטימית ולא תקלה — הרנדר לא עבר את שערי
   // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
   if (code === "vectorize_failed") return he.errVectorizeFailed;
+  if (code === "account_required") return he.errAccountRequired;
+  // מיגרציה שלא רצה. נוסח משלה, כי "משהו השתבש" שולח לחפש באג בקוד בזמן
+  // שמה שצריך הוא להריץ את המיגרציה בייצור.
+  if (code === "schema_outdated") return he.errSchemaOutdated;
   return he.errGeneric;
 }
 
@@ -140,10 +144,23 @@ async function pollJob(
 export const api = {
   profiles: () => call<{ profiles: Profile[] }>("/api/profiles"),
 
+  /** מי מחובר עכשיו בדפדפן הזה. null = טרם נרשם. */
+  account: () => call<{ account: Account | null }>("/api/account"),
+
+  signIn: (input: { name: string; email: string; phone?: string; company?: string }) =>
+    call<{ account: Account }>("/api/account", { method: "POST", body: JSON.stringify(input) }),
+
+  signOut: () => call<{ ok: true }>("/api/account", { method: "DELETE" }),
+
   designs: (profileId: string) =>
     call<{ designs: Design[] }>(`/api/designs?profileId=${encodeURIComponent(profileId)}`),
 
-  createDesign: (input: { profileId: string; productType: "bracelet" | "ring"; name?: string }) =>
+  /** העיצובים של החשבון המחובר — בלי פרמטר, הבעלות מהעוגייה. */
+  myDesigns: () => call<{ designs: Design[] }>("/api/designs"),
+
+  // בלי profileId: הבעלות נקבעת בשרת מהעוגייה של החשבון. הסטודיו הפנימי
+  // עדיין שולח profileId של בודק — ראו את ההערה בסכימה של המסלול.
+  createDesign: (input: { profileId?: string; productType: "bracelet" | "ring"; name?: string }) =>
     call<{ design: Design }>("/api/designs", { method: "POST", body: JSON.stringify(input) }),
 
   getDesign: (id: string) =>

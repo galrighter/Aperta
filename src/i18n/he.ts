@@ -97,6 +97,8 @@ export const he = {
   errGeneric: "משהו השתבש. נסו שוב.",
   errVectorizeFailed:
     "ההדמיה שיצאה לא הומרה לתבנית חיתוך נקייה. זה קורה לפעמים — אפשר לנסות שוב, או לנסח את התיאור מעט אחרת.",
+  errAccountRequired: "צריך להזדהות לפני היצירה.",
+  errSchemaOutdated: "המערכת עודכנה אבל מסד הנתונים לא. יש להריץ את מיגרציה 0008.",
   retry: "נסה שוב",
 
   // Validation messages by check id — הפרמטרים מוזרקים בקוד
@@ -298,7 +300,7 @@ export const he = {
     //  יצירת קשר עוברת דרך /contact; ההזמנה עצמה נסגרת בסוף משפך /design.)
 
     // אדמין (מוגן ב-ADMIN_TOKEN)
-    adminTitle: "ניהול פניות",
+    adminTitle: "בק־אופיס",
     adminLoginTitle: "כניסת מנהל",
     adminTokenLabel: "סיסמת ניהול",
     adminLogin: "כניסה",
@@ -319,6 +321,20 @@ export const he = {
     adminStatusClosed: "סגור",
     adminFilterAll: "הכול",
     adminLoadError: "טעינת הפניות נכשלה.",
+
+    // ---- לשונית העיצובים ----
+    adminTabInquiries: "פניות",
+    adminTabDesigns: "עיצובים",
+    adminDesignsEmpty: "אין עיצובים עדיין.",
+    adminDesignsError: "טעינת העיצובים נכשלה.",
+    adminDesignsSchema: "מסד הנתונים חסר את מיגרציה 0008 — הרשימה תתמלא אחרי שתרוץ.",
+    adminNoOwner: "ללא שיוך",
+    adminTesterBadge: "בודק",
+    adminVersions: "גרסאות",
+    adminNoPreview: "טרם הושלם",
+    adminMore: "טעינת עוד",
+    adminShowing: "מוצגים",
+    adminOf: "מתוך",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====
@@ -652,6 +668,26 @@ export const he = {
     savedLoadError: "טעינת העיצוב נכשלה.",
     savedCuts: "חיתוכים",
     savedNew: "התחלת עיצוב חדש",
+
+    // ---- זיהוי ----
+    acctTitle: "רגע לפני שמתחילים",
+    acctSubtitle:
+      "היצירה נשמרת על שמך — כדי שתוכלו לחזור אליה מכל מכשיר, וכדי שנדע למי לענות על הפידבק.",
+    acctName: "שם",
+    acctNamePh: "איך לפנות אליכם",
+    acctEmail: "אימייל",
+    acctPhone: "טלפון",
+    acctPhoneOpt: "לא חובה",
+    acctSubmit: "מתחילים",
+    acctSending: "רגע…",
+    acctError: "הזיהוי נכשל. נסו שוב.",
+    acctNote: "אין סיסמה. המייל הוא מה שמחזיר אתכם לעיצובים שלכם.",
+    acctSignedIn: "מחוברים כ־",
+    acctSwitch: "לא אתם?",
+    acctCancel: "לא עכשיו",
+
+    // ---- מספר העיצוב ----
+    codeLabel: "מספר עיצוב",
 
     // ---- כללי ----
     mm: "מ״מ",

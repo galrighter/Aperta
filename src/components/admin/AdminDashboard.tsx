@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { he } from "@/i18n/he";
 import type { Inquiry, InquiryStatus } from "@/lib/db/inquiries";
+import AdminDesigns from "./AdminDesigns";
 
 const s = he.site;
 
@@ -19,9 +20,11 @@ const statusColor: Record<InquiryStatus, string> = {
 };
 
 type Auth = "checking" | "in" | "out" | "disabled";
+type Tab = "inquiries" | "designs";
 
 export default function AdminDashboard() {
   const [auth, setAuth] = useState<Auth>("checking");
+  const [tab, setTab] = useState<Tab>("inquiries");
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
   const [token, setToken] = useState("");
@@ -141,28 +144,70 @@ export default function AdminDashboard() {
   // auth === "in"
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {(["", ...STATUSES] as const).map((f) => (
-            <button
-              key={f || "all"}
-              onClick={() => applyFilter(f)}
-              className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
-                filter === f
-                  ? "bg-graphite text-porcelain"
-                  : "bg-porcelain text-ink60 hover:bg-stonesoft"
-              }`}
-            >
-              {f === "" ? s.adminFilterAll : statusLabel[f]}
-            </button>
-          ))}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-graphite/10">
+        <div className="flex gap-6">
+          {([["inquiries", s.adminTabInquiries], ["designs", s.adminTabDesigns]] as const).map(
+            ([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                aria-current={tab === key ? "page" : undefined}
+                className={`-mb-px border-b-2 pb-2.5 text-sm transition-colors ${
+                  tab === key
+                    ? "border-b-graphite font-semibold text-graphite"
+                    : "border-b-transparent text-ink60 hover:text-graphite"
+                }`}
+              >
+                {label}
+              </button>
+            ),
+          )}
         </div>
-        <button
-          onClick={onLogout}
-          className="text-sm text-ink60 hover:text-graphite"
-        >
+        <button onClick={onLogout} className="pb-2.5 text-sm text-ink60 hover:text-graphite">
           {s.adminLogout}
         </button>
+      </div>
+
+      {tab === "designs" ? (
+        <AdminDesigns onAuthLost={setAuth} />
+      ) : (
+        <Inquiries
+          inquiries={inquiries}
+          filter={filter}
+          onFilter={applyFilter}
+          onStatus={changeStatus}
+          listError={listError}
+        />
+      )}
+    </div>
+  );
+}
+
+function Inquiries({
+  inquiries, filter, onFilter, onStatus, listError,
+}: {
+  inquiries: Inquiry[];
+  filter: InquiryStatus | "";
+  onFilter: (f: InquiryStatus | "") => void;
+  onStatus: (id: string, status: InquiryStatus) => void;
+  listError: string | null;
+}) {
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap gap-2">
+        {(["", ...STATUSES] as const).map((f) => (
+          <button
+            key={f || "all"}
+            onClick={() => onFilter(f)}
+            className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
+              filter === f
+                ? "bg-graphite text-porcelain"
+                : "bg-porcelain text-ink60 hover:bg-stonesoft"
+            }`}
+          >
+            {f === "" ? s.adminFilterAll : statusLabel[f]}
+          </button>
+        ))}
       </div>
 
       {listError && <p className="mb-4 text-sm text-red-600">{listError}</p>}
@@ -211,7 +256,7 @@ export default function AdminDashboard() {
                   <td className="py-3 pl-3">
                     <select
                       value={q.status}
-                      onChange={(e) => changeStatus(q.id, e.target.value as InquiryStatus)}
+                      onChange={(e) => onStatus(q.id, e.target.value as InquiryStatus)}
                       className={`rounded-[2px] px-3 py-1 text-xs font-medium ${statusColor[q.status]}`}
                     >
                       {STATUSES.map((st) => (

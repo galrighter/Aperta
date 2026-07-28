@@ -3,6 +3,7 @@
 // handoff §6 — שני מצבי תצוגה, סימון אזורים, בקשה למודל, יומן גרסאות,
 // כוונון מהיר ומצב ייצור. מצב הייצור מוזן מדוח הוולידציה האמיתי של המנוע.
 import { he } from "@/i18n/he";
+import { designCode } from "@/lib/designCode";
 import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, Slider, COBALT,
 } from "./ui";
@@ -53,6 +54,13 @@ export function ResultScreen({
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
       <Eyebrow>{d.resultEyebrow}</Eyebrow>
       <ScreenTitle>{s.imageRole === "ready" ? d.resultTitleReady : d.resultTitle}</ScreenTitle>
+
+      {/* המספר הסידורי, ליד העיצוב עצמו — זה מה שמוסרים כשמדברים עליו */}
+      {designCode(s.designSerial) && (
+        <p className="mt-2 font-display text-[12px] tracking-[0.14em] text-mist">
+          {d.codeLabel} <span className="text-cobalt" dir="ltr">{designCode(s.designSerial)}</span>
+        </p>
+      )}
 
       {/* מתג מצב תצוגה */}
       <div className="mb-6 mt-6 flex gap-2">
