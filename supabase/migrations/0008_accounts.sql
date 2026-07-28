@@ -78,3 +78,8 @@ begin
 end $$;
 
 create unique index if not exists idx_designs_serial on designs (serial);
+
+-- PostgREST עונה מתוך schema cache. בלי הרענון הזה `serial` ו-`kind` קיימים
+-- ב-Postgres וה-API עדיין מחזיר "Could not find ... in the schema cache" —
+-- בדיוק מה שקרה אחרי 0004/0005 והצריך את 0006.
+notify pgrst, 'reload schema';

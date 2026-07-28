@@ -46,16 +46,13 @@
 הסשן שמבצע את התוכנית **חייב להדריך את גל בכל שלב כאן ולחכות לאישור**, ולא
 להסתפק ברשימה. בלי אלה שום קוד לא יעבוד.
 
-### 1. להריץ את המיגרציות שלא רצו
+### 1. מיגרציות — כבר סגור, רק לוודא
 
-`0002`, `0003`, `0004` (ובהמשך `0005`). שתי דרכים:
+`SUPABASE_DB_URL` הוגדר ועובד מאז 27.7: ה-workflow "Apply Supabase migrations"
+מריץ את כל `supabase/migrations/` בסדר שמות על כל push ל-main. **אין כאן מה
+לעשות** — רק לוודא, אחרי כל merge שמוסיף מיגרציה, שההרצה עברה.
 
-- **המומלצת:** להוסיף secret בשם `SUPABASE_DB_URL` — מחרוזת של ה-**session
-  pooler** (`*.pooler.supabase.com`, פורט 5432, IPv4). החיבור הישיר
-  `db.<ref>.supabase.co` הוא IPv6-only ו-runners של GitHub Actions נכשלים עליו.
-  סיסמה עם תווים מיוחדים — percent-encoding. ואז workflow_dispatch על "Apply
-  Supabase migrations". מכאן והלאה כל מיגרציה תרוץ מעצמה.
-- **המהירה:** להדביק כל קובץ ב-SQL Editor, **לפי הסדר**.
+מיגרציית ה-auth (`0009`) תרוץ מעצמה באותו אופן.
 
 ### 2. `ADMIN_TOKEN`
 
@@ -116,7 +113,7 @@ key** מ-Project Settings → API).
 
 ## חלק ב' — מה הקוד צריך
 
-### 0005_auth.sql
+### 0009_auth.sql
 
 ```sql
 alter table profiles add column if not exists auth_user_id uuid
@@ -124,7 +121,13 @@ alter table profiles add column if not exists auth_user_id uuid
 
 create unique index if not exists idx_profiles_auth_user
   on profiles (auth_user_id) where auth_user_id is not null;
+
+-- PostgREST עונה מתוך schema cache; בלי זה העמודה קיימת וה-API לא רואה אותה.
+notify pgrst, 'reload schema';
 ```
+
+> מספור: `0001`–`0008` תפוסים. לבדוק `ls supabase/migrations/` לפני שבוחרים
+> מספר — הענף הזה כבר התנגש פעם אחת על `0004`.
 
 ### קישור בין `auth.users` ל-`profiles`
 

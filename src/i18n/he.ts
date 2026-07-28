@@ -98,7 +98,7 @@ export const he = {
   errVectorizeFailed:
     "ההדמיה שיצאה לא הומרה לתבנית חיתוך נקייה. זה קורה לפעמים — אפשר לנסות שוב, או לנסח את התיאור מעט אחרת.",
   errAccountRequired: "צריך להזדהות לפני היצירה.",
-  errSchemaOutdated: "המערכת עודכנה אבל מסד הנתונים לא. יש להריץ את מיגרציה 0004.",
+  errSchemaOutdated: "המערכת עודכנה אבל מסד הנתונים לא. יש להריץ את מיגרציה 0008.",
   retry: "נסה שוב",
 
   // Validation messages by check id — הפרמטרים מוזרקים בקוד
@@ -327,7 +327,7 @@ export const he = {
     adminTabDesigns: "עיצובים",
     adminDesignsEmpty: "אין עיצובים עדיין.",
     adminDesignsError: "טעינת העיצובים נכשלה.",
-    adminDesignsSchema: "מסד הנתונים חסר את מיגרציה 0004 — הרשימה תתמלא אחרי שתרוץ.",
+    adminDesignsSchema: "מסד הנתונים חסר את מיגרציה 0008 — הרשימה תתמלא אחרי שתרוץ.",
     adminNoOwner: "ללא שיוך",
     adminTesterBadge: "בודק",
     adminVersions: "גרסאות",

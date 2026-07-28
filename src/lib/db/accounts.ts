@@ -2,7 +2,7 @@ import { supabaseAdmin } from "./supabase";
 import { ApiError } from "@/lib/api";
 import type { ProductType } from "@/lib/fabrication.config";
 
-// חשבונות המשתמשים. יושבים ב-`profiles` — ראו את ההנמקה ב-0004_accounts.sql.
+// חשבונות המשתמשים. יושבים ב-`profiles` — ראו את ההנמקה ב-0008_accounts.sql.
 
 /**
  * שגיאת מסד → שגיאת API. הפרדה אחת חשובה: "העמודה לא קיימת" אינה תקלה אלא
@@ -14,7 +14,7 @@ function fail(error: { message: string }): never {
   if (/does not exist|schema cache/i.test(error.message)) {
     throw new ApiError(
       "schema_outdated",
-      "Database is missing migration 0004_accounts (accounts + design serial)",
+      "Database is missing migration 0008_accounts (accounts + design serial)",
       503,
     );
   }
@@ -69,7 +69,7 @@ export async function getAccount(id: string): Promise<AccountRow | null> {
     .eq("id", id)
     .maybeSingle();
 
-  // מסד שעוד לא קיבל את 0004. הסטודיו הפנימי לא תלוי בעמודות החדשות ואין
+  // מסד שעוד לא קיבל את 0008. הסטודיו הפנימי לא תלוי בעמודות החדשות ואין
   // סיבה להפיל אותו: שם כל פרופיל הוא בודק, וזה מה שהיה נכון גם קודם.
   // ההרשמה עצמה כן נופלת — ובקול, עם schema_outdated ולא עם 500.
   if (error && /does not exist|schema cache/i.test(error.message)) {
