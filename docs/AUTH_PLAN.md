@@ -68,7 +68,7 @@ POST /api/designs    → 401 account_required  (השער אוכף)
 
 ### 2. `ADMIN_TOKEN` — כבר סגור
 
-הוגדר ונפרס ב-28.7. `/api/inquiries` מחזיר `401` ולא `403 admin_disabled`, כלומר
+הוגדר ונפרס ב-28.7. `/api/inquiries` מחזיר `401` ולא `503 admin_disabled`, כלומר
 השער פעיל. אין כאן מה לעשות.
 
 לידיעה למי שמדביק secret חדש: `deploy.yml` דוחף סודות ל-Worker רק בזמן פריסה.
