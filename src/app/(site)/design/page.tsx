@@ -12,6 +12,7 @@ import {
   type SavedDesign,
 } from "@/lib/client/myDesigns";
 import { designCode } from "@/lib/designCode";
+import { SITE } from "@/lib/site.config";
 import type { Account } from "@/lib/client/types";
 import { StepRail } from "@/components/create/ui";
 import { ProductScreen } from "@/components/create/ProductScreen";
@@ -415,7 +416,7 @@ export default function DesignPage() {
 
   /* ===== שליחת ההזמנה ===== */
   const submitOrder = useCallback(async () => {
-    set({ sending: true, sendError: null });
+    set({ sending: true, sendError: null, sendMailto: null });
     const p = priceOf(s);
     const entry = activeEntry(s);
     const lines = [
@@ -453,7 +454,27 @@ export default function DesignPage() {
       setMaxReached(5);
       if (typeof window !== "undefined") window.scrollTo(0, 0);
     } catch {
-      set({ sending: false, sendError: d.checkoutError });
+      // ההזמנה לא הגיעה לשרת. במקום להשאיר את הלקוחה עם "נסו שוב" בלבד —
+      // שמשמעותו שכל מה שמילאה נעלם — נבנה `mailto:` עם אותן שורות בדיוק,
+      // כדי שיהיה מסלול שני שמגיע לבן אדם. לא מפנים אליו אוטומטית: מי שאין לו
+      // לקוח דואר מוגדר היה מאבד גם את המסך הזה.
+      const subject = `${d.orderMailSubject} ${
+        designCode(s.designSerial) ?? s.addr.name.trim()
+      }`.trim();
+      const body = [
+        ...lines,
+        "",
+        `שם: ${s.addr.name.trim()}`,
+        `טלפון: ${s.addr.phone.trim()}`,
+        `מייל: ${s.addr.email.trim()}`,
+      ].join("\n");
+      set({
+        sending: false,
+        sendError: d.checkoutError,
+        sendMailto: `mailto:${SITE.contactEmail}?subject=${encodeURIComponent(
+          subject,
+        )}&body=${encodeURIComponent(body)}`,
+      });
     }
   }, [s, set]);
 

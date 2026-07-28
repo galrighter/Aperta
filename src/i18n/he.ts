@@ -646,6 +646,9 @@ export const he = {
     checkoutSubmit: "שליחת ההזמנה",
     checkoutSending: "שולח...",
     checkoutError: "שליחת ההזמנה נכשלה. אפשר לנסות שוב.",
+    orderMailSubject: "הזמנה",
+    checkoutMailtoCta: "שליחת ההזמנה במייל",
+    checkoutMailtoNote: "או, כדי שההזמנה לא תלך לאיבוד — כל הפרטים כבר ממולאים:",
     requiredMark: "שדה חובה",
 
     // ---- מסך אישור ----

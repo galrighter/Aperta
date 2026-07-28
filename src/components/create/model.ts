@@ -119,6 +119,10 @@ export interface CreateState {
   addr: Addr;
   sending: boolean;
   sendError: string | null;
+  /** קישור `mailto:` עם ההזמנה המלאה, נבנה רק כשהשליחה נכשלה. בלעדיו הזמנה
+   *  שנפלה על שגיאת רשת פשוט נעלמת: הלקוחה מילאה הכול, ראתה "נסו שוב", ואין
+   *  לה — ולנו — שום עותק של מה שהיא ביקשה. */
+  sendMailto: string | null;
   orderNo: string | null;
 }
 
@@ -156,6 +160,7 @@ export const INITIAL: CreateState = {
   addr: { name: "", street: "", city: "", zip: "", phone: "", email: "" },
   sending: false,
   sendError: null,
+  sendMailto: null,
   orderNo: null,
 };
 

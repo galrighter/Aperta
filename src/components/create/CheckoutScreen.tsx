@@ -104,7 +104,20 @@ export function CheckoutScreen({
               </PrimaryBtn>
             </div>
             {s.sendError && (
-              <p className="mt-3 text-center text-[13px] text-[#c0413b]">{d.checkoutError}</p>
+              <div className="mt-3 text-center text-[13px]">
+                <p className="text-[#c0413b]">{s.sendError}</p>
+                {s.sendMailto && (
+                  <>
+                    <p className="mt-2 text-ink60">{d.checkoutMailtoNote}</p>
+                    <a
+                      href={s.sendMailto}
+                      className="mt-1 inline-block font-semibold text-graphite underline underline-offset-4 hover:text-cobalt"
+                    >
+                      {d.checkoutMailtoCta}
+                    </a>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>
