@@ -324,6 +324,8 @@ export const he = {
     adminStatusContacted: "טופל",
     adminStatusClosed: "סגור",
     adminFilterAll: "הכול",
+    adminFilterOrders: "הזמנות",
+    adminFilterContact: "יצירת קשר",
     adminLoadError: "טעינת הפניות נכשלה.",
 
     // ---- לשונית העיצובים ----
@@ -339,6 +341,14 @@ export const he = {
     adminMore: "טעינת עוד",
     adminShowing: "מוצגים",
     adminOf: "מתוך",
+    adminExport: "קבצי ייצור",
+    adminExporting: "מכין…",
+    adminExportSvg: "SVG לחיתוך",
+    adminExportDxf: "DXF",
+    adminExportWarn: "הגרסה עברה עם אזהרות — כדאי לבדוק לפני חיתוך.",
+    adminExportBlocked: "הגרסה נכשלה בוולידציה ואי אפשר לייצא אותה לחיתוך.",
+    adminExportNone: "אין גרסה מוכנה לייצוא.",
+    adminExportError: "הכנת הקבצים נכשלה.",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====

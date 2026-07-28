@@ -25,6 +25,11 @@ const ADMIN_ONLY = [
   join(API, "debug"),
   join(API, "llm-health"),
   join(API, "inquiries"),
+  // "מי עיצב מה" וקבצי הייצור שלו. הייצוא כאן מקבל מזהה עיצוב ובכל זאת אינו
+  // נבדק על בעלות (למטה) — בכוונה: הבק־אופיס מוריד עיצוב של לקוחה, כלומר
+  // עיצוב שאיש מהמסלולים המזוהים אינו הבעלים שלו. השער הוא ADMIN_TOKEN, והוא
+  // חייב להופיע בכל מסלול בתיקייה.
+  join(API, "admin/designs"),
 ];
 
 describe("admin-only API routes", () => {

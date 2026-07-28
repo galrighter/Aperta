@@ -56,13 +56,19 @@ export async function createInquiry(input: NewInquiry): Promise<Inquiry> {
   return data as Inquiry;
 }
 
-export async function listInquiries(status?: InquiryStatus): Promise<Inquiry[]> {
+export async function listInquiries(
+  status?: InquiryStatus,
+  kind?: InquiryKind,
+): Promise<Inquiry[]> {
   let q = supabaseAdmin()
     .from("inquiries")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(500);
   if (status) q = q.eq("status", status);
+  // הזמנה ופנייה חיות באותה טבלה, ורק `kind` מבדיל ביניהן. בלי הסינון הזה
+  // "הזמנות שבוצעו בפועל" הוא משהו שצריך לזהות בעין בתוך רשימה מעורבת.
+  if (kind) q = q.eq("kind", kind);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []) as Inquiry[];

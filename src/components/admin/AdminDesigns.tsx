@@ -135,6 +135,8 @@ export default function AdminDesigns({
               <div className="text-[12px] text-mist">
                 {r.versions} {s.adminVersions}
               </div>
+
+              <ExportFiles designId={r.id} hasVersion={r.svg !== null} />
             </div>
           </li>
         ))}
@@ -150,6 +152,73 @@ export default function AdminDesigns({
           {loading ? he.loading : s.adminMore}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * הורדת קבצי הייצור של עיצוב.
+ *
+ * זה מה שנחתך בפועל — המתאר של המתכת ב-DXF וב-SVG, במילימטרים — ולא ה-SVG
+ * שמוצג בכרטיס, שהוא תצוגה מקדימה של החיתוכים. הקישורים נחתמים לשעה ולכן הם
+ * מיוצרים בלחיצה ולא מראש.
+ */
+function ExportFiles({ designId, hasVersion }: { designId: string; hasVersion: boolean }) {
+  const [state, setState] = useState<"idle" | "busy" | "error" | "blocked" | "none">("idle");
+  const [files, setFiles] = useState<{ svgUrl: string; dxfUrl: string; warn: boolean } | null>(null);
+
+  async function run() {
+    setState("busy");
+    const res = await fetch(`/api/admin/designs/${designId}/export`, { method: "POST" });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
+      // "נכשל בוולידציה" ו"אין גרסה" הם מצבים שאפשר לעשות איתם משהו, בניגוד
+      // לתקלה — ולכן הם נאמרים בנפרד ולא כ"ההכנה נכשלה".
+      setState(
+        body?.error?.code === "export_blocked"
+          ? "blocked"
+          : body?.error?.code === "no_version"
+            ? "none"
+            : "error",
+      );
+      return;
+    }
+    const body = (await res.json()) as { svgUrl: string; dxfUrl: string; validationStatus: string };
+    setFiles({ svgUrl: body.svgUrl, dxfUrl: body.dxfUrl, warn: body.validationStatus === "warn" });
+    setState("idle");
+  }
+
+  if (!hasVersion) return null;
+
+  if (files) {
+    return (
+      <div className="mt-1 border-t border-graphite/10 pt-2">
+        <div className="flex flex-wrap gap-3 text-[13px]">
+          <a href={files.svgUrl} className="font-semibold text-cobalt hover:underline">
+            {s.adminExportSvg}
+          </a>
+          <a href={files.dxfUrl} className="font-semibold text-cobalt hover:underline">
+            {s.adminExportDxf}
+          </a>
+        </div>
+        {files.warn && <p className="mt-1 text-[12px] text-[#8a6d12]">{s.adminExportWarn}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1 border-t border-graphite/10 pt-2">
+      <button
+        type="button"
+        onClick={() => void run()}
+        disabled={state === "busy"}
+        className="text-[13px] text-cobalt hover:underline disabled:text-mist disabled:no-underline"
+      >
+        {state === "busy" ? s.adminExporting : s.adminExport}
+      </button>
+      {state === "blocked" && <p className="mt-1 text-[12px] text-[#c0413b]">{s.adminExportBlocked}</p>}
+      {state === "none" && <p className="mt-1 text-[12px] text-mist">{s.adminExportNone}</p>}
+      {state === "error" && <p className="mt-1 text-[12px] text-[#c0413b]">{s.adminExportError}</p>}
     </div>
   );
 }

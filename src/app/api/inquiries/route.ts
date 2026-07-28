@@ -7,6 +7,7 @@ import {
   listInquiries,
   countRecentFromEmail,
   type InquiryStatus,
+  type InquiryKind,
 } from "@/lib/db/inquiries";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { notifyMail, orderAckMail, type InquiryMail } from "@/lib/mailTemplates";
@@ -106,7 +107,9 @@ export async function GET(req: Request) {
     const statusParam = url.searchParams.get("status") as InquiryStatus | null;
     const valid: InquiryStatus[] = ["new", "contacted", "closed"];
     const status = statusParam && valid.includes(statusParam) ? statusParam : undefined;
-    const inquiries = await listInquiries(status);
+    const kindParam = url.searchParams.get("kind") as InquiryKind | null;
+    const kind = kindParam === "order" || kindParam === "contact" ? kindParam : undefined;
+    const inquiries = await listInquiries(status, kind);
     return NextResponse.json({ inquiries });
   } catch (err) {
     return handleRouteError(err);

@@ -14,7 +14,7 @@ import { signedUrl } from "@/lib/db/storage";
 
 export const maxDuration = 30;
 
-const NAMES = ["render", "conditioned", "overlay", "difference", "rendered"] as const;
+const NAMES = ["render", "input", "conditioned", "overlay", "difference", "rendered"] as const;
 type ImageName = (typeof NAMES)[number];
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string; name: string }> }) {
@@ -29,7 +29,11 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; nam
     if (!row) throw new ApiError("not_found", `Run ${id} not found`, 404);
 
     const path =
-      name === "render" ? row.render_path : ((row.stage_paths ?? {}) as RunStagePaths)[name as keyof RunStagePaths];
+      name === "render"
+        ? row.render_path
+        : name === "input"
+          ? row.input_image_path
+          : ((row.stage_paths ?? {}) as RunStagePaths)[name as keyof RunStagePaths];
     if (!path) throw new ApiError("not_found", `Run ${id} has no ${name}`, 404);
 
     return NextResponse.redirect(await signedUrl(path, 3600), 302);

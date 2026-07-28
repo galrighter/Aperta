@@ -4,7 +4,7 @@ import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl } from "@/lib/db/storage";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { generateRenderPng } from "@/lib/llm/imagegen";
+import { buildRenderPrompt, generateRenderPng } from "@/lib/llm/imagegen";
 import { vectorizeImageDebug } from "@/lib/vectorizer";
 import { persistRun } from "@/lib/runs/persist";
 import type { LlmImage } from "@/lib/llm/core";
@@ -55,6 +55,17 @@ export async function POST(req: Request) {
     let bytes: Uint8Array;
     let mediaType: string;
 
+    const dims = {
+      lengthMm: body.lengthMm ?? FAB.products[body.productType].defaultLengthMm,
+      widthMm: body.heightMm,
+      thicknessMm: body.thicknessMm ?? FAB.defaultThicknessMm,
+    };
+    // הפרומפט נבנה כאן ונשלח כ-override, כדי שמה שנשמר ליומן יהיה בדיוק
+    // המחרוזת שיצאה למודל ולא שחזור שלה.
+    const renderPrompt = body.image
+      ? null
+      : body.promptOverride?.trim() || buildRenderPrompt(body.prompt ?? "", body.productType, dims);
+
     if (body.image) {
       // מסלול תמונה: הקלט הוא כבר ההדמיה.
       const dec = decodeDataUrl(body.image.dataUrl);
@@ -69,12 +80,8 @@ export async function POST(req: Request) {
         body.prompt ?? "",
         inspiration,
         body.productType,
-        {
-          lengthMm: body.lengthMm ?? FAB.products[body.productType].defaultLengthMm,
-          widthMm: body.heightMm,
-          thicknessMm: body.thicknessMm ?? FAB.defaultThicknessMm,
-        },
-        body.promptOverride,
+        dims,
+        renderPrompt,
       );
       renderDataUrl = `data:${render.mediaType};base64,${render.base64}`;
       renderModel = render.model;
@@ -111,11 +118,25 @@ export async function POST(req: Request) {
       render: { bytes, mediaType, model: renderModel },
       vectorizer: result as Record<string, unknown>,
       error: runError,
+      renderPrompt,
+      inputs: {
+        productType: body.productType,
+        lengthMm: dims.lengthMm,
+        widthMm: dims.widthMm,
+        thicknessMm: dims.thicknessMm,
+        minHoleMm,
+        colorKey,
+        imageUpload: Boolean(body.image),
+        promptOverride: Boolean(body.promptOverride?.trim()),
+      },
     });
 
     return NextResponse.json({
       runId,
       render: renderDataUrl ? { dataUrl: renderDataUrl, model: renderModel } : null,
+      // הפרומפט חוזר עם התשובה כדי שהמסך יוכל להראות מה נשלח בלי סיבוב נוסף
+      // ליומן. זו אותה מחרוזת שנשמרה בשורה.
+      renderPrompt,
       result,
     });
   } catch (err) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
-import { listRuns, type RunStagePaths } from "@/lib/db/runs";
+import { listRuns, ownersByDesign, type RunStagePaths } from "@/lib/db/runs";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 
@@ -39,6 +39,24 @@ export async function GET(req: Request) {
     // עכשיו הוא היה פתוח לכל מי שידע את הכתובת.
     requireAdmin(req);
     const rows = await listRuns(80);
+
+    // ניסיון שלא הגיע לשורת הרצה. בלעדיו יצירה שנקטעה נעדרת מהיומן לגמרי,
+    // ו"אין שורה" נראה בדיוק כמו "לא היה ניסיון" — המקרה היחיד שאי אפשר לאבחן.
+    let orphans: OrphanItem[] = [];
+    try {
+      orphans = orphanJobs(await listRecentJobs(80), rows);
+    } catch (e) {
+      // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
+      console.error("orphan job lookup failed:", (e as Error).message);
+    }
+
+    // הבעלים של כל שורה, בשאילתה אחת לכל היומן — כדי שאפשר יהיה לקבץ אותו לפי
+    // משתמש ולא רק לפי זמן. גם ניסיון שנקטע מקבל שיוך: שם הוא הכי נחוץ.
+    const owners = await ownersByDesign(
+      [...rows.map((r) => r.design_id), ...orphans.map((o) => o.designId)].filter(
+        (v): v is string => !!v,
+      ),
+    );
     const items = rows.map((r) => {
       const stages = (r.stage_paths ?? {}) as RunStagePaths;
       const image = (name: string) => `/api/debug/log/${r.id}/image/${name}`;
@@ -54,6 +72,12 @@ export async function GET(req: Request) {
         durationMs: r.duration_ms,
         renderModel: r.render_model,
         renderUrl: r.render_path ? image("render") : null,
+        /** מה שהמשתמש צירף בעצמו — נפרד מההדמיה שנוצרה ממנו. */
+        inputImageUrl: r.input_image_path ? image("input") : null,
+        /** המאפיינים שקבעו את ההרצה. הפרומפט המלא כבד ונטען רק בפתיחה. */
+        inputs: r.inputs ?? null,
+        owner: (r.design_id && owners.get(r.design_id)) || null,
+        designId: r.design_id,
         stages: {
           conditioned: stages.conditioned ? image("conditioned") : null,
           overlay: stages.overlay ? image("overlay") : null,
@@ -66,17 +90,12 @@ export async function GET(req: Request) {
         debug: slimDebug(r.debug),
       };
     });
-    // ניסיון שלא הגיע לשורת הרצה. בלעדיו יצירה שנקטעה נעדרת מהיומן לגמרי,
-    // ו"אין שורה" נראה בדיוק כמו "לא היה ניסיון" — המקרה היחיד שאי אפשר לאבחן.
-    let orphans: OrphanItem[] = [];
-    try {
-      orphans = orphanJobs(await listRecentJobs(80), rows);
-    } catch (e) {
-      // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
-      console.error("orphan job lookup failed:", (e as Error).message);
-    }
+    const withOwners = orphans.map((o) => ({
+      ...o,
+      owner: (o.designId && owners.get(o.designId)) || null,
+    }));
 
-    const merged = [...items, ...orphans].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const merged = [...items, ...withOwners].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return NextResponse.json({ items: merged });
   } catch (err) {
     return handleRouteError(err);
