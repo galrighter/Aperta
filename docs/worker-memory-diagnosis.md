@@ -120,7 +120,35 @@ round-trip ולא ולו בייט אחד של תקציב. מה שכן נותן �
 **אחרי הפריסה, המרחק מהתקרה של `forme-studio` חייב לגדול.** אם לא — התיקון
 לא עבד, ולא צריך לחכות ללקוח שיספר.
 
-מה שנשאר פתוח: `forme-frame` הוא isolate אחד שמשרת את כל הבקשות שלו, ולכן
+### הבייסליין הנמדד (28.7, 21:12Z — שעה לפני ש-`forme-frame` עלה)
+
+```
+isolate memory headroom (ceiling 128MB):
+forme-studio   worst P99 135.4MB   worst P999 135.4MB   -7.4 MB to spare
+willit-web     worst P99  65.6MB   worst P999  65.6MB   62.4 MB to spare
+```
+
+`forme-studio` נוגע בתקרה ועובר אותה; `willit-web`, באותו חשבון ובאותן שעות,
+יושב על חצי ממנה. זה המספר שמולו נמדדת הפריסה של 21:13Z.
+
+**ומה שהנתונים תיקנו — הבקשה שנהרגת היא לא בהכרח זו שהעמיסה.** שורות
+ההרוגים מראות זיכרון **נמוך**: 48.4MB ב-04:00Z, 69.6MB ב-08:00Z, 60.5MB
+ב-17:00Z. מי שנגע ב-135.4MB (19:00Z, 266 בקשות) דווקא **הצליח**. התיעוד מסביר
+בדיוק את זה: *"When an isolate exceeds 128 MB, the Workers runtime lets
+in-flight requests complete and creates a new isolate for subsequent requests.
+During extremely high load, the runtime may cancel some incoming requests."*
+כלומר ההרוג הוא **קורבן** של isolate שכבר היה מעל — לא בהכרח מי שמילא אותו.
+
+זה גם מיישב את `reqs=1`: בקשה בודדת יכולה להיהרג בלי שהיא עצמה חרגה, ולכן
+"בקשה יחידה" מעולם לא הייתה ראיה נגד זיכרון. וזה מחזק דווקא את כיוון התיקון —
+מה שצריך לרדת הוא הזיכרון של ה-isolate **המשותף**, לא של בקשה אחת.
+
+הערה למי שקורא את הפלט: הסטטוס שחוזר מה-GraphQL הוא עדיין `exceededResources`,
+למרות שהתיעוד מדבר על `exceededMemory`/`exceededCpu`.
+
+### מה שנשאר פתוח
+
+`forme-frame` הוא isolate אחד שמשרת את כל הבקשות שלו, ולכן
 המסגור נקרא **סדרתית** — ארבע קריאות במקביל היו משחזרות שם את אותה בעיה.
 ואם ה-binding חסר או נכשל, הקוד נופל למסגור מקומי (`frameClient.ts`): יצירה
 לא נופלת, אבל הסיכון הישן חוזר — ולכן זה נרשם ל-console.
