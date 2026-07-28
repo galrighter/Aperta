@@ -1,0 +1,70 @@
+name: Diagnose Worker invocations
+
+# למה זה קיים: לקוח קיבל "unknown · 503" על יצירה, וכל מסלול שגיאה בקוד שלנו
+# כותב שורה ליומן ומחזיר קוד — ואף שורה לא נכתבה. כלומר ה-isolate נהרג, ולא
+# האפליקציה ענתה. מי שיודע למה הוא Cloudflare, לא אנחנו: workersInvocationsAdaptive
+# מפרק את ההרצות לפי status (exceededCpu / exceededMemory / scriptThrewException /
+# clientDisconnected / canceled), וזה ההבדל בין תקרת מעבד, תקרת זיכרון, וחיבור
+# שנסגר. בלי זה כל אבחון כאן הוא ניחוש.
+#
+# מריצים ידנית. מדפיס מצרפים בלבד — לא תוכן בקשות.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "כמה שעות אחורה"
+        default: "24"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/diagnose-worker.yml"
+
+jobs:
+  query:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Cloudflare why the invocations ended
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HOURS: ${{ github.event.inputs.hours || '24' }}
+        run: |
+          set -u
+          if [ -z "${CF_TOKEN:-}" ] || [ -z "${CF_ACCOUNT:-}" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are not set"
+            exit 1
+          fi
+          SINCE=$(date -u -d "-${HOURS} hours" +%Y-%m-%dT%H:%M:%SZ)
+          UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "window: $SINCE .. $UNTIL"
+
+          jq -n --arg acct "$CF_ACCOUNT" --arg since "$SINCE" --arg until "$UNTIL" '{
+            query: "query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}dimensions{datetimeHour scriptName status}}}}}",
+            variables: { acct: $acct, since: $since, until: $until }
+          }' > /tmp/q.json
+
+          curl -sS https://api.cloudflare.com/client/v4/graphql \
+            -H "authorization: Bearer $CF_TOKEN" \
+            -H "content-type: application/json" \
+            --data @/tmp/q.json > /tmp/r.json
+
+          if ! jq -e '.data.viewer.accounts[0].workersInvocationsAdaptive' /tmp/r.json >/dev/null 2>&1; then
+            echo "::error::query did not return data — the token may lack Account Analytics: Read"
+            jq -c '.errors // .' /tmp/r.json
+            exit 1
+          fi
+
+          echo
+          echo "hour                 script         status                requests  errors"
+          jq -r '.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                 | [.dimensions.datetimeHour, .dimensions.scriptName, .dimensions.status,
+                    (.sum.requests|tostring), (.sum.errors|tostring)]
+                 | @tsv' /tmp/r.json | column -t
+
+          echo
+          echo "totals by status:"
+          jq -r '[.data.viewer.accounts[0].workersInvocationsAdaptive[]]
+                 | group_by(.dimensions.status)
+                 | map({status: .[0].dimensions.status, requests: (map(.sum.requests)|add)})
+                 | sort_by(-.requests)[] | "\(.status)\t\(.requests)"' /tmp/r.json | column -t
