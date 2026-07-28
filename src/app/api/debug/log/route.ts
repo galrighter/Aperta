@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
+import { requireAdmin } from "@/lib/admin";
 import { listRuns, type RunStagePaths } from "@/lib/db/runs";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
@@ -32,8 +33,11 @@ function slimDebug(debug: unknown): unknown {
   return { ...d, candidates };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    // היומן נושא טקסט חופשי שלקוחות כתבו, את הפרומפט המלא ואת ההדמיות. עד
+    // עכשיו הוא היה פתוח לכל מי שידע את הכתובת.
+    requireAdmin(req);
     const rows = await listRuns(80);
     const items = rows.map((r) => {
       const stages = (r.stage_paths ?? {}) as RunStagePaths;

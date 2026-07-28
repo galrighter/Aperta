@@ -122,6 +122,10 @@ export const he = {
     brand: "RM JEWEL",
     brandHe: "אר. אם. ג'ואל",
     tagline: "Precision jewelry, formed around you.",
+    /** הכותרת של האתר — מה שרואים בתוצאת חיפוש, בטאב ובשיתוף בוואטסאפ.
+     *  נפרדת מ-`tagline` בכוונה: הטאגליין נשאר האנגלית של המותג בפוטר, אבל
+     *  אתר `lang="he"` שכל כותרותיו אנגליות אינו מופיע בחיפוש עברי. */
+    titleHe: "RM JEWEL — תכשיטים בעיצוב אישי",
 
     // ניווט
     navHome: "בית",
@@ -642,6 +646,9 @@ export const he = {
     checkoutSubmit: "שליחת ההזמנה",
     checkoutSending: "שולח...",
     checkoutError: "שליחת ההזמנה נכשלה. אפשר לנסות שוב.",
+    orderMailSubject: "הזמנה",
+    checkoutMailtoCta: "שליחת ההזמנה במייל",
+    checkoutMailtoNote: "או, כדי שההזמנה לא תלך לאיבוד — כל הפרטים כבר ממולאים:",
     requiredMark: "שדה חובה",
 
     // ---- מסך אישור ----

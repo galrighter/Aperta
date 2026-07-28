@@ -9,7 +9,9 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/admin"],
+        // `/debug` מוגן ב-`requireAdmin`; זו הקשחה משנית בלבד — robots הוא בקשה
+        // מנומסת לזחלן, לא הגנה.
+        disallow: ["/api/", "/admin", "/debug"],
       },
     ],
     sitemap: `${SITE.url}/sitemap.xml`,

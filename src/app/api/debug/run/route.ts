@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
+import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl } from "@/lib/db/storage";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { generateRenderPng } from "@/lib/llm/imagegen";
@@ -31,6 +32,15 @@ const schema = z.object({
 const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: Request) {
+  // השער נבדק לפני ה-try, ובכוונה: ה-catch שלמטה כותב שורת הרצה על כל כשל, ולכן
+  // בדיקה בתוכו הייתה משאירה שורת יומן לכל בקשה לא מורשית — כלומר נותנת לזר
+  // לכתוב למסד. כאן בקשה בלי הרשאה נעצרת בלי לגעת בכלום.
+  try {
+    requireAdmin(req);
+  } catch (err) {
+    return handleRouteError(err);
+  }
+
   const runId = crypto.randomUUID();
   const startedAt = Date.now();
 

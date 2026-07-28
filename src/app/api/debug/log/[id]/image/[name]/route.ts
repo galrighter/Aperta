@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
+import { requireAdmin } from "@/lib/admin";
 import { getRun, type RunStagePaths } from "@/lib/db/runs";
 import { signedUrl } from "@/lib/db/storage";
 
@@ -16,8 +17,10 @@ export const maxDuration = 30;
 const NAMES = ["render", "conditioned", "overlay", "difference", "rendered"] as const;
 type ImageName = (typeof NAMES)[number];
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string; name: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string; name: string }> }) {
   try {
+    // בלי השער הזה כתובת חתומה להדמיה של לקוחה מונפקת לכל מי שמבקש.
+    requireAdmin(req);
     const { id, name } = await ctx.params;
     if (!NAMES.includes(name as ImageName)) {
       throw new ApiError("bad_request", `Unknown image ${name}`, 400);

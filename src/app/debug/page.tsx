@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AdminGate } from "@/components/admin/AdminGate";
 
 // בק־אופיס לתכנון: מריץ את כל הצינור (הדמיה → קונדישנינג → טרייס → החלקה →
 // שערי נאמנות) ומציג כל שלב וכל קובץ, עם סימון נקודות כשל. כל הרצה נשמרת ליומן.
+//
+// מאחורי אותו שער של `/admin`: כאן יושבים הפרומפטים המלאים, ההדמיות והטקסט
+// החופשי שלקוחות כתבו. השער האמיתי הוא `requireAdmin` על מסלולי ה-API —
+// העטיפה כאן היא כדי שהעמוד יציג טופס כניסה במקום יומן ריק.
 
 type Stage = { name: string; status: string; detail: string };
 type Candidate = {
@@ -70,6 +75,14 @@ function fileToDataUrl(f: File): Promise<string> {
 }
 
 export default function DebugPage() {
+  return (
+    <AdminGate>
+      <DebugConsole />
+    </AdminGate>
+  );
+}
+
+function DebugConsole() {
   const [prompt, setPrompt] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
