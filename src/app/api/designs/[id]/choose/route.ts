@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody } from "@/lib/api";
-import { getDesign } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
 import { ingestCutouts } from "@/lib/vectorizer";
 
 // בחירת מועמד. /api/generate מחזיר כמה הצעות ושומר את הטובה ביותר כגרסה;
@@ -22,8 +22,8 @@ const schema = z.object({
 export async function POST(req: Request, { params }: Params) {
   try {
     const { id } = await params;
+    const design = await requireDesignAccess(req, id);
     const body = await parseBody(req, schema);
-    const design = await getDesign(id);
 
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,

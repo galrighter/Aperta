@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { supabaseAdmin, STORAGE_BUCKET } from "@/lib/db/supabase";
-import { getDesign, getVersion } from "@/lib/db/designs";
+import { getVersion } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
 import { uploadFile } from "@/lib/db/storage";
 import { normalizeSvg } from "@/lib/geometry/normalize";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
   try {
     const body = await parseBody(req, schema);
     const version = await getVersion(body.versionId);
-    const design = await getDesign(version.design_id);
+    const design = await requireDesignAccess(req, version.design_id);
 
     if (version.validation_status === "fail") {
       throw new ApiError("export_blocked", "Cannot export a design with validation failures", 409);

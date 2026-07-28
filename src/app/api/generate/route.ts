@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { getDesign, countTodayGenerations } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
@@ -64,9 +65,13 @@ export async function POST(req: Request) {
     const body = await parseBody(req, schema);
     designId = body.designId;
     userPrompt = body.userPrompt;
-    // האימותים שהלקוחה צריכה לדעת עליהם מיד — עיצוב קיים, מכסה יומית, תמונות
-    // תקינות — נשארים סינכרוניים. אין טעם להחזיר job שכבר ידוע שייכשל.
-    const design = await getDesign(body.designId);
+    // האימותים שהלקוחה צריכה לדעת עליהם מיד — בעלות, עיצוב קיים, מכסה יומית,
+    // תמונות תקינות — נשארים סינכרוניים. אין טעם להחזיר job שכבר ידוע שייכשל.
+    //
+    // הבעלות היא הראשונה שנבדקת, והיא היחידה שעולה כסף: יצירה היא הרצת מנוע,
+    // והמכסה נספרת על הפרופיל של העיצוב. בלי הבדיקה הזו מזהה עיצוב של חבר היה
+    // מספיק כדי לשרוף את המכסה שלו — ואת התקציב שלנו.
+    const design = await requireDesignAccess(req, body.designId);
     const used = await countTodayGenerations(design.profile_id);
     if (used >= FAB.DAILY_GENERATION_LIMIT) {
       throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);

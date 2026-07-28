@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
 import { getJob, JOB_STALE_MS } from "@/lib/db/jobs";
+import { requireDesignAccess } from "@/lib/designAccess";
 
 // מצב בקשת יצירה. הלקוחה מושכת מכאן עד ש-status אינו 'running'.
 //
@@ -9,11 +10,15 @@ import { getJob, JOB_STALE_MS } from "@/lib/db/jobs";
 
 type Params = { params: Promise<{ jobId: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   try {
     const { jobId } = await params;
     const job = await getJob(jobId);
     if (!job) throw new ApiError("not_found", "Unknown generation job", 404);
+    // התוצאה של הרצה שהסתיימה היא העיצוב עצמו, ולכן אותה בעלות בדיוק. שורה
+    // בלי design_id היא הרצה שנכשלה לפני שהספיקה להיקשר לעיצוב — אין בה מה
+    // לשמור עליו מלבד הודעת שגיאה.
+    if (job.design_id) await requireDesignAccess(req, job.design_id);
 
     if (job.status === "done") {
       return NextResponse.json({ status: "done", result: job.result });

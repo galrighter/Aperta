@@ -2,14 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
-import { getDesign, listVersions } from "@/lib/db/designs";
+import { listVersions } from "@/lib/db/designs";
+import { assertDesignAccess, requireDesignAccess } from "@/lib/designAccess";
 
 type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   try {
     const { id } = await params;
-    const design = await getDesign(id);
+    const design = await requireDesignAccess(req, id);
     const versions = await listVersions(id);
     const current = versions.find((v) => v.id === design.current_version_id) ?? null;
     return NextResponse.json({ design, currentVersion: current, versions });
@@ -30,6 +31,7 @@ const patchSchema = z.object({
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const { id } = await params;
+    await requireDesignAccess(req, id);
     const body = await parseBody(req, patchSchema);
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (body.name !== undefined) update.name = body.name;
@@ -63,9 +65,10 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   try {
     const { id } = await params;
+    await requireDesignAccess(req, id);
     const sb = supabaseAdmin();
     // exports מפנה גם ל-designs וגם ל-versions בלי cascade — מוחקים קודם
     const { error: exErr } = await sb.from("exports").delete().eq("design_id", id);

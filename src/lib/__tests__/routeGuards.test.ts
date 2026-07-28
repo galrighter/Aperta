@@ -42,3 +42,23 @@ describe("admin-only API routes", () => {
     },
   );
 });
+
+/** מסלולים שמקבלים מזהה של עיצוב קיים (ישירות, או דרך גרסה/הרצה) ולכן חייבים
+ *  לבדוק בעלות. מזהה עיצוב אינו סוד — הוא עובר בכתובות, ביומנים ובקישורים. */
+const OWNERSHIP_ROUTES = [
+  "designs/[id]/route.ts",
+  "designs/[id]/choose/route.ts",
+  "designs/[id]/duplicate/route.ts",
+  "generate/route.ts",
+  "generate/[jobId]/route.ts",
+  "vectorize/route.ts",
+  "export/route.ts",
+];
+
+describe("routes that take a design id", () => {
+  it.each(OWNERSHIP_ROUTES)("%s resolves ownership", (rel) => {
+    expect(readFileSync(join(API, rel), "utf8")).toMatch(
+      /requireDesignAccess\(req,|assertDesignAccess\(req,/,
+    );
+  });
+});
