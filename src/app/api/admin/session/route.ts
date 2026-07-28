@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseBody, handleRouteError, ApiError } from "@/lib/api";
-import { checkAdminToken, adminConfigured, adminCookieHeader } from "@/lib/admin";
+import { checkAdminToken, adminConfigured, adminCookieHeader, requireAdmin } from "@/lib/admin";
 
 const loginSchema = z.object({ token: z.string().min(1).max(500) });
 
 const WEEK = 7 * 24 * 60 * 60;
+
+/** "האם אני מחובר?" — 200 / 401 / 503, בלי גוף ובלי לגעת במסד.
+ *  קיים כדי שעמוד מוגן יוכל להחליט אם להציג טופס כניסה בלי למשוך קודם את
+ *  המידע שהוא מגן עליו. */
+export async function GET(req: Request) {
+  try {
+    requireAdmin(req);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
 
 export async function POST(req: Request) {
   try {

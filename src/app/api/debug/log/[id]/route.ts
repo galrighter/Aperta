@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
+import { requireAdmin } from "@/lib/admin";
 import { getRun } from "@/lib/db/runs";
 
 // הפירוט המלא של הרצה אחת — ה-SVG הסופי וה-SVG של כל 13 המועמדים.
@@ -7,8 +8,9 @@ import { getRun } from "@/lib/db/runs";
 
 export const maxDuration = 60;
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
+    requireAdmin(req);
     const { id } = await ctx.params;
     const row = await getRun(id);
     // ליומן יש עכשיו גם שורות של ניסיון שנקטע — לאלה אין הרצה, ולכן אין פירוט.

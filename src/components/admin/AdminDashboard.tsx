@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { he } from "@/i18n/he";
 import type { Inquiry, InquiryStatus } from "@/lib/db/inquiries";
 import AdminDesigns from "./AdminDesigns";
+import { AdminLogin, type AdminAuth } from "./AdminGate";
 
 const s = he.site;
 
@@ -19,7 +20,7 @@ const statusColor: Record<InquiryStatus, string> = {
   closed: "bg-stonesoft text-ink60",
 };
 
-type Auth = "checking" | "in" | "out" | "disabled";
+type Auth = AdminAuth;
 type Tab = "inquiries" | "designs";
 
 export default function AdminDashboard() {
@@ -27,8 +28,6 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("inquiries");
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
-  const [token, setToken] = useState("");
-  const [loginError, setLoginError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
 
   const load = useCallback(async (status: InquiryStatus | "") => {
@@ -56,26 +55,6 @@ export default function AdminDashboard() {
     void load("");
   }, [load]);
 
-  async function onLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoginError(null);
-    const res = await fetch("/api/admin/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token }),
-    });
-    if (res.status === 503) {
-      setAuth("disabled");
-      return;
-    }
-    if (!res.ok) {
-      setLoginError(s.adminBadToken);
-      return;
-    }
-    setToken("");
-    await load(filter);
-  }
-
   async function onLogout() {
     await fetch("/api/admin/session", { method: "DELETE" });
     setInquiries([]);
@@ -100,45 +79,8 @@ export default function AdminDashboard() {
     void load(f);
   }
 
-  if (auth === "checking") {
-    return <p className="text-ink60">{he.loading}</p>;
-  }
-
-  if (auth === "disabled") {
-    return (
-      <p className="rounded-[2px] border border-graphite/10 bg-porcelain p-4 text-sm text-ink60">
-        {s.adminDisabled}
-      </p>
-    );
-  }
-
-  if (auth === "out") {
-    return (
-      <form onSubmit={onLogin} className="mx-auto mt-8 flex max-w-sm flex-col gap-4">
-        <h2 className="text-lg font-semibold text-graphite">{s.adminLoginTitle}</h2>
-        <div>
-          <label htmlFor="admin-token" className="mb-1 block text-sm font-medium text-ink80">
-            {s.adminTokenLabel}
-          </label>
-          <input
-            id="admin-token"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm outline-none focus:border-[#315bff] focus:ring-2 focus:ring-[#315bff]/20"
-            dir="ltr"
-            autoComplete="current-password"
-          />
-        </div>
-        {loginError && <p className="text-sm text-red-600">{loginError}</p>}
-        <button
-          type="submit"
-          className="rounded-[2px] bg-graphite px-6 py-3 text-sm font-medium text-porcelain hover:bg-graphite/90"
-        >
-          {s.adminLogin}
-        </button>
-      </form>
-    );
+  if (auth !== "in") {
+    return <AdminLogin auth={auth} onAuthed={() => load(filter)} />;
   }
 
   // auth === "in"
