@@ -165,11 +165,21 @@ export default function DesignPage() {
     if (typeof window !== "undefined") window.scrollTo(0, 0);
 
     try {
+      // "נסה שוב" חוזר לכאן. עיצוב שכבר נוצר ועוד אין לו גרסה הוא בדיוק
+      // המקום שאליו היצירה אמורה לנחות — אחרת כל לחיצה מייצרת עיצוב נוסף.
+      // לקוח שלחץ ארבע פעמים אחרי כשל השאיר ארבעה עיצובים ריקים ברשימה.
+      const reuse = s.designId && s.edits.length === 0 ? s.designId : null;
+
       // בלי profileId: הבעלות נקבעת בשרת לפי העוגייה של החשבון.
-      const { design } = await api.createDesign({
-        productType: st.product ?? "bracelet",
-        name: `${st.product === "ring" ? he.ring : he.bracelet} · ${Math.round(circumferenceMm(st))}${d.mm}`,
-      });
+      const design = reuse
+        ? { id: reuse, serial: s.designSerial }
+        : (
+            await api.createDesign({
+              productType: st.product ?? "bracelet",
+              name: `${st.product === "ring" ? he.ring : he.bracelet} · ${Math.round(circumferenceMm(st))}${d.mm}`,
+            })
+          ).design;
+      // המידות נשלחות בכל מקרה: הן יכולות להשתנות בין ניסיון לניסיון.
       await api.patchDesign(design.id, {
         lengthMm: stripLengthMm(st),
         widthMm: widthOf(st),
