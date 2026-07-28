@@ -2,10 +2,17 @@ name: Diagnose Worker invocations
 
 # למה זה קיים: לקוח קיבל "unknown · 503" על יצירה, וכל מסלול שגיאה בקוד שלנו
 # כותב שורה ליומן ומחזיר קוד — ואף שורה לא נכתבה. כלומר ה-isolate נהרג, ולא
-# האפליקציה ענתה. מי שיודע למה הוא Cloudflare, לא אנחנו: workersInvocationsAdaptive
-# מפרק את ההרצות לפי status (exceededCpu / exceededMemory / scriptThrewException /
-# clientDisconnected / canceled), וזה ההבדל בין תקרת מעבד, תקרת זיכרון, וחיבור
-# שנסגר. בלי זה כל אבחון כאן הוא ניחוש.
+# האפליקציה ענתה. מי שיודע למה הוא Cloudflare, לא אנחנו.
+#
+# ההרצה הראשונה (28.7) כבר ענתה: forme-studio, שעה 08:00Z, status
+# exceededResources, 8 בקשות ו-8 שגיאות — בדיוק הניסיון של הלקוח וארבע
+# הלחיצות על "נסה שוב" אחריו. עוד אחת ב-04:00Z. מול 1770 הצלחות באותן 24 שעות.
+#
+# מה שנשאר: exceededResources הוא דלי אחד שמכסה גם תקרת CPU (30 שניות בלי
+# limits.cpu_ms) וגם תקרת זיכרון (128MB, לא ניתנת להגדלה), ו-Cloudflare לא
+# מפריד ביניהם בממד הזה. cpuTime לפי אחוזונים כן מפריד: status הוא ממד, ולכן
+# לשורת ההרצות שנהרגו יש מדידת CPU משלה. קרוב ל-30 שניות = מעבד; נמוך = זיכרון.
+# ההבדל קובע את התיקון, ובלעדיו כל צעד הבא הוא ניחוש.
 #
 # מריצים ידנית. מדפיס מצרפים בלבד — לא תוכן בקשות.
 
@@ -40,7 +47,7 @@ jobs:
           echo "window: $SINCE .. $UNTIL"
 
           jq -n --arg acct "$CF_ACCOUNT" --arg since "$SINCE" --arg until "$UNTIL" '{
-            query: "query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}dimensions{datetimeHour scriptName status}}}}}",
+            query: "query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99}dimensions{datetimeHour scriptName status}}}}}",
             variables: { acct: $acct, since: $since, until: $until }
           }' > /tmp/q.json
 
@@ -56,11 +63,21 @@ jobs:
           fi
 
           echo
-          echo "hour                 script         status                requests  errors"
+          echo "hour script status requests errors cpuP50us cpuP99us" | tr ' ' '\t'
           jq -r '.data.viewer.accounts[0].workersInvocationsAdaptive[]
                  | [.dimensions.datetimeHour, .dimensions.scriptName, .dimensions.status,
-                    (.sum.requests|tostring), (.sum.errors|tostring)]
+                    (.sum.requests|tostring), (.sum.errors|tostring),
+                    (.quantiles.cpuTimeP50|tostring), (.quantiles.cpuTimeP99|tostring)]
                  | @tsv' /tmp/r.json | column -t
+
+          # השורה שמכריעה: כמה CPU נצרך בהרצות שנהרגו. תקרת ה-CPU היא 30 שניות
+          # (‎30,000,000µs) כשאין limits.cpu_ms בקונפיג. אם הערך שם קרוב לתקרה —
+          # זו תקרת מעבד. אם הוא נמוך — נגמר הזיכרון (128MB, לא ניתן להגדלה).
+          echo
+          echo "the kills, and what they had burned:"
+          jq -r '.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                 | select(.dimensions.status != "success")
+                 | "\(.dimensions.datetimeHour)  \(.dimensions.scriptName)  \(.dimensions.status)  reqs=\(.sum.requests)  cpuP50=\(.quantiles.cpuTimeP50)us  cpuP99=\(.quantiles.cpuTimeP99)us"' /tmp/r.json
 
           echo
           echo "totals by status:"
