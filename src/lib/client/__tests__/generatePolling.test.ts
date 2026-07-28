@@ -92,6 +92,44 @@ describe("generate — start and poll", () => {
   });
 });
 
+describe("generate — the isolate died holding the answer", () => {
+  it("recovers the result behind a bodyless 503", async () => {
+    // Cloudflare הורג את ה-isolate *אחרי* שהצינור סיים; finishJob כבר נכתב,
+    // אז התוצאה קיימת — רק המשלוח לא שרד. לזרוק כאן מוחק יצירה שהצליחה.
+    fetchMock
+      .mockResolvedValueOnce(new Response("error code: 1102", { status: 503 }))
+      .mockResolvedValueOnce(json({ status: "done", result: RESULT }));
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+  });
+
+  it("recovers a result whose 200 body was cut off", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("{\"version\":", { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(json({ status: "done", result: RESULT }));
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+  });
+
+  it("reports the original failure when there is no result to recover", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("error code: 1102", { status: 503 }))
+      .mockResolvedValueOnce(json({ error: { code: "not_found" } }, 404));
+
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).status).toBe(503);
+  });
+
+  it("does not go looking after a real server rejection", async () => {
+    // 4xx עם קוד הוא פסק דין של הקוד שלנו, לא isolate שמת.
+    fetchMock.mockResolvedValueOnce(json({ error: { code: "rate_limited" } }, 429));
+
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).code).toBe("rate_limited");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("generate — the deploy window", () => {
   it("accepts a result returned inline, with no job to poll", async () => {
     // המסלול הרגיל: השרת מריץ בתוך הבקשה ומחזיר את התוצאה עצמה.
