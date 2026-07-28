@@ -23,7 +23,7 @@ const assistant = Assistant({
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
-  title: he.appTitle,
+  title: he.site.titleHe,
   description: he.site.heroSubtitleSeo,
   applicationName: he.site.brand,
   // opengraph-image.png / apple-icon.png / icon.svg נאספים אוטומטית מ-src/app
@@ -32,13 +32,13 @@ export const metadata: Metadata = {
     type: "website",
     locale: "he_IL",
     siteName: he.site.brand,
-    title: `${he.site.brand} — ${he.site.tagline}`,
+    title: he.site.titleHe,
     description: he.site.heroSubtitleSeo,
     url: SITE.url,
   },
   twitter: {
     card: "summary_large_image",
-    title: `${he.site.brand} — ${he.site.tagline}`,
+    title: he.site.titleHe,
     description: he.site.heroSubtitleSeo,
   },
 };

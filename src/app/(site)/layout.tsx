@@ -7,7 +7,7 @@ import ArchBackground from "@/components/site/ArchBackground";
 const s = he.site;
 
 export const metadata: Metadata = {
-  title: `${s.brand} — ${s.tagline}`,
+  title: s.titleHe,
   description: s.heroSubtitleSeo,
 };
 
