@@ -57,6 +57,13 @@ export interface EditEntry {
   geometry: { material: MultiPolygon } | null;
   /** ההצעות שחזרו באותה יצירה — הלקוחה יכולה לעבור ביניהן. */
   candidates?: Array<{ svg: string; report: ValidationReport }>;
+  /**
+   * איזו הצעה מוצגת כרגע. נשמר כאינדקס ולא מושווה לפי ה-SVG: מה שנשמר כגרסה
+   * הוא ה-canonicalSvg שהשרת מייצר, ולא המחרוזת שההצעה נשאה, ולכן השוואת
+   * מחרוזות לא מזהה אף הצעה — הסימון "מוצג כעת" לא הופיע על אף אחת, והשמירה
+   * מפני בחירה חוזרת של אותה הצעה לא פעלה.
+   */
+  chosen?: number;
 }
 
 export interface Addr {
@@ -93,6 +100,9 @@ export interface CreateState {
   procError: string | null;
   /** מזהה טכני של הכשל (code · status) — לאבחון מצילום מסך. */
   procErrorDetail: string | null;
+  /** כשל במעבר בין הצעות. procError מוצג רק במסך העיבוד, ולכן לא היה למי
+   *  לספר שהלחיצה נכשלה — היא פשוט לא עשתה כלום. */
+  chooseError: string | null;
   applying: boolean;
 
   // תוצאה
@@ -132,6 +142,7 @@ export const INITIAL: CreateState = {
   activeEdit: -1,
   procError: null,
   procErrorDetail: null,
+  chooseError: null,
   applying: false,
   resultMode: "render",
   region: "all",

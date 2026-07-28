@@ -24,7 +24,7 @@ export function ResultScreen({
   onApply: () => void;
   onRestore: (i: number) => void;
   onOrder: () => void;
-  onChooseCandidate: (svg: string) => void;
+  onChooseCandidate: (index: number, svg: string) => void;
 }) {
   const entry = activeEntry(s);
   const cutouts = cutoutsInner(entry?.svg);
@@ -119,13 +119,16 @@ export function ResultScreen({
                   בטלפון כל הצעה נמרחת לשערה שאי אפשר להשוות בין אחת לשנייה. */}
               <div className="mt-2 flex flex-col gap-2">
                 {picks.map((c, i) => {
-                  const on = c.svg === entry?.svg;
+                  // לפי אינדקס, לא לפי ה-SVG: הגרסה השמורה היא ה-canonicalSvg
+                  // של השרת ולא המחרוזת שההצעה נשאה, כך שההשוואה הישנה נכשלה
+                  // תמיד ואף הצעה לא סומנה כמוצגת.
+                  const on = (entry?.chosen ?? 0) === i;
                   return (
                     <button
                       key={i}
                       type="button"
                       disabled={s.applying}
-                      onClick={() => onChooseCandidate(c.svg)}
+                      onClick={() => onChooseCandidate(i, c.svg)}
                       aria-pressed={on}
                       aria-label={`${d.candidatesLabel} ${i + 1} — ${
                         c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail
@@ -159,6 +162,11 @@ export function ResultScreen({
                   );
                 })}
               </div>
+              {s.chooseError && (
+                <p className="mt-2 text-[13px]" style={{ color: STATUS_COLOR.fail }}>
+                  {s.chooseError}
+                </p>
+              )}
             </div>
           )}
 

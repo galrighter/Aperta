@@ -220,10 +220,12 @@ export default function DesignPage() {
 
   /* ===== בחירת הצעה אחרת מאותה יצירה ===== */
   const chooseCandidate = useCallback(
-    async (svg: string) => {
+    async (index: number, svg: string) => {
       const entry = activeEntry(s);
-      if (!s.designId || !entry || svg === entry.svg) return;
-      set({ applying: true });
+      // ההשוואה היא על האינדקס. קודם היא הייתה על ה-SVG, וזו מחרוזת אחרת מזו
+      // שנשמרה בגרסה (השרת שומר canonicalSvg), כך שהיא לא זיהתה כלום.
+      if (!s.designId || !entry || (entry.chosen ?? 0) === index) return;
+      set({ applying: true, chooseError: null });
       try {
         const res = await api.chooseCandidate(s.designId, svg);
         pushEntry(s, {
@@ -237,10 +239,13 @@ export default function DesignPage() {
           geometry: res.geometry,
           // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה.
           candidates: entry.candidates,
+          chosen: index,
         });
         set({ applying: false });
-      } catch {
-        set({ applying: false });
+      } catch (e) {
+        // בליעה שקטה נראתה בדיוק כמו כפתור מת: לחיצה, שום שינוי, שום הסבר.
+        const apiErr = e instanceof ClientApiError ? e : null;
+        set({ applying: false, chooseError: apiErr?.message ?? he.errGeneric });
       }
     },
     [s, set, pushEntry],
