@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
-import { getDesign } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
 import { resolveFab } from "@/lib/fabrication.config";
 import { decodeDataUrl, uploadFile } from "@/lib/db/storage";
 import { vectorizeImageFull, ingestCutouts } from "@/lib/vectorizer";
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   try {
     const body = await parseBody(req, schema);
     designId = body.designId;
-    const design = await getDesign(body.designId);
+    const design = await requireDesignAccess(req, body.designId);
 
     const { bytes, mediaType } = decodeDataUrl(body.image.dataUrl);
     if (!ALLOWED_MEDIA.has(mediaType)) {

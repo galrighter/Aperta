@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError } from "@/lib/api";
 import { getDesign, getVersion, insertVersion } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
 
 // שכפול עיצוב: עותק של שורת העיצוב + הגרסה הנוכחית כגרסה 1 של העותק.
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const design = await getDesign(id);
+    const design = await requireDesignAccess(req, id);
     const { data: copy, error } = await supabaseAdmin()
       .from("designs")
       .insert({
