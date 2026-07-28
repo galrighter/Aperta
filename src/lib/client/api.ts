@@ -71,6 +71,8 @@ export interface GenerationResult {
 const POLL_MS = 1500;
 /** גבול בטיחות ללולאה, בנפרד מגבול ה"נתקע" שהשרת אוכף. */
 const POLL_TIMEOUT_MS = 8 * 60_000;
+/** כמה לחפש תוצאה אחרי שהבקשה עצמה נכשלה. קצר: מי שהיה אמור לכתוב אותה כבר מת. */
+const RECOVERY_WINDOW_MS = 12_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -81,6 +83,24 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *
  * שגיאת רשת בזמן משיכה אינה כישלון של היצירה — ממשיכים לנסות עד הגבול.
  */
+/**
+ * האם כדאי לשאול על ההרצה למרות שהבקשה נכשלה.
+ *
+ * status 0 — הבקשה לא קיבלה תשובה בכלל.
+ * 5xx בלי קוד שגיאה של האפליקציה — התשובה לא הגיעה מהקוד שלנו: ה-isolate של
+ * Cloudflare נהרג. זה קורה *אחרי* שהצינור סיים (נמדד: הרצה שנרשמה approved
+ * אחרי 41 שניות, בזמן שהלקוחה קיבלה 503 בלי גוף), וכיוון ש-finishJob נכתב לפני
+ * שהתשובה נשלחת — התוצאה כבר בשורה. לזרוק כאן פירושו למחוק יצירה שהצליחה.
+ *
+ * truncated — 200 שגופו נקטע. ההרצה הצליחה; רק המשלוח לא שרד.
+ *
+ * 4xx, או 5xx עם קוד — זו תשובה אמיתית של השרת. אין מה לשאול.
+ */
+function mayHaveSurvived(e: ClientApiError): boolean {
+  if (e.status === 0 || e.code === "truncated") return true;
+  return e.status >= 500 && e.code === "unknown";
+}
+
 async function startAndAwaitGeneration(
   input: {
     designId: string;
@@ -100,11 +120,16 @@ async function startAndAwaitGeneration(
       body: JSON.stringify({ ...input, jobId }),
     });
   } catch (e) {
-    // status 0 = הבקשה לא קיבלה תשובה בכלל (זה מה ש-call מסמן ככשל רשת).
-    // כל השאר הוא תשובה של השרת, כלומר שגיאת יצירה אמיתית — אין מה למשוך.
-    if (!(e instanceof ClientApiError) || e.status !== 0) throw e;
-    // ההרצה אולי ממשיכה בשרת; שואלים על השורה במקום להכריז על אובדן.
-    return pollJob(jobId, onStage);
+    if (!(e instanceof ClientApiError) || !mayHaveSurvived(e)) throw e;
+    // ההרצה אולי הצליחה בשרת; שואלים על השורה במקום להכריז על אובדן. אם אין
+    // שם כלום, pollJob נכשל בעצמו ומחזיר את השגיאה — אבל לא לפני שבדק.
+    // חלון קצר בכוונה: אם ה-isolate מת, אף אחד כבר לא יכתוב לשורה, ואין טעם
+    // להחזיק ספינר עד שהיא תיחשב תקועה. או שהתוצאה שם עכשיו, או שאין.
+    try {
+      return await pollJob(jobId, onStage, RECOVERY_WINDOW_MS);
+    } catch {
+      throw e;
+    }
   }
   // השרת מריץ בתוך הבקשה ומחזיר את התוצאה. 202 עם מזהה הוא מסלול ישן/חלופי.
   if (!started.jobId) return started as GenerationResult;
@@ -115,8 +140,9 @@ async function startAndAwaitGeneration(
 async function pollJob(
   jobId: string,
   onStage?: (stage: string | null) => void,
+  windowMs = POLL_TIMEOUT_MS,
 ): Promise<GenerationResult> {
-  const deadline = Date.now() + POLL_TIMEOUT_MS;
+  const deadline = Date.now() + windowMs;
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
     let state: { status: string; stage?: string | null; result?: GenerationResult; error?: { code?: string } };
