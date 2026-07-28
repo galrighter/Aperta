@@ -14,6 +14,11 @@ name: Diagnose Worker invocations
 # לשורת ההרצות שנהרגו יש מדידת CPU משלה. קרוב ל-30 שניות = מעבד; נמוך = זיכרון.
 # ההבדל קובע את התיקון, ובלעדיו כל צעד הבא הוא ניחוש.
 #
+# מאז (30.6.2026) Cloudflare הוסיף memoryUsageBytesP50..P999 לאותו dataset —
+# זיכרון ה-isolate בזמן ההרצה, מול תקרה של 128MB. כלומר את מה שקבענו בדרך
+# השלילה אפשר עכשיו לקרוא ישירות, וגם למדוד לפני/אחרי: אם הוצאת המסגור
+# ל-Worker נפרד עבדה, המרחק מהתקרה של forme-studio חייב לגדול.
+#
 # מריצים ידנית. מדפיס מצרפים בלבד — לא תוכן בקשות.
 
 on:
@@ -46,28 +51,44 @@ jobs:
           UNTIL=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "window: $SINCE .. $UNTIL"
 
-          jq -n --arg acct "$CF_ACCOUNT" --arg since "$SINCE" --arg until "$UNTIL" '{
-            query: "query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99}dimensions{datetimeHour scriptName status}}}}}",
-            variables: { acct: $acct, since: $since, until: $until }
-          }' > /tmp/q.json
+          # ‎memoryUsageBytes* נוסף ב-30.6.2026 ומודד את זיכרון ה-isolate בזמן
+          # ההרצה — בדיוק המספר שחסר לנו כשקבענו "זיכרון" בדרך השלילה. אם השדה
+          # לא קיים בחשבון הזה, השאילתה כולה נכשלת; לכן מנסים איתו וחוזרים בלעדיו
+          # במקום להפסיד את ההרצה.
+          ask() {
+            jq -n --arg acct "$CF_ACCOUNT" --arg since "$SINCE" --arg until "$UNTIL" --arg q "$1" '{
+              query: $q, variables: { acct: $acct, since: $since, until: $until }
+            }' > /tmp/q.json
+            curl -sS https://api.cloudflare.com/client/v4/graphql \
+              -H "authorization: Bearer $CF_TOKEN" \
+              -H "content-type: application/json" \
+              --data @/tmp/q.json > /tmp/r.json
+            jq -e '.data.viewer.accounts[0].workersInvocationsAdaptive' /tmp/r.json >/dev/null 2>&1
+          }
 
-          curl -sS https://api.cloudflare.com/client/v4/graphql \
-            -H "authorization: Bearer $CF_TOKEN" \
-            -H "content-type: application/json" \
-            --data @/tmp/q.json > /tmp/r.json
+          Q='query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99 MEM}dimensions{datetimeHour scriptName status}}}}}'
 
-          if ! jq -e '.data.viewer.accounts[0].workersInvocationsAdaptive' /tmp/r.json >/dev/null 2>&1; then
-            echo "::error::query did not return data — the token may lack Account Analytics: Read"
-            jq -c '.errors // .' /tmp/r.json
-            exit 1
+          MEMORY=yes
+          if ! ask "${Q/MEM/memoryUsageBytesP50 memoryUsageBytesP99 memoryUsageBytesP999}"; then
+            echo "::warning::memory quantiles unavailable here — falling back to the CPU-only query"
+            jq -c '.errors // empty' /tmp/r.json
+            MEMORY=no
+            if ! ask "${Q/ MEM/}"; then
+              echo "::error::query did not return data — the token may lack Account Analytics: Read"
+              jq -c '.errors // .' /tmp/r.json
+              exit 1
+            fi
           fi
 
           echo
-          echo "hour script status requests errors cpuP50us cpuP99us" | tr ' ' '\t'
-          jq -r '.data.viewer.accounts[0].workersInvocationsAdaptive[]
+          echo "hour script status requests errors cpuP50us cpuP99us memP50mb memP99mb memP999mb" | tr ' ' '\t'
+          jq -r 'def mb(x): if x == null then "-" else ((x/1048576*10|round)/10|tostring) end;
+                 .data.viewer.accounts[0].workersInvocationsAdaptive[]
                  | [.dimensions.datetimeHour, .dimensions.scriptName, .dimensions.status,
                     (.sum.requests|tostring), (.sum.errors|tostring),
-                    (.quantiles.cpuTimeP50|tostring), (.quantiles.cpuTimeP99|tostring)]
+                    (.quantiles.cpuTimeP50|tostring), (.quantiles.cpuTimeP99|tostring),
+                    mb(.quantiles.memoryUsageBytesP50), mb(.quantiles.memoryUsageBytesP99),
+                    mb(.quantiles.memoryUsageBytesP999)]
                  | @tsv' /tmp/r.json | column -t
 
           # השורה שמכריעה: כמה CPU נצרך בהרצות שנהרגו. תקרת ה-CPU היא 30 שניות
@@ -75,9 +96,26 @@ jobs:
           # זו תקרת מעבד. אם הוא נמוך — נגמר הזיכרון (128MB, לא ניתן להגדלה).
           echo
           echo "the kills, and what they had burned:"
-          jq -r '.data.viewer.accounts[0].workersInvocationsAdaptive[]
+          jq -r 'def mb(x): if x == null then "?" else ((x/1048576*10|round)/10|tostring) end;
+                 .data.viewer.accounts[0].workersInvocationsAdaptive[]
                  | select(.dimensions.status != "success")
-                 | "\(.dimensions.datetimeHour)  \(.dimensions.scriptName)  \(.dimensions.status)  reqs=\(.sum.requests)  cpuP50=\(.quantiles.cpuTimeP50)us  cpuP99=\(.quantiles.cpuTimeP99)us"' /tmp/r.json
+                 | "\(.dimensions.datetimeHour)  \(.dimensions.scriptName)  \(.dimensions.status)  reqs=\(.sum.requests)  cpuP50=\(.quantiles.cpuTimeP50)us  cpuP99=\(.quantiles.cpuTimeP99)us  memP99=\(mb(.quantiles.memoryUsageBytesP99))MB"' /tmp/r.json
+
+          # מרחק מהתקרה, לפי script. זה מה שהופך "אנחנו מאמינים שזה זיכרון"
+          # למספר: 128MB היא התקרה, וה-P999 הוא כמה קרוב הגיע ה-isolate בפועל.
+          if [ "$MEMORY" = yes ]; then
+            echo
+            echo "isolate memory headroom (ceiling 128MB):"
+            jq -r 'def mb(x): (x/1048576*10|round)/10;
+                   [.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                    | select(.quantiles.memoryUsageBytesP999 != null)]
+                   | group_by(.dimensions.scriptName)
+                   | map({s: .[0].dimensions.scriptName,
+                          p99: (map(.quantiles.memoryUsageBytesP99) | max),
+                          p999: (map(.quantiles.memoryUsageBytesP999) | max)})
+                   | sort_by(-.p999)[]
+                   | "\(.s)\tworst P99 \(mb(.p99))MB\tworst P999 \(mb(.p999))MB\t\((128 - mb(.p999))|tostring) MB to spare"' /tmp/r.json | column -t -s $'\t'
+          fi
 
           echo
           echo "totals by status:"
