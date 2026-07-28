@@ -21,6 +21,10 @@ export interface OrphanItem {
   durationMs: number | null;
   renderModel: null;
   renderUrl: null;
+  inputImageUrl: null;
+  inputs: null;
+  owner: null;
+  designId: string | null;
   stages: { conditioned: null; overlay: null; difference: null; rendered: null };
   hasSvg: false;
   metrics: null;
@@ -51,6 +55,10 @@ export function orphanItem(job: JobListRow, now = Date.now()): OrphanItem {
     durationMs: elapsed > 0 ? elapsed : null,
     renderModel: null,
     renderUrl: null,
+    inputImageUrl: null,
+    inputs: null,
+    owner: null,
+    designId: job.design_id ?? null,
     stages: { conditioned: null, overlay: null, difference: null, rendered: null },
     hasSvg: false,
     metrics: null,

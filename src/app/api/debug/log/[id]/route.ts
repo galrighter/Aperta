@@ -15,11 +15,22 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const row = await getRun(id);
     // ליומן יש עכשיו גם שורות של ניסיון שנקטע — לאלה אין הרצה, ולכן אין פירוט.
     // ריק הוא התשובה הנכונה: הפתיחה תציג "אין נתונים" במקום "טעינת הפירוט נכשלה".
-    if (!row) return NextResponse.json({ id, svg: null, debug: null });
+    if (!row) {
+      return NextResponse.json({ id, svg: null, debug: null, renderPrompt: null, inputs: null });
+    }
     // הפירוט הוא המקום שבו ה-SVG של כל מועמד באמת נחוץ, ולכן הוא נקרא מ-
     // debug_full. שורות שנכתבו לפני הפיצול מוחזרות ל-debug (ההגירה מעבירה
     // אותן, אבל הנפילה לאחור עולה שורה אחת ומכסה גם שורה שנכתבה בחלון).
-    return NextResponse.json({ id: row.id, svg: row.svg, debug: row.debug_full ?? row.debug });
+    return NextResponse.json({
+      id: row.id,
+      svg: row.svg,
+      debug: row.debug_full ?? row.debug,
+      // הפרומפט המלא נשלח רק כאן: ברשימה הוא 3KB לשורה שאף אחד לא קורא, וכאן
+      // הוא בדיוק מה שביקשו לראות.
+      renderPrompt: row.render_prompt ?? null,
+      prompt: row.prompt ?? null,
+      inputs: row.inputs ?? null,
+    });
   } catch (err) {
     return handleRouteError(err);
   }

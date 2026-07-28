@@ -11,7 +11,7 @@ import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
-import { persistRun } from "@/lib/runs/persist";
+import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
 import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
@@ -138,6 +138,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
   let persisted = false;
   let designId: string | null = null;
   let userPrompt: string | null = null;
+  /** מה שנשלח למודל ומה שקבע אותו — נשמר ליומן גם כשההרצה נכשלה. */
+  let runLog: Pick<PersistRunInput, "renderPrompt" | "inputs" | "inputImage"> | null = null;
 
   try {
     designId = body.designId;
@@ -167,6 +169,29 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     };
     const plan = planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
     const prompt = buildRenderPrompt(body.userPrompt, design.product_type, dims, plan.rows);
+    const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
+
+    // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
+    // שבנו אותו. הוא נבנה כאן ולא בתוך persistRun כדי ששתי הקריאות — ההצלחה
+    // והכשל שבתפיסה למטה — ידווחו בדיוק את אותו דבר.
+    runLog = {
+      renderPrompt: prompt,
+      inputs: {
+        productType: design.product_type,
+        lengthMm: dims.lengthMm,
+        widthMm: dims.widthMm,
+        thicknessMm: dims.thicknessMm,
+        rows: plan.rows,
+        calls: plan.calls,
+        minHoleMm,
+        colorKey: "dark",
+        imageCount: body.images.length,
+      },
+      inputImage: inspiration
+        ? { bytes: decodeDataUrl(`data:${inspiration.mediaType};base64,${inspiration.base64}`).bytes,
+            mediaType: inspiration.mediaType }
+        : null,
+    };
 
     // 2) הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
     // עצמם לא עוברים כאן. ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark"
@@ -181,7 +206,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה
       // מיישמת אותם. בלי זה שערה של 0.17 מ"מ שהטרייסר משאיר לצד עלה נכנסת ל-SVG
       // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
-      minHoleMm: resolveFab(dims.thicknessMm, design.product_type).minHole,
+      minHoleMm,
       inspiration,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {
@@ -205,6 +230,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       render: { path: renderPngPath, model: job.model },
       stagePaths: job.stagePaths,
       vectorizer: job.raw,
+      ...runLog,
     });
     persisted = true;
 
@@ -285,6 +311,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         startedAt,
         error: err instanceof Error ? err.message : String(err),
         vectorizer: null,
+        ...(runLog ?? {}),
       });
     }
     throw err;

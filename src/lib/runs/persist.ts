@@ -1,5 +1,11 @@
 import { uploadFile } from "@/lib/db/storage";
-import { insertRun, type RunSource, type RunStagePaths, type RunMetrics } from "@/lib/db/runs";
+import {
+  insertRun,
+  type RunSource,
+  type RunStagePaths,
+  type RunMetrics,
+  type RunInputs,
+} from "@/lib/db/runs";
 import type { ProductType } from "@/lib/fabrication.config";
 
 // שמירת הרצת צינור אחת ליומן הבק־אופיס: מעלה את ההדמיה ואת תמונות שלבי הביניים
@@ -56,6 +62,12 @@ export interface PersistRunInput {
   /** התגובה הגולמית מה-vectorizer (מצב debug). null כשהצינור בכלל לא רץ (שגיאה מוקדמת). */
   vectorizer?: VectorizerPayload | null;
   error?: string | null;
+  /** הפרומפט המלא שיצא למודל התמונה — לא מה שהמשתמש כתב אלא מה שנשלח. */
+  renderPrompt?: string | null;
+  /** המאפיינים שקבעו את ההרצה (מוצר, מידות, תכנון, מפתח צבע). */
+  inputs?: RunInputs | null;
+  /** קובץ ההשראה שהמשתמש צירף. נשמר כדי שאפשר יהיה לראות מה הוא נתן. */
+  inputImage?: { bytes: Uint8Array; mediaType?: string } | null;
 }
 
 /** מוריד את ה-SVG של כל מועמד ומשאיר את המדדים. אותו קילוף שהרשימה עשתה
@@ -94,6 +106,19 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
         stagePaths[key] = path;
       } catch {
         // דילוג על שלב בודד שנכשל בהעלאה — לא מפיל את שאר השמירה.
+      }
+    }
+
+    // 2ב) קובץ ההשראה שהמשתמש צירף. עד עכשיו הוא נכנס לקריאה למודל ונעלם,
+    // ואז "ההדמיה לא דומה למה ששלחתי" הייתה טענה שאין מולה מה להעמיד.
+    let inputImagePath: string | null = null;
+    if (input.inputImage?.bytes) {
+      try {
+        inputImagePath = `runs/${id}/input.png`;
+        await uploadFile(inputImagePath, input.inputImage.bytes, input.inputImage.mediaType ?? "image/png");
+      } catch {
+        // תמונת קלט היא תיעוד, לא תנאי לשורה.
+        inputImagePath = null;
       }
     }
 
@@ -143,6 +168,9 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       metrics,
       debug,
       debug_full: debugFull,
+      render_prompt: input.renderPrompt ?? null,
+      inputs: input.inputs ?? null,
+      input_image_path: inputImagePath,
     });
   } catch (e) {
     // יומן הוא best-effort — לא מפילים את בקשת המשתמש בגלל כשל שמירה.
@@ -164,6 +192,10 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
         error: input.error ?? `run happened, log write failed: ${message}`,
         duration_ms: Date.now() - input.startedAt,
         stage_paths: {},
+        // הפרומפט והמאפיינים נשארים גם בנפילה: הם קלים, והם בדיוק מה שנדרש
+        // כדי להבין הרצה שלא השאירה אחריה כלום אחר.
+        render_prompt: input.renderPrompt ?? null,
+        inputs: input.inputs ?? null,
       });
     } catch (e2) {
       console.error("persistRun minimal fallback failed:", (e2 as Error).message);

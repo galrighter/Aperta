@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { he } from "@/i18n/he";
-import type { Inquiry, InquiryStatus } from "@/lib/db/inquiries";
+import type { Inquiry, InquiryKind, InquiryStatus } from "@/lib/db/inquiries";
 import AdminDesigns from "./AdminDesigns";
 import { AdminLogin, type AdminAuth } from "./AdminGate";
 
@@ -28,11 +28,17 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("inquiries");
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
+  /** הזמנות ופניות יושבות באותה טבלה; ברירת המחדל היא ההזמנות, כי זה מה
+   *  שמחפשים כשנכנסים לכאן. "הכול" עדיין במרחק לחיצה. */
+  const [kind, setKind] = useState<InquiryKind | "">("order");
   const [listError, setListError] = useState<string | null>(null);
 
-  const load = useCallback(async (status: InquiryStatus | "") => {
-    const qs = status ? `?status=${status}` : "";
-    const res = await fetch(`/api/inquiries${qs}`);
+  const load = useCallback(async (status: InquiryStatus | "", k: InquiryKind | "") => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (k) params.set("kind", k);
+    const qs = params.toString();
+    const res = await fetch(`/api/inquiries${qs ? `?${qs}` : ""}`);
     if (res.status === 401) {
       setAuth("out");
       return;
@@ -52,7 +58,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    void load("");
+    void load("", "order");
   }, [load]);
 
   async function onLogout() {
@@ -76,11 +82,16 @@ export default function AdminDashboard() {
 
   function applyFilter(f: InquiryStatus | "") {
     setFilter(f);
-    void load(f);
+    void load(f, kind);
+  }
+
+  function applyKind(k: InquiryKind | "") {
+    setKind(k);
+    void load(filter, k);
   }
 
   if (auth !== "in") {
-    return <AdminLogin auth={auth} onAuthed={() => load(filter)} />;
+    return <AdminLogin auth={auth} onAuthed={() => load(filter, kind)} />;
   }
 
   // auth === "in"
@@ -116,7 +127,9 @@ export default function AdminDashboard() {
         <Inquiries
           inquiries={inquiries}
           filter={filter}
+          kind={kind}
           onFilter={applyFilter}
+          onKind={applyKind}
           onStatus={changeStatus}
           listError={listError}
         />
@@ -126,16 +139,38 @@ export default function AdminDashboard() {
 }
 
 function Inquiries({
-  inquiries, filter, onFilter, onStatus, listError,
+  inquiries, filter, kind, onFilter, onKind, onStatus, listError,
 }: {
   inquiries: Inquiry[];
   filter: InquiryStatus | "";
+  kind: InquiryKind | "";
   onFilter: (f: InquiryStatus | "") => void;
+  onKind: (k: InquiryKind | "") => void;
   onStatus: (id: string, status: InquiryStatus) => void;
   listError: string | null;
 }) {
   return (
     <div>
+      {/* סוג הפנייה — הזמנה שבוצעה בפועל מול פניית יצירת קשר */}
+      <div className="mb-3 flex flex-wrap gap-2">
+        {([["order", s.adminFilterOrders], ["contact", s.adminFilterContact], ["", s.adminFilterAll]] as const).map(
+          ([k, label]) => (
+            <button
+              key={k || "all"}
+              onClick={() => onKind(k)}
+              aria-pressed={kind === k}
+              className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
+                kind === k
+                  ? "bg-cobalt text-white"
+                  : "bg-porcelain text-ink60 hover:bg-stonesoft"
+              }`}
+            >
+              {label}
+            </button>
+          ),
+        )}
+      </div>
+
       <div className="mb-6 flex flex-wrap gap-2">
         {(["", ...STATUSES] as const).map((f) => (
           <button
