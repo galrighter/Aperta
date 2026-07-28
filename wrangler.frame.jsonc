@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "forme-frame",
+  "main": "workers/frame/index.ts",
+  "compatibility_date": "2025-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // בלי routes ובלי workers.dev: אי אפשר להגיע אליו מהאינטרנט, רק דרך ה-service
+  // binding של forme-studio. לכן גם אין כאן טוקן — אין משטח שצריך לשמור עליו.
+  "workers_dev": false,
+
+  "observability": {
+    "enabled": true
+  }
+
+  // אין secrets. ה-Worker הזה מחשב גיאומטריה ותו לא — בלי DB, בלי מפתחות.
+}

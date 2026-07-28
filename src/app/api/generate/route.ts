@@ -7,9 +7,10 @@ import { requireDesignAccess } from "@/lib/designAccess";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
-import { ingestCutouts, frameCutouts } from "@/lib/vectorizer";
+import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
 import { runRenderJob } from "@/lib/render/service";
+import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun } from "@/lib/runs/persist";
 import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
 
@@ -213,19 +214,16 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
     // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
     //
-    // מכל מועמד נשמר רק מה שהמסך צריך. `normalized` — גרף הפוליגונים המלא —
-    // נזרק מיד: כל עוד הוא מוחזק, הגאומטריה של כל המועמדים מוצמדת ואי אפשר
-    // לאסוף אותה בין אחד לשני. נמדד על ארבעה מועמדים אמיתיים: 45.1MB בתום
-    // הקריאה כשמחזיקים הכול, מול 16.5MB כשמחזיקים רק את אלה. ה-isolate נהרג
-    // על זיכרון (128MB) בבקשה יחידה, וזה המקצה הגדול ביותר בבקשה.
-    // הזוכה לא מפסיד כלום: ingestCutouts גוזר את הגאומטריה שלו ממילא מחדש.
+    // המסגור עצמו כבר לא רץ כאן אלא ב-Worker נפרד (src/lib/render/frameClient).
+    // תקרת ה-128MB היא לכל isolate ומשותפת לכל הבקשות שרצות בו, ומסגור הוא
+    // המקצה הגדול ביותר בבקשה — 45.1MB בתום הקריאה על ארבעה מועמדים אמיתיים
+    // לפני שהפסקנו להחזיק את `normalized`, 16.5MB אחרי. ה-isolate הזה נהרג
+    // על זיכרון בבקשה יחידה (reqs=1), ולכן מה שנשאר להוציא הוא המקצה עצמו,
+    // לא ההחזקה שלו. מכאן ה-isolate של האתר ממסגר פעם אחת בלבד — את הזוכה,
+    // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
-    const candidates = job.candidates
-      .filter((c) => c.status === "approved" && c.cutoutsSvg)
-      .map((c) => {
-        const f = frameCutouts(design, c.cutoutsSvg!);
-        return { framedSvg: f.framedSvg, report: f.report, drawnRatio: f.drawnRatio, stretch: f.stretch };
-      })
+    const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
+    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!)))
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {

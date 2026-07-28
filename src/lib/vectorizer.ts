@@ -1,10 +1,8 @@
 import { ApiError } from "@/lib/api";
 import { type DesignRow, type VersionRow, insertVersion } from "@/lib/db/designs";
-import { validateDesign, validateNormalized, type DesignDims } from "@/lib/geometry/validate";
-import { dropThinCutouts } from "@/lib/geometry/normalize";
-import { resolveFab } from "@/lib/fabrication.config";
+import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
+import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
-import { rescaleCutoutsSvg, svgFrame } from "@/lib/geometry/frame";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // לקוח לשירות ה-vectorizer (רץ על Hetzner). מקבל תמונת רנדר ומחזיר cutouts SVG
@@ -145,73 +143,22 @@ export interface IngestResult {
 }
 
 
-export interface FramedCutouts {
-  /** ה-SVG אחרי מתיחה למסגרת שהוזמנה. */
-  framedSvg: string;
-  lengthMm: number;
-  widthMm: number;
-  /** היחס שהמודל צייר בפועל, לפני המתיחה. */
-  drawnRatio: number;
-  /** פי כמה נמתחה הדוגמה אופקית מעבר למה שהרוחב בלע. 1 = בלי עיוות. */
-  stretch: number;
-  report: ValidationReport;
-  normalized: ReturnType<typeof validateDesign>["normalized"];
-}
+export type { FramedCutouts, FramedPreview };
 
-/**
- * מותח cutouts גולמיים למסגרת שהוזמנה ומריץ ולידציה — בלי לשמור כלום.
- * משמש גם להערכת מועמדים לפני שבוחרים אחד מהם.
- */
-export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutouts {
-  const lengthMm = Number(design.length_mm);
-  const orderedWidth = Number(design.width_mm);
-
-  // המסגרת שהמודל צייר בפועל, כפי שה-vectorizer מסר אותה.
-  const drawn = svgFrame(cutoutsSvg) ?? { lengthMm, widthMm: orderedWidth };
-  // הגורם שמחזיר את הדוגמה לאורך שהוזמן. 1 = המודל פגע ביחס המבוקש.
-  const correction = drawn.lengthMm > 0 ? lengthMm / drawn.lengthMm : 1;
-  const widthMm =
-    Math.round(
-      Math.min(
-        Math.max(drawn.widthMm * correction, orderedWidth * (1 - WIDTH_TOLERANCE)),
-        orderedWidth * (1 + WIDTH_TOLERANCE),
-      ) * 100,
-    ) / 100;
-  const dims = {
+/** המידות שהמסגור צריך מתוך שורת העיצוב. `width_mm` הוא הרוחב שהוזמן. */
+export function designDims(design: DesignRow): DesignDims {
+  return {
     productType: design.product_type,
-    lengthMm,
-    widthMm,
+    lengthMm: Number(design.length_mm),
+    widthMm: Number(design.width_mm),
     thicknessMm: Number(design.thickness_mm),
   };
-  let framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
-  let { report, normalized } = validateDesign(framedSvg, dims);
-
-  // הווקטורייזר כבר מסנן פתחים שאי אפשר לחתוך, אבל לא כל SVG מגיע משם: גרסאות
-  // שנשמרו לפני הסינון עדיין נושאות שערות, וכל עריכה שלהן עוברת כאן. מפעילים
-  // את אותו כלל על מה שנכנס לגרסה, כך שעיצוב ישן מתנקה כשהוא עובר במסלול —
-  // ומה שמוצג ללקוחה הוא בדיוק מה שיישמר.
-  if (normalized) {
-    const cleaned = dropThinCutouts(normalized, resolveFab(dims.thicknessMm, dims.productType).minHole);
-    if (cleaned !== normalized) {
-      normalized = cleaned;
-      framedSvg = cleaned.canonicalSvg;
-      report = validateNormalized(cleaned, dims);
-    }
-  }
-
-  return {
-    framedSvg,
-    lengthMm,
-    widthMm,
-    drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
-    stretch: correction / (widthMm / orderedWidth),
-    report,
-    normalized,
-  };
 }
 
-/** כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7. */
-const WIDTH_TOLERANCE = 0.05;
+/** מסגור מועמד מול שורת עיצוב. החישוב עצמו ב-geometry/frameCutouts. */
+export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutouts {
+  return frameCutoutsDims(designDims(design), cutoutsSvg);
+}
 
 /**
  * מריץ cutouts SVG שהתקבל מה-vectorizer דרך מנוע הוולידציה ושומר גרסה.
