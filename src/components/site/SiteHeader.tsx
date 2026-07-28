@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { he } from "@/i18n/he";
@@ -18,6 +18,21 @@ export default function SiteHeader() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const menuId = useId();
+  const ref = useRef<HTMLElement>(null);
+
+  // גובה הכותרת נמדד ונכתב כמשתנה CSS, כדי שסרגל דביק אחר (סרגל השלבים במסע
+  // היצירה) ייעצר מתחתיה ולא מאחוריה. הגובה משתנה לפי מסך ולפי גופן, ולכן הוא
+  // נמדד ולא נכתב כמספר.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const write = () =>
+      document.documentElement.style.setProperty("--rm-header-h", `${el.offsetHeight}px`);
+    write();
+    const ro = new ResizeObserver(write);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // סגירה במעבר עמוד — לא להסתמך על onClick בלבד (ניווט אחורה/קדימה בדפדפן).
   useEffect(() => setOpen(false), [pathname]);
@@ -50,7 +65,10 @@ export default function SiteHeader() {
   });
 
   return (
-    <header className="sticky top-0 z-20 border-b border-graphite/10 bg-porcelain/85 backdrop-blur-md">
+    <header
+      ref={ref}
+      className="sticky top-0 z-20 border-b border-graphite/10 bg-porcelain/85 backdrop-blur-md"
+    >
       <nav className="flex items-center justify-between px-5 py-5 sm:px-10">
         {/* לוגו */}
         <Link href="/" className="flex items-center gap-3.5" onClick={() => setOpen(false)}>
