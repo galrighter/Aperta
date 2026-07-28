@@ -19,7 +19,12 @@ name: Diagnose Worker invocations
 # השלילה אפשר עכשיו לקרוא ישירות, וגם למדוד לפני/אחרי: אם הוצאת המסגור
 # ל-Worker נפרד עבדה, המרחק מהתקרה של forme-studio חייב לגדול.
 #
-# מריצים ידנית. מדפיס מצרפים בלבד — לא תוכן בקשות.
+# רץ כל בוקר, וגם ידנית. מדפיס מצרפים בלבד — לא תוכן בקשות.
+#
+# למה בלוח זמנים ולא רק ידנית: את התקלה הזו גילינו מתלונה של לקוח שלושה ימים
+# אחרי, ובדיעבד המספר ישב אצל Cloudflare כל הזמן. הרצה יומית שנכשלת כשיש
+# הרוגים הופכת את זה להתראה — GitHub שולח מייל על ריצה אדומה, ואף אחד לא צריך
+# לזכור ללחוץ. ריצה ידנית תמיד מדפיסה הכול ולעולם לא מתריעה.
 
 on:
   workflow_dispatch:
@@ -27,6 +32,9 @@ on:
       hours:
         description: "כמה שעות אחורה"
         default: "24"
+  schedule:
+    # 05:10 UTC — אחרי שהיממה הקודמת נסגרה, לפני שמישהו מתחיל לעבוד.
+    - cron: "10 5 * * *"
   push:
     branches: [main]
     paths:
@@ -123,3 +131,18 @@ jobs:
                  | group_by(.dimensions.status)
                  | map({status: .[0].dimensions.status, requests: (map(.sum.requests)|add)})
                  | sort_by(-.requests)[] | "\(.status)\t\(.requests)"' /tmp/r.json | column -t
+
+          # ההתראה. רק ההרצה המתוזמנת מאדימה — ריצה ידנית היא בדיקה, לא אזעקה.
+          #
+          # סופרים רק את ה-scripts שלנו ורק הרוגי-משאבים: clientDisconnected הוא
+          # לקוח שסגר טאב, וזה לא תקלה. willit-web הוא לא שלנו.
+          KILLS=$(jq -r '[.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                          | select(.dimensions.scriptName | startswith("forme"))
+                          | select(.dimensions.status | test("exceeded"))
+                          | .sum.requests] | add // 0' /tmp/r.json)
+          echo
+          echo "resource kills on forme-* in this window: $KILLS"
+          if [ "${{ github.event_name }}" = schedule ] && [ "$KILLS" -gt 0 ]; then
+            echo "::error::$KILLS invocation(s) were killed on resource limits — see the rows above"
+            exit 1
+          fi
