@@ -8,6 +8,8 @@ import {
   countRecentFromEmail,
   type InquiryStatus,
 } from "@/lib/db/inquiries";
+import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
+import { notifyMail, orderAckMail, type InquiryMail } from "@/lib/mailTemplates";
 
 const MAX_PER_EMAIL_PER_DAY = 10;
 
@@ -18,6 +20,10 @@ const createSchema = z.object({
   phone: z.string().trim().max(40).optional(),
   productType: z.enum(["bracelet", "ring"]).optional(),
   message: z.string().trim().min(1).max(4000),
+  /** מספר ההזמנה שהלקוחה רואה על המסך (`RM-0047`). נשלח מפורשות ולא נחלץ
+   *  מגוף ההודעה — חילוץ בביטוי רגולרי מטקסט שנבנה במקום אחר נשבר בשקט
+   *  ברגע שמישהו מנסח את השורה מחדש. */
+  orderRef: z.string().trim().max(40).optional(),
   // honeypot נגד בוטים — אמור להישאר ריק; אם מולא, מתייחסים כבוט
   company: z.string().max(200).optional(),
 });
@@ -45,10 +51,52 @@ export async function POST(req: Request) {
       message: body.message,
     });
 
+    // מכאן והלאה הפנייה כבר שמורה. שום כשל בדואר לא מחזיר שגיאה ללקוחה —
+    // ההזמנה התקבלה, ומה שאבד הוא ההתראה. הכיוון ההפוך גרוע בהרבה: לקוחה
+    // שרואה "השליחה נכשלה" על הזמנה שנשמרה, ושולחת אותה שוב.
+    await notify({
+      kind: body.kind,
+      name: body.name,
+      email: body.email,
+      phone: body.phone ?? null,
+      message: body.message,
+      orderRef: body.orderRef ?? null,
+    });
+
     return NextResponse.json({ ok: true, id: inquiry.id }, { status: 201 });
   } catch (err) {
     return handleRouteError(err);
   }
+}
+
+/**
+ * ההתראה לגל, ואישור ללקוחה כשזו הזמנה.
+ *
+ * השליחה רצה **בתוך** הבקשה ולא ב-`waitUntil`. זה נראה כמו הזדמנות ברורה
+ * לעבודת רקע, אבל בריפו הזה כבר נמדד ש-`waitUntil` פשוט לא רץ בייצור:
+ * `/api/generate` הועבר אליו, כל יצירה נתקעה בלי שנכתבה שום שורה, ואיש לא ידע
+ * — כי לא היה מי שיכתוב את השגיאה. עדיף להמתין שתי בקשות רשת.
+ */
+async function notify(q: InquiryMail): Promise<void> {
+  if (!mailConfigured()) {
+    console.error("inquiry notification skipped: no mail provider configured");
+    return;
+  }
+
+  const admin = notifyMail(q);
+  const res = await sendMail({
+    to: notifyAddress(),
+    subject: admin.subject,
+    text: admin.text,
+    // תשובה במייל הולכת ללקוחה עצמה ולא לתיבת ה-noreply.
+    replyTo: q.email,
+  });
+  if (!res.ok) console.error("inquiry notification failed:", res.error);
+
+  if (q.kind !== "order") return;
+  const ack = orderAckMail(q);
+  const ackRes = await sendMail({ to: q.email, subject: ack.subject, text: ack.text });
+  if (!ackRes.ok) console.error("order acknowledgement failed:", ackRes.error);
 }
 
 export async function GET(req: Request) {

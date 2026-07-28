@@ -452,6 +452,9 @@ export default function DesignPage() {
           email: s.addr.email.trim(),
           phone: s.addr.phone.trim(),
           productType: s.product ?? "bracelet",
+          // אותו מספר שהלקוחה תראה על מסך הסיום — כדי שהמייל שיוצא אליה,
+          // המייל שמגיע אלינו והמסך יגידו את אותו דבר.
+          orderRef: designCode(s.designSerial) ?? undefined,
           message: lines.join("\n"),
         }),
       });
