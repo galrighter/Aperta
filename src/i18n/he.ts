@@ -704,6 +704,29 @@ export const he = {
     back: "חזרה",
     ils: "₪",
   },
+
+  // ===== מיילים =====
+  // טקסט שנשלח החוצה ולא מוצג במסך. יושב כאן ולא בקוד השליחה מאותה סיבה
+  // שכל שאר המחרוזות יושבות כאן: מי שמתקן ניסוח לא צריך לקרוא לוגיקה.
+  mail: {
+    notifyOrderSubject: "הזמנה חדשה",
+    notifyContactSubject: "פנייה חדשה",
+    notifyIntroOrder: "התקבלה הזמנה חדשה באתר.",
+    notifyIntroContact: "התקבלה פנייה חדשה באתר.",
+    notifyFrom: "מאת",
+    notifyPhone: "טלפון",
+    notifyEmail: "מייל",
+    notifyAdminHint: "הפנייה נשמרה גם בבק־אופיס:",
+
+    orderAckSubject: "קיבלנו את ההזמנה שלך",
+    orderAckHello: "היי",
+    orderAckIntro:
+      "ההזמנה שלך התקבלה. זה מה שרשום אצלנו — אם משהו כאן לא נכון, אפשר פשוט להשיב למייל הזה.",
+    orderAckRef: "מספר ההזמנה",
+    orderAckNext:
+      "נחזור אליך בהקדם עם אישור ופרטי המשך. הייצור מתחיל רק אחרי שנאשר איתך.",
+    orderAckSignature: "RM JEWEL",
+  },
 } as const;
 
 export type I18n = typeof he;
