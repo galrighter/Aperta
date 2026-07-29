@@ -472,6 +472,9 @@ export default function DesignPage() {
     set({ sending: true, sendError: null, sendMailto: null });
     const p = priceOf(s);
     const entry = activeEntry(s);
+    // הסיכום הזה משמש **רק** את מסלול הגיבוי ב-mailto. מה שנשמר ונשלח במסלול
+    // התקין נבנה בשרת מהשורה שנכתבה (src/lib/orderSummary.ts) — טקסט שהדפדפן
+    // מנסח הוא ניסוח, לא נתונים.
     const lines = [
       `מוצר: ${s.product === "ring" ? d.ringName : d.braceletName}`,
       `היקף: ${Math.round(circumferenceMm(s))} ${d.mm} · רוחב: ${mmLabel(frameWidthMm(s, entry))} ${d.mm}`,
@@ -486,19 +489,28 @@ export default function DesignPage() {
     ].filter(Boolean);
 
     try {
-      const res = await fetch("/api/inquiries", {
+      const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          kind: "order",
+          designId: s.designId,
+          // הגרסה שהיא רואה על המסך ברגע ההזמנה — לא "האחרונה שנוצרה". אחרי
+          // ההזמנה אפשר להמשיך לערוך, ומה שנחתך חייב להיות מה שהיא אישרה.
+          versionId: entry?.versionId ?? null,
           name: s.addr.name.trim(),
           email: s.addr.email.trim(),
           phone: s.addr.phone.trim(),
+          street: s.addr.street.trim(),
+          city: s.addr.city.trim(),
+          zip: s.addr.zip.trim(),
           productType: s.product ?? "bracelet",
-          // אותו מספר שהלקוחה תראה על מסך הסיום — כדי שהמייל שיוצא אליה,
-          // המייל שמגיע אלינו והמסך יגידו את אותו דבר.
-          orderRef: designCode(s.designSerial) ?? undefined,
-          message: lines.join("\n"),
+          circumferenceMm: Math.round(circumferenceMm(s) * 10) / 10,
+          widthMm: Math.round(frameWidthMm(s, entry) * 10) / 10,
+          fit: s.product === "ring" ? undefined : s.fit,
+          // המחיר עצמו מחושב בשרת מאותה פונקציה; מה שנשלח הוא מה שקבע אותו.
+          density: s.density,
+          cuts: countCuts(entry?.svg ?? null),
+          brief: s.brief.trim() || undefined,
         }),
       });
       if (!res.ok) throw new Error("failed");

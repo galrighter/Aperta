@@ -148,7 +148,7 @@ export const he = {
       "תכשיט לא בוחרים מתוך מדף. הוא מתחיל בקו שרק את רואה — ונגמר בחפץ שאין עוד אחד כמוהו בעולם.",
     heroSubtitleSeo:
       "עצבו צמיד או טבעת פתוחים משלכם. התחילו מרעיון, שרטוט או תמונה — נהלו שיחה קצרה עם מנוע העיצוב, קבלו חלופות וערכו אותן עד לתכשיט שהוא רק שלכם.",
-    heroPriceNote: "מ־₪240",
+    heroPriceNote: "מ־₪299 כולל מע״מ",
     heroCtaPrimary: "ליצור את שלי",
     heroImageAlt: "צמיד פליז פתוח עם חיתוכי לייזר אלכסוניים",
     heroPieceTag: "PIECE Nº 001 — YOURS",
@@ -349,6 +349,31 @@ export const he = {
     adminExportBlocked: "הגרסה נכשלה בוולידציה ואי אפשר לייצא אותה לחיתוך.",
     adminExportNone: "אין גרסה מוכנה לייצוא.",
     adminExportError: "הכנת הקבצים נכשלה.",
+
+    // ---- לשונית ההזמנות (טבלת orders) ----
+    adminTabOrders: "הזמנות",
+    adminOrdersEmpty: "אין הזמנות עדיין.",
+    adminOrdersError: "טעינת ההזמנות נכשלה.",
+    adminOrdersSchema: "מסד הנתונים חסר את מיגרציה 0011 — ההזמנות יופיעו אחרי שתרוץ.",
+    adminOrdersLegacy:
+      "הזמנות שהתקבלו לפני המעבר לטבלת ההזמנות נמצאות בלשונית ״פניות״, מסוננות לפי ״הזמנות״.",
+    adminOrderRef: "מספר",
+    adminOrderCustomer: "לקוחה",
+    adminOrderItem: "פריט",
+    adminOrderPrice: "מחיר",
+    adminOrderFiles: "קבצים",
+    adminOrderNoDesign: "בלי עיצוב מקושר",
+    adminOrderMailed: "עודכן — נשלח מייל ללקוחה.",
+    adminOrderNotMailed: "עודכן. המייל ללקוחה לא נשלח.",
+    adminOrderStatusError: "עדכון הסטטוס נכשל.",
+    adminOrderStatusSent: "התקבלה",
+    adminOrderStatusApproved: "אושרה",
+    adminOrderStatusProduction: "בייצור",
+    adminOrderStatusShipped: "נשלחה",
+    adminOrderStatusCancelled: "בוטלה",
+    adminOrderBrief: "תיאור הלקוחה",
+    adminOrderVersionOrdered: "הגרסה שהוזמנה",
+    adminOrderVat: "מזה מע״מ",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====
@@ -370,11 +395,11 @@ export const he = {
     productTitle: "מה נעצב?",
     productSubtitle: "בוחרים מוצר, וממשיכים למידות. אפשר לשנות בהמשך.",
     braceletName: "צמיד פתוח",
-    braceletPrice: "החל מ־₪320",
+    braceletPrice: "₪399 כולל מע״מ",
     braceletDesc: "רצועה פתוחה שמעורגלת לקשת ונפתחת בעדינות למידה.",
     braceletMeta: ["רוחב 5–80 מ״מ", "פליז", "10–14 ימי עבודה"],
     ringName: "טבעת פתוחה",
-    ringPrice: "החל מ־₪240",
+    ringPrice: "₪299 כולל מע״מ",
     ringDesc: "טבעת פתוחה וגמישה, שמתאימה את עצמה לאצבע.",
     ringMeta: ["רוחב 4–18 מ״מ", "פליז", "10–14 ימי עבודה"],
 
@@ -618,13 +643,14 @@ export const he = {
       "זמן אספקה משוער 10–14 ימי עבודה מרגע אישור השרטוט.",
     ],
     priceTitle: "מחיר",
-    priceBase: "מחיר בסיס",
+    priceBase: "מחיר בסיס (כולל אריזה)",
     priceWidth: "תוספת רוחב",
     priceComplexity: "תוספת מורכבות",
-    pricePackaging: "אריזה",
     priceShipping: "משלוח",
-    priceVat: "מע״מ 17%",
-    priceTotal: "סה״כ",
+    // המע"מ כלול במחירים ואינו מתווסף להם — ולכן "מזה" ולא שורת תוספת.
+    priceVat: "מזה מע״מ 18%",
+    priceTotal: "סה״כ לתשלום",
+    priceInclNote: "כל המחירים כוללים מע״מ.",
     termsLabel: "קראתי ואני מאשרת את תנאי השימוש ואת תנאי ההזמנה.",
     summaryContinue: "המשך לתשלום",
 
@@ -749,6 +775,36 @@ export const he = {
     orderAckNext:
       "נחזור אליך בהקדם עם אישור ופרטי המשך. הייצור מתחיל רק אחרי שנאשר איתך.",
     orderAckSignature: "RM JEWEL",
+
+    // ---- שורות ההזמנה (נבנות בשרת, ונשלחות זהות אלינו ואל הלקוחה) ----
+    orderLineItem: "פריט",
+    orderLineSize: "היקף",
+    orderLineWidth: "רוחב",
+    orderLineFit: "ישיבה",
+    orderLineCuts: "חיתוכים",
+    orderLineDesign: "מספר עיצוב",
+    orderLineAddress: "כתובת",
+    orderLineBrief: "תיאור הלקוחה",
+    orderLineBase: "בסיס (כולל אריזה)",
+    orderLineWidthAdd: "תוספת רוחב",
+    orderLineComplexity: "מורכבות",
+    orderLineShipping: "משלוח",
+    orderLineTax: "מזה מע״מ 18%",
+    orderLineTotal: "סה״כ לתשלום",
+
+    // ---- עדכון סטטוס ללקוחה (docs/TODO.md D2) ----
+    statusSubjectApproved: "ההזמנה שלך אושרה",
+    statusSubjectProduction: "ההזמנה שלך נכנסה לייצור",
+    statusSubjectShipped: "ההזמנה שלך יצאה אליך",
+    statusSubjectCancelled: "ההזמנה שלך בוטלה",
+    statusBodyApproved:
+      "אישרנו את ההזמנה. מכאן היא נכנסת לתור הייצור, ונעדכן אותך כשהיא מתחילה להיחתך.",
+    statusBodyProduction:
+      "התכשיט שלך נחתך עכשיו. נעדכן אותך ברגע שהוא יוצא לדרך.",
+    statusBodyShipped:
+      "ההזמנה יצאה אליך. אם משהו לא מגיע או לא נראה כמו שציפית — אפשר להשיב למייל הזה.",
+    statusBodyCancelled:
+      "ההזמנה בוטלה ולא תיוצר. אם זו טעות, אפשר להשיב למייל הזה ונטפל בזה.",
   },
 } as const;
 

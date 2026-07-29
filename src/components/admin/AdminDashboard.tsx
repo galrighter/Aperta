@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { he } from "@/i18n/he";
 import type { Inquiry, InquiryKind, InquiryStatus } from "@/lib/db/inquiries";
 import AdminDesigns from "./AdminDesigns";
+import AdminOrders from "./AdminOrders";
 import { AdminLogin, type AdminAuth } from "./AdminGate";
 
 const s = he.site;
@@ -21,16 +22,18 @@ const statusColor: Record<InquiryStatus, string> = {
 };
 
 type Auth = AdminAuth;
-type Tab = "inquiries" | "designs";
+type Tab = "orders" | "inquiries" | "designs";
 
 export default function AdminDashboard() {
   const [auth, setAuth] = useState<Auth>("checking");
-  const [tab, setTab] = useState<Tab>("inquiries");
+  // ההזמנות ראשונות, וכברירת מחדל: זה מה שמחפשים כשנכנסים לבק־אופיס.
+  const [tab, setTab] = useState<Tab>("orders");
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
-  /** הזמנות ופניות יושבות באותה טבלה; ברירת המחדל היא ההזמנות, כי זה מה
-   *  שמחפשים כשנכנסים לכאן. "הכול" עדיין במרחק לחיצה. */
-  const [kind, setKind] = useState<InquiryKind | "">("order");
+  /** מאז שההזמנות קיבלו טבלה ולשונית משלהן, מה שנשאר כאן הוא פניות יצירת קשר
+   *  — ועימן ההזמנות ההיסטוריות שנכתבו לטבלה הזאת לפני המעבר. לכן ברירת המחדל
+   *  היא "הכול", וסינון "הזמנות" מראה בדיוק את הישנות. */
+  const [kind, setKind] = useState<InquiryKind | "">("");
   const [listError, setListError] = useState<string | null>(null);
 
   const load = useCallback(async (status: InquiryStatus | "", k: InquiryKind | "") => {
@@ -58,7 +61,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    void load("", "order");
+    void load("", "");
   }, [load]);
 
   async function onLogout() {
@@ -99,7 +102,11 @@ export default function AdminDashboard() {
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-graphite/10">
         <div className="flex gap-6">
-          {([["inquiries", s.adminTabInquiries], ["designs", s.adminTabDesigns]] as const).map(
+          {([
+            ["orders", s.adminTabOrders],
+            ["inquiries", s.adminTabInquiries],
+            ["designs", s.adminTabDesigns],
+          ] as const).map(
             ([key, label]) => (
               <button
                 key={key}
@@ -121,7 +128,9 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {tab === "designs" ? (
+      {tab === "orders" ? (
+        <AdminOrders onAuthLost={setAuth} />
+      ) : tab === "designs" ? (
         <AdminDesigns onAuthLost={setAuth} />
       ) : (
         <Inquiries
