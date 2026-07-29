@@ -33,6 +33,9 @@ export function orderItemLines(o: OrderRow): string[] {
 /**
  * פירוט המחיר (docs/TODO.md B2). עד עכשיו נשלח `סה"כ` בלבד, בזמן שהחישוב כבר
  * ידע את כל הרכיבים — והם נדרשים ממילא לחשבונית.
+ *
+ * המע"מ הוא השורה האחרונה ולא אחת מהחיבורים: הוא **כלול** בסכום ואינו מתווסף
+ * אליו, ושורת מע"מ שיושבת בין הרכיבים לסה"כ נקראת כתוספת.
  */
 export function orderPriceLines(o: OrderRow): string[] {
   const p = o.price;
@@ -40,11 +43,11 @@ export function orderPriceLines(o: OrderRow): string[] {
   return [
     `${m.orderLineBase}: ${money(p.base)}`,
     p.widthAdd ? `${m.orderLineWidthAdd}: ${money(p.widthAdd)}` : null,
-    p.complexity ? `${m.orderLineComplexity}: ${money(p.complexity)}` : null,
-    `${m.orderLinePackaging}: ${money(p.packaging)}`,
+    // הפרש ולא סכום: המורכבות הסטנדרטית כבר בתוך הבסיס, ותבנית פשוטה מוזילה.
+    p.complexity ? `${m.orderLineComplexity}: ${p.complexity > 0 ? "+" : "−"}${money(Math.abs(p.complexity))}` : null,
     `${m.orderLineShipping}: ${money(p.shipping)}`,
-    `${m.orderLineTax}: ${money(p.tax)}`,
     `${m.orderLineTotal}: ${money(p.total)}`,
+    `${m.orderLineTax}: ${money(p.vat)}`,
   ].filter((l): l is string => l !== null);
 }
 

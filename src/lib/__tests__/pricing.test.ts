@@ -1,60 +1,72 @@
 import { describe, expect, it } from "vitest";
-import { priceFor, PACKAGING, SHIPPING, TAX_RATE } from "../pricing";
+import { priceFor, SHIPPING, TAX_RATE, vatIn } from "../pricing";
 import { FAB } from "../fabrication.config";
 
-// התמחור עבר מהדפדפן ל-lib משותף כדי שהשרת יחשב את המחיר שנשמר בהזמנה.
-// המבחן הראשון הוא שהמעבר לא שינה אף מספר: מחיר שזז בשקט הוא מחיר שגובים
-// אחרת ממה שהוצג.
+// המחירון (29.7, החלטת גל): צמיד סטנדרטי ₪399, טבעת ₪299 — **כולל מע"מ**,
+// לפני משלוח. המע"מ 18% ונגזר מתוך הסכום ולא מתווסף אליו.
+//
+// הטסטים כאן נועלים בדיוק את שני המספרים שגל אמר, ואת המבנה שנגזר מהם: מה
+// שכתוב הוא מה שמשלמים. הכשל שהם מונעים הוא חזרה שקטה למודל הקודם — 17%
+// שנוספים מעל — שמזיז כל מחיר באתר ב-18% בלי ששורה אחת נראית שגויה.
 
-const OLD_FORMULA = (productType: "bracelet" | "ring", widthMm: number, complexity: number) => {
-  const ring = productType === "ring";
-  const base = ring ? 240 : 320;
-  const perMm = ring ? 14 : 5;
-  const def = ring ? 6 : 18;
-  const widthAdd = Math.round(Math.max(0, widthMm - def) * perMm);
-  const subtotal = base + widthAdd + complexity;
-  const tax = Math.round((subtotal + PACKAGING + SHIPPING) * 0.17);
-  return subtotal + PACKAGING + SHIPPING + tax;
-};
+const STD_BRACELET = { productType: "bracelet", widthMm: 18, density: "medium" } as const;
+const STD_RING = { productType: "ring", widthMm: 6, density: "medium" } as const;
 
-const COMPLEXITY = { low: 0, medium: 45, high: 110 } as const;
+describe("מחירון", () => {
+  it("צמיד סטנדרטי הוא ₪399 לפני משלוח, וטבעת ₪299", () => {
+    expect(priceFor(STD_BRACELET).base).toBe(399);
+    expect(priceFor(STD_RING).base).toBe(299);
+  });
 
-describe("תמחור", () => {
-  it("מחזיר בדיוק את המחירים של הנוסחה שהייתה במסך", () => {
+  it("המשלוח מתווסף לבסיס, והמע\"מ לא", () => {
+    // הבאג שהטסט הזה שומר מפניו: חזרה למודל שמכפיל את הסכום ב-1.18.
+    expect(priceFor(STD_BRACELET).total).toBe(399 + SHIPPING);
+    expect(priceFor(STD_RING).total).toBe(299 + SHIPPING);
+  });
+
+  it("המע\"מ הוא החלק הכלול בסכום (18/118), לא תוספת מעליו", () => {
+    const p = priceFor(STD_BRACELET);
+    expect(p.vat).toBe(Math.round((p.total * TAX_RATE) / (1 + TAX_RATE)));
+    expect(p.vat).toBe(vatIn(p.total));
+    // 434 → 66, ולא 434*0.18 = 78.
+    expect(p.total).toBe(434);
+    expect(p.vat).toBe(66);
+    // והבדיקה בכיוון ההפוך: הנטו כשמוסיפים לו 18% חוזר לסכום, עד כדי עיגול.
+    const net = p.total - p.vat;
+    expect(Math.abs(Math.round(net * (1 + TAX_RATE)) - p.total)).toBeLessThanOrEqual(1);
+  });
+
+  it("מוסיף על רוחב רק מעל ברירת המחדל של המוצר", () => {
+    const def = FAB.products.bracelet.defaultWidthMm;
+    expect(priceFor({ productType: "bracelet", widthMm: def, density: "medium" }).widthAdd).toBe(0);
+    // הבאג המתבקש כאן הוא רוחב שלילי שהופך להנחה.
+    expect(priceFor({ productType: "bracelet", widthMm: 5, density: "medium" }).widthAdd).toBe(0);
+    expect(priceFor({ productType: "bracelet", widthMm: def + 10, density: "medium" }).widthAdd).toBe(50);
+    expect(priceFor({ productType: "ring", widthMm: 7, density: "medium" }).widthAdd).toBe(14);
+  });
+
+  it("המורכבות הסטנדרטית כלולה בבסיס, ולכן היא הפרש ולא סכום", () => {
+    expect(priceFor(STD_BRACELET).complexity).toBe(0);
+    expect(priceFor({ ...STD_BRACELET, density: "low" }).complexity).toBeLessThan(0);
+    expect(priceFor({ ...STD_BRACELET, density: "high" }).complexity).toBeGreaterThan(0);
+    // תבנית פשוטה זולה מסטנדרטית, וצפופה יקרה ממנה — בסכום שמשלמים.
+    expect(priceFor({ ...STD_BRACELET, density: "low" }).total).toBeLessThan(
+      priceFor(STD_BRACELET).total,
+    );
+    expect(priceFor({ ...STD_BRACELET, density: "high" }).total).toBeGreaterThan(
+      priceFor(STD_BRACELET).total,
+    );
+  });
+
+  it("הסכום הוא בדיוק סכום הרכיבים — המע\"מ אינו אחד מהם", () => {
     for (const productType of ["bracelet", "ring"] as const) {
       for (const density of ["low", "medium", "high"] as const) {
-        for (const widthMm of [4, 6, 12, 18, 25, 40, 80]) {
-          expect(priceFor({ productType, widthMm, density }).total).toBe(
-            OLD_FORMULA(productType, widthMm, COMPLEXITY[density]),
-          );
+        for (const widthMm of [4, 6, 18, 30, 80]) {
+          const p = priceFor({ productType, widthMm, density });
+          expect(p.total).toBe(p.base + p.widthAdd + p.complexity + p.shipping);
+          expect(p.vat).toBeLessThan(p.total);
         }
       }
     }
-  });
-
-  it("אינו גובה תוספת רוחב מתחת לברירת המחדל של המוצר", () => {
-    // הבאג המתבקש כאן הוא רוחב שלילי שהופך להנחה.
-    const narrow = priceFor({ productType: "bracelet", widthMm: 5, density: "low" });
-    const def = priceFor({
-      productType: "bracelet",
-      widthMm: FAB.products.bracelet.defaultWidthMm,
-      density: "low",
-    });
-    expect(narrow.widthAdd).toBe(0);
-    expect(narrow.total).toBe(def.total);
-  });
-
-  it("מחשב את המע\"מ על הכול — כולל אריזה ומשלוח", () => {
-    const p = priceFor({ productType: "ring", widthMm: 6, density: "medium" });
-    const sub = p.base + p.widthAdd + p.complexity + p.packaging + p.shipping;
-    expect(p.tax).toBe(Math.round(sub * TAX_RATE));
-    expect(p.total).toBe(sub + p.tax);
-  });
-
-  it("גוזר את רוחב הבסיס מ-fabrication.config ולא ממספר שנכתב שוב", () => {
-    // אם מישהו ישנה שם את ברירת המחדל, התמחור חייב לזוז איתה.
-    const w = FAB.products.ring.defaultWidthMm;
-    expect(priceFor({ productType: "ring", widthMm: w, density: "low" }).widthAdd).toBe(0);
-    expect(priceFor({ productType: "ring", widthMm: w + 1, density: "low" }).widthAdd).toBe(14);
   });
 });

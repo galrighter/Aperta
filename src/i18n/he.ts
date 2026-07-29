@@ -148,7 +148,7 @@ export const he = {
       "תכשיט לא בוחרים מתוך מדף. הוא מתחיל בקו שרק את רואה — ונגמר בחפץ שאין עוד אחד כמוהו בעולם.",
     heroSubtitleSeo:
       "עצבו צמיד או טבעת פתוחים משלכם. התחילו מרעיון, שרטוט או תמונה — נהלו שיחה קצרה עם מנוע העיצוב, קבלו חלופות וערכו אותן עד לתכשיט שהוא רק שלכם.",
-    heroPriceNote: "מ־₪240",
+    heroPriceNote: "מ־₪299 כולל מע״מ",
     heroCtaPrimary: "ליצור את שלי",
     heroImageAlt: "צמיד פליז פתוח עם חיתוכי לייזר אלכסוניים",
     heroPieceTag: "PIECE Nº 001 — YOURS",
@@ -373,6 +373,7 @@ export const he = {
     adminOrderStatusCancelled: "בוטלה",
     adminOrderBrief: "תיאור הלקוחה",
     adminOrderVersionOrdered: "הגרסה שהוזמנה",
+    adminOrderVat: "מזה מע״מ",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====
@@ -394,11 +395,11 @@ export const he = {
     productTitle: "מה נעצב?",
     productSubtitle: "בוחרים מוצר, וממשיכים למידות. אפשר לשנות בהמשך.",
     braceletName: "צמיד פתוח",
-    braceletPrice: "החל מ־₪320",
+    braceletPrice: "₪399 כולל מע״מ",
     braceletDesc: "רצועה פתוחה שמעורגלת לקשת ונפתחת בעדינות למידה.",
     braceletMeta: ["רוחב 5–80 מ״מ", "פליז", "10–14 ימי עבודה"],
     ringName: "טבעת פתוחה",
-    ringPrice: "החל מ־₪240",
+    ringPrice: "₪299 כולל מע״מ",
     ringDesc: "טבעת פתוחה וגמישה, שמתאימה את עצמה לאצבע.",
     ringMeta: ["רוחב 4–18 מ״מ", "פליז", "10–14 ימי עבודה"],
 
@@ -642,13 +643,14 @@ export const he = {
       "זמן אספקה משוער 10–14 ימי עבודה מרגע אישור השרטוט.",
     ],
     priceTitle: "מחיר",
-    priceBase: "מחיר בסיס",
+    priceBase: "מחיר בסיס (כולל אריזה)",
     priceWidth: "תוספת רוחב",
     priceComplexity: "תוספת מורכבות",
-    pricePackaging: "אריזה",
     priceShipping: "משלוח",
-    priceVat: "מע״מ 17%",
-    priceTotal: "סה״כ",
+    // המע"מ כלול במחירים ואינו מתווסף להם — ולכן "מזה" ולא שורת תוספת.
+    priceVat: "מזה מע״מ 18%",
+    priceTotal: "סה״כ לתשלום",
+    priceInclNote: "כל המחירים כוללים מע״מ.",
     termsLabel: "קראתי ואני מאשרת את תנאי השימוש ואת תנאי ההזמנה.",
     summaryContinue: "המשך לתשלום",
 
@@ -770,13 +772,12 @@ export const he = {
     orderLineDesign: "מספר עיצוב",
     orderLineAddress: "כתובת",
     orderLineBrief: "תיאור הלקוחה",
-    orderLineBase: "בסיס",
+    orderLineBase: "בסיס (כולל אריזה)",
     orderLineWidthAdd: "תוספת רוחב",
     orderLineComplexity: "מורכבות",
-    orderLinePackaging: "אריזה",
     orderLineShipping: "משלוח",
-    orderLineTax: "מע״מ",
-    orderLineTotal: "סה״כ",
+    orderLineTax: "מזה מע״מ 18%",
+    orderLineTotal: "סה״כ לתשלום",
 
     // ---- עדכון סטטוס ללקוחה (docs/TODO.md D2) ----
     statusSubjectApproved: "ההזמנה שלך אושרה",

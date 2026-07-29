@@ -22,13 +22,12 @@ const ORDER: OrderRow = {
   cuts: 34,
   brief: "עלים מחוברים",
   price: {
-    base: 320,
+    base: 399,
     widthAdd: 0,
-    complexity: 45,
-    packaging: 25,
+    complexity: 0,
     shipping: 35,
-    tax: 76,
-    total: 501,
+    total: 434,
+    vat: 66,
   },
   status: "sent",
   status_history: [{ status: "sent", at: "2026-07-28T00:00:00.000Z" }],
@@ -48,10 +47,11 @@ describe("סיכום הזמנה", () => {
   it("מוציא את הפירוט ולא רק את הסכום", () => {
     // B2: עד עכשיו נשלח `סה"כ` בלבד, כשהחישוב כבר ידע את כל הרכיבים.
     const lines = orderPriceLines(ORDER).join("\n");
-    expect(lines).toContain("₪320");
-    expect(lines).toContain("₪45");
-    expect(lines).toContain("₪76");
-    expect(lines).toContain("₪501");
+    expect(lines).toContain("₪399");
+    expect(lines).toContain("₪35");
+    expect(lines).toContain("₪434");
+    // המע"מ מוצג כ"מזה" — הוא כלול בסכום ואינו מתווסף אליו.
+    expect(lines).toContain("מזה מע״מ 18%: ₪66");
   });
 
   it("משמיט רכיב מחיר אפסי, ואת ה'ישיבה' בטבעת", () => {

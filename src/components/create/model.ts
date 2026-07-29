@@ -203,7 +203,7 @@ export const hasExactSize = (s: CreateState): boolean => {
 
 // החישוב עצמו עבר ל-`src/lib/pricing.ts`, כדי שהשרת יחשב את אותו מחיר ולא
 // יקבל אותו מהדפדפן. כאן נשארה רק ההסבה ממצב המסך לקלט של הפונקציה.
-export { PACKAGING, SHIPPING } from "@/lib/pricing";
+export { SHIPPING } from "@/lib/pricing";
 export type { Price } from "@/lib/pricing";
 
 export const priceOf = (s: CreateState): Price =>

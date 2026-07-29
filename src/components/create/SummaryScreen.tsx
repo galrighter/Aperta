@@ -93,14 +93,18 @@ export function SummaryScreen({
             <PriceRow k={d.priceBase} v={p.base} />
             <PriceRow k={d.priceWidth} v={p.widthAdd} />
             <PriceRow k={d.priceComplexity} v={p.complexity} />
-            <PriceRow k={d.pricePackaging} v={p.packaging} />
             <PriceRow k={d.priceShipping} v={p.shipping} />
-            <PriceRow k={d.priceVat} v={p.tax} />
             <div className="mt-2 flex items-baseline justify-between border-t border-graphite/15 pt-3.5">
               <span className="text-base font-semibold text-graphite">{d.priceTotal}</span>
               <span className="font-display text-2xl font-bold text-graphite">
                 {d.ils}{p.total}
               </span>
+            </div>
+            {/* המע"מ כלול בסכום ולכן הוא יושב מתחתיו כשורת מידע, לא מעליו
+                כשורת תוספת: מה שמוצג הוא מה שמשלמים. */}
+            <div className="mt-1 flex items-baseline justify-between text-[13px] text-mist">
+              <span>{d.priceVat}</span>
+              <span>{d.ils}{p.vat}</span>
             </div>
 
             {/* אישור תנאים — חוסם */}

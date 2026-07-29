@@ -200,12 +200,18 @@ function OrderCard({
               <div className="font-display text-lg font-bold text-graphite">
                 {money(order.price.total)}
               </div>
-              {/* הפירוט ולא רק הסכום — הוא נדרש לחשבונית ממילא. */}
+              {/* הפירוט ולא רק הסכום — הוא נדרש לחשבונית ממילא. המע"מ מופיע
+                  כ"מזה" ולא כמחובר, כי הוא כלול בסכום. */}
               <div className="text-[12px] text-mist">
                 {money(order.price.base)}
                 {order.price.widthAdd ? ` + ${money(order.price.widthAdd)}` : ""}
-                {order.price.complexity ? ` + ${money(order.price.complexity)}` : ""}
-                {` + ${money(order.price.packaging + order.price.shipping)} + ${money(order.price.tax)}`}
+                {order.price.complexity
+                  ? ` ${order.price.complexity > 0 ? "+" : "−"} ${money(Math.abs(order.price.complexity))}`
+                  : ""}
+                {` + ${money(order.price.shipping)}`}
+              </div>
+              <div className="text-[12px] text-mist">
+                {s.adminOrderVat} {money(order.price.vat)}
               </div>
             </>
           ) : (
