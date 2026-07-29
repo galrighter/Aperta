@@ -9,6 +9,7 @@ import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
+import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
@@ -167,8 +168,19 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       widthMm: Number(design.width_mm),
       thicknessMm: Number(design.thickness_mm),
     };
-    const plan = planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
-    const prompt = buildRenderPrompt(body.userPrompt, design.product_type, dims, plan.rows);
+    //
+    // עריכה (currentSvg קיים): הפריט הקיים נמסר למודל כתמונה, ולכן שני דברים
+    // משתנים. הפרומפט מדבר על התמונה המצורפת ולא מתאר פריט חדש; והתכנון עובר
+    // לשורה אחת בכל קריאה — מספר השורות הוא הידית על יחס הצדדים, ומול רפרנס
+    // היחס מגיע מהרפרנס. המועמדים נשארים ארבעה, עכשיו מארבע קריאות נפרדות
+    // במקום משורות (~$0.024 להרצת עריכה במקום ~$0.012 — ראה imagegen.ts).
+    const baseSvg = buildBaseRenderSvg(body.currentSvg);
+    const plan = baseSvg
+      ? { rows: 1, calls: CANDIDATE_TARGET, candidates: CANDIDATE_TARGET }
+      : planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
+    const prompt = buildRenderPrompt(
+      body.userPrompt, design.product_type, dims, plan.rows, Boolean(baseSvg),
+    );
     const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
@@ -186,6 +198,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         minHoleMm,
         colorKey: "dark",
         imageCount: body.images.length,
+        // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
+        // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
+        editedFromCurrent: Boolean(baseSvg),
       },
       inputImage: inspiration
         ? { bytes: decodeDataUrl(`data:${inspiration.mediaType};base64,${inspiration.base64}`).bytes,
@@ -208,6 +223,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
       minHoleMm,
       inspiration,
+      baseSvg,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {
         conditioned: `runs/${runId}/conditioned.png`,

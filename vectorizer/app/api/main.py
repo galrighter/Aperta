@@ -133,6 +133,9 @@ class GenerateIn(BaseModel):
     # this one so openings the cutter cannot make never reach the SVG. 0 = keep all.
     min_hole_mm: float = Field(default=0.0, ge=0, le=5)
     inspiration: InspirationIn | None = None
+    # An edit: the design as it stands, already drawn as a render would look.
+    # We rasterise it and hand it to the image model as the reference.
+    base_svg: str | None = Field(default=None, max_length=2_000_000)
     artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
 
 
@@ -161,6 +164,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         height_mm=body.height_mm,
         color_key=body.color_key,
         inspiration=inspiration,
+        base_svg=body.base_svg,
         min_hole_mm=body.min_hole_mm,
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
