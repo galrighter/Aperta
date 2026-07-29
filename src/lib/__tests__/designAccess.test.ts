@@ -22,20 +22,30 @@ vi.mock("../db/designs", () => ({
   getDesign: async (id: string) => ({ id, profile_id: id === "studio-design" ? TESTER : OWNER }),
 }));
 
+// הזהות עצמה נבדקת במקום אחר. כאן מזייפים אותה כדי לבדוק את כלל הבעלות
+// לבדו — קודם הטסט בנה עוגייה חתומה, וזה קשר אותו למנגנון שהוחלף מאז
+// ב-Supabase Auth. מה שנבדק כאן לא היה תלוי בו מלכתחילה.
+let signedInAs: string | null = null;
+vi.mock("../account", async () => {
+  const { ApiError } = await import("../api");
+  return {
+    readAccountId: async () => signedInAs,
+    requireAccountId: async () => {
+      if (!signedInAs) throw new ApiError("account_required", "Sign in before designing", 401);
+      return signedInAs;
+    },
+  };
+});
+
 let access: typeof import("../designAccess");
-let account: typeof import("../account");
 
 beforeAll(async () => {
   access = await import("../designAccess");
-  account = await import("../account");
 });
 
 async function reqAs(profileId: string | null): Promise<Request> {
-  if (!profileId) return new Request("https://rmjewel.com/");
-  const cookie = await account.accountCookieValue(profileId);
-  return new Request("https://rmjewel.com/", {
-    headers: { cookie: `${account.ACCOUNT_COOKIE}=${encodeURIComponent(cookie)}` },
-  });
+  signedInAs = profileId;
+  return new Request("https://rmjewel.com/");
 }
 
 describe("בעלות על עיצוב קיים", () => {

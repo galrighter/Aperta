@@ -25,6 +25,8 @@ import { CheckoutScreen } from "@/components/create/CheckoutScreen";
 import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
+import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
+import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
   countCuts, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf, stripLengthMm, widthOf,
@@ -230,12 +232,16 @@ export default function DesignPage() {
   }, [s, account, go, pushEntry, remember]);
 
   /* ===== כניסה / החלפת משתמש ===== */
-  const onSignIn = useCallback(
-    async (v: { name: string; email: string; phone?: string; company?: string }) => {
+
+  /** נקרא אחרי שהזהות כבר אומתה — קוד שאושר, או חזרה מגוגל דרך /auth/callback.
+   *  אין כאן פרטי כניסה: הסשן כבר קיים, ואנחנו רק שואלים את השרת מי זה. */
+  const afterSignedIn = useCallback(
+    async (opts?: { resume?: boolean }) => {
       setGateBusy(true);
       setGateError(null);
       try {
-        const { account: a } = await api.signIn(v);
+        const { account: a } = await api.account();
+        if (!a) throw new Error("no account");
         setAccount(a);
         // כניסה ממכשיר חדש: מושכים מהשרת את מה שכבר עוצב בחשבון הזה, אחרת
         // "העיצובים שלי" ריק דווקא למי שיש לו הכי הרבה מה להמשיך.
@@ -260,7 +266,7 @@ export default function DesignPage() {
         }
         setGateBusy(false);
         setGateOpen(false);
-        if (startAfterSignIn.current) {
+        if (opts?.resume ?? startAfterSignIn.current) {
           startAfterSignIn.current = false;
           void startGeneration(a);
         }
@@ -272,14 +278,51 @@ export default function DesignPage() {
     [startGeneration],
   );
 
+  /* ===== חזרה מגוגל =====
+     היציאה ל-OAuth טוענת את העמוד מחדש, וכל מה שהלקוחה מילאה יושב ב-state
+     בזיכרון. בלי השחזור הזה היא חוזרת מגוגל למסך ריק אחרי שכבר בחרה מוצר,
+     מידות ותיאור — כשל שאינו נראה בשום טסט ומתגלה רק במסע אמיתי. */
+  const returnHandled = useRef(false);
+  useEffect(() => {
+    if (returnHandled.current) return;
+    returnHandled.current = true;
+
+    const stash = popCreateState<{ state: CreateState; maxReached: number; resume: boolean }>();
+    if (!stash) return;
+    setState(stash.state);
+    setMaxReached(stash.maxReached);
+
+    const url = new URL(window.location.href);
+    const failed = url.searchParams.get("auth") === "failed";
+    if (failed) {
+      // מנקים את הסימון מהכתובת: רענון אחריו לא אמור להראות שוב שגיאה ישנה.
+      url.searchParams.delete("auth");
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      startAfterSignIn.current = stash.resume;
+      setGateError(d.acctGoogleFailed);
+      setGateOpen(true);
+      return;
+    }
+
+    void afterSignedIn({ resume: stash.resume });
+  }, [afterSignedIn]);
+
   /** החלפת משתמש. האינדקס המקומי נמחק — במכשיר משותף הוא של מי שנכנס עכשיו.
    *  העיצובים עצמם נשארים בשרת וחוזרים בכניסה עם אותו מייל. */
   const onSwitchAccount = useCallback(async () => {
+    try {
+      // גם בדפדפן וגם בשרת: ה-SDK מחזיק סשן משלו, ובלי היציאה שלו הכניסה
+      // הבאה הייתה חוזרת לאותו משתמש בלי לשאול.
+      if (authConfigured) await supabaseBrowser().auth.signOut();
+    } catch {
+      /* ממשיכים לניקוי בשרת בכל מקרה */
+    }
     try {
       await api.signOut();
     } catch {
       /* גם אם הניקוי בשרת נכשל, ממשיכים לנקות מקומית */
     }
+    clearCreateState();
     clearMyDesigns();
     setSaved([]);
     setAccount(null);
@@ -471,6 +514,15 @@ export default function DesignPage() {
         }),
       });
       if (!res.ok) throw new Error("failed");
+
+      // מסלול המייל נכנס בלי שם — הפרופיל נוצר עם החלק שלפני ה-@, ובבק־אופיס
+      // הוא נראה כמו "dana" ולא כמו דנה. הצ'קאאוט הוא המקום היחיד שבו השם
+      // האמיתי והטלפון כבר נמסרו, ולכן משלימים אותם כאן. best-effort: זו
+      // תוספת לתצוגה, ולא סיבה להיכשל על הזמנה שכבר נשמרה.
+      void api
+        .updateAccount({ name: s.addr.name.trim(), phone: s.addr.phone.trim() || undefined })
+        .then(({ account: a }) => setAccount(a))
+        .catch(() => {});
       // מספר ההזמנה הוא מספר העיצוב. עד כה הוא נגזר מחיתוך של uuid — מחרוזת
       // אקראית שאי אפשר להקריא בטלפון, ושלא הצביעה על שום דבר שאפשר לחפש.
       const orderNo =
@@ -583,13 +635,14 @@ export default function DesignPage() {
 
       <AccountGate
         open={gateOpen}
-        onSubmit={onSignIn}
+        onSignedIn={() => afterSignedIn()}
+        onBeforeRedirect={() => stashCreateState({ state: s, maxReached, resume: startAfterSignIn.current })}
         onCancel={() => {
           startAfterSignIn.current = false;
+          setGateError(null);
           setGateOpen(false);
         }}
-        error={gateError}
-        busy={gateBusy}
+        externalError={gateError}
       />
     </div>
   );

@@ -5,36 +5,50 @@
 // למה שם: המסכים שלפניו (בחירת מוצר, מידות, תיאור) הם ההתנסות שמשכנעת, וטופס
 // לפניהם מגרש מבקר שעוד לא יודע מה הוא מקבל. הרגע שאחריהם הוא גם הרגע היקר —
 // כל יצירה היא הרצת מנוע — וגם הרגע שבו נוצרת רשומה שצריכה בעלים.
-import { useEffect, useRef, useState } from "react";
+//
+// הזיהוי עצמו הוא Supabase Auth: חשבון גוגל, או קוד חד־פעמי במייל. אין סיסמה,
+// ובכוונה — סיסמה היא עוד דבר לאבד, ועוד דבר לאבטח.
+import { useCallback, useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import { TextInput } from "./ui";
+import { supabaseBrowser, authConfigured } from "@/lib/client/supabaseBrowser";
 
 const d = he.design;
 
+type Step = "choose" | "code";
+
 export function AccountGate({
-  open, onSubmit, onCancel, error, busy,
+  open,
+  onCancel,
+  onSignedIn,
+  /** מה לשמור לפני יציאה לגוגל — העמוד ייטען מחדש בדרך חזרה. */
+  onBeforeRedirect,
+  /** שגיאה שנולדה מחוץ לשער — למשל חזרה כושלת מגוגל. */
+  externalError,
 }: {
   open: boolean;
-  onSubmit: (v: { name: string; email: string; phone?: string; company?: string }) => void;
   onCancel: () => void;
-  error: string | null;
-  busy: boolean;
+  /** נקרא אחרי אימות מוצלח של קוד. כניסת גוגל חוזרת דרך /auth/callback. */
+  onSignedIn: () => void | Promise<void>;
+  onBeforeRedirect?: () => void;
+  externalError?: string | null;
 }) {
-  const [name, setName] = useState("");
+  const [step, setStep] = useState<Step>("choose");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  // honeypot — אותו דפוס כמו בטופס יצירת הקשר
-  const [company, setCompany] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const firstField = useRef<HTMLDivElement>(null);
 
-  // הטופס נפתח ריק בכל פעם. הרכיב נשאר מותקן כשהוא סגור, ובלי האיפוס הזה
-  // "לא אתם?" היה מציג לחבר הבא את השם והמייל של מי שהיה לפניו.
+  // הטופס נפתח נקי בכל פעם. הרכיב נשאר מותקן כשהוא סגור, ובלי האיפוס הזה
+  // "לא אתם?" היה מציג לחבר הבא את המייל של מי שהיה לפניו.
   useEffect(() => {
     if (!open) return;
-    setName("");
+    setStep("choose");
     setEmail("");
-    setPhone("");
-    setCompany("");
+    setCode("");
+    setError(null);
+    setBusy(false);
   }, [open]);
 
   useEffect(() => {
@@ -47,9 +61,79 @@ export function AccountGate({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, busy, onCancel]);
 
+  const withGoogle = useCallback(async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      // היציאה לגוגל מאבדת את ה-state בזיכרון — שומרים לפניה.
+      onBeforeRedirect?.();
+      const { error: e } = await supabaseBrowser().auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+            window.location.pathname,
+          )}`,
+        },
+      });
+      if (e) throw new Error(e.message);
+      // הצלחה = ניווט החוצה. אין כאן מה לעדכן.
+    } catch {
+      setError(d.acctGoogleFailed);
+      setBusy(false);
+    }
+  }, [onBeforeRedirect]);
+
+  const sendCode = useCallback(async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      // המייל של Supabase יכול לשאת גם קוד וגם קישור, תלוי בתבנית. את הקישור
+      // חייבים לכוון ל-`/auth/callback` — בלי `emailRedirectTo` הוא הולך
+      // ל-Site URL, כלומר לדף הבית, ושם אין מי שיחליף את הקוד בסשן: המשתמש
+      // לוחץ, נוחת בעמוד הראשי, ולא קורה כלום.
+      //
+      // ולכן גם שומרים את מצב המשפך כאן ולא רק לפני גוגל: מי שילחץ על הקישור
+      // במקום להקליד את הקוד מרענן את העמוד בדיוק כמו מסע OAuth.
+      onBeforeRedirect?.();
+      const { error: e } = await supabaseBrowser().auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+            window.location.pathname,
+          )}`,
+        },
+      });
+      if (e) throw new Error(e.message);
+      setStep("code");
+    } catch {
+      setError(d.acctError);
+    } finally {
+      setBusy(false);
+    }
+  }, [email, onBeforeRedirect]);
+
+  const verify = useCallback(async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const { error: e } = await supabaseBrowser().auth.verifyOtp({
+        email: email.trim(),
+        token: code.trim(),
+        type: "email",
+      });
+      if (e) throw new Error(e.message);
+      await onSignedIn();
+    } catch {
+      setError(d.acctCodeInvalid);
+      setBusy(false);
+    }
+  }, [email, code, onSignedIn]);
+
   if (!open) return null;
 
-  const ready = name.trim().length >= 2 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const emailOk = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+  const codeOk = /^\d{6}$/.test(code.trim());
 
   return (
     <div
@@ -58,49 +142,117 @@ export function AccountGate({
       aria-modal="true"
       aria-label={d.acctTitle}
     >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!ready || busy) return;
-          onSubmit({
-            name: name.trim(),
-            email: email.trim(),
-            phone: phone.trim() || undefined,
-            company: company || undefined,
-          });
-        }}
-        className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-white p-7"
-      >
+      <div className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-white p-7">
         <h2 className="mb-2 text-[22px] font-semibold tracking-tight text-graphite">
-          {d.acctTitle}
+          {step === "code" ? d.acctCodeTitle : d.acctTitle}
         </h2>
-        <p className="mb-6 text-[15px] leading-relaxed text-ink60">{d.acctSubtitle}</p>
+        <p className="mb-6 text-[15px] leading-relaxed text-ink60">
+          {step === "code" ? `${d.acctCodeSentTo} ${email.trim()}` : d.acctSubtitle}
+        </p>
 
-        <div className="flex flex-col gap-4">
-          <div ref={firstField}>
-            <TextInput label={d.acctName} value={name} onChange={setName} placeholder={d.acctNamePh} required />
-          </div>
-          <TextInput label={d.acctEmail} value={email} onChange={setEmail} type="email" required />
-          <TextInput label={`${d.acctPhone} · ${d.acctPhoneOpt}`} value={phone} onChange={setPhone} type="tel" />
-        </div>
+        {!authConfigured ? (
+          <p className="text-[13px] text-[#c0413b]">{d.acctUnavailable}</p>
+        ) : step === "choose" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void withGoogle()}
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-3 rounded-[2px] border border-graphite/25 bg-white px-6 py-3 text-base font-medium text-graphite transition-colors hover:bg-porcelain disabled:opacity-50"
+            >
+              <GoogleMark />
+              {d.acctGoogle}
+            </button>
 
-        {/* לבוטים בלבד: שדה אמיתי, מוסתר מהעין ומקורא המסך */}
-        <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-          <label>
-            Company
-            <input
-              type="text"
-              tabIndex={-1}
-              autoComplete="off"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-            />
-          </label>
-        </div>
+            <div className="my-5 flex items-center gap-3 text-[13px] text-mist">
+              <span className="h-px flex-1 bg-graphite/12" />
+              {d.acctOr}
+              <span className="h-px flex-1 bg-graphite/12" />
+            </div>
 
-        {error && <p className="mt-4 text-[13px] text-[#c0413b]">{error}</p>}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (emailOk && !busy) void sendCode();
+              }}
+            >
+              <div ref={firstField}>
+                <TextInput
+                  label={d.acctEmail}
+                  value={email}
+                  onChange={setEmail}
+                  type="email"
+                  placeholder={d.acctEmailPh}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!emailOk || busy}
+                className={`mt-4 w-full rounded-[2px] px-[30px] py-3 text-base font-semibold text-porcelain transition-colors ${
+                  !emailOk || busy ? "cursor-not-allowed bg-graphite/25" : "bg-graphite hover:bg-graphite/90"
+                }`}
+              >
+                {busy ? d.acctSending : d.acctSendCode}
+              </button>
+            </form>
+          </>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (codeOk && !busy) void verify();
+            }}
+          >
+            <div ref={firstField}>
+              <TextInput
+                label={d.acctCodeLabel}
+                value={code}
+                onChange={(v) => setCode(v.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                dir="ltr"
+                required
+              />
+            </div>
+            <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.acctCodeOrLink}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-mist">{d.acctCodeSpam}</p>
+            <button
+              type="submit"
+              disabled={!codeOk || busy}
+              className={`mt-4 w-full rounded-[2px] px-[30px] py-3 text-base font-semibold text-porcelain transition-colors ${
+                !codeOk || busy ? "cursor-not-allowed bg-graphite/25" : "bg-graphite hover:bg-graphite/90"
+              }`}
+            >
+              {busy ? d.acctSending : d.acctCodeEnter}
+            </button>
+            <div className="mt-4 flex items-center justify-between gap-3 text-[13px]">
+              <button
+                type="button"
+                onClick={() => setStep("choose")}
+                disabled={busy}
+                className="text-ink60 underline-offset-4 hover:underline disabled:opacity-50"
+              >
+                {d.acctCodeOtherEmail}
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendCode()}
+                disabled={busy}
+                className="text-cobalt underline-offset-4 hover:underline disabled:opacity-50"
+              >
+                {d.acctCodeResend}
+              </button>
+            </div>
+          </form>
+        )}
 
-        <p className="mt-5 text-[13px] leading-relaxed text-mist">{d.acctNote}</p>
+        {(error ?? externalError) && (
+          <p className="mt-4 text-[13px] text-[#c0413b]">{error ?? externalError}</p>
+        )}
+
+        {step === "choose" && authConfigured && (
+          <p className="mt-5 text-[13px] leading-relaxed text-mist">{d.acctNote}</p>
+        )}
 
         <div className="mt-6 flex items-center justify-between gap-3">
           <button
@@ -111,28 +263,26 @@ export function AccountGate({
           >
             {d.acctCancel}
           </button>
-          <button
-            type="submit"
-            disabled={!ready || busy}
-            className={`rounded-[2px] px-[30px] py-3 text-base font-semibold text-porcelain transition-colors ${
-              !ready || busy ? "cursor-not-allowed bg-graphite/25" : "bg-graphite hover:bg-graphite/90"
-            }`}
-          >
-            {busy ? d.acctSending : d.acctSubmit}
-          </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
 
+/** הלוגו של גוגל. נדרש על ידי הנחיות המיתוג שלהם על כפתור כניסה. */
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h11.8c-.5 2.7-2 5-4.4 6.6v5.5h7.1c4.1-3.8 6.6-9.4 6.6-16.1z" />
+      <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.4 2.1-5.7 0-10.6-3.9-12.3-9.1H4.3v5.7C7.9 41.1 15.4 46 24 46z" />
+      <path fill="#FBBC05" d="M11.7 28.1c-.4-1.3-.7-2.7-.7-4.1s.2-2.8.7-4.1v-5.7H4.3C2.8 17.1 2 20.4 2 24s.8 6.9 2.3 9.8l7.4-5.7z" />
+      <path fill="#EA4335" d="M24 10.8c3.2 0 6.1 1.1 8.4 3.3l6.3-6.3C34.9 4.2 29.9 2 24 2 15.4 2 7.9 6.9 4.3 14.2l7.4 5.7c1.7-5.2 6.6-9.1 12.3-9.1z" />
+    </svg>
+  );
+}
+
 /** "מחוברים כ־X · לא אתם?" — שורה דקה מעל המשפך. */
-export function AccountBar({
-  name, onSwitch,
-}: {
-  name: string;
-  onSwitch: () => void;
-}) {
+export function AccountBar({ name, onSwitch }: { name: string; onSwitch: () => void }) {
   return (
     <div className="mb-4 flex items-center gap-2 text-[13px] text-ink60">
       <span>

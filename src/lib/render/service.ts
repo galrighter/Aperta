@@ -65,6 +65,10 @@ export interface RenderJobInput {
    *  ומשמיטה פתחים שהלייזר לא יכול לפתוח לפני שהם מגיעים ל-SVG. */
   minHoleMm: number;
   inspiration: LlmImage | null;
+  /** עריכה: העיצוב הקיים כ-SVG שהקופסה מרסטרת (resvg) ומוסרת למודל התמונה
+   *  כרפרנס. גובר על `inspiration` — זה הפריט עצמו ולא השראה. בנייה:
+   *  src/lib/render/baseImage.ts. */
+  baseSvg: string | null;
   /** לאן ייכתבו ההדמיות ותמונות השלבים. אנחנו חותמים, השירות כותב. */
   renderPaths: string[];
   stagePaths: RunStagePaths;
@@ -100,6 +104,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
         inspiration: input.inspiration
           ? { media_type: input.inspiration.mediaType, base64: input.inspiration.base64 }
           : null,
+        base_svg: input.baseSvg,
         artifacts: { renders: renderUrls, stages: stageUrls },
       }),
       signal: AbortSignal.timeout(RENDER_TIMEOUT_MS),

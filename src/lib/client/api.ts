@@ -173,8 +173,10 @@ export const api = {
   /** מי מחובר עכשיו בדפדפן הזה. null = טרם נרשם. */
   account: () => call<{ account: Account | null }>("/api/account"),
 
-  signIn: (input: { name: string; email: string; phone?: string; company?: string }) =>
-    call<{ account: Account }>("/api/account", { method: "POST", body: JSON.stringify(input) }),
+  /** השלמת שם/טלפון אחרי הכניסה הראשונה. הזהות כבר מאומתת — אין כאן הרשמה.
+   *  (הכניסה עצמה עוברת ישירות מול Supabase Auth, ראו client/supabaseBrowser.) */
+  updateAccount: (input: { name?: string; phone?: string }) =>
+    call<{ account: Account }>("/api/account", { method: "PATCH", body: JSON.stringify(input) }),
 
   signOut: () => call<{ ok: true }>("/api/account", { method: "DELETE" }),
 

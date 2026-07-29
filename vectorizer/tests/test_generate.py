@@ -71,10 +71,10 @@ def wired(monkeypatch):
     """Patch out the model, the tracer and the network; keep the real splitter."""
     state: dict = {"calls": 0, "uploads": []}
 
-    async def render_many(key, prompt, calls, inspiration=None):
+    async def render_many(key, prompt, calls, reference=None):
         state["calls"] = calls
         state["prompt"] = prompt
-        state["inspiration"] = inspiration
+        state["reference"] = reference
         return [striped_png(state.get("rows", 1)) for _ in range(calls)]
 
     async def put_all(items, content_type="image/png"):
@@ -168,6 +168,75 @@ def test_more_renders_than_urls_uploads_only_what_was_signed(wired):
     out = run(generate.GenerateJob(prompt="p", calls=3, rows=1), artifacts)
     assert wired["uploads"] == ["https://x/render-0"]
     assert out["uploaded_renders"] == [0]
+
+
+# --- the edit reference ------------------------------------------------------
+
+
+BASE_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80" viewBox="0 0 120 80">'
+    '<rect width="120" height="80" fill="#ffffff"/>'
+    '<rect x="10" y="30" width="100" height="20" fill="#111111"/>'
+    "</svg>"
+)
+
+
+def test_a_base_svg_is_rasterised_and_handed_to_the_model(wired, monkeypatch):
+    """The edit path: what reaches the image model is the current piece, drawn."""
+    drawn: dict = {}
+
+    def fake_render(svg, width, height):
+        drawn["svg"], drawn["size"] = svg, (width, height)
+        return b"\x89PNG-current-piece"
+
+    monkeypatch.setattr(generate.renderer, "render_svg_to_png", fake_render)
+    run(generate.GenerateJob(prompt="p", calls=2, rows=1, base_svg=BASE_SVG))
+
+    assert wired["reference"] == (b"\x89PNG-current-piece", "image/png")
+    assert drawn["svg"] == BASE_SVG
+    # the canvas the model is asked to draw on, so the reference is not letterboxed
+    assert drawn["size"] == tuple(int(n) for n in generate.imagegen.SIZE.split("x"))
+
+
+def test_the_base_svg_wins_over_an_inspiration_image(wired, monkeypatch):
+    monkeypatch.setattr(generate.renderer, "render_svg_to_png", lambda *a: b"current")
+    run(
+        generate.GenerateJob(
+            prompt="p", calls=1, rows=1, base_svg=BASE_SVG, inspiration=(b"moodboard", "image/png")
+        )
+    )
+    assert wired["reference"] == (b"current", "image/png")
+
+
+def test_without_a_base_svg_the_inspiration_is_still_the_reference(wired):
+    run(generate.GenerateJob(prompt="p", calls=1, rows=1, inspiration=(b"moodboard", "image/png")))
+    assert wired["reference"] == (b"moodboard", "image/png")
+
+
+def test_a_base_svg_that_cannot_be_drawn_fails_the_run(wired, monkeypatch):
+    """Never a quiet fall-through to text-only — that is a brand new piece."""
+
+    def boom(*a):
+        raise generate.renderer.RenderError("resvg failed")
+
+    monkeypatch.setattr(generate.renderer, "render_svg_to_png", boom)
+    with pytest.raises(generate.imagegen.ImageGenError):
+        run(generate.GenerateJob(prompt="p", calls=1, rows=1, base_svg=BASE_SVG))
+
+
+def test_endpoint_passes_the_base_svg_through(wired, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.api import main
+
+    monkeypatch.setattr(generate.renderer, "render_svg_to_png", lambda *a: b"current")
+    client = TestClient(main.app)
+    resp = client.post(
+        "/api/generate",
+        json={"prompt": "less cuts", "calls": 1, "rows": 1, "height_mm": 15, "base_svg": BASE_SVG},
+    )
+    assert resp.status_code == 200
+    assert wired["reference"] == (b"current", "image/png")
 
 
 # --- the HTTP contract forme codes against ----------------------------------

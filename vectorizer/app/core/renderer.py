@@ -17,7 +17,13 @@ class RenderError(Exception):
     pass
 
 
-def render_svg_to_mask(svg: str, width_px: int, height_px: int) -> np.ndarray:
+def render_svg_to_png(svg: str, width_px: int, height_px: int) -> bytes:
+    """Rasterise an SVG onto a white canvas, as PNG bytes.
+
+    Used for the edit reference: forme sends the current design drawn the way a
+    render looks (black metal, white openings), and this is what the image model
+    is handed so the edit starts from the piece instead of from nothing.
+    """
     import resvg_py
 
     try:
@@ -29,8 +35,11 @@ def render_svg_to_mask(svg: str, width_px: int, height_px: int) -> np.ndarray:
         )
     except Exception as exc:  # noqa: BLE001
         raise RenderError(f"resvg failed: {exc}") from exc
+    return bytes(raw) if not isinstance(raw, (bytes, bytearray)) else raw
 
-    data = bytes(raw) if not isinstance(raw, (bytes, bytearray)) else raw
+
+def render_svg_to_mask(svg: str, width_px: int, height_px: int) -> np.ndarray:
+    data = render_svg_to_png(svg, width_px, height_px)
     try:
         img = Image.open(io.BytesIO(data)).convert("L")
     except Exception as exc:  # noqa: BLE001

@@ -75,7 +75,7 @@ export function orderAckMail(q: InquiryMail): { subject: string; text: string } 
   return { subject, text };
 }
 
-/* ===== הזמנות (טבלת orders, migration 0010) ===== */
+/* ===== הזמנות (טבלת orders, migration 0011) ===== */
 
 /**
  * ההתראה לגל על הזמנה. אותה כותרת כמו קודם — שם ומספר, כי זה מה שנקרא ברשימת

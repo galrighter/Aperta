@@ -303,14 +303,25 @@ export function buildPrompt(s: CreateState): string {
   return parts.join(" ");
 }
 
-/** פרומפט לשינוי ממוקד אזור, כולל רמזי הכוונון המהיר. */
+/**
+ * פרומפט לשינוי. העיצוב הקיים נמסר למודל כתמונה (src/lib/render/baseImage.ts),
+ * ולכן כאן נשארת רק הבקשה עצמה — מה לשנות, ואיפה.
+ *
+ * הכוונון המהיר נכנס רק אם הלקוחה באמת הזיזה מחוון. קודם הוא נשלח תמיד, עם
+ * ערכי ברירת המחדל, כך שכל עריכה נשאה גם "כ-9 חיתוכים לאורך" — מספר שאין לו
+ * שום קשר לעיצוב שעל המסך. זה סותר את הבקשה לשמר את מה שלא התבקש לשנות, ודוחף
+ * את המודל לצפיפות אחרת בכל שינוי, קטן ככל שיהיה.
+ */
 export function buildEditPrompt(s: CreateState): string {
   const where =
     s.region && s.region !== "all"
-      ? `באזור ה${d.regions[s.region]} של הפריט`
+      // he.design.regions כבר אומר "אזור ימין"; ה-ה' הידיעה שהייתה כאן ייצרה
+      // "באזור האזור ימין".
+      ? `ב${d.regions[s.region]} של הפריט`
       : "בעיצוב כולו";
-  return [
-    `שינוי ${where}: ${s.editReq.trim()}`,
-    `שמור על הכוונון: כ-${s.cutDensity} חיתוכים לאורך, ועובי גשרים של לפחות ${s.bridgeMm} מ"מ.`,
-  ].join(" ");
+  const parts = [`שינוי ${where}: ${s.editReq.trim()}`];
+  if (s.cutDensity !== INITIAL.cutDensity || s.bridgeMm !== INITIAL.bridgeMm) {
+    parts.push(`בנוסף, כוונן את הצפיפות לכ-${s.cutDensity} חיתוכים לאורך, ועובי גשרים של לפחות ${s.bridgeMm} מ"מ.`);
+  }
+  return parts.join(" ");
 }

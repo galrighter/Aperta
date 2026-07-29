@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api";
 import type { ProductType } from "@/lib/fabrication.config";
 import type { Price } from "@/lib/pricing";
 
-// שכבת הגישה ל-`orders` (migration 0010). service role בלבד.
+// שכבת הגישה ל-`orders` (migration 0011). service role בלבד.
 //
 // ההבדל מ-`inquiries` אינו טכני אלא של משמעות: פנייה נסגרת, הזמנה **מתקדמת**.
 // לכן יש כאן צינור סטטוסים ולא שלושה מצבים, והיסטוריה של המעברים.
@@ -47,12 +47,12 @@ export type NewOrder = Omit<
 >;
 
 /**
- * מסד שעוד לא קיבל את 0010. אותו טיפול כמו ב-accounts: "הטבלה לא קיימת" אינה
+ * מסד שעוד לא קיבל את 0011. אותו טיפול כמו ב-accounts: "הטבלה לא קיימת" אינה
  * תקלה אלא מיגרציה שלא רצה, ו-500 סתמי על זה הוא בדיוק הכשל שכבר קרה כאן פעם.
  */
 function fail(error: { message: string }): never {
   if (/does not exist|schema cache|relation .* does not exist/i.test(error.message)) {
-    throw new ApiError("schema_outdated", "Database is missing migration 0010_orders", 503);
+    throw new ApiError("schema_outdated", "Database is missing migration 0011_orders", 503);
   }
   throw new Error(error.message);
 }

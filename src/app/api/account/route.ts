@@ -1,67 +1,61 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseBody, handleRouteError } from "@/lib/api";
-import {
-  ACCOUNT_MAX_AGE,
-  accountCookieHeader,
-  accountCookieValue,
-  readAccountId,
-} from "@/lib/account";
-import { getAccount, signIn, toPublic } from "@/lib/db/accounts";
+import { readAccountId, requireAccountId, clearLegacyCookieHeader } from "@/lib/account";
+import { authClientFor, authConfigured, applyCookies } from "@/lib/supabase/authClient";
+import { getAccount, updateAccountDetails, toPublic } from "@/lib/db/accounts";
 
-// החשבון של המבקר. GET = מי אני, POST = כניסה/הרשמה, DELETE = החלפת משתמש.
+// החשבון של המבקר. GET = מי אני, PATCH = השלמת שם/טלפון, DELETE = יציאה.
+//
+// **אין כאן יותר POST.** הכניסה הישנה יצרה חשבון מתוך שם ומייל שהוקלדו בטופס,
+// בלי לאמת דבר — מי שידע מייל של חבר נכנס לחשבון שלו. הכניסה עברה כולה
+// ל-Supabase Auth (קוד במייל / גוגל), ולהשאיר כאן מסלול שמנפיק זהות מטופס
+// פירושו להשאיר את הדלת שה-auth נסגר בשבילה.
 
 export async function GET(req: Request) {
   try {
     const id = await readAccountId(req);
     if (!id) return NextResponse.json({ account: null });
     const account = await getAccount(id);
-    // עוגייה חתומה שמצביעה לחשבון שנמחק — מנקים אותה במקום להחזיר 500.
-    if (!account) {
-      const res = NextResponse.json({ account: null });
-      res.headers.set("Set-Cookie", accountCookieHeader("", 0));
-      return res;
-    }
+    if (!account) return NextResponse.json({ account: null });
+
+    // Supabase מרענן טוקן שפג בזמן הקריאה. בלי להחזיר את העוגייה החדשה,
+    // המשתמש נזרק החוצה בשקט אחרי שהטוקן פג — וזה נראה כמו "הכניסה לא נשמרת".
+    const { pending } = authClientFor(req);
+    return applyCookies(NextResponse.json({ account: toPublic(account) }), pending);
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
+const detailsSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  phone: z.string().trim().max(40).optional(),
+});
+
+/** השלמת פרטים אחרי הכניסה הראשונה. הזהות כבר מאומתת — כאן רק שם וטלפון. */
+export async function PATCH(req: Request) {
+  try {
+    const id = await requireAccountId(req);
+    const body = await parseBody(req, detailsSchema);
+    const account = await updateAccountDetails(id, body);
     return NextResponse.json({ account: toPublic(account) });
   } catch (err) {
     return handleRouteError(err);
   }
 }
 
-const signInSchema = z.object({
-  name: z.string().trim().min(2).max(120),
-  email: z.string().trim().email().max(200),
-  phone: z.string().trim().max(40).optional(),
-  // honeypot — אותו דפוס כמו ב-/api/inquiries
-  company: z.string().max(200).optional(),
-});
-
-export async function POST(req: Request) {
+export async function DELETE(req: Request) {
   try {
-    const body = await parseBody(req, signInSchema);
-
-    // בוט: מחזירים הצלחה בלי חשבון ובלי עוגייה. אין כאן מה לזייף — הזרימה
-    // תבקש זיהוי שוב, ושום שורה לא נכתבה.
-    if (body.company) return NextResponse.json({ account: null }, { status: 201 });
-
-    const account = await signIn({
-      name: body.name,
-      email: body.email,
-      phone: body.phone ?? null,
-    });
-    const res = NextResponse.json({ account: toPublic(account) }, { status: 201 });
-    res.headers.set(
-      "Set-Cookie",
-      accountCookieHeader(await accountCookieValue(account.id), ACCOUNT_MAX_AGE),
-    );
+    const res = NextResponse.json({ ok: true });
+    if (authConfigured()) {
+      const { client, pending } = authClientFor(req);
+      await client.auth.signOut();
+      applyCookies(res, pending);
+    }
+    res.headers.append("Set-Cookie", clearLegacyCookieHeader());
     return res;
   } catch (err) {
     return handleRouteError(err);
   }
-}
-
-export async function DELETE() {
-  const res = NextResponse.json({ ok: true });
-  res.headers.set("Set-Cookie", accountCookieHeader("", 0));
-  return res;
 }
