@@ -20,6 +20,12 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build (OpenNext for Cloudflare)
+        # NEXT_PUBLIC_* נצרבים לתוך ה-JS בזמן הבילד, ולכן הם `env` על השלב הזה
+        # ולא סודות של ה-Worker: ב-secrets.json הם לא היו משפיעים על כלום,
+        # והכניסה הייתה נראית שבורה בלי שום שגיאה שמסבירה למה.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx opennextjs-cloudflare build
       - name: Push runtime secrets to the Worker
         env:
