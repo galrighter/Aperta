@@ -9,9 +9,14 @@
 
 | | |
 |---|---|
-| משתנה | `SUPABASE_PAT` — טוקן אישי (`sbp_…`) של החשבון שמחזיק את Forme |
+| משתנה | `FORME_SUPABASE_KEY` — טוקן אישי (`sbp_…`) של החשבון שמחזיק את Forme |
 | מזהה הפרויקט | `yyonyypptptqznjepytg` |
 | בסיס | `https://api.supabase.com/v1/projects/yyonyypptptqznjepytg` |
+
+> **שם המשתנה נמדד ולא הונח.** המסמך נכתב מול `SUPABASE_PAT`; בסביבת ההרצה
+> בפועל הוא `FORME_SUPABASE_KEY` (לצד `AUTORIGHTEK_SUPABASE_KEY` של פרויקט אחר —
+> שני חשבונות בסביבה אחת, ולכן השם צריך לשאת את שם הפרויקט). לפני הרצה: לוודא
+> `env | grep -o '^[A-Z_]*SUPABASE[A-Z_]*'` — לא להדפיס את הערך.
 
 הטוקן נוצר ב-https://supabase.com/dashboard/account/tokens. הוא **אינו צר**:
 הוא נותן שליטה על כל הפרויקטים בחשבון. לכן —
@@ -56,7 +61,7 @@ Magic Link" בלי להבחין בין השניים.
 ```bash
 curl -sS -X PATCH \
   "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/config/auth" \
-  -H "Authorization: Bearer $SUPABASE_PAT" \
+  -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
   -H "Content-Type: application/json" \
   --data-binary @- <<'JSON'
 {
@@ -95,7 +100,7 @@ JSON
 
 ```bash
 curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/config/auth" \
-  -H "Authorization: Bearer $SUPABASE_PAT" \
+  -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
   | python3 -c "
 import json,sys
 c = json.load(sys.stdin)
@@ -110,6 +115,35 @@ for k in ('magic_link', 'confirmation', 'email_change'):
 שהסעיף הזה מכסה, והדרך היחידה לדעת אם הזיכרון שלי היה נכון. תבנית תקינה גם לא
 מוכיחה ש-ה-SMTP שולח.
 
+### בוצע — 29.7, באישור גל
+
+ה-`PATCH` רץ והוחזר `200`; האימות שלמעלה מראה `otp_length 6 | otp_exp 600`
+ו-`Token: True` בשלוש התבניות. `recovery` נשאר באנגלית של ברירת המחדל, כמתוכנן.
+
+**מה שנמדד לפני ההרצה גדול ממה שהמסמך הניח — היו שני באגים, לא אחד:**
+
+| שדה | לפני | אחרי |
+|---|---|---|
+| `mailer_otp_length` | **8** | 6 |
+| `mailer_otp_exp` | 3600 | 600 |
+| `magic_link` · `confirmation` · `email_change` | `ConfirmationURL` בלבד, נושא באנגלית | `Token` + קישור, נושא בעברית |
+| `site_url` | `http://rmjewel.com` | `https://rmjewel.com` |
+
+`mailer_otp_length` היה **8**. כלומר גם אילו התבנית הייתה שולחת קוד, הוא היה בן
+שמונה ספרות בעוד `AccountGate` מאמת `/^\d{6}$/` — הכפתור לא היה נדלק, והמשתמש
+היה רואה קוד תקין שהטופס מסרב לקבל. **תמיד למדוד את הקונפיגורציה הקיימת לפני
+שכותבים עליה**: ההנחה הייתה "התבניות בברירת מחדל", והמציאות כללה גם שדה שמישהו
+כבר שינה. `mailer_otp_length: 6` נכנס למסמך כהקשחה נגד עתיד, והתברר כתיקון בהווה.
+
+`site_url` תוקן ל-`https` באותה הרצה (הרחבה שגל אישר במפורש). הוא היעד שאליו
+Supabase מפנה כשאין `emailRedirectTo`, ולכן `http` שם הוא ניתוב ראשוני של כניסה
+דרך תעבורה לא מוצפנת.
+
+**מה שנשאר פתוח בקונפיגורציה:** `uri_allow_list` הוא
+`https://rmjewel.com/**,https://localhost:3000/**`. ה-`https` על `localhost` כנראה
+שגוי — פיתוח מקומי רץ ב-`http://localhost:3000` — ולכן הקישור מהמייל עלול להידחות
+בפיתוח. לא נגעתי: זה מחוץ להיקף שאושר, ולא בדקתי אם משהו נשען עליו.
+
 ---
 
 ## משימה B — אימותים (קריאה בלבד)
@@ -120,7 +154,7 @@ for k in ('magic_link', 'confirmation', 'email_change'):
 q() {
   curl -sS -X POST \
     "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/database/query/read-only" \
-    -H "Authorization: Bearer $SUPABASE_PAT" \
+    -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"query\": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")}"
 }
@@ -164,6 +198,25 @@ q() {
           (select count(*) from profiles where auth_user_id is not null) as linked_profiles;
    ```
 
+### התשובות — 29.7
+
+| # | תשובה |
+|---|---|
+| 1 | `profiles.auth_user_id` קיים (`uuid`). `0010_auth.sql` **רץ בייצור** — עד כה הוסק מלוג בלבד |
+| 2 | **תוצאה ריקה — תקין.** אף מייל לא קיבל שני פרופילים |
+| 3 | שני חברים, שניהם `verified = true`, עיצוב אחד לכל אחד: `mmegides@gmail.com`, `gal@powdercoat.co.il` — שניהם נוצרו ב-29.7 |
+| 4 | `friend`: 2 · `tester`: 47. רוב העיצובים במסד הם היסטוריית הסטודיו הפנימי |
+| 5 | `auth_users = 2`, `linked_profiles = 2`. **אין פער** — אין כניסה שהתחילה ולא הושלמה |
+
+**הצעד שאי אפשר לתקן בדיעבד נקי** (שאלה 2). שלב 2 של `linkAuthUser` — התאמה לפי
+המייל — עבד: אף חבר לא קיבל פרופיל שני, ואין עיצובים תלויים בפרופיל שאי אפשר
+להגיע אליו. זה מסיר את הסיכון היחיד בכניסה שהיה בלתי הפיך.
+
+**הסתייגות על מה שהנתונים האלה כן מוכיחים:** שתי הכניסות הקיימות הן **דרך גוגל**
+— מסלול הקוד במייל לא עבד עד ה-`PATCH` של משימה A, ולכן שאלה 2 עדיין לא נבדקה
+מול הנתיב שהיא באמת מגנה עליו. שתי הכניסות הידניות שגל יריץ (מייל קיים + מייל
+חדש) הן גם הבדיקה החוזרת של שאלה 2 — כדאי להריץ אותה שוב אחריהן.
+
 ---
 
 ## אבחון כשמייל לא מגיע
@@ -172,7 +225,7 @@ q() {
 
 ```bash
 curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/analytics/endpoints/logs.all?sql=$(python3 -c "import urllib.parse;print(urllib.parse.quote(\"select timestamp, event_message from auth_logs order by timestamp desc limit 50\"))")" \
-  -H "Authorization: Bearer $SUPABASE_PAT"
+  -H "Authorization: Bearer $FORME_SUPABASE_KEY"
 ```
 
 סדר החשודים כשקוד לא מגיע: **SMTP** (Authentication → Emails) לפני התבנית,
