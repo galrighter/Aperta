@@ -85,12 +85,9 @@ export default function AdminOrders({
       setNotice(s.adminOrderStatusError);
       return;
     }
-    const body = (await res.json()) as { order: OrderRow; mailed: boolean | null };
+    const body = (await res.json()) as { order: OrderRow };
     setOrders((prev) => prev.map((o) => (o.id === id ? body.order : o)));
-    // המייל ללקוחה הוא חצי מהפעולה, ולכן "עודכן" לבדו הוא דיווח חלקי: מי
-    // שהעביר ל״נשלחה״ מניח שהיא יודעת.
-    if (body.mailed === true) setNotice(s.adminOrderMailed);
-    else if (body.mailed === false) setNotice(s.adminOrderNotMailed);
+    setNotice(s.adminOrderUpdated);
   }
 
   function applyFilter(f: OrderStatus | "") {
@@ -116,6 +113,10 @@ export default function AdminOrders({
           </button>
         ))}
       </div>
+
+      {/* השורה הזאת היא ההפך מקישוט: מי שמזיז סטטוס מניח שהלקוחה שמעה על כך.
+          כרגע היא לא — ראו docs/TODO.md D4. */}
+      <p className="mb-4 text-[13px] text-mist">{s.adminOrderNoMailNote}</p>
 
       {notice && <p className="mb-4 text-sm text-ink80">{notice}</p>}
 

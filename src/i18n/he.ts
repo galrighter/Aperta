@@ -363,8 +363,9 @@ export const he = {
     adminOrderPrice: "מחיר",
     adminOrderFiles: "קבצים",
     adminOrderNoDesign: "בלי עיצוב מקושר",
-    adminOrderMailed: "עודכן — נשלח מייל ללקוחה.",
-    adminOrderNotMailed: "עודכן. המייל ללקוחה לא נשלח.",
+    adminOrderUpdated: "הסטטוס עודכן.",
+    adminOrderNoMailNote:
+      "שינוי סטטוס כאן אינו שולח הודעה ללקוחה. העדכונים האוטומטיים יופעלו יחד עם ממשק ניהול ההזמנות.",
     adminOrderStatusError: "עדכון הסטטוס נכשל.",
     adminOrderStatusSent: "התקבלה",
     adminOrderStatusApproved: "אושרה",
