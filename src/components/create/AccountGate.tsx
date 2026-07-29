@@ -87,9 +87,22 @@ export function AccountGate({
     setError(null);
     setBusy(true);
     try {
+      // המייל של Supabase יכול לשאת גם קוד וגם קישור, תלוי בתבנית. את הקישור
+      // חייבים לכוון ל-`/auth/callback` — בלי `emailRedirectTo` הוא הולך
+      // ל-Site URL, כלומר לדף הבית, ושם אין מי שיחליף את הקוד בסשן: המשתמש
+      // לוחץ, נוחת בעמוד הראשי, ולא קורה כלום.
+      //
+      // ולכן גם שומרים את מצב המשפך כאן ולא רק לפני גוגל: מי שילחץ על הקישור
+      // במקום להקליד את הקוד מרענן את העמוד בדיוק כמו מסע OAuth.
+      onBeforeRedirect?.();
       const { error: e } = await supabaseBrowser().auth.signInWithOtp({
         email: email.trim(),
-        options: { shouldCreateUser: true },
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+            window.location.pathname,
+          )}`,
+        },
       });
       if (e) throw new Error(e.message);
       setStep("code");
@@ -98,7 +111,7 @@ export function AccountGate({
     } finally {
       setBusy(false);
     }
-  }, [email]);
+  }, [email, onBeforeRedirect]);
 
   const verify = useCallback(async () => {
     setError(null);
@@ -201,7 +214,8 @@ export function AccountGate({
                 required
               />
             </div>
-            <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.acctCodeSpam}</p>
+            <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.acctCodeOrLink}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-mist">{d.acctCodeSpam}</p>
             <button
               type="submit"
               disabled={!codeOk || busy}

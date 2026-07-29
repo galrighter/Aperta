@@ -67,3 +67,26 @@ describe("routes that take a design id", () => {
     );
   });
 });
+
+
+/**
+ * מספרי המיגרציות. ה-runner מריץ את כל הקבצים בסדר שמות בכל push, ולכן שני
+ * קבצים באותו מספר עדיין *עובדים* — ובדיוק בגלל זה אף אחד לא שם לב. זה קרה
+ * כאן פעמיים: פעם על 0004 ופעם על 0009, כששני ענפים פתוחים בחרו את אותו מספר
+ * בלי לדעת זה על זה. הבדיקה עולה שורה, וההתנגשות מתגלה ב-PR ולא בקריאה
+ * מקרית של לוג פריסה.
+ */
+describe("migration numbering", () => {
+  it("has no duplicate prefixes", () => {
+    const dir = join(process.cwd(), "supabase/migrations");
+    const seen = new Map<string, string>();
+    const dupes: string[] = [];
+    for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql"))) {
+      const n = f.slice(0, 4);
+      const prev = seen.get(n);
+      if (prev) dupes.push(`${n}: ${prev} + ${f}`);
+      else seen.set(n, f);
+    }
+    expect(dupes).toEqual([]);
+  });
+});
