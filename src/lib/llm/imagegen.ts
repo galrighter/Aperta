@@ -64,6 +64,10 @@ const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE
  * גובר על היתר חד-פעמי, ולכן המילה הוסרה במקום להוסיף עוד הנחיה: הפרופורציה
  * מדברת על ה-bounding box, והבריף הוא לפריט כולו — הצללית בכלל זה.
  * הרישום המלא: docs/REMOVED_CONSTRAINTS.md.
+ *
+ * במצב `editing` הפרומפט מדבר על התמונה המצורפת ("שנה רק את X") במקום לתאר פריט
+ * חדש. בלי זה בקשת שינוי הגיעה למודל כתיאור עצמאי על קנבס ריק, והתשובה הייתה
+ * צמיד אחר לגמרי — הקלט שהעריכה אמורה לשמר לא הגיע אליו מעולם.
  */
 export function buildRenderPrompt(
   userPrompt: string,
@@ -72,6 +76,9 @@ export function buildRenderPrompt(
   /** כמה פסים בתמונה אחת. ראה src/lib/render/panels.ts — צורת הקנבס היא
    *  הידית האמיתית על יחס הצדדים, והשורות הן גם מועמדים לבחירת הלקוחה. */
   rows = 1,
+  /** עריכה: לתמונה מצורף העיצוב הקיים, ו-userPrompt הוא בקשת שינוי עליו ולא
+   *  תיאור של פריט חדש. ראה src/lib/render/baseImage.ts. */
+  editing = false,
 ): string {
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
@@ -96,6 +103,16 @@ export function buildRenderPrompt(
       ? "a laser-cut matte black metal ring, opened out and lying completely flat (this is the flat blank that gets rolled into a ring)"
       : "a laser-cut matte black metal bracelet cuff, opened out and lying completely flat";
 
+  // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
+  // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם
+  // מדובר בפריט חדש או בשינוי על קיים.
+  const intent = editing
+    ? [
+        "The attached image is the CURRENT piece — the one being edited. Redraw that same piece: keep its outline, its proportions and its whole cut pattern exactly as they are in the attached image, and change only what the change request below asks for. Anything the request does not mention stays identical to the attached image. This is an edit of an existing design, not a new design.",
+        "CHANGE REQUEST (apply only this): " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+      ]
+    : ["Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + "."];
+
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
     "It is one single piece of solid matte black metal, cut out of one flat sheet. Its whole shape is the design's — the outline as much as what is cut out of it. Nothing here fixes the outline.",
@@ -105,7 +122,7 @@ export function buildRenderPrompt(
     `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
 
     "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
-    "Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+    ...intent,
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
     `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${fab.minHole}mm, and no part of the remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,

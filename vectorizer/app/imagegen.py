@@ -48,18 +48,18 @@ async def _one(
     client: httpx.AsyncClient,
     key: str,
     prompt: str,
-    inspiration: tuple[bytes, str] | None,
+    reference: tuple[bytes, str] | None,
 ) -> bytes:
     headers = {"authorization": f"Bearer {key}"}
-    if inspiration is not None:
-        data, media_type = inspiration
+    if reference is not None:
+        data, media_type = reference
         # The edits endpoint defaults to high quality — say it explicitly, or the
-        # inspiration path silently costs ten times the text path for one image.
+        # reference path silently costs ten times the text path for one image.
         resp = await client.post(
             "https://api.openai.com/v1/images/edits",
             headers=headers,
             data={"model": MODEL, "prompt": prompt, "size": SIZE, "quality": QUALITY},
-            files={"image": ("inspiration.png", data, media_type)},
+            files={"image": ("reference.png", data, media_type)},
         )
     else:
         resp = await client.post(
@@ -76,9 +76,13 @@ async def render_many(
     key: str,
     prompt: str,
     calls: int,
-    inspiration: tuple[bytes, str] | None = None,
+    reference: tuple[bytes, str] | None = None,
 ) -> list[bytes]:
     """Ask the model for `calls` renders of the same prompt, concurrently.
+
+    `reference`, when given, goes to the edits endpoint as the image to work
+    from — either the customer's inspiration on a new design, or the design
+    itself on an edit. The prompt (built by forme) says which of the two it is.
 
     Every render is a separate variation the customer can choose between, so a
     failure of one is not a failure of the run: whatever came back is returned,
@@ -89,7 +93,7 @@ async def render_many(
 
     async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
         results = await asyncio.gather(
-            *(_one(client, key, prompt, inspiration) for _ in range(max(1, calls))),
+            *(_one(client, key, prompt, reference) for _ in range(max(1, calls))),
             return_exceptions=True,
         )
 

@@ -75,7 +75,7 @@ are traced at once, default 4 — a memory knob). The box needs Docker installed
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
 | GET  | `/api/health` | liveness + active tracer backend |
-| POST | `/api/generate` | JSON `prompt,calls,rows,height_mm,color_key,[inspiration],[artifacts]` → renders + splits + traces every row, uploads the artifacts, returns one candidate per panel |
+| POST | `/api/generate` | JSON `prompt,calls,rows,height_mm,color_key,[inspiration],[base_svg],[artifacts]` → renders + splits + traces every row, uploads the artifacts, returns one candidate per panel. `base_svg` is an edit: the current design, rasterised here and given to the image model as the reference (it wins over `inspiration`) |
 | POST | `/api/jobs` | multipart `image,height_mm,[width_mm],dark_region_role,output_mode,condition,color_key` → result.json + inline `cutouts_svg`/`metal_svg` |
 | GET  | `/api/jobs/{id}` | job status + result |
 | GET  | `/api/jobs/{id}/files/{name}` | download a fixed-name artifact |

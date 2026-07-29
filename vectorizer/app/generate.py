@@ -24,6 +24,7 @@ from typing import Optional
 import anyio
 
 from . import imagegen, pipeline, uploads
+from .core import renderer
 from .core.panels import split_rows
 
 STAGE_NAMES = ("conditioned", "overlay", "difference", "rendered")
@@ -39,6 +40,11 @@ class GenerateJob:
     height_mm: float = 15.0
     color_key: str = "dark"
     inspiration: Optional[tuple[bytes, str]] = None
+    # An edit: the design as it stands, drawn the way a render looks. It is
+    # rasterised here and handed to the image model as the reference, so the
+    # change lands on the existing piece instead of producing a new one. It wins
+    # over `inspiration` — this is the piece itself, not a mood board.
+    base_svg: Optional[str] = None
     # forme's minimum opening, in mm. 0 keeps every traced opening.
     min_hole_mm: float = 0.0
 
@@ -76,8 +82,24 @@ def _trace(panel: bytes, height_mm: float, color_key: str, min_hole_mm: float) -
     )
 
 
+def _reference(job: GenerateJob) -> Optional[tuple[bytes, str]]:
+    """What the image model is given to work from, if anything.
+
+    A base_svg that cannot be drawn is an error and not a quiet fall-through to
+    text-only: silently generating from nothing is exactly the failure this path
+    exists to fix, and it looks to the customer like a brand new piece.
+    """
+    if job.base_svg is None:
+        return job.inspiration
+    width, height = (int(n) for n in imagegen.SIZE.split("x"))
+    try:
+        return (renderer.render_svg_to_png(job.base_svg, width, height), "image/png")
+    except renderer.RenderError as exc:
+        raise imagegen.ImageGenError(f"could not draw the current design: {exc}", retriable=False) from exc
+
+
 async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurrency: int = 4) -> dict:
-    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, job.inspiration)
+    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, _reference(job))
 
     # One panel per row of every render. A single-row render passes through
     # untouched, so the common case costs nothing.
