@@ -36,6 +36,7 @@ class PipelineResult:
     height_mm: float
     conditioned_png: Optional[bytes] = None
     chosen_key: Optional[str] = None
+    condition_report: Optional[dict] = None
 
 
 def _mm_per_px(image: ValidatedImage, width_mm: float, height_mm: float) -> float:
@@ -109,10 +110,11 @@ def run_pipeline(
     # and the conditioned image is black=metal, so the role becomes "metal".
     conditioned_png: Optional[bytes] = None
     chosen_key: Optional[str] = None
+    condition_report: Optional[dict] = None
     if condition:
         from .core.conditioning import condition_png
 
-        data, width_mm, chosen_key = condition_png(data, height_mm, color_key)
+        data, width_mm, chosen_key, condition_report = condition_png(data, height_mm, color_key)
         dark_region_role = "metal"
         conditioned_png = data  # keep for the debug view
 
@@ -156,6 +158,7 @@ def run_pipeline(
         height_mm=height_mm,
         conditioned_png=conditioned_png,
         chosen_key=chosen_key,
+        condition_report=condition_report,
     )
 
 
@@ -203,8 +206,17 @@ def build_debug(res: PipelineResult) -> dict:
 
     # staged pass/fail timeline — first non-ok stage is the failure point.
     stages = []
+    # Whatever despeckling dropped is design that never reaches the cutting
+    # file, so it is spelled out here instead of disappearing quietly.
+    dropped = (res.condition_report or {}).get("despeckled") or {}
+    dropped_txt = (
+        f" · dropped {dropped.get('holes', 0)} cutouts / {dropped.get('specks', 0)} specks"
+        if dropped.get("holes") or dropped.get("specks")
+        else ""
+    )
     stages.append({"name": "conditioning", "status": "ok" if res.conditioned_png else "skip",
-                   "detail": (f"colour-key={res.chosen_key} + crop + smooth" if res.conditioned_png else "input already two-tone")})
+                   "detail": (f"colour-key={res.chosen_key} + crop + smooth{dropped_txt}"
+                              if res.conditioned_png else "input already two-tone")})
     stages.append({"name": "tracing", "status": "ok" if res.candidates else "fail",
                    "detail": f"{len(res.candidates)} candidates"})
     stages.append({"name": "smoothing", "status": "ok" if SETTINGS.smooth_iters > 0 else "skip",
