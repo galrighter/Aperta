@@ -711,6 +711,7 @@ export const he = {
     acctCodeOtherEmail: "מייל אחר",
     acctCodeInvalid: "הקוד שגוי או פג תוקף. אפשר לבקש חדש.",
     acctCodeSpam: "אם הוא לא מגיע תוך דקה, שווה להציץ בתיקיית הספאם.",
+    acctCodeOrLink: "יש במייל גם קישור — לחיצה עליו מכניסה אתכם בלי להקליד כלום.",
     acctGoogleFailed: "הכניסה עם Google לא הושלמה. אפשר לנסות שוב, או קוד במייל.",
     acctUnavailable: "הכניסה אינה זמינה כרגע. נסו שוב בעוד רגע.",
 
