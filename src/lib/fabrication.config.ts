@@ -1,6 +1,11 @@
 // מקור כל הערכים: docs/fabrication-research.md
 // חומר: פליז C260 מוחזר/רבע-קשה. חיתוך: לייזר סיבים + חנקן.
 // אין לפזר מספרי ייצור בקוד — הכול עובר דרך resolveFab().
+//
+// ⚠ ביקורת פתוחה על ערכי המידות (products.*): docs/sizing-fit-review.md §3.
+//   בין השאר: ring.defaultLengthMm=54 הוא היקף אצבע ולא אורך פריסה (יוצא US 6.4
+//   במקום 7 → 55.5), ring.defaultGapMm=6 גדול פי 2 מהמומלץ (3), וטווחי הפער
+//   רחבים מדי בשני המוצרים. לא שונו כאן — הכרעת מוצר של גל.
 
 export type ProductType = "bracelet" | "ring";
 
