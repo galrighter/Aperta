@@ -13,15 +13,17 @@ import type { SavedDesign } from "@/lib/client/myDesigns";
 const d = he.design;
 
 export function SavedDesigns({
-  items, onResume, onRemove, loadingId, error,
+  items, onResume, onRemove, loadingId, error, defaultOpen = false,
 }: {
   items: SavedDesign[];
   onResume: (item: SavedDesign) => void;
   onRemove: (id: string) => void;
   loadingId: string | null;
   error: string | null;
+  /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
+  defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const listId = useId();
 
   if (items.length === 0) return null;

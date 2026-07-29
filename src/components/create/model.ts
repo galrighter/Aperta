@@ -90,6 +90,12 @@ export interface CreateState {
   symmetry: Symmetry;
   density: Density;
   feel: Feel;
+  /**
+   * "שהמודל יחליט": המאפיינים אינם נכנסים לפרומפט, והמודל גוזר סימטריה,
+   * צפיפות ותחושה מהתיאור החופשי. ברירת המחדל היא בחירה מפורשת — שלושת
+   * המאפיינים נשארים במצב שנבחר, כדי שביטול הסימון יחזיר אותם בדיוק.
+   */
+  attrsAuto: boolean;
   image: ImageFile | null;
   imageRole: ImageRole | null;
   brief: string;
@@ -141,6 +147,7 @@ export const INITIAL: CreateState = {
   symmetry: "symmetric",
   density: "medium",
   feel: "balanced",
+  attrsAuto: false,
   image: null,
   imageRole: null,
   brief: "",
@@ -206,8 +213,13 @@ export const hasExactSize = (s: CreateState): boolean => {
 export { SHIPPING } from "@/lib/pricing";
 export type { Price } from "@/lib/pricing";
 
+/** הצפיפות שהתמחור עובד לפיה. ב"שהמודל יחליט" אין צפיפות שנבחרה, ולכן נלקחת
+ *  הבינונית — תוספת המורכבות לא יכולה להיגזר ממה שעוד לא נוצר, ולחייב לפי
+ *  התוצאה פירושו מחיר שמשתנה אחרי שהוצג. */
+export const densityForPrice = (s: CreateState): Density => (s.attrsAuto ? "medium" : s.density);
+
 export const priceOf = (s: CreateState): Price =>
-  priceFor({ productType: s.product ?? "bracelet", widthMm: widthOf(s), density: s.density });
+  priceFor({ productType: s.product ?? "bracelet", widthMm: widthOf(s), density: densityForPrice(s) });
 
 /* ===== גאומטריה ===== */
 
@@ -291,8 +303,13 @@ const FEEL_HE: Record<Feel, string> = {
 export function buildPrompt(s: CreateState): string {
   const parts = [
     `עיצוב ${s.product === "ring" ? "טבעת" : "צמיד"} פתוח שנחתך בלייזר מפס מתכת שטוח.`,
-    `${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`,
   ];
+  // ב"שהמודל יחליט" השורה הזאת לא נכתבת בכלל. שליחת ברירות המחדל היא הוראה
+  // לכל דבר — "סימטרי, צפיפות בינונית, מאוזן" — והיא סותרת תיאור חופשי שמבקש
+  // משהו אחר, בלי שהלקוחה ביקשה אף אחד מהשלושה.
+  if (!s.attrsAuto) {
+    parts.push(`${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`);
+  }
   if (s.brief.trim()) parts.push(`תיאור הלקוחה: ${s.brief.trim()}`);
   if (s.image && s.imageRole === "inspiration") {
     parts.push("התמונה המצורפת היא השראה בלבד — יש לקחת ממנה רוח וסגנון, לא להעתיק.");

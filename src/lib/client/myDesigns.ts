@@ -29,6 +29,8 @@ export interface SavedDesign {
   density?: string;
   feel?: string;
   fit?: string;
+  /** נבחר "שהמודל יחליט" — המאפיינים לא נשלחו. */
+  attrsAuto?: boolean;
 }
 
 function read(): SavedDesign[] {
@@ -88,6 +90,23 @@ export function mergeMyDesign(incoming: SavedDesign) {
       }
     : incoming;
   write([merged, ...list.filter((x) => x.id !== incoming.id)]);
+}
+
+/**
+ * סימון עיצוב כמושלם — היצירה שלו הסתיימה.
+ *
+ * פונקציה משלה ולא `mergeMyDesign` עם רשומה חלקית: המיזוג לוקח מהשרת את השם
+ * והמידות, ולכן קריאה איתם ריקים הייתה מוחקת בדיוק את מה שרק כאן קיים. כאן
+ * נוגעים בשני שדות ובתנאי שהרשומה כבר קיימת.
+ */
+export function markMyDesignDone(id: string) {
+  const list = read();
+  const prev = list.find((x) => x.id === id);
+  if (!prev || !prev.pending) return;
+  write([
+    { ...prev, pending: undefined, updatedAt: new Date().toISOString() },
+    ...list.filter((x) => x.id !== id),
+  ]);
 }
 
 /** ניקוי בהחלפת משתמש. העיצובים עצמם נשארים בשרת — כניסה חוזרת מחזירה אותם. */

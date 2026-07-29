@@ -138,6 +138,12 @@ export const he = {
     openMenu: "פתיחת תפריט",
     closeMenu: "סגירת תפריט",
 
+    // חיווי המשתמש בכותרת — מי מחובר, יציאה, ומעבר לעיצובים שלו.
+    headerMyDesigns: "העיצובים שלי",
+    headerSignOut: "יציאה",
+    headerSignIn: "כניסה",
+    headerAccountMenu: "החשבון שלי",
+
     // Hero (עמוד בית) — handoff v3: הצהרה רגשית, CTA יחיד, בלי הסבר תהליך.
     heroEyebrow: "ONE OF ONE · MADE AROUND YOU",
     heroTitleLine1: "אינסוף צורות.",
@@ -305,6 +311,25 @@ export const he = {
 
     // אדמין (מוגן ב-ADMIN_TOKEN)
     adminTitle: "בק־אופיס",
+
+    // ---- פורטל הניהול (מסך אחד שממנו נכנסים לכל השאר) ----
+    adminHomeTitle: "פורטל הניהול",
+    adminHomeSubtitle:
+      "מכאן ניגשים להזמנות, לפניות, לעיצובים וליומן היצירות — כולל היצירות שנכשלו.",
+    adminNavHome: "סקירה",
+    adminNavRuns: "יומן יצירות",
+    adminNavLab: "מעבדת יצירה",
+    adminBackHome: "חזרה לפורטל",
+    adminCardOrdersDesc: "מה הוזמן בפועל, פירוט המחיר, סטטוס וקבצי חיתוך.",
+    adminCardInquiriesDesc: "פניות יצירת קשר, והזמנות היסטוריות מלפני טבלת ההזמנות.",
+    adminCardDesignsDesc: "מי עיצב מה, עם תצוגה מקדימה והורדת קבצי ייצור.",
+    adminCardRunsDesc:
+      "כל פעולת יצירה באתר — כולל נכשלות — עם הפרומפט המלא, ההדמיות, השלבים וה-SVG.",
+    adminCardLabDesc: "הרצת הצינור על פרומפט או תמונה, לכיול ולבדיקה.",
+    adminStatOpenOrders: "הזמנות פתוחות",
+    adminStatNewInquiries: "פניות חדשות",
+    adminStatDesigns: "עיצובים",
+    adminStatUnavailable: "—",
     adminLoginTitle: "כניסת מנהל",
     adminTokenLabel: "סיסמת ניהול",
     adminLogin: "כניסה",
@@ -482,6 +507,10 @@ export const he = {
     briefSubtitle: "אפשר לתאר במילים, להעלות תמונה, או שניהם.",
     attrsTitle: "מאפייני העיצוב",
     attrsDefaultNote: "הסימון · מציין את ברירת המחדל.",
+    /** ללא בחירה: המאפיינים לא נכנסים לפרומפט והמודל גוזר אותם מהתיאור. */
+    attrsAuto: "שהמודל יחליט",
+    attrsAutoNote:
+      "המאפיינים לא יישלחו — סימטריה, צפיפות ותחושה ייגזרו מהתיאור החופשי שלך.",
     symmetryLabel: "סימטריה",
     syms: { symmetric: "סימטרי", asymmetric: "א־סימטרי" },
     densityLabel: "צפיפות",
@@ -572,7 +601,8 @@ export const he = {
     renderNote:
       "הדמיה של הקובץ לאחר ערגול. ייתכנו הבדלים בגוון ובטקסטורה במוצר הפיזי.",
     renderDragHint: "גרירה מסובבת את ההדמיה",
-    renderTapToRotate: "לגעת כדי לסובב",
+    /** במסך מגע: הסיבוב זמין מיד, וגלילת העמוד נשארת אנכית. */
+    renderDragHintTouch: "גרירה הצידה מסובבת · גלילה למעלה ולמטה ממשיכה בעמוד",
 
     regionTitle: "סימון אזור",
     regionHint: "אפשר לסמן אזור על השרטוט, או להשאיר הערה כללית.",
@@ -745,6 +775,15 @@ export const he = {
     acctSwitch: "לא אתם?",
     acctCancel: "לא עכשיו",
 
+    // ---- חיווי "העיצוב מוכן" למי שיצא מהמסך בזמן היצירה ----
+    readyTitle: "העיצוב שלך מוכן",
+    readyBody: "היצירה הסתיימה בזמן שלא היית במסך. אפשר לראות אותה עכשיו.",
+    readyOpen: "לצפייה בעיצוב",
+    readyLater: "אחר כך",
+    readyFailedTitle: "היצירה לא הושלמה",
+    readyFailedBody: "היצירה נעצרה באמצע. הפרטים שמילאת נשמרו — אפשר לנסות שוב.",
+    readyFailedRetry: "חזרה לעיצוב",
+
     // ---- מספר העיצוב ----
     codeLabel: "מספר עיצוב",
 
@@ -805,6 +844,17 @@ export const he = {
       "ההזמנה יצאה אליך. אם משהו לא מגיע או לא נראה כמו שציפית — אפשר להשיב למייל הזה.",
     statusBodyCancelled:
       "ההזמנה בוטלה ולא תיוצר. אם זו טעות, אפשר להשיב למייל הזה ונטפל בזה.",
+
+    // ---- "העיצוב מוכן" — נשלח על הגרסה הראשונה של עיצוב בלבד ----
+    readySubject: "העיצוב שלך מוכן",
+    readyHello: "היי",
+    readyIntro:
+      "המנוע סיים לעבוד על העיצוב שלך. הוא שמור בחשבון שלך, ואפשר לפתוח אותו, לערוך אותו ולהזמין.",
+    readyRef: "מספר עיצוב",
+    readyCta: "לצפייה בעיצוב:",
+    readyNote:
+      "המייל הזה נשלח פעם אחת, על העיצוב הראשון של כל יצירה — כדי שלא תפספסו אותו אם סגרתם את החלון.",
+    readySignature: "RM JEWEL",
   },
 } as const;
 

@@ -1,91 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AdminGate } from "@/components/admin/AdminGate";
-
-// בק־אופיס לתכנון: מריץ את כל הצינור (הדמיה → קונדישנינג → טרייס → החלקה →
-// שערי נאמנות) ומציג כל שלב וכל קובץ, עם סימון נקודות כשל. כל הרצה נשמרת ליומן.
+// מעבדת היצירה: מריצה את כל הצינור (הדמיה → קונדישנינג → טרייס → החלקה →
+// שערי נאמנות) ומציגה כל שלב וכל קובץ, עם סימון נקודות כשל. כל הרצה נשמרת ליומן.
 //
 // מאחורי אותו שער של `/admin`: כאן יושבים הפרומפטים המלאים, ההדמיות והטקסט
 // החופשי שלקוחות כתבו. השער האמיתי הוא `requireAdmin` על מסלולי ה-API —
 // העטיפה כאן היא כדי שהעמוד יציג טופס כניסה במקום יומן ריק.
-
-type Stage = { name: string; status: string; detail: string };
-type Candidate = {
-  candidate_id: string; iou: number; mean_dev_mm: number; max_dev_mm: number;
-  source_holes: number; vector_holes: number; anchors: number; topology_ok: boolean;
-  hole_budget?: number; source_components?: number; vector_components?: number;
-  component_budget?: number; metal_svg?: string; cutouts_svg?: string;
-  score: number; rejected_reason: string | null; selected: boolean;
-};
-type DebugMeta = {
-  status?: string; width_mm?: number; height_mm?: number; smooth_iters?: number; color_key?: string | null;
-  gates?: Record<string, number>;
-  candidates?: Candidate[];
-  stages?: Stage[];
-  warnings?: string[];
-};
-// תגובת ההרצה החיה: debug כולל images ב-base64.
-type RunDebug = DebugMeta & { images?: Record<string, string> };
-
-type StageUrls = {
-  render?: string | null; conditioned?: string | null; overlay?: string | null;
-  difference?: string | null; rendered?: string | null;
-};
-
-/** המאפיינים שקבעו את ההרצה — מה שצריך כדי להסביר אותה או לשחזר אותה. */
-type RunInputs = {
-  productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
-  rows?: number; calls?: number; minHoleMm?: number; colorKey?: string;
-  imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
-};
-
-/** הבעלים של ההרצה, לקיבוץ היומן לפי משתמש. */
-type Owner = { id: string; name: string; color: string; email: string | null };
-
-type LogItem = {
-  id: string; createdAt: string; source: string; productType: string | null;
-  prompt: string | null; colorKey: string | null; status: string; error: string | null;
-  durationMs: number | null; renderModel: string | null; renderUrl: string | null;
-  /** מה שהמשתמש צירף בעצמו, להבדיל מההדמיה שנוצרה ממנו. */
-  inputImageUrl?: string | null;
-  inputs?: RunInputs | null;
-  owner?: Owner | null;
-  designId?: string | null;
-  stages: { conditioned: string | null; overlay: string | null; difference: string | null; rendered: string | null };
-  /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
-  hasSvg: boolean;
-  metrics: { iou?: number; holes?: number; meanDeviationMm?: number; maxDeviationMm?: number } | null;
-  debug: DebugMeta | null;
-};
-
-/** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
-type LogDetail = {
-  svg: string | null;
-  debug: DebugMeta | null;
-  /** הפרומפט המלא שיצא למודל התמונה. null בהרצות שנשמרו לפני 0009. */
-  renderPrompt?: string | null;
-  prompt?: string | null;
-  inputs?: RunInputs | null;
-};
-
-const detailOf = (d: LogDetail | "loading" | "error" | undefined): LogDetail | null =>
-  d && d !== "loading" && d !== "error" ? d : null;
-
-const STATUS_COLOR: Record<string, string> = {
-  ok: "bg-green-100 text-green-800 border-green-300",
-  pass: "bg-green-100 text-green-800 border-green-300",
-  approved: "bg-green-100 text-green-800 border-green-300",
-  skip: "bg-porcelain text-ink60 border-graphite/20",
-  warn: "bg-amber-100 text-amber-800 border-amber-300",
-  rejected: "bg-red-100 text-red-800 border-red-300",
-  error: "bg-red-100 text-red-800 border-red-300",
-  fail: "bg-red-100 text-red-800 border-red-300",
-};
-
-const SOURCE_LABEL: Record<string, string> = {
-  studio: "סטודיו", debug: "בק־אופיס", upload: "העלאה",
-};
+//
+// היומן עצמו הוא הרכיב המשותף `RunsLog`, שמוצג גם ב-`/admin/runs`.
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { he } from "@/i18n/he";
+import { AdminGate } from "@/components/admin/AdminGate";
+import RunsLog, { Diagnostics, PromptDialog, type RunDebug } from "@/components/admin/RunsLog";
 
 function fileToDataUrl(f: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -118,14 +45,6 @@ function DebugConsole() {
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"run" | "log">("run");
-  const [log, setLog] = useState<LogItem[] | null>(null);
-  const [logBusy, setLogBusy] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [details, setDetails] = useState<Record<string, LogDetail | "loading" | "error">>({});
-  /** לפי זמן (ברירת מחדל) או מרוכז לפי משתמש. */
-  const [groupBy, setGroupBy] = useState<"time" | "user">("time");
-  /** ההרצה שחלון הפרומפט פתוח עליה. חלון ולא הרחבה — הפרומפט ארוך משאר השורה. */
-  const [promptFor, setPromptFor] = useState<LogItem | null>(null);
   /** הפרומפט של ההרצה החיה, כפי שהשרת מדווח שנשלח בפועל. */
   const [runPrompt, setRunPrompt] = useState<string | null>(null);
   const [showRunPrompt, setShowRunPrompt] = useState(false);
@@ -167,82 +86,7 @@ function DebugConsole() {
     }
   };
 
-  const [logError, setLogError] = useState<string | null>(null);
-
-  const loadLog = async () => {
-    setLogBusy(true);
-    setLogError(null);
-    try {
-      const resp = await fetch("/api/debug/log");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      setLog(data.items ?? []);
-    } catch (e) {
-      // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
-      // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
-      setLogError((e as Error).message);
-    } finally {
-      setLogBusy(false);
-    }
-  };
-
-  /** פירוט הרצה (SVG סופי, SVG לכל מועמד, והפרומפט המלא) — נטען רק לפי דרישה. */
-  const loadDetail = async (id: string) => {
-    if (details[id] && details[id] !== "error") return;
-    setDetails((d) => ({ ...d, [id]: "loading" }));
-    try {
-      const resp = await fetch(`/api/debug/log/${id}`);
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = (await resp.json()) as LogDetail;
-      setDetails((d) => ({
-        ...d,
-        [id]: {
-          svg: data.svg ?? null,
-          debug: data.debug ?? null,
-          renderPrompt: data.renderPrompt ?? null,
-          prompt: data.prompt ?? null,
-          inputs: data.inputs ?? null,
-        },
-      }));
-    } catch {
-      setDetails((d) => ({ ...d, [id]: "error" }));
-    }
-  };
-
-  const toggleExpand = async (id: string) => {
-    if (expanded === id) {
-      setExpanded(null);
-      return;
-    }
-    setExpanded(id);
-    await loadDetail(id);
-  };
-
-  const openPrompt = (it: LogItem) => {
-    setPromptFor(it);
-    void loadDetail(it.id);
-  };
-
-  /**
-   * קיבוץ היומן. ברירת המחדל היא זמן — סדר ההרצות. "לפי משתמש" עונה על שאלה
-   * אחרת לגמרי: מה עשה מי, ברצף אחד, בלי לרדוף אחרי שורות שמפוזרות בין
-   * משתמשים. הקבוצה הפעילה ביותר קודם.
-   */
-  const groups = useMemo(() => {
-    const items = log ?? [];
-    if (groupBy === "time" || items.length === 0) {
-      return [{ key: "all", owner: null as Owner | null, items }];
-    }
-    const by = new Map<string, { key: string; owner: Owner | null; items: LogItem[] }>();
-    for (const it of items) {
-      const key = it.owner?.id ?? "unassigned";
-      const g = by.get(key) ?? { key, owner: it.owner ?? null, items: [] };
-      g.items.push(it);
-      by.set(key, g);
-    }
-    return [...by.values()].sort((a, b) => b.items[0].createdAt.localeCompare(a.items[0].createdAt));
-  }, [log, groupBy]);
-
+  /** "הרץ מחדש" מהיומן: ההדמיה של ההרצה נטענת לטופס וכל הצינור רץ עליה שוב. */
   const openInDebug = async (renderUrl: string) => {
     try {
       const blob = await (await fetch(renderUrl)).blob();
@@ -264,60 +108,21 @@ function DebugConsole() {
 
   return (
     <div dir="rtl" className="mx-auto max-w-5xl p-4 text-sm">
-      <h1 className="mb-3 text-lg font-bold">בק־אופיס — צינור תמונה→SVG</h1>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-lg font-bold">{he.site.adminNavLab} — צינור תמונה→SVG</h1>
+        <Link href="/admin" className="text-[13px] text-cobalt hover:underline">
+          → {he.site.adminBackHome}
+        </Link>
+      </div>
 
       <div className="mb-4 flex gap-2">
         <button className={`rounded-[2px] px-4 py-1.5 ${view === "run" ? "bg-graphite text-white" : "border border-graphite/20"}`}
           onClick={() => setView("run")}>הרצה</button>
         <button className={`rounded-[2px] px-4 py-1.5 ${view === "log" ? "bg-graphite text-white" : "border border-graphite/20"}`}
-          onClick={() => { setView("log"); if (!log) void loadLog(); }}>יומן יצירות</button>
+          onClick={() => setView("log")}>{he.site.adminNavRuns}</button>
       </div>
 
-      {view === "log" && (
-        <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <button className="rounded-[2px] border border-graphite/20 px-3 py-1 text-xs hover:bg-porcelain" onClick={() => void loadLog()}>רענון</button>
-            <div className="flex items-center gap-1 text-xs">
-              <span className="text-mist">תצוגה:</span>
-              {([["time", "לפי זמן"], ["user", "לפי משתמש"]] as const).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setGroupBy(k)}
-                  className={`rounded-[2px] border px-2 py-1 ${
-                    groupBy === k ? "border-graphite bg-graphite text-white" : "border-graphite/20 hover:bg-porcelain"}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {logBusy && <span className="text-xs text-ink60">טוען…</span>}
-            {log && <span className="text-xs text-mist">{log.length} הרצות</span>}
-          </div>
-          {logError && (
-            <div className="rounded-[2px] border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700">
-              טעינת היומן נכשלה: {logError}
-            </div>
-          )}
-          {groups.map((g) => (
-            <div key={g.key} className="grid gap-2">
-              {groupBy === "user" && <OwnerHeader owner={g.owner} count={g.items.length} />}
-              {g.items.map((it) => (
-                <LogRow
-                  key={it.id}
-                  it={it}
-                  expanded={expanded === it.id}
-                  detail={details[it.id]}
-                  onToggle={() => void toggleExpand(it.id)}
-                  onPrompt={() => openPrompt(it)}
-                  onRerun={() => void openInDebug(it.renderUrl!)}
-                />
-              ))}
-            </div>
-          ))}
-          {log && log.length === 0 && !logBusy && <div className="text-mist">אין הרצות עדיין.</div>}
-        </div>
-      )}
+      {view === "log" && <RunsLog onRerun={(url) => void openInDebug(url)} />}
 
       {view === "run" && <div className="mb-4 grid gap-2 rounded-[2px] border border-graphite/10 bg-white p-3">
         <textarea
@@ -395,6 +200,7 @@ function DebugConsole() {
           renderModel={render?.model ?? null}
           svg={svg}
           debug={debug}
+          svgName="lab-run"
         />
       )}
 
@@ -403,26 +209,6 @@ function DebugConsole() {
           <div className="mb-1 font-semibold text-amber-800">אין פירוק שלבים — תגובת המנוע הגולמית:</div>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(result, null, 2)}</pre>
         </div>
-      )}
-
-      {promptFor && (
-        <PromptDialog
-          subtitle={`${new Date(promptFor.createdAt).toLocaleString("he-IL")}${
-            promptFor.owner ? ` · ${promptFor.owner.name}` : ""
-          }`}
-          userPrompt={promptFor.prompt ?? detailOf(details[promptFor.id])?.prompt ?? null}
-          imageUrl={promptFor.inputImageUrl ?? null}
-          inputs={detailOf(details[promptFor.id])?.inputs ?? promptFor.inputs ?? null}
-          renderPrompt={detailOf(details[promptFor.id])?.renderPrompt ?? null}
-          state={
-            details[promptFor.id] === "loading"
-              ? "loading"
-              : details[promptFor.id] === "error"
-                ? "error"
-                : "ready"
-          }
-          onClose={() => setPromptFor(null)}
-        />
       )}
 
       {/* אותו חלון על ההרצה החיה — הפרומפט חוזר עם התשובה, בלי סיבוב נוסף. */}
@@ -442,422 +228,6 @@ function DebugConsole() {
           onClose={() => setShowRunPrompt(false)}
         />
       )}
-    </div>
-  );
-}
-
-/** כותרת קבוצה בתצוגה "לפי משתמש". */
-function OwnerHeader({ owner, count }: { owner: Owner | null; count: number }) {
-  return (
-    <div className="mt-2 flex items-center gap-2 border-b border-graphite/10 pb-1">
-      <span
-        aria-hidden="true"
-        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ background: owner?.color ?? "#c9ccd1" }}
-      />
-      <span className="font-semibold">{owner?.name ?? "ללא שיוך"}</span>
-      {owner?.email && <bdi className="text-xs text-ink60">{owner.email}</bdi>}
-      <span className="text-xs text-mist">· {count} הרצות</span>
-    </div>
-  );
-}
-
-/** המאפיינים שקבעו את ההרצה, כשורת תגיות. */
-function InputChips({ inputs }: { inputs: RunInputs }) {
-  const chips: string[] = [];
-  if (inputs.lengthMm != null && inputs.widthMm != null) {
-    chips.push(`${round(inputs.lengthMm)}×${round(inputs.widthMm)} מ״מ`);
-  }
-  if (inputs.thicknessMm != null) chips.push(`עובי ${round(inputs.thicknessMm)}`);
-  if (inputs.minHoleMm != null) chips.push(`פתח מ׳ ${round(inputs.minHoleMm)}`);
-  if (inputs.rows != null) chips.push(`${inputs.rows} שורות`);
-  if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
-  if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
-  if (inputs.imageUpload) chips.push("תמונה שהועלתה");
-  if (inputs.promptOverride) chips.push("פרומפט ידני");
-  if (inputs.imageCount) chips.push(`${inputs.imageCount} קבצים`);
-  if (chips.length === 0) return null;
-  return (
-    <div className="mt-1 flex flex-wrap gap-1">
-      {chips.map((c) => (
-        <span key={c} className="rounded-[2px] bg-porcelain px-1.5 py-0.5 text-[11px] text-ink60">{c}</span>
-      ))}
-    </div>
-  );
-}
-
-const round = (n: number) => Math.round(n * 100) / 100;
-
-/** שורה אחת ביומן: הסיכום, המאפיינים, ומה שהמשתמש נתן. */
-function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
-  it: LogItem;
-  expanded: boolean;
-  detail: LogDetail | "loading" | "error" | undefined;
-  onToggle: () => void;
-  onPrompt: () => void;
-  onRerun: () => void;
-}) {
-  return (
-    <div className="overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
-      {/* שורת סיכום */}
-      <div className="flex items-start gap-3 p-2">
-        {it.renderUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={it.renderUrl} alt="" className="h-14 w-24 shrink-0 rounded bg-porcelain object-contain" />
-        ) : (
-          <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-porcelain text-[10px] text-mist">אין הדמיה</div>
-        )}
-        {/* מה שהמשתמש צירף, ליד ההדמיה שיצאה ממנו — ההשוואה היחידה שאפשר
-            לעשות בעין על תלונה מסוג "זה לא מה ששלחתי". */}
-        {it.inputImageUrl && (
-          <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
-          </a>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className={`rounded border px-1.5 text-xs ${STATUS_COLOR[it.status] ?? ""}`}>{it.status}</span>
-            <span className="rounded border border-graphite/20 bg-porcelain px-1.5 text-xs text-ink60">{SOURCE_LABEL[it.source] ?? it.source}</span>
-            {it.owner && (
-              <span className="flex items-center gap-1 text-xs text-ink60">
-                <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full" style={{ background: it.owner.color }} />
-                {it.owner.name}
-              </span>
-            )}
-            {it.productType && <span className="text-xs text-ink60">{it.productType === "ring" ? "טבעת" : "צמיד"}</span>}
-            {it.metrics?.iou != null && <span className="text-xs text-ink60">IoU {it.metrics.iou.toFixed(3)}</span>}
-            {it.metrics?.holes != null && <span className="text-xs text-ink60">· {it.metrics.holes} חורים</span>}
-            {it.durationMs != null && <span className="text-xs text-mist">· {(it.durationMs / 1000).toFixed(1)}s</span>}
-          </div>
-          {it.prompt && <div className="mt-0.5 break-words text-xs text-ink60">{it.prompt}</div>}
-          {it.inputs && <InputChips inputs={it.inputs} />}
-          {it.error && <div className="mt-0.5 break-words text-xs text-red-600">שגיאה: {it.error}</div>}
-          <div className="mt-0.5 text-[10px] text-mist">{new Date(it.createdAt).toLocaleString("he-IL")}{it.colorKey ? ` · צבע ${it.colorKey}` : ""}</div>
-        </div>
-        <div className="flex shrink-0 flex-col gap-1">
-          <button className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
-            onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
-          <button className="rounded-[2px] border border-cobalt px-2 py-1 text-xs text-cobalt hover:bg-cobalt/5"
-            onClick={onPrompt}>פרומפט</button>
-          {it.renderUrl && (
-            <button className="rounded-[2px] border border-amber-400 bg-amber-50 px-2 py-1 text-xs text-amber-800 hover:bg-amber-100"
-              onClick={onRerun}>הרץ מחדש</button>
-          )}
-        </div>
-      </div>
-      {/* פירוט מלא */}
-      {expanded && (
-        <div className="border-t border-graphite/10 bg-porcelain p-3">
-          {detail === "loading" && <div className="text-xs text-ink60">טוען פירוט…</div>}
-          {detail === "error" && (
-            <div className="text-xs text-red-600">טעינת הפירוט נכשלה. אפשר לסגור ולפתוח שוב.</div>
-          )}
-          <Diagnostics
-            images={{
-              render: it.renderUrl,
-              conditioned: it.stages.conditioned,
-              overlay: it.stages.overlay,
-              difference: it.stages.difference,
-              rendered: it.stages.rendered,
-            }}
-            renderModel={it.renderModel}
-            svg={detailOf(detail)?.svg ?? null}
-            // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
-            debug={detailOf(detail)?.debug ?? it.debug}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * הפרומפט המלא בחלון נפרד. הוא כ-3KB של טקסט — בתוך השורה הוא מסתיר את היומן,
- * וברשימה הוא משקל מיותר על כל שורה. כאן הוא נטען לפי דרישה, יחד עם מה
- * שהמשתמש עצמו נתן: הטקסט שלו, הקובץ שצירף, והמאפיינים שבנו את הפרומפט.
- */
-function PromptDialog({ subtitle, userPrompt, imageUrl, inputs, renderPrompt, state, onClose }: {
-  subtitle: string;
-  userPrompt: string | null;
-  imageUrl: string | null;
-  inputs: RunInputs | null;
-  renderPrompt: string | null;
-  /** "loading"/"error" רק כשהפרומפט נטען לפי דרישה (היומן). */
-  state: "ready" | "loading" | "error";
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    if (!renderPrompt) return;
-    try {
-      await navigator.clipboard.writeText(renderPrompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  return (
-    <div dir="rtl" className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
-      <div className="my-8 w-full max-w-3xl rounded-[2px] bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="font-semibold">
-            הפרומפט המלא <span className="text-xs font-normal text-mist">· {subtitle}</span>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-[2px] border border-graphite/30 px-2 py-0.5 text-xs">
-            סגירה
-          </button>
-        </div>
-
-        <div className="grid gap-3">
-          <section>
-            <div className="mb-1 text-xs font-medium text-ink60">מה שהמשתמש כתב</div>
-            <div className="whitespace-pre-wrap break-words rounded-[2px] border border-graphite/10 bg-porcelain p-2 text-sm">
-              {userPrompt || <span className="text-mist">— (לא נשלח טקסט)</span>}
-            </div>
-          </section>
-
-          {imageUrl && (
-            <section>
-              <div className="mb-1 text-xs font-medium text-ink60">הקובץ שהמשתמש צירף</div>
-              <a href={imageUrl} target="_blank" rel="noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="קובץ שצורף" className="max-h-56 rounded border border-graphite/10 bg-porcelain object-contain" />
-              </a>
-            </section>
-          )}
-
-          {inputs && (
-            <section>
-              <div className="mb-1 text-xs font-medium text-ink60">מאפייני ההרצה</div>
-              <InputChips inputs={inputs} />
-            </section>
-          )}
-
-          <section>
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-ink60">מה שנשלח למודל התמונה</span>
-              {renderPrompt && (
-                <button type="button" onClick={() => void copy()} className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain">
-                  {copied ? "הועתק ✓" : "העתקה"}
-                </button>
-              )}
-            </div>
-            {state === "loading" && <div className="text-xs text-ink60">טוען…</div>}
-            {state === "error" && <div className="text-xs text-red-600">טעינת הפרומפט נכשלה.</div>}
-            {state === "ready" && (
-              renderPrompt ? (
-                <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-graphite/10 bg-porcelain p-2 text-xs" dir="ltr">
-                  {renderPrompt}
-                </pre>
-              ) : (
-                <div className="rounded-[2px] border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-                  הפרומפט המלא לא נשמר להרצה הזו — או שהקלט היה תמונה שהועלתה
-                  ולא נוצרה בה הדמיה. הפרומפט נשמר מהמיגרציה 0009 והלאה; הרצות
-                  ישנות יותר שמרו רק את הטקסט של המשתמש.
-                </div>
-              )
-            )}
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות.
-function Diagnostics({ images, renderModel, svg, debug }: {
-  images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
-}) {
-  const stages = debug?.stages ?? [];
-  const candidates = debug?.candidates ?? [];
-  const gates = debug?.gates ?? {};
-  const warnings = debug?.warnings ?? [];
-  // הגאומטריה של מועמד נבחר — מה שיצא בפועל מהמעקב, לבדיקה בעין.
-  const [svgView, setSvgView] = useState<{ id: string; metal: string; cutouts: string } | null>(null);
-  const [svgLayer, setSvgLayer] = useState<"metal" | "cutouts">("metal");
-  return (
-    <div className="grid gap-4">
-      {/* timeline */}
-      {(stages.length > 0 || debug?.status) && (
-        <div className="rounded-[2px] border border-graphite/10 bg-white p-3">
-          <div className="mb-2 font-semibold">
-            שלבים — סטטוס כללי:{" "}
-            <span className={`rounded border px-2 py-0.5 ${STATUS_COLOR[debug?.status ?? ""] ?? STATUS_COLOR.fail}`}>{debug?.status ?? "—"}</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {stages.map((s, i) => (
-              <div key={i} className={`rounded-[2px] border px-3 py-2 ${STATUS_COLOR[s.status] ?? ""}`}>
-                <div className="font-medium">{s.name}</div>
-                <div className="text-xs opacity-80">{s.detail}</div>
-              </div>
-            ))}
-          </div>
-          {warnings.length > 0 && (
-            <div className="mt-2 break-words text-xs text-amber-700">אזהרות: {warnings.join(" · ")}</div>
-          )}
-          {(gates.min_iou_hard != null || debug?.color_key != null) && (
-            <div className="mt-2 text-xs text-ink60">
-              צבע־מפתח: {debug?.color_key ?? "—"}
-              {gates.min_iou_hard != null && <> · שערים: IoU≥{gates.min_iou_hard} · סטייה ממוצעת≤{gates.max_mean_deviation_mm}מ״מ · מקס≤{gates.max_max_deviation_mm}מ״מ</>}
-              {debug?.smooth_iters != null && <> · החלקה x{debug.smooth_iters}</>}
-              {debug?.width_mm != null && <> · אורך נגזר {debug.width_mm}מ״מ</>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* images */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        {images.render && <ImgCard title={`הדמיית AI${renderModel ? ` (${renderModel})` : ""}`} src={images.render} />}
-        {images.conditioned && <ImgCard title="דו־גוני (קונדישנינג)" src={images.conditioned} />}
-        {images.overlay && <ImgCard title="Overlay (טרייס מול מקור)" src={images.overlay} />}
-        {images.difference && <ImgCard title="Difference" src={images.difference} />}
-        {images.rendered && <ImgCard title="רינדור חוזר של ה-SVG" src={images.rendered} />}
-        {svg && <SvgCard title="SVG סופי" svg={svg} />}
-      </div>
-
-      {/* candidates */}
-      {candidates.length > 0 && (
-        <div className="overflow-x-auto rounded-[2px] border border-graphite/10 bg-white p-3">
-          <div className="mb-2 font-semibold">מועמדים ({candidates.length})</div>
-          <table className="w-full text-right text-xs">
-            <thead className="text-ink60">
-              <tr>
-                <th className="p-1">מזהה</th><th className="p-1">IoU</th><th className="p-1">ממוצע</th><th className="p-1">מקס</th>
-                <th className="p-1">חורים (מקור/וקטור)</th>
-                <th className="p-1">חתיכות מתכת</th>
-                <th className="p-1">טופולוגיה</th><th className="p-1">עוגנים</th>
-                <th className="p-1">ציון</th><th className="p-1">נדחה</th><th className="p-1">שרטוט</th>
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((c) => (
-                <tr key={c.candidate_id} className={`border-t border-graphite/10 ${c.selected ? "bg-green-50 font-medium" : ""}`}>
-                  <td className="p-1">{c.candidate_id}{c.selected ? " ✓" : ""}</td>
-                  <td className="p-1">{c.iou}</td>
-                  <td className="p-1">{c.mean_dev_mm}</td>
-                  <td className="p-1">{c.max_dev_mm}</td>
-                  <td className="p-1">
-                    {c.source_holes}/{c.vector_holes}
-                    {c.hole_budget != null && <span className="text-ink60"> (≤{c.hole_budget})</span>}
-                  </td>
-                  <td className={`p-1 ${
-                    c.vector_components != null && c.source_components != null &&
-                    Math.abs(c.vector_components - c.source_components) > (c.component_budget ?? 1)
-                      ? "font-semibold text-red-600" : ""}`}>
-                    {c.source_components != null ? `${c.source_components}/${c.vector_components}` : "—"}
-                  </td>
-                  <td className="p-1">{c.topology_ok ? "✓" : "✗"}</td>
-                  <td className="p-1">{c.anchors}</td>
-                  <td className="p-1">{c.score}</td>
-                  <td className="p-1 text-red-600">{c.rejected_reason ?? ""}</td>
-                  <td className="p-1">
-                    {c.metal_svg ? (
-                      <button
-                        type="button"
-                        onClick={() => setSvgView({ id: c.candidate_id, metal: c.metal_svg!, cutouts: c.cutouts_svg ?? "" })}
-                        className="rounded-[2px] border border-cobalt px-2 py-0.5 text-cobalt hover:bg-cobalt/5"
-                      >
-                        הצג
-                      </button>
-                    ) : (
-                      <span className="text-ink60">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* גאומטריה של המועמד שנבחר לצפייה */}
-      {svgView && (
-        <div className="rounded-[2px] border border-cobalt/40 bg-white p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div className="font-semibold">שרטוט מהמעקב · {svgView.id}</div>
-            <div className="flex items-center gap-2">
-              {(["metal", "cutouts"] as const).map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  onClick={() => setSvgLayer(l)}
-                  className={`rounded-[2px] border px-2 py-0.5 text-xs ${
-                    svgLayer === l ? "border-graphite bg-graphite text-porcelain" : "border-graphite/30"}`}
-                >
-                  {l === "metal" ? "מתכת" : "חיתוכים"}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setSvgView(null)}
-                className="rounded-[2px] border border-graphite/30 px-2 py-0.5 text-xs"
-              >
-                סגירה
-              </button>
-            </div>
-          </div>
-          <SvgCard
-            title={svgLayer === "metal" ? "המתכת שנשארת" : "מה שנחתך"}
-            svg={svgLayer === "metal" ? svgView.metal : svgView.cutouts}
-          />
-          <p className="mt-2 text-xs text-ink60">
-            כך נראה התוצר בפועל. השוו למסכה הדו־גונית למעלה — עיוות במתאר החיצוני
-            מוריד את ה-IoU ומקפיץ את הסטייה המקסימלית, גם כשהתבנית עצמה נראית תקינה.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ImgCard({ title, src }: { title: string; src: string }) {
-  return (
-    <div className="rounded-[2px] border border-graphite/10 bg-white p-2">
-      <div className="mb-1 text-xs font-medium text-ink60">{title}</div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={title} className="w-full rounded bg-porcelain object-contain" />
-    </div>
-  );
-}
-
-/**
- * שרטוט לבדיקה בעין.
- *
- * ה-SVG שיוצא מהצינור נושא `fill="black"` על כל path. `fill` על אלמנט ה-<svg>
- * אינו גובר עליו — ירושה מפסידה למאפיין מפורש — ולכן הצורות צוירו שחור על
- * הרקע האפור-כהה של הכרטיס, ובפועל לא היה אפשר להבדיל ביניהן. הכלל כאן פונה
- * לצאצאים (`[&_svg_*]`), וכלל CSS גובר על מאפיין תצוגה שבקובץ.
- *
- * שני מצבים ולא אחד: מתכת בהירה על רקע כמעט-שחור מראה את הצורה, ושחור על לבן
- * מראה קווים דקים שנבלעים בזוהר. אותה גאומטריה, שתי שאלות שונות.
- */
-function SvgCard({ title, svg }: { title: string; svg: string }) {
-  const [light, setLight] = useState(false);
-  return (
-    <div className="rounded-[2px] border border-graphite/10 bg-white p-2">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-ink60">{title}</span>
-        <button
-          type="button"
-          onClick={() => setLight((l) => !l)}
-          className="rounded-[2px] border border-graphite/20 px-1.5 py-0.5 text-[11px] text-ink60 hover:bg-porcelain"
-        >
-          {light ? "רקע כהה" : "רקע בהיר"}
-        </button>
-      </div>
-      <div
-        className={`w-full rounded p-2 [&_svg]:w-full ${
-          light
-            ? "bg-white [&_svg]:fill-[#101114] [&_svg_*]:fill-[#101114]"
-            : "bg-[#101114] [&_svg]:fill-[#ffd43b] [&_svg_*]:fill-[#ffd43b]"
-        }`}
-        dangerouslySetInnerHTML={{ __html: svg }}
-      />
     </div>
   );
 }

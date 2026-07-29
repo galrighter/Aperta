@@ -81,6 +81,12 @@ export function Rolled3D({
     controls.addEventListener("start", () => {
       controls.autoRotate = false;
     });
+    // OrbitControls כותב `touch-action: none` על הקנבס, ולכן במסך מגע כל
+    // גרירה עליו — גם אנכית — נבלעת בסיבוב והעמוד מפסיק להיגלל. זו הסיבה
+    // שהייתה קודם נגיעה מקדימה שמפעילה את הסיבוב. `pan-y` מחזיר את הגלילה
+    // האנכית לדפדפן ומשאיר את הגרירה האופקית לשליטה: הסיבוב זמין מיד, בלי
+    // ללכוד את העמוד. חייב לרוץ *אחרי* בניית ה-controls — הוא זה שכותב את זה.
+    canvas.style.touchAction = "pan-y";
 
     const resize = () => {
       const r = mount.getBoundingClientRect();
