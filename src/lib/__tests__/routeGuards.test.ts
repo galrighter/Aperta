@@ -48,6 +48,44 @@ describe("admin-only API routes", () => {
   );
 });
 
+/**
+ * ההזמנות אינן "admin-only": ה-POST הוא המשפך הציבורי, בכוונה. אבל כל **קריאה**
+ * שם מחזירה שם, מייל, טלפון וכתובת למשלוח של לקוחה, וכל **עדכון** משנה הזמנה
+ * ושולח לה מייל. לכן הבדיקה היא לכל handler בנפרד ולא לקובץ: קובץ שמכיל
+ * `requireAdmin` באחת הפונקציות היה עובר גם אם דווקא ה-GET נשאר פתוח.
+ */
+const ORDER_HANDLERS: Array<[string, string[]]> = [
+  ["orders/route.ts", ["GET"]],
+  ["orders/[id]/route.ts", ["GET", "PATCH"]],
+];
+
+function handlerBody(src: string, method: string): string {
+  const start = src.indexOf(`export async function ${method}(`);
+  if (start === -1) return "";
+  const next = src.slice(start + 1).search(/\nexport (async )?function /);
+  return next === -1 ? src.slice(start) : src.slice(start, start + 1 + next);
+}
+
+describe("order routes", () => {
+  it.each(ORDER_HANDLERS.flatMap(([rel, methods]) => methods.map((m) => [rel, m] as const)))(
+    "%s %s is admin-gated",
+    (rel, method) => {
+      const body = handlerBody(readFileSync(join(API, rel), "utf8"), method);
+      expect(body).not.toBe("");
+      expect(body).toContain("requireAdmin(req)");
+    },
+  );
+
+  it("keeps order creation public, but rate-limited and honeypotted", () => {
+    // המשפך חייב לכתוב הזמנה בלי חשבון אדמין; מה שמגן עליו הוא המכסה
+    // וה-honeypot, ושניהם קלים למחוק בלי לשים לב.
+    const post = handlerBody(readFileSync(join(API, "orders/route.ts"), "utf8"), "POST");
+    expect(post).not.toContain("requireAdmin(req)");
+    expect(post).toContain("countRecentOrdersFromEmail");
+    expect(post).toContain("body.company");
+  });
+});
+
 /** מסלולים שמקבלים מזהה של עיצוב קיים (ישירות, או דרך גרסה/הרצה) ולכן חייבים
  *  לבדוק בעלות. מזהה עיצוב אינו סוד — הוא עובר בכתובות, ביומנים ובקישורים. */
 const OWNERSHIP_ROUTES = [

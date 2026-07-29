@@ -1,5 +1,7 @@
 import { he } from "@/i18n/he";
 import { SITE } from "./site.config";
+import { orderSummaryText } from "./orderSummary";
+import type { OrderRow, OrderStatus } from "./db/orders";
 
 const m = he.mail;
 
@@ -71,4 +73,95 @@ export function orderAckMail(q: InquiryMail): { subject: string; text: string } 
     .join("\n");
 
   return { subject, text };
+}
+
+/* ===== הזמנות (טבלת orders, migration 0010) ===== */
+
+/**
+ * ההתראה לגל על הזמנה. אותה כותרת כמו קודם — שם ומספר, כי זה מה שנקרא ברשימת
+ * המיילים בנייד — אבל הגוף נגזר מהשורה במסד ולא מטקסט שהדפדפן שלח.
+ */
+export function orderNotifyMail(o: OrderRow): { subject: string; text: string } {
+  const ref = o.ref ? ` ${o.ref}` : "";
+  const subject = `${m.notifyOrderSubject}${ref} — ${o.name}`;
+
+  const text = [
+    m.notifyIntroOrder,
+    "",
+    `${m.notifyFrom}: ${o.name}`,
+    `${m.notifyEmail}: ${o.email}`,
+    o.phone ? `${m.notifyPhone}: ${o.phone}` : null,
+    "",
+    orderSummaryText(o),
+    "",
+    `${m.notifyAdminHint} ${SITE.url}/admin`,
+  ]
+    // null בלבד — שורה ריקה כאן היא רווח מכוון בין הפסקאות, לא שדה חסר.
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  return { subject, text };
+}
+
+/** האישור ללקוחה. אותו סיכום בדיוק — שתי גרסאות הן שתי הזדמנויות להיבדל. */
+export function orderCustomerAckMail(o: OrderRow): { subject: string; text: string } {
+  const ref = o.ref ? ` ${o.ref}` : "";
+  const subject = `${he.site.brand} — ${m.orderAckSubject}${ref}`;
+
+  const text = [
+    `${m.orderAckHello} ${o.name},`,
+    "",
+    m.orderAckIntro,
+    "",
+    o.ref ? `${m.orderAckRef}: ${o.ref}` : null,
+    "",
+    orderSummaryText(o),
+    "",
+    m.orderAckNext,
+    "",
+    m.orderAckSignature,
+    SITE.url,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  return { subject, text };
+}
+
+/**
+ * עדכון סטטוס ללקוחה (docs/TODO.md D2).
+ *
+ * `sent` אינו כאן בכוונה: הוא המצב שבו ההזמנה נולדת, והאישור עליו הוא
+ * `orderCustomerAckMail`. חזרה אליו ידנית מהבק־אופיס היא תיקון של גל, לא
+ * אירוע שהלקוחה צריכה לשמוע עליו — ולכן `null` פירושו "אל תשלח כלום".
+ */
+export function orderStatusMail(
+  o: OrderRow,
+  status: OrderStatus,
+): { subject: string; text: string } | null {
+  const copy: Partial<Record<OrderStatus, { subject: string; body: string }>> = {
+    approved: { subject: m.statusSubjectApproved, body: m.statusBodyApproved },
+    in_production: { subject: m.statusSubjectProduction, body: m.statusBodyProduction },
+    shipped: { subject: m.statusSubjectShipped, body: m.statusBodyShipped },
+    cancelled: { subject: m.statusSubjectCancelled, body: m.statusBodyCancelled },
+  };
+  const c = copy[status];
+  if (!c) return null;
+
+  const ref = o.ref ? ` ${o.ref}` : "";
+  return {
+    subject: `${he.site.brand} — ${c.subject}${ref}`,
+    text: [
+      `${m.orderAckHello} ${o.name},`,
+      "",
+      c.body,
+      "",
+      o.ref ? `${m.orderAckRef}: ${o.ref}` : null,
+      "",
+      m.orderAckSignature,
+      SITE.url,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
+  };
 }

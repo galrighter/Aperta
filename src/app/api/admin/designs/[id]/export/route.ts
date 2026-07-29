@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { handleRouteError, ApiError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
 import { getDesign, getVersion } from "@/lib/db/designs";
@@ -16,15 +17,30 @@ import { buildVersionExport } from "@/lib/export/build";
 
 export const maxDuration = 60;
 
+const schema = z.object({
+  /** גרסה מפורשת — מה שהוזמן. בלעדיה: הגרסה הנוכחית של העיצוב. */
+  versionId: z.string().uuid().nullable().optional(),
+});
+
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     requireAdmin(req);
     const { id } = await ctx.params;
+    // גוף ריק הוא בקשה תקינה ("הגרסה הנוכחית"), ולכן parse סלחני ולא parseBody.
+    const body = schema.parse(await req.json().catch(() => ({})));
     const design = await getDesign(id);
-    if (!design.current_version_id) {
+
+    // הזמנה שומרת את הגרסה שהוזמנה, והיא לא בהכרח הנוכחית: אחרי ההזמנה
+    // הלקוחה יכולה להמשיך לערוך. לחתוך את "הנוכחית" פירושו לייצר משהו שהיא
+    // לא אישרה.
+    const versionId = body.versionId ?? design.current_version_id;
+    if (!versionId) {
       throw new ApiError("no_version", "Design has no completed version to export", 404);
     }
-    const version = await getVersion(design.current_version_id);
+    const version = await getVersion(versionId);
+    if (version.design_id !== design.id) {
+      throw new ApiError("bad_version", "Version belongs to a different design", 400);
+    }
 
     // fail חסום גם כאן: קובץ שנכשל בוולידציה הוא קובץ שאי אפשר לחתוך, ולתת
     // אותו להורדה זה להעביר את הכשל לרצפת הייצור. warn עובר — האדמין הוא

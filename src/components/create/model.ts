@@ -3,6 +3,7 @@
 import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
 import { svgFrame } from "@/lib/geometry/frame";
+import { priceFor, type Price } from "@/lib/pricing";
 
 const d = he.design;
 
@@ -200,30 +201,13 @@ export const hasExactSize = (s: CreateState): boolean => {
 
 /* ===== תמחור (handoff §7) ===== */
 
-export interface Price {
-  base: number; widthAdd: number; complexity: number;
-  packaging: number; shipping: number; tax: number; total: number;
-}
+// החישוב עצמו עבר ל-`src/lib/pricing.ts`, כדי שהשרת יחשב את אותו מחיר ולא
+// יקבל אותו מהדפדפן. כאן נשארה רק ההסבה ממצב המסך לקלט של הפונקציה.
+export { PACKAGING, SHIPPING } from "@/lib/pricing";
+export type { Price } from "@/lib/pricing";
 
-export const PACKAGING = 25;
-export const SHIPPING = 35;
-const COMPLEXITY: Record<Density, number> = { low: 0, medium: 45, high: 110 };
-
-export function priceOf(s: CreateState): Price {
-  const ring = s.product === "ring";
-  const base = ring ? 240 : 320;
-  const perMm = ring ? 14 : 5;
-  const def = ring ? WIDTH.ring.def : WIDTH.bracelet.def;
-  const widthAdd = Math.round(Math.max(0, widthOf(s) - def) * perMm);
-  const complexity = COMPLEXITY[s.density];
-  const subtotal = base + widthAdd + complexity;
-  const tax = Math.round((subtotal + PACKAGING + SHIPPING) * 0.17);
-  return {
-    base, widthAdd, complexity,
-    packaging: PACKAGING, shipping: SHIPPING, tax,
-    total: subtotal + PACKAGING + SHIPPING + tax,
-  };
-}
+export const priceOf = (s: CreateState): Price =>
+  priceFor({ productType: s.product ?? "bracelet", widthMm: widthOf(s), density: s.density });
 
 /* ===== גאומטריה ===== */
 
