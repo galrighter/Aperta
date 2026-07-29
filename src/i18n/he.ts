@@ -98,7 +98,7 @@ export const he = {
   errVectorizeFailed:
     "ההדמיה שיצאה לא הומרה לתבנית חיתוך נקייה. זה קורה לפעמים — אפשר לנסות שוב, או לנסח את התיאור מעט אחרת.",
   errAccountRequired: "צריך להזדהות לפני היצירה.",
-  errSchemaOutdated: "המערכת עודכנה אבל מסד הנתונים לא. יש להריץ את מיגרציה 0008.",
+  errSchemaOutdated: "המערכת עודכנה אבל מסד הנתונים לא. יש להריץ את המיגרציות האחרונות.",
   retry: "נסה שוב",
 
   // Validation messages by check id — הפרמטרים מוזרקים בקוד
@@ -693,15 +693,27 @@ export const he = {
     acctTitle: "רגע לפני שמתחילים",
     acctSubtitle:
       "היצירה נשמרת על שמך — כדי שתוכלו לחזור אליה מכל מכשיר, וכדי שנדע למי לענות על הפידבק.",
-    acctName: "שם",
-    acctNamePh: "איך לפנות אליכם",
     acctEmail: "אימייל",
-    acctPhone: "טלפון",
-    acctPhoneOpt: "לא חובה",
-    acctSubmit: "מתחילים",
     acctSending: "רגע…",
     acctError: "הזיהוי נכשל. נסו שוב.",
-    acctNote: "אין סיסמה. המייל הוא מה שמחזיר אתכם לעיצובים שלכם.",
+    acctNote: "בלי סיסמה. חשבון גוגל, או קוד חד־פעמי למייל — וזה מה שמחזיר אתכם לעיצובים שלכם, מכל מכשיר.",
+
+    // כניסה מאומתת — גוגל או קוד חד־פעמי במייל
+    acctGoogle: "המשך עם Google",
+    acctOr: "או",
+    acctEmailPh: "you@example.com",
+    acctSendCode: "שליחת קוד",
+    acctCodeTitle: "הקוד נשלח",
+    acctCodeSentTo: "שלחנו קוד בן שש ספרות אל",
+    acctCodeLabel: "הקוד מהמייל",
+    acctCodeEnter: "כניסה",
+    acctCodeResend: "לא הגיע? שליחה חוזרת",
+    acctCodeOtherEmail: "מייל אחר",
+    acctCodeInvalid: "הקוד שגוי או פג תוקף. אפשר לבקש חדש.",
+    acctCodeSpam: "אם הוא לא מגיע תוך דקה, שווה להציץ בתיקיית הספאם.",
+    acctGoogleFailed: "הכניסה עם Google לא הושלמה. אפשר לנסות שוב, או קוד במייל.",
+    acctUnavailable: "הכניסה אינה זמינה כרגע. נסו שוב בעוד רגע.",
+
     acctSignedIn: "מחוברים כ־",
     acctSwitch: "לא אתם?",
     acctCancel: "לא עכשיו",

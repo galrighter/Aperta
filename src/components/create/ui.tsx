@@ -162,10 +162,13 @@ export function Slider({
 }
 
 export function TextInput({
-  label, value, onChange, placeholder, type = "text", required,
+  label, value, onChange, placeholder, type = "text", required, inputMode, dir,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; required?: boolean;
+  /** לקוד חד־פעמי: מקלדת ספרות בנייד, ומספרים שנקראים משמאל לימין. */
+  inputMode?: "numeric" | "tel" | "email" | "text";
+  dir?: "ltr" | "rtl";
 }) {
   return (
     <label className="block">
@@ -178,6 +181,8 @@ export function TextInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        inputMode={inputMode}
+        dir={dir}
         className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-base transition-colors focus:border-cobalt focus:outline-none"
       />
     </label>

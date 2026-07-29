@@ -84,35 +84,49 @@ export async function getAccount(id: string): Promise<AccountRow | null> {
 }
 
 /**
- * כניסה: חשבון קיים לפי מייל, או חדש. שם ששונה בטופס מעדכן את הקיים —
- * חבר שכותב את שמו אחרת בפעם השנייה מתכוון לאותו חשבון, לא לשני.
+ * קישור בין משתמש מאומת (`auth.users`) לפרופיל.
+ *
+ * שלושה צעדים, ובסדר הזה:
+ * 1. לפי `auth_user_id` — הכניסה השנייה ואילך.
+ * 2. לפי המייל — **חשבון שנוצר בבטא, לפני שהייתה כניסה מאומתת.** זה הצעד
+ *    שמונע מחבר שכבר עיצב לאבד את כל העיצובים שלו ברגע שהזיהוי נעשה אמיתי,
+ *    והוא היחיד כאן שאי אפשר לתקן בדיעבד: אם ניצור לו פרופיל שני, העיצובים
+ *    יישארו תלויים בראשון בלי דרך להגיע אליהם.
+ * 3. אחרת — פרופיל חדש.
+ *
+ * המייל מגיע מ-`auth.users` ולא מטופס, ולכן הוא מאומת: או שנשלח אליו קוד, או
+ * שגוגל אישרה אותו — ולא מטופס, כפי שהיה בבטא.
  */
-export async function signIn(input: {
-  name: string;
+export async function linkAuthUser(input: {
+  authUserId: string;
   email: string;
-  phone?: string | null;
+  /** השם שגוגל מסרה, כשיש. במסלול המייל אין שם עד שהמשתמש ימלא אותו. */
+  name?: string | null;
 }): Promise<AccountRow> {
   const sb = supabaseAdmin();
   const email = normalizeEmail(input.email);
   const now = new Date().toISOString();
+  const COLS = "id, name, color, kind, email, phone, created_at, last_seen_at";
 
-  const { data: existing, error: findErr } = await sb
-    .from("profiles")
-    .select("id, name, color, kind, email, phone, created_at, last_seen_at")
-    .eq("email", email)
-    .maybeSingle();
-  if (findErr) fail(findErr);
+  const linked = await sb.from("profiles").select(COLS).eq("auth_user_id", input.authUserId).maybeSingle();
+  if (linked.error) fail(linked.error);
+  if (linked.data) {
+    const row = linked.data as AccountRow;
+    // המסלול הזה רץ בכל בקשה מאומתת. כתיבה בכל פעם היא כתיבה למסד על כל
+    // לחיצה, בשביל שדה שמדויק עד כדי שעה ממילא.
+    const stale = Date.now() - new Date(row.last_seen_at).getTime() > 60 * 60 * 1000;
+    if (stale) await sb.from("profiles").update({ last_seen_at: now }).eq("id", row.id);
+    return row;
+  }
 
-  if (existing) {
-    const patch: Record<string, unknown> = { last_seen_at: now, name: input.name };
-    // טלפון ריק לא מוחק טלפון שכבר נמסר
-    if (input.phone) patch.phone = input.phone;
-    const { data, error } = await sb
-      .from("profiles")
-      .update(patch)
-      .eq("id", (existing as AccountRow).id)
-      .select("id, name, color, kind, email, phone, created_at, last_seen_at")
-      .single();
+  const byEmail = await sb.from("profiles").select(COLS).eq("email", email).maybeSingle();
+  if (byEmail.error) fail(byEmail.error);
+  if (byEmail.data) {
+    const existing = byEmail.data as AccountRow;
+    const patch: Record<string, unknown> = { auth_user_id: input.authUserId, last_seen_at: now };
+    // שם קיים לא נדרס בשם מגוגל: מי שכתב לעצמו "דנה כ." התכוון לזה.
+    if (input.name && !existing.name) patch.name = input.name;
+    const { data, error } = await sb.from("profiles").update(patch).eq("id", existing.id).select(COLS).single();
     if (error) fail(error);
     return data as AccountRow;
   }
@@ -120,29 +134,49 @@ export async function signIn(input: {
   const { data, error } = await sb
     .from("profiles")
     .insert({
-      name: input.name,
+      name: input.name || email.split("@")[0],
       email,
-      phone: input.phone || null,
       color: colorFor(email),
       kind: "friend",
+      auth_user_id: input.authUserId,
       created_at: now,
       last_seen_at: now,
     })
-    .select("id, name, color, kind, email, phone, created_at, last_seen_at")
+    .select(COLS)
     .single();
   if (error) {
-    // מירוץ בין שתי לשוניות של אותו חבר — ההרשמה השנייה נופלת על ה-unique,
-    // וזו הצלחה: החשבון קיים. שולפים אותו במקום להחזיר שגיאה.
+    // מירוץ בין שתי לשוניות — ההרשמה השנייה נופלת על ה-unique, וזו הצלחה.
     if (/duplicate|unique/i.test(error.message)) {
-      const again = await sb
-        .from("profiles")
-        .select("id, name, color, kind, email, phone, created_at, last_seen_at")
-        .eq("email", email)
-        .maybeSingle();
+      const again = await sb.from("profiles").select(COLS).eq("email", email).maybeSingle();
       if (again.data) return again.data as AccountRow;
     }
     fail(error);
   }
+  return data as AccountRow;
+}
+
+/** השלמת פרטים אחרי הכניסה הראשונה (שם/טלפון). */
+export async function updateAccountDetails(
+  id: string,
+  patch: { name?: string; phone?: string | null },
+): Promise<AccountRow> {
+  const COLS = "id, name, color, kind, email, phone, created_at, last_seen_at";
+  const update: Record<string, unknown> = {};
+  if (patch.name) update.name = patch.name;
+  // טלפון ריק לא מוחק טלפון שכבר נמסר.
+  if (patch.phone) update.phone = patch.phone;
+  if (Object.keys(update).length === 0) {
+    const cur = await supabaseAdmin().from("profiles").select(COLS).eq("id", id).single();
+    if (cur.error) fail(cur.error);
+    return cur.data as AccountRow;
+  }
+  const { data, error } = await supabaseAdmin()
+    .from("profiles")
+    .update(update)
+    .eq("id", id)
+    .select(COLS)
+    .single();
+  if (error) fail(error);
   return data as AccountRow;
 }
 
