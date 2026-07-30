@@ -49,6 +49,9 @@ function messageFor(code: string): string {
   // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
   if (code === "vectorize_failed") return he.errVectorizeFailed;
   if (code === "account_required") return he.errAccountRequired;
+  // תקציב שנגמר אצל ספק התמונות: לא באג ולא משהו שהלקוחה יכולה לתקן בניסוח
+  // אחר. "משהו השתבש. נסו שוב" שולח אותה לנסות שוב לתוך אותו קיר בדיוק.
+  if (code === "quota_exhausted") return he.errQuotaExhausted;
   // מיגרציה שלא רצה. נוסח משלה, כי "משהו השתבש" שולח לחפש באג בקוד בזמן
   // שמה שצריך הוא להריץ את המיגרציה בייצור.
   if (code === "schema_outdated") return he.errSchemaOutdated;

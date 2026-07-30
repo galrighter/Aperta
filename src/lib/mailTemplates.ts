@@ -114,6 +114,41 @@ export function designReadyMail(input: {
   return { subject, text };
 }
 
+/**
+ * התראת תקציב שנגמר אצל ספק התמונות.
+ *
+ * הכותרת אומרת את המסקנה ולא את הסימפטום: מי שקורא אותה בטלפון צריך לדעת
+ * *מיד* שהיצירה באתר מושבתת ושמה שנדרש הוא תשלום, לא תיקון. הודעת הספק
+ * המקורית נשארת בגוף — היא ההוכחה, והיא מה שמבדיל בין תקציב שנגמר לבין תקלה
+ * אחרת שנוסחה דומה.
+ */
+export function quotaAlertMail(input: {
+  /** הודעת הכשל כמו שהתקבלה מהקופסה, כולל גוף התשובה של OpenAI. */
+  reason: string;
+  runId: string;
+  /** `RM-0054` — העיצוב שההרצה נכשלה עליו, כשידוע. */
+  designRef: string | null;
+}): { subject: string; text: string } {
+  return {
+    subject: `${he.site.brand} — ${m.quotaSubject}`,
+    text: [
+      m.quotaIntro,
+      "",
+      input.designRef ? `${m.quotaDesign}: ${input.designRef}` : null,
+      `${m.quotaRun}: ${input.runId}`,
+      "",
+      `${m.quotaReason}:`,
+      input.reason.slice(0, 500),
+      "",
+      m.quotaAction,
+      "",
+      `${m.notifyAdminHint} ${SITE.url}/admin/runs`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
+  };
+}
+
 /* ===== הזמנות (טבלת orders, migration 0011) ===== */
 
 /**

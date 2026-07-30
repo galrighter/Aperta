@@ -18,6 +18,7 @@ import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
 import { getAccount } from "@/lib/db/accounts";
 import { designCode } from "@/lib/designCode";
 import { sendMail, mailConfigured } from "@/lib/mail";
+import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
 import { designReadyMail } from "@/lib/mailTemplates";
 import { SITE } from "@/lib/site.config";
 import type { DesignRow } from "@/lib/db/designs";
@@ -188,6 +189,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
   let persisted = false;
   let designId: string | null = null;
   let userPrompt: string | null = null;
+  /** הרפרנס האנושי לעיצוב. נשמר בחוץ כי ההתראה על כשל נשלחת מה-catch. */
+  let designRef: string | null = null;
   /** מה שנשלח למודל ומה שקבע אותו — נשמר ליומן גם כשההרצה נכשלה. */
   let runLog: Pick<PersistRunInput, "renderPrompt" | "inputs" | "inputImage"> | null = null;
 
@@ -195,6 +198,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     designId = body.designId;
     userPrompt = body.userPrompt;
     const design = await getDesign(body.designId);
+    designRef = designCode(design.serial);
 
     // תמונת השראה (אם צורפה) משמשת רפרנס למודל התמונה. סוג המדיה כבר אומת ב-POST.
     let inspiration: LlmImage | null = null;
@@ -385,6 +389,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         vectorizer: null,
         ...(runLog ?? {}),
       });
+    }
+    // תקציב שנגמר אצל ספק התמונות משבית את היצירה לכולם עד שמישהו מוסיף תקציב,
+    // ואי אפשר לגלות אותו מהאתר. ההתראה נשלחת אחרי כתיבת השורה ליומן, כדי
+    // שהמייל והיומן יספרו את אותו סיפור — ולא מפילה את הכשל המקורי.
+    if (isQuotaFailure(err)) {
+      await alertQuotaExhausted(err, { runId, designRef, startedAt });
     }
     throw err;
   }
