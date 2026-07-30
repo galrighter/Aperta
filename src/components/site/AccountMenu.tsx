@@ -6,7 +6,6 @@
 // המוצר — כך שמי שנכנס לאתר לא ידע אם הוא מחובר, לא היה לו לאן ללחוץ כדי
 // להגיע לעיצובים שלו, ולא הייתה בכלל דרך לצאת.
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { he } from "@/i18n/he";
 import { api } from "@/lib/client/api";
 import { clearMyDesigns } from "@/lib/client/myDesigns";
@@ -18,6 +17,9 @@ const s = he.site;
 
 /** הקישור לעיצובים שלי — פותח את המשפך עם רשימת העיצובים פרושה. */
 export const MY_DESIGNS_HREF = "/design?designs=1";
+
+/** הקישור לכניסה — פותח את המשפך עם שער הזיהוי פרוש. */
+export const SIGN_IN_HREF = "/design?signin=1";
 
 /** השם להצגה: השם הפרטי, ואם אין שם — החלק שלפני ה-@ במייל. */
 function shortName(a: Account): string {
@@ -97,15 +99,20 @@ export default function AccountMenu({
   if (account === undefined) return null;
 
   if (!account) {
-    // מי שלא מחובר: הכניסה קורית בתוך המשפך, ברגע שמבקשים ליצור.
+    // מי שלא מחובר: הכניסה קורית בתוך המשפך, ולכן הקישור מבקש ממנו במפורש
+    // לפתוח את השער (`?signin=1`) ולא רק מנווט אליו.
+    //
+    // `a` ולא `Link`, מאותה סיבה בדיוק כמו "העיצובים שלי" למטה: הקישור נושא
+    // מצב פתיחה בכתובת, וניווט פנימי אינו מרנדר את העמוד מחדש — כלומר מי
+    // שכבר עומד על /design היה לוחץ "כניסה" ולא היה קורה כלום.
     return (
-      <Link
-        href="/design"
+      <a
+        href={SIGN_IN_HREF}
         onClick={onNavigate}
         className="text-sm text-ink60 transition-colors hover:text-cobalt"
       >
         {s.headerSignIn}
-      </Link>
+      </a>
     );
   }
 
