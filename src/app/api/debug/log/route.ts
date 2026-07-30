@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
-import { listRuns, ownersByDesign, type RunStagePaths } from "@/lib/db/runs";
+import { listRuns, designsForRuns, type RunStagePaths } from "@/lib/db/runs";
+import { designCode } from "@/lib/designCode";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
 
     // הבעלים של כל שורה, בשאילתה אחת לכל היומן — כדי שאפשר יהיה לקבץ אותו לפי
     // משתמש ולא רק לפי זמן. גם ניסיון שנקטע מקבל שיוך: שם הוא הכי נחוץ.
-    const owners = await ownersByDesign(
+    const { owners, serials } = await designsForRuns(
       [...rows.map((r) => r.design_id), ...orphans.map((o) => o.designId)].filter(
         (v): v is string => !!v,
       ),
@@ -78,6 +79,8 @@ export async function GET(req: Request) {
         inputs: r.inputs ?? null,
         owner: (r.design_id && owners.get(r.design_id)) || null,
         designId: r.design_id,
+        /** `RM-0047` — הרפרנס שתלונה מגיעה איתו. ה-uuid אינו רפרנס אנושי. */
+        ref: (r.design_id && designCode(serials.get(r.design_id) ?? null)) || null,
         stages: {
           conditioned: stages.conditioned ? image("conditioned") : null,
           overlay: stages.overlay ? image("overlay") : null,
@@ -93,6 +96,7 @@ export async function GET(req: Request) {
     const withOwners = orphans.map((o) => ({
       ...o,
       owner: (o.designId && owners.get(o.designId)) || null,
+      ref: (o.designId && designCode(serials.get(o.designId) ?? null)) || null,
     }));
 
     const merged = [...items, ...withOwners].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
