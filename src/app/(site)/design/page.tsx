@@ -529,8 +529,11 @@ export default function DesignPage() {
   /* ===== כניסה עם כתובת =====
      `?resume=<id>` — פתיחת עיצוב מסוים: מהחלון "העיצוב שלך מוכן", ומקישור
      בבק־אופיס. `?designs=1` — כניסה דרך "העיצובים שלי" בכותרת.
+     `?signin=1` — כניסה דרך "כניסה" בכותרת: השער נפתח מעצמו ביצירה, אבל מי
+     שלחץ במפורש "כניסה" ביקש להזדהות **עכשיו**, ובלי זה הוא נוחת על מסך בחירת
+     המוצר בלי שום סימן שמשהו קרה.
      נקרא מ-`window.location` ולא מ-`useSearchParams` כדי לא לחייב את העמוד
-     כולו ב-Suspense; שני הפרמטרים נכנסים בטעינה מלאה. */
+     כולו ב-Suspense; שלושת הפרמטרים נכנסים בטעינה מלאה. */
   const urlHandled = useRef(false);
   useEffect(() => {
     if (urlHandled.current) return;
@@ -538,7 +541,8 @@ export default function DesignPage() {
     const params = new URLSearchParams(window.location.search);
     const resumeId = params.get("resume");
     const wantsDesigns = params.get("designs");
-    if (!resumeId && !wantsDesigns) return;
+    const wantsSignIn = params.get("signin");
+    if (!resumeId && !wantsDesigns && !wantsSignIn) return;
 
     // ניקוי הכתובת: רענון אחרי שהעיצוב נפתח לא אמור לפתוח אותו שוב מאפס.
     window.history.replaceState({}, "", window.location.pathname);
@@ -546,6 +550,30 @@ export default function DesignPage() {
     if (resumeId) {
       const known = listMyDesigns().find((x) => x.id === resumeId);
       void resume(known ?? { id: resumeId });
+      return;
+    }
+    if (wantsSignIn) {
+      // בודקים מי מחובר ולא מסתמכים על `account` — הבדיקה שלו רצה במקביל
+      // ועדיין `null` כאן, ו-null בשלב הזה אומר "עוד לא ידוע", לא "לא מחובר".
+      // למי שכבר מחובר (לשונית ישנה, כפתור "אחורה") אין מה להראות: הכותרת
+      // תציג את שמו במקום "כניסה", וזו התשובה.
+      api
+        .account()
+        .then(({ account: a }) => {
+          if (a) {
+            setAccount(a);
+            return;
+          }
+          startAfterSignIn.current = false;
+          setGateError(null);
+          setGateOpen(true);
+        })
+        .catch(() => {
+          // כשל בבדיקה אינו "מחובר" — עדיף לפתוח שער מיותר מלבלוע לחיצה.
+          startAfterSignIn.current = false;
+          setGateError(null);
+          setGateOpen(true);
+        });
       return;
     }
     setSavedOpen(true);
