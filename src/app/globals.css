@@ -1,11 +1,88 @@
 @import "tailwindcss";
 
+/* ===== RM JEWEL design tokens =====
+   שפת עיצוב נקייה וגיאומטרית: פורצלן / גרפיט / קובלט.
+   שמות ייעודיים בלבד — לא דורסים את פלטת stone הדיפולטית שבה משתמש הסטודיו. */
+@theme {
+  --color-porcelain: #f4f1eb;
+  --color-porcelain-slab: #e7e1d6;
+  --color-stonesoft: #d8d2c8;
+  --color-graphite: #202326;
+  /* mist/ink60/successgreen כווננו כדי לעבור WCAG AA (4.5:1) מול porcelain.
+     הערכים הקודמים (#aab4b8 / #6b6f73 / #4a8f5c) נתנו 1.88 / 4.49 / 3.47 —
+     ו-mist נשא טקסט אמיתי, כולל הודעות שגיאה, ב-10–13px. */
+  --color-mist: #667074;        /* 1.88:1 → 4.51:1 */
+  --color-ink60: #6a6e72;       /* 4.49:1 → 4.56:1 */
+  --color-ink80: #3d4145;       /* 9.13:1 */
+  --color-cobalt: #315bff;      /* 4.58:1 */
+  --color-cobalt-ink: #204acc;  /* 6.40:1 */
+  --color-successgreen: #367b48; /* 3.47:1 → 4.56:1 */
+
+  /* הפונטים נטענים דרך next/font (מתארחים עצמית) — ראה src/app/layout.tsx.
+     המשתנים --font-archivo / --font-assistant מוזרקים משם. */
+  --font-display: var(--font-archivo), system-ui, sans-serif;
+  --font-body: var(--font-assistant), system-ui, sans-serif;
+}
+
 html, body {
   height: 100%;
   overscroll-behavior: none;
 }
 
+/* פונט הגוף אחיד לכל האתר — כולל הסטודיו (עורך ה-CAD). */
+body {
+  font-family: var(--font-body);
+}
+
 /* מניעת זום כפול-הקשה על iOS בתוך הקנבס */
 .touch-none-canvas {
   touch-action: none;
+}
+
+/* ===== סקופ שפת RM JEWEL — חל על האתר השיווקי ומסע העיצוב בלבד,
+   כדי לא לשנות את רינדור הסטודיו (עורך ה-CAD). ===== */
+.rm-scope {
+  font-family: var(--font-body);
+  color: var(--color-graphite);
+  /* הגריד והזוהר עברו לשכבה הקבועה (ArchBackground). כשהם ישבו כאן הם גללו
+     עם התוכן בעוד הצורות הדקורטיביות היו position:fixed — כך ששתי שכבות הרקע
+     החליקו זו מול זו לאורך כל הגלילה (נמדד: 605px היסט על גלילה של 605px).
+     הרקע השטוח מגיע מ-body (bg-porcelain). */
+}
+/* צבע הקישור הוא ברירת מחדל, ולכן חייב לשבת ב-@layer base.
+   ללא השכבה הכלל אינו-שכבתי (unlayered) וגובר על @layer utilities של Tailwind —
+   כך שכל text-* על <a> נדרס: המילולוגו, קישורי הניווט והפוטר, וגם ה-CTA הראשי
+   שהיה אמור להיות text-porcelain על graphite (14:1) והתרנדר קובלט (3.06:1). */
+@layer base {
+  .rm-scope a { color: var(--color-cobalt); text-decoration: none; }
+  .rm-scope a:hover { color: var(--color-cobalt-ink); }
+}
+.rm-scope ::selection { background: var(--color-cobalt); color: var(--color-porcelain); }
+.rm-scope input,
+.rm-scope textarea,
+.rm-scope button { font-family: inherit; }
+
+/* פוקוס גלוי ואחיד לכל אלמנט אינטראקטיבי בשפת המותג.
+   :focus-visible בלבד — לא מציק לעכבר, מופיע למקלדת. */
+.rm-scope :is(a, button, [role="button"], input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--color-cobalt);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@keyframes rmFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rm-fade { animation: rmFade 0.45s ease; }
+
+/* כיבוד העדפת מערכת לצמצום תנועה (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  .rm-fade { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

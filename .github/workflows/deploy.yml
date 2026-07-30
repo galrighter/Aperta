@@ -20,6 +20,12 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build (OpenNext for Cloudflare)
+        # NEXT_PUBLIC_* נצרבים לתוך ה-JS בזמן הבילד, ולכן הם `env` על השלב הזה
+        # ולא סודות של ה-Worker: ב-secrets.json הם לא היו משפיעים על כלום,
+        # והכניסה הייתה נראית שבורה בלי שום שגיאה שמסבירה למה.
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx opennextjs-cloudflare build
       - name: Push runtime secrets to the Worker
         env:
@@ -33,6 +39,9 @@ jobs:
             "SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
             "SUPABASE_SECRET_KEY": "${{ secrets.SUPABASE_SECRET_KEY }}",
             "ADMIN_TOKEN": "${{ secrets.ADMIN_TOKEN }}",
+            "RESEND_API": "${{ secrets.RESEND_API }}",
+            "MAIL_FROM": "${{ vars.MAIL_FROM || 'RM JEWEL <noreply@rmjewel.com>' }}",
+            "MAIL_TO": "${{ vars.MAIL_TO || 'info@rmjewel.com' }}",
             "LLM_MODEL": "${{ vars.LLM_MODEL || 'claude-sonnet-4-6' }}",
             "OPENAI_MODEL": "${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}",
             "LLM_PROVIDER": "${{ vars.LLM_PROVIDER || 'openai' }}",
@@ -42,6 +51,18 @@ jobs:
           EOF
           npx wrangler versions secret bulk /tmp/secrets.json || npx wrangler secret bulk /tmp/secrets.json
           rm /tmp/secrets.json
+      # קודם ה-Worker של המסגור, אחר כך האתר שקשור אליו. הסדר הזה הוא תנאי:
+      # פריסה של forme-studio עם service binding ל-forme-frame נכשלת אם הוא לא
+      # קיים. הוא לא נושא סודות ולא חשוף לאינטרנט — רק את מנוע הגיאומטריה.
+      #
+      # שניהם נפרסים מאותו commit בכל דיפלוי, וזה חייב להישאר כך: forme-frame
+      # ישן מריץ חוקי ייצור ישנים על מה שהאתר החדש שולח לו.
+      - name: Deploy the framing Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.frame.jsonc
+
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

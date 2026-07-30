@@ -7,12 +7,14 @@ job directory and served via GET /api/jobs/{id}/files/{name}.
 
 from __future__ import annotations
 
+import base64
 import json
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
-from .. import pipeline
+from .. import generate, imagegen, pipeline
 from ..config import SETTINGS
 from ..core.renderer import RenderError
 from ..core.validation import InputError
@@ -44,6 +46,7 @@ async def create_job(
     output_mode: str = Form("both"),
     condition: bool = Form(False),
     color_key: str = Form("warm"),
+    min_hole_mm: float = Form(0.0),
     debug: bool = Form(False),
 ) -> JSONResponse:
     data = await image.read()
@@ -58,7 +61,9 @@ async def create_job(
 
     rec = STORE.create()
     try:
-        res = pipeline.run_pipeline(data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key)
+        res = pipeline.run_pipeline(
+            data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key, min_hole_mm
+        )
     except InputError as exc:
         rec.status = "rejected"
         rec.error_code = exc.code
@@ -101,6 +106,75 @@ async def create_job(
         payload["metal_svg"] = sel.metal_svg
     if debug:
         payload["debug"] = pipeline.build_debug(res)
+    return JSONResponse(status_code=200, content=payload)
+
+
+class InspirationIn(BaseModel):
+    media_type: str = "image/png"
+    base64: str
+
+
+class ArtifactsIn(BaseModel):
+    """Signed upload URLs forme minted for this run — the only writes we can do."""
+
+    renders: list[str] = Field(default_factory=list)
+    stages: dict[str, str] = Field(default_factory=dict)
+
+
+class GenerateIn(BaseModel):
+    """A whole customer generation. Every decision here was made by forme."""
+
+    prompt: str
+    calls: int = Field(default=1, ge=1, le=8)
+    rows: int = Field(default=1, ge=1, le=8)
+    height_mm: float = Field(default=15.0, gt=0, le=100)
+    color_key: str = "dark"
+    # forme's minimum opening (mm). It owns the fabrication rules; we only apply
+    # this one so openings the cutter cannot make never reach the SVG. 0 = keep all.
+    min_hole_mm: float = Field(default=0.0, ge=0, le=5)
+    inspiration: InspirationIn | None = None
+    # An edit: the design as it stands, already drawn as a render would look.
+    # We rasterise it and hand it to the image model as the reference.
+    base_svg: str | None = Field(default=None, max_length=2_000_000)
+    artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
+
+
+@app.post("/api/generate", dependencies=[Depends(require_auth)])
+async def create_generation(body: GenerateIn) -> JSONResponse:
+    """Render, split, trace, upload — the heavy half of forme's /api/generate.
+
+    Returns every panel's cutouts with the tracer's verdict. Whether a candidate
+    can actually be manufactured is forme's call, not ours: that engine stays in
+    one place.
+    """
+    if body.color_key not in ("warm", "dark", "saturation", "auto"):
+        raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
+
+    inspiration = None
+    if body.inspiration is not None:
+        try:
+            inspiration = (base64.b64decode(body.inspiration.base64), body.inspiration.media_type)
+        except Exception as exc:
+            raise HTTPException(400, detail={"error_code": "BAD_INSPIRATION", "message": str(exc)}) from exc
+
+    job = generate.GenerateJob(
+        prompt=body.prompt,
+        calls=body.calls,
+        rows=body.rows,
+        height_mm=body.height_mm,
+        color_key=body.color_key,
+        inspiration=inspiration,
+        base_svg=body.base_svg,
+        min_hole_mm=body.min_hole_mm,
+    )
+    artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
+
+    try:
+        payload = await generate.run(job, artifacts, SETTINGS.openai_key, SETTINGS.generate_concurrency)
+    except imagegen.ImageGenError as exc:
+        # The image model, not us: forme surfaces this as a retriable failure.
+        raise HTTPException(502, detail={"error_code": "RENDER_FAILED", "message": str(exc)}) from exc
+
     return JSONResponse(status_code=200, content=payload)
 
 

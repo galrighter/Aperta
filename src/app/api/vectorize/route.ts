@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
-import { getDesign } from "@/lib/db/designs";
+import { requireDesignAccess } from "@/lib/designAccess";
+import { resolveFab } from "@/lib/fabrication.config";
 import { decodeDataUrl, uploadFile } from "@/lib/db/storage";
 import { vectorizeImageFull, ingestCutouts } from "@/lib/vectorizer";
 import { persistRun } from "@/lib/runs/persist";
@@ -29,7 +30,7 @@ export async function POST(req: Request) {
   try {
     const body = await parseBody(req, schema);
     designId = body.designId;
-    const design = await getDesign(body.designId);
+    const design = await requireDesignAccess(req, body.designId);
 
     const { bytes, mediaType } = decodeDataUrl(body.image.dataUrl);
     if (!ALLOWED_MEDIA.has(mediaType)) {
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
     const vec = await vectorizeImageFull(bytes, mediaType, {
       heightMm: Number(design.width_mm),
       colorKey: body.colorKey,
+      minHoleMm: resolveFab(Number(design.thickness_mm), design.product_type).minHole,
     });
 
     await persistRun({
@@ -65,7 +67,6 @@ export async function POST(req: Request) {
     const { version, report, geometry, lengthMm } = await ingestCutouts({
       design,
       cutoutsSvg: vec.cutoutsSvg,
-      derivedLength: vec.widthMm,
       userPrompt: null,
       renderPngPath,
       metrics: vec.metrics,

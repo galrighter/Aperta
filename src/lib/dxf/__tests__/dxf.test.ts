@@ -66,5 +66,7 @@ print("ezdxf round-trip OK")
 `;
     const out = execFileSync("python3", ["-c", script, file], { encoding: "utf8" });
     expect(out).toContain("ezdxf round-trip OK");
-  });
+    // CI: שתי קריאות python3 סינכרוניות (cold start + import ezdxf) עלולות
+    // לחרוג מ-5s ברירת המחדל של vitest — נותנים מרווח נדיב.
+  }, 30_000);
 });

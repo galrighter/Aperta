@@ -12,23 +12,23 @@ export default function LegalPage({
   sections: readonly { h: string; p: string }[];
 }) {
   return (
-    <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-stone-900 sm:text-4xl">
+    <div className="mx-auto max-w-2xl px-5 py-16 sm:px-10">
+      <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {title}
       </h1>
-      <p className="mt-2 text-sm text-stone-400">{s.legalUpdated}</p>
-      <p className="mt-6 leading-relaxed text-stone-700">{intro}</p>
+      <p className="mt-2 text-sm text-mist">{s.legalUpdated}</p>
+      <p className="mt-6 leading-relaxed text-ink80">{intro}</p>
 
       <div className="mt-8 flex flex-col gap-6">
         {sections.map((sec, i) => (
           <section key={i}>
-            <h2 className="text-lg font-semibold text-stone-900">{sec.h}</h2>
-            <p className="mt-1 leading-relaxed text-stone-600">{sec.p}</p>
+            <h2 className="text-lg font-semibold text-graphite">{sec.h}</h2>
+            <p className="mt-1 leading-relaxed text-ink60">{sec.p}</p>
           </section>
         ))}
       </div>
 
-      <p className="mt-12 rounded-xl border border-stone-200 bg-stone-100 p-4 text-xs text-stone-500">
+      <p className="mt-12 rounded-[2px] border border-graphite/10 bg-white p-4 text-xs text-ink60">
         {s.legalNote}
       </p>
     </div>

@@ -13,26 +13,26 @@ export const metadata: Metadata = {
 
 export default function FaqPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-      <h1 className="text-3xl font-semibold tracking-tight text-stone-900 sm:text-4xl">
+    <div className="mx-auto max-w-3xl px-5 py-16 sm:px-10">
+      <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {s.faqTitle}
       </h1>
-      <p className="mt-3 text-lg text-stone-600">{s.faqSubtitle}</p>
+      <p className="mt-3 text-lg text-ink60">{s.faqSubtitle}</p>
 
       <div className="mt-10">
         <FaqAccordion items={s.faqItems} />
       </div>
 
-      <p className="mt-8 text-sm text-stone-500">
+      <p className="mt-8 text-sm text-ink60">
         {s.contactSubtitle}{" "}
-        <Link href="/contact" className="font-medium text-[#a5811b] hover:underline">
+        <Link href="/contact" className="font-medium text-cobalt hover:underline">
           {s.navContact}
         </Link>{" "}
         ·{" "}
         <a
           href={`mailto:${SITE.contactEmail}`}
           dir="ltr"
-          className="font-medium text-[#a5811b] hover:underline"
+          className="font-medium text-cobalt hover:underline"
         >
           {SITE.contactEmail}
         </a>

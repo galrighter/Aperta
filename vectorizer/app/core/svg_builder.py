@@ -7,6 +7,7 @@ cutouts.svg : black fill == material removed (matches the forme cutout contract,
 
 from __future__ import annotations
 
+from shapely.geometry.polygon import orient
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 
@@ -39,12 +40,22 @@ def _polygons(geom: BaseGeometry) -> list[Polygon]:
 
 
 def _path_d(geom: BaseGeometry) -> str:
+    """Emit each polygon as exterior + holes, with orientation made explicit.
+
+    Shapely does not guarantee ring orientation, so which subpaths read as
+    holes depended on whatever the upstream operations happened to produce.
+    `orient` fixes exteriors counter-clockwise and interiors clockwise, which
+    makes the holes unambiguous under both the non-zero and even-odd fill
+    rules — the consumer decides holes by winding, so this has to be right
+    rather than declared.
+    """
     parts = []
     for poly in _polygons(geom):
-        parts.append(_ring_d(list(poly.exterior.coords)))
-        for interior in poly.interiors:
+        p = orient(poly, sign=1.0)
+        parts.append(_ring_d(list(p.exterior.coords)))
+        for interior in p.interiors:
             parts.append(_ring_d(list(interior.coords)))
-    return "".join(p for p in parts if p)
+    return "".join(x for x in parts if x)
 
 
 def build_svg(geom: BaseGeometry, width_mm: float, height_mm: float, layer_id: str) -> str:
@@ -52,7 +63,9 @@ def build_svg(geom: BaseGeometry, width_mm: float, height_mm: float, layer_id: s
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {_fmt(width_mm)} {_fmt(height_mm)}">'
-        f'<g id="{layer_id}" fill="black" fill-rule="evenodd">'
+        # No fill-rule: the design-engine SVG contract allows only id and fill
+        # on this layer, and with explicit winding above it is not needed.
+        f'<g id="{layer_id}" fill="black">'
         f'<path d="{d}"/></g></svg>'
     )
 

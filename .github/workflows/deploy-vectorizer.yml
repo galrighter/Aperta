@@ -30,6 +30,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A missing key does not fail the deploy — it ships a container that 404s
+      # nothing and 502s every /api/generate at runtime, hours after the green
+      # checkmark. Fail here instead, where the cause is still on screen.
+      - name: Require the runtime secrets
+        env:
+          VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+        run: |
+          missing=""
+          [ -n "$VTOKEN" ] || missing="$missing VECTORIZER_TOKEN"
+          [ -n "$OPENAI_KEY" ] || missing="$missing OPENAI_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::missing repository secret(s):$missing"
+            exit 1
+          fi
+
       - name: Set up SSH
         env:
           SSH_KEY: ${{ secrets.HETZNER_SSH }}
@@ -60,8 +76,11 @@ jobs:
           VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
           # HTTPS hostname for the vectorizer (Cloudflare Workers can't call raw-IP HTTP).
           VDOMAIN: ${{ vars.VECTORIZER_DOMAIN || 'vec.rmjewel.com' }}
+          # /api/generate calls the image model from here. Storage needs no key:
+          # forme hands the box a signed upload URL per artefact.
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" "$USER@$HOST" "VTOKEN='$VTOKEN' VDOMAIN='$VDOMAIN' bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" "$USER@$HOST" "VTOKEN='$VTOKEN' VDOMAIN='$VDOMAIN' OPENAI_KEY='$OPENAI_KEY' bash -s" <<'REMOTE'
           set -euo pipefail
           if ! command -v docker >/dev/null 2>&1; then
             echo "Docker not found; installing via get.docker.com"; curl -fsSL https://get.docker.com | sh
@@ -72,6 +91,7 @@ jobs:
           # bind to localhost only; Caddy terminates TLS and reverse-proxies to it.
           docker run -d --name forme-vectorizer --restart unless-stopped \
             -e VECTORIZER_TOKEN="${VTOKEN:-}" \
+            -e OPENAI_KEY="${OPENAI_KEY:-}" \
             -p 127.0.0.1:8000:8000 forme-vectorizer
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then echo "vectorizer healthy"; break; fi
@@ -105,6 +125,15 @@ jobs:
             -m "admin@rmjewel.com" --redirect --keep-until-expiring
           nginx -t && systemctl reload nginx
           echo "verifying HTTPS locally:"; curl -fsS "https://$VDOMAIN/api/health" || (echo "health via HTTPS failed"; exit 1)
+          # /api/generate spends the OpenAI key, so prove the gate is armed rather
+          # than trusting that the token reached the container: no bearer must be
+          # rejected at auth (401), never fall through to body validation (422).
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$VDOMAIN/api/generate" \
+            -H 'content-type: application/json' -d '{}')
+          if [ "$code" != "401" ]; then
+            echo "generate is reachable without a token (HTTP $code) — refusing to leave it open"; exit 1
+          fi
+          echo "auth verified: unauthenticated generate returns 401"
           echo "deployed: vectorizer on 127.0.0.1:8000 behind nginx at https://$VDOMAIN"
           REMOTE
 

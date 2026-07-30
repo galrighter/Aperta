@@ -7,7 +7,7 @@ import { SITE } from "@/lib/site.config";
 const s = he.site;
 
 const inputCls =
-  "w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 outline-none transition-colors focus:border-[#c9a227] focus:ring-2 focus:ring-[#c9a227]/20";
+  "w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-cobalt focus:ring-2 focus:ring-cobalt/20";
 
 export default function ContactForm() {
   const [name, setName] = useState("");
@@ -36,7 +36,7 @@ export default function ContactForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       <div>
-        <label htmlFor="c-name" className="mb-1 block text-sm font-medium text-stone-700">
+        <label htmlFor="c-name" className="mb-1 block text-sm font-medium text-ink80">
           {s.contactName}
         </label>
         <input
@@ -49,7 +49,7 @@ export default function ContactForm() {
         />
       </div>
       <div>
-        <label htmlFor="c-email" className="mb-1 block text-sm font-medium text-stone-700">
+        <label htmlFor="c-email" className="mb-1 block text-sm font-medium text-ink80">
           {s.contactEmail}
         </label>
         <input
@@ -64,7 +64,7 @@ export default function ContactForm() {
         />
       </div>
       <div>
-        <label htmlFor="c-msg" className="mb-1 block text-sm font-medium text-stone-700">
+        <label htmlFor="c-msg" className="mb-1 block text-sm font-medium text-ink80">
           {s.contactMessage}
         </label>
         <textarea
@@ -81,7 +81,7 @@ export default function ContactForm() {
 
       <button
         type="submit"
-        className="mt-1 rounded-full bg-stone-900 px-6 py-3 text-sm font-medium text-stone-50 transition-colors hover:bg-stone-700"
+        className="mt-1 rounded-[2px] bg-graphite px-8 py-3.5 text-sm font-semibold text-porcelain transition-colors hover:bg-graphite/90"
       >
         {s.contactSubmit}
       </button>

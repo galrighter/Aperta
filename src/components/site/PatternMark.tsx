@@ -131,7 +131,7 @@ export default function PatternMark({
   className?: string;
 }) {
   const paths = GENERATORS[variant]();
-  const gid = `brass-${variant}`;
+  // פלטת RM JEWEL: אבן שטוחה (בלי גרדיאנט מטלי) עם חיתוכים בגרפיט.
   return (
     <svg
       viewBox={`0 0 ${L} ${W}`}
@@ -140,15 +140,8 @@ export default function PatternMark({
       aria-hidden="true"
       preserveAspectRatio="xMidYMid meet"
     >
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#e6c766" />
-          <stop offset="0.5" stopColor="#c9a227" />
-          <stop offset="1" stopColor="#a5811b" />
-        </linearGradient>
-      </defs>
-      <rect x="1" y="1" width={L - 2} height={W - 2} rx="8" fill={`url(#${gid})`} />
-      <g fill="#292524">
+      <rect x="1" y="1" width={L - 2} height={W - 2} rx="2" fill="#d8d2c8" stroke="rgba(32,35,38,0.12)" strokeWidth="1" />
+      <g fill="#202326">
         {paths.map((d, i) => (
           <path key={i} d={d} />
         ))}

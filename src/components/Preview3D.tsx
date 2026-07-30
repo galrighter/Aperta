@@ -6,21 +6,38 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import earcut from "earcut";
 import { useStudio } from "@/lib/client/store";
-import { resolveFab } from "@/lib/fabrication.config";
+import { resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { neutralRadiusFromBlank } from "@/lib/sizing";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 // הדמיה תלת-ממדית — סעיף 9: טריאנגולציה של ה-material (earcut עם חורים),
 // אקסטרוזיה לעובי, כיפוף לקשת סביב הציר הניטרלי, חומר בגוון פליז.
 //
+// Rolled3D מקבל הכל ב-props כדי שגם מסע היצירה של הלקוחה יוכל להשתמש בו;
+// Preview3D הוא העטיפה של הסטודיו שמזינה אותו מה-store.
+//
 // הרדיוס מגיע מ-neutralRadiusFromBlank (אורך הפריסה הוא אורך הציר הניטרלי,
 // והפער הוא מיתר) ולא מ-(L+gap)/2π. הנוסחה הישנה זיהתה את אורך הפריסה עם
 // ההיקף הפנימי והציגה ID גדול ב-2·K·t — 1.5 מידות טבעת. ראו sizing-fit-review §3.
 
-export function Preview3D() {
-  const s = useStudio();
-  const design = s.design;
-  const geometry = s.geometry;
+export interface Rolled3DProps {
+  material: MultiPolygon;
+  lengthMm: number;
+  widthMm: number;
+  gapMm: number;
+  thicknessMm: number;
+  /** קובע את מקדם K לכיפוף — בטבעת r/t נמוך ולכן K קטן יותר. */
+  productType?: ProductType;
+  /** צבע רקע לסצנה. null = שקוף, כדי שהרקע של המיכל יעבור מבעד. */
+  background?: number | null;
+  /** כיבוי אינטראקציה (הסיבוב האוטומטי ממשיך) — לשער המגע במובייל. */
+  enabled?: boolean;
+}
+
+export function Rolled3D({
+  material, lengthMm, widthMm, gapMm, thicknessMm, productType = "bracelet",
+  background = 0xf4f1eb, enabled = true,
+}: Rolled3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
@@ -28,6 +45,8 @@ export function Preview3D() {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     mesh: THREE.Mesh | null;
+    /** ממסגר את המצלמה סביב התיבה של המודל. נקרא גם בכל שינוי גודל. */
+    fit: (() => void) | null;
   } | null>(null);
 
   // הקמת הסצנה פעם אחת
@@ -37,14 +56,26 @@ export function Preview3D() {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    mount.appendChild(renderer.domElement);
+    // הקנבס נמדד ע"י ה-CSS, לא ע"י התכולה שלו. בלי זה הוא נולד עם ברירת המחדל
+    // של HTML — 300x150 כפול pixelRatio, כלומר 600px רוחב — ומכיוון שאלה
+    // *מאפיינים* ולא CSS, הוא מותח את ההורה ואיתו את כל העמוד: במסך של 393px
+    // המסמך יצא 622px, נוצרה גלילה אופקית, והכותרת נראתה זזה הצידה. שלושת
+    // הקווים האלה הם הרצפה — גם אם מדידה כלשהי תיכשל, הוא לא יכול לחרוג.
+    const canvas = renderer.domElement;
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    mount.appendChild(canvas);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf5f5f4);
+    scene.background = background === null ? null : new THREE.Color(background);
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-    const camera = new THREE.PerspectiveCamera(40, 1, 1, 2000);
+    // עדשה ארוכה (28°) ולא רחבה: ב-40° הצד הקרוב של הטבעת יושב בערך פי 1.6
+    // קרוב מהצד הרחוק, והדופן הקדמית נראית עבה בהרבה ממה שהיא. צילום תכשיטים
+    // נעשה בעדשה ארוכה בדיוק מהסיבה הזה. המרחק גדל בהתאם, אז המסגור נשמר.
+    const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 2000);
     camera.position.set(0, 40, 110);
 
     const dir = new THREE.DirectionalLight(0xffffff, 0.6);
@@ -58,13 +89,24 @@ export function Preview3D() {
     controls.addEventListener("start", () => {
       controls.autoRotate = false;
     });
+    // OrbitControls כותב `touch-action: none` על הקנבס, ולכן במסך מגע כל
+    // גרירה עליו — גם אנכית — נבלעת בסיבוב והעמוד מפסיק להיגלל. זו הסיבה
+    // שהייתה קודם נגיעה מקדימה שמפעילה את הסיבוב. `pan-y` מחזיר את הגלילה
+    // האנכית לדפדפן ומשאיר את הגרירה האופקית לשליטה: הסיבוב זמין מיד, בלי
+    // ללכוד את העמוד. חייב לרוץ *אחרי* בניית ה-controls — הוא זה שכותב את זה.
+    canvas.style.touchAction = "pan-y";
 
     const resize = () => {
       const r = mount.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) return;
-      renderer.setSize(r.width, r.height);
+      // updateStyle=false: הגודל הפיזי של הבאפר נגזר מהמדידה, אבל הגודל בפריסה
+      // נשאר 100% מהמיכל — כך הקנבס לעולם לא מכתיב רוחב למי שמעליו.
+      renderer.setSize(r.width, r.height, false);
       camera.aspect = r.width / r.height;
       camera.updateProjectionMatrix();
+      // המסגור תלוי ביחס הצדדים: בקנבס צר שדה הראייה האופקי קטן מהאנכי,
+      // ולכן מסגור שנקבע פעם אחת בלבד גולש מהמסגרת ברגע שהמידות משתנות.
+      sceneRef.current?.fit?.();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -78,7 +120,7 @@ export function Preview3D() {
     };
     loop();
 
-    sceneRef.current = { renderer, scene, camera, controls, mesh: null };
+    sceneRef.current = { renderer, scene, camera, controls, mesh: null, fit: null };
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -88,24 +130,37 @@ export function Preview3D() {
       mount.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
+    // הסצנה נבנית פעם אחת; ה-background מסונכרן באפקט נפרד.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // שער האינטראקציה — הסיבוב האוטומטי ממשיך גם כשהשליטה כבויה.
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (ctx) ctx.controls.enabled = enabled;
+  }, [enabled]);
+
+  useEffect(() => {
+    const ctx = sceneRef.current;
+    if (ctx) ctx.scene.background = background === null ? null : new THREE.Color(background);
+  }, [background]);
 
   // עדכון המודל בכל שינוי גרסה/גיאומטריה
   useEffect(() => {
     const ctx = sceneRef.current;
-    if (!ctx || !design || !geometry) return;
+    if (!ctx || !material.length) return;
     if (ctx.mesh) {
       ctx.scene.remove(ctx.mesh);
       ctx.mesh.geometry.dispose();
       (ctx.mesh.material as THREE.Material).dispose();
       ctx.mesh = null;
     }
-    const L = Number(design.length_mm);
-    const gap = Number(design.gap_mm);
-    const t = Number(design.thickness_mm);
-    const W = Number(design.width_mm);
-    const k = resolveFab(t, design.product_type).kFactor;
-    const geo = buildBentGeometry(geometry.material, L, W, gap, t, k);
+    const L = lengthMm;
+    const gap = gapMm;
+    const t = thicknessMm;
+    const W = widthMm;
+    const k = resolveFab(t, productType).kFactor;
+    const geo = buildBentGeometry(material, L, W, gap, t, k);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xd9b14c,
       metalness: 1.0,
@@ -116,19 +171,57 @@ export function Preview3D() {
     ctx.scene.add(mesh);
     ctx.mesh = mesh;
 
-    // מיקום מצלמה יחסי לגודל
-    const R = neutralRadiusFromBlank(L, gap);
-    ctx.controls.target.set(0, 0, 0);
-    ctx.camera.position.set(0, R * 1.6, R * 4.2);
-    ctx.controls.update();
-  }, [design, geometry]);
+    // מסגור לפי התיבה של המודל עצמו ולא לפי נוסחה על הרדיוס: רוחב הרצועה
+    // (עד 80 מ"מ בצמיד) לא נכנס ל-R בכלל, ולכן מסגור שנגזר מ-R בלבד חתך את
+    // המודל ברגע שהרצועה רחבה או שהקנבס צר. כאן המרכז והמרחק נמדדים.
+    geo.computeBoundingSphere();
+    const sphere = geo.boundingSphere;
+    if (sphere) {
+      const fit = () => {
+        const cam = ctx.camera;
+        const vFov = (cam.fov * Math.PI) / 180;
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * cam.aspect);
+        // הציר הצר קובע: בקנבס אנכי זה האופקי, בקנבס רחב זה האנכי.
+        const dist = (sphere.radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.12;
+        const c = sphere.center;
+        ctx.controls.target.copy(c);
+        // שמירה על כיוון הצפייה הקיים (הגרירה של המשתמש) — רק המרחק מתעדכן.
+        const dirTo = cam.position.clone().sub(c);
+        if (dirTo.lengthSq() < 1e-6) dirTo.set(0, 0.34, 1);
+        cam.position.copy(c).add(dirTo.normalize().multiplyScalar(dist));
+        cam.near = Math.max(0.1, dist - sphere.radius * 2);
+        cam.far = dist + sphere.radius * 4;
+        cam.updateProjectionMatrix();
+        ctx.controls.update();
+      };
+      // מסגור ראשון מזווית קבועה — מעט מלמעלה, כדי שהפתח יפנה למצלמה.
+      ctx.camera.position.set(sphere.center.x, sphere.center.y + sphere.radius * 0.34, sphere.center.z + sphere.radius);
+      ctx.fit = fit;
+      fit();
+    }
+  }, [material, lengthMm, widthMm, gapMm, thicknessMm, productType]);
 
+  return <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }} />;
+}
+
+/** עטיפת הסטודיו — מזינה את ההדמיה מה-store. */
+export function Preview3D() {
+  const s = useStudio();
+  const design = s.design;
+  const geometry = s.geometry;
+
+  if (!design || !geometry) {
+    return <div className="flex h-full items-center justify-center text-sm text-mist">…</div>;
+  }
   return (
-    <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }}>
-      {!geometry && (
-        <div className="flex h-full items-center justify-center text-sm text-stone-400">…</div>
-      )}
-    </div>
+    <Rolled3D
+      material={geometry.material}
+      lengthMm={Number(design.length_mm)}
+      widthMm={Number(design.width_mm)}
+      gapMm={Number(design.gap_mm)}
+      thicknessMm={Number(design.thickness_mm)}
+      productType={design.product_type}
+    />
   );
 }
 

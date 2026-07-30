@@ -18,10 +18,15 @@ from .config import SETTINGS, THRESHOLD_OFFSETS, TOLERANCE_MM
 from .core import geometry, metrics, svg_builder, tracing
 from .core.mask import analyse_and_mask
 from .core.renderer import render_svg_to_mask
-from .core.selection import Candidate, Selection, select
+from .core.selection import Candidate, Selection, _topology_ok, select
 from .core.validation import ValidatedImage, load_and_validate
 
 _MEDIUM_TOLERANCE_MM = 0.05
+
+# Every candidate carries its traced SVG in the debug bundle. Comparing them
+# side by side is how a threshold/tolerance choice becomes visible, so the
+# earlier cap only got in the way; the SVGs are small next to the render PNG.
+SVG_DETAIL_COUNT = None
 
 
 @dataclass
@@ -49,6 +54,7 @@ def _build_candidate(
     height_mm: float,
     threshold_offset: int,
     tolerance_mm: float,
+    min_hole_mm: float = 0.0,
 ) -> Optional[Candidate]:
     mm_per_px = _mm_per_px(image, width_mm, height_mm)
     tolerance_px = tolerance_mm / mm_per_px
@@ -67,6 +73,12 @@ def _build_candidate(
     if metal.is_empty:
         return None
     cutouts = geometry.cutouts_from_metal(metal, width_mm, height_mm)
+    if min_hole_mm > 0:
+        # Uncuttable slivers become metal again, so the metal is re-derived from
+        # the kept openings — the two stay exact complements, and the metrics
+        # below score the geometry we will actually cut.
+        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm)
+        metal = geometry.cutouts_from_metal(cutouts, width_mm, height_mm)
 
     metal_svg = svg_builder.build_metal_svg(metal, width_mm, height_mm)
     cutouts_svg = svg_builder.build_cutouts_svg(cutouts, width_mm, height_mm)
@@ -103,6 +115,7 @@ def run_pipeline(
     output_mode: str = "both",
     condition: bool = False,
     color_key: str = "warm",
+    min_hole_mm: float = 0.0,
 ) -> PipelineResult:
     # Optional conditioning: turn a raw shaded/coloured render into a clean
     # smooth two-tone image first. width_mm is derived from the cropped metal,
@@ -122,7 +135,7 @@ def run_pipeline(
     # Phase 1: sweep thresholds at medium tolerance. Track offset alongside.
     phase1: list[tuple[int, Candidate]] = []
     for off in THRESHOLD_OFFSETS:
-        c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, _MEDIUM_TOLERANCE_MM)
+        c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, _MEDIUM_TOLERANCE_MM, min_hole_mm)
         if c is not None:
             phase1.append((off, c))
             candidates.append(c)
@@ -135,15 +148,20 @@ def run_pipeline(
                 continue  # already built in phase 1
             if len(candidates) >= SETTINGS.max_candidates:
                 break
-            c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, tol)
+            c = _build_candidate(image, dark_region_role, width_mm, height_mm, off, tol, min_hole_mm)
             if c is not None:
                 candidates.append(c)
 
     selection = select(candidates)
-    rendered = None
     src_mask = analyse_and_mask(image, dark_region_role, 0).clean_mask
-    if selection.selected is not None:
-        rendered = getattr(selection.selected, "_rendered", None)
+    # On rejection there is no selected candidate, but the back-office still
+    # needs to see what the tracer produced — otherwise a failed run shows only
+    # the conditioned mask and the reason stays invisible. Fall back to the
+    # best-IoU candidate so overlay/difference/rendered are always available.
+    shown = selection.selected
+    if shown is None and candidates:
+        shown = max(candidates, key=lambda c: c.metrics.iou)
+    rendered = getattr(shown, "_rendered", None) if shown is not None else None
 
     return PipelineResult(
         status=selection.status,
@@ -182,6 +200,7 @@ def build_debug(res: PipelineResult) -> dict:
 
     def cand_dict(c) -> dict:
         m = c.metrics
+        s_topo, v_topo = m.source_topology, m.vector_topology
         return {
             "candidate_id": c.candidate_id,
             "threshold": c.threshold,
@@ -189,17 +208,38 @@ def build_debug(res: PipelineResult) -> dict:
             "iou": round(m.iou, 4),
             "mean_dev_mm": round(m.mean_contour_deviation_mm, 4),
             "max_dev_mm": round(m.max_contour_deviation_mm, 4),
-            "source_holes": m.source_topology.holes,
-            "vector_holes": m.vector_topology.holes,
-            "topology_ok": m.topology_ok,
+            "source_holes": s_topo.holes,
+            "vector_holes": v_topo.holes,
+            "hole_budget": max(SETTINGS.hole_diff_abs, round(s_topo.holes * SETTINGS.hole_diff_frac)),
+            # Connected components of metal. A cut pattern that severs the strip
+            # into several pieces fails here — and in practice this, not the
+            # hole count, is what rejects AI renders.
+            "source_components": s_topo.components,
+            "vector_components": v_topo.components,
+            "component_budget": SETTINGS.component_diff_abs,
+            # The gate that actually ran (tolerant, from selection), not the
+            # strict exact-match metric — reporting the strict one made every
+            # candidate look topology-broken even when it passed.
+            "topology_ok": _topology_ok(c),
+            "topology_exact": m.topology_ok,
             "anchors": c.geometry_stats.anchor_point_count,
             "score": round(c.score, 4),
             "rejected_reason": c.rejected_reason,
             "selected": c is res.selection.selected,
+            **({"metal_svg": c.metal_svg, "cutouts_svg": c.cutouts_svg}
+               if id(c) in svg_for else {}),
         }
 
     cands = sorted(res.candidates, key=lambda c: c.metrics.iou, reverse=True)
     sel = res.selection.selected
+
+    # The traced SVG is the only artefact that shows *what actually came out*.
+    # Numbers alone cannot explain a rejection — attach the geometry for the
+    # candidates worth looking at (the best few, plus whichever was selected)
+    # so a failed run can be inspected by eye instead of inferred from metrics.
+    svg_for = {id(c) for c in (cands if SVG_DETAIL_COUNT is None else cands[:SVG_DETAIL_COUNT])}
+    if sel is not None:
+        svg_for.add(id(sel))
 
     # staged pass/fail timeline — first non-ok stage is the failure point.
     stages = []
@@ -211,13 +251,20 @@ def build_debug(res: PipelineResult) -> dict:
                    "detail": f"Chaikin x{SETTINGS.smooth_iters}"})
     if sel is not None:
         m = sel.metrics
-        stages.append({"name": "topology", "status": "ok" if m.topology_ok else "fail",
-                       "detail": f"source {m.source_topology.holes} holes / vector {m.vector_topology.holes}"})
+        stages.append({"name": "topology", "status": "ok" if _topology_ok(sel) else "fail",
+                       "detail": (f"holes {m.source_topology.holes}->{m.vector_topology.holes}, "
+                                  f"metal pieces {m.source_topology.components}->{m.vector_topology.components}")})
         stages.append({"name": "fidelity", "status": "ok" if res.status == "approved" else "warn",
                        "detail": f"IoU {m.iou:.3f}, mean {m.mean_contour_deviation_mm:.3f}mm, max {m.max_contour_deviation_mm:.3f}mm"})
     else:
         best = cands[0] if cands else None
-        detail = (f"best IoU {best.metrics.iou:.3f}, {best.rejected_reason}" if best else "no candidate")
+        if best is not None:
+            bm = best.metrics
+            detail = (f"best IoU {bm.iou:.3f}, {best.rejected_reason} "
+                      f"(holes {bm.source_topology.holes}->{bm.vector_topology.holes}, "
+                      f"metal pieces {bm.source_topology.components}->{bm.vector_topology.components})")
+        else:
+            detail = "no candidate"
         stages.append({"name": "gate", "status": "fail", "detail": detail})
 
     return {
@@ -231,6 +278,9 @@ def build_debug(res: PipelineResult) -> dict:
             "target_iou": SETTINGS.target_iou,
             "max_mean_deviation_mm": SETTINGS.max_mean_deviation_mm,
             "max_max_deviation_mm": SETTINGS.max_max_deviation_mm,
+            "hole_diff_abs": SETTINGS.hole_diff_abs,
+            "hole_diff_frac": SETTINGS.hole_diff_frac,
+            "component_diff_abs": SETTINGS.component_diff_abs,
         },
         "images": images,
         "candidates": [cand_dict(c) for c in cands],

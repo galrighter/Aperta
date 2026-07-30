@@ -4,10 +4,10 @@ import { SITE } from "@/lib/site.config";
 export const dynamic = "force-static";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const paths = ["", "/how-it-works", "/gallery", "/faq", "/order", "/contact", "/terms", "/privacy", "/studio"];
+  const paths = ["", "/design", "/how-it-works", "/gallery", "/faq", "/contact", "/terms", "/privacy", "/studio"];
   return paths.map((p) => ({
     url: `${SITE.url}${p}`,
     changeFrequency: p === "" ? "weekly" : "monthly",
-    priority: p === "" ? 1 : p === "/studio" ? 0.9 : 0.6,
+    priority: p === "" ? 1 : p === "/design" || p === "/studio" ? 0.9 : 0.6,
   }));
 }

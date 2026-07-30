@@ -1,159 +1,84 @@
+import Image from "next/image";
 import Link from "next/link";
 import { he } from "@/i18n/he";
-import PatternMark from "@/components/site/PatternMark";
 
 const s = he.site;
 
+// handoff v3 §בית — הצהרת מותג רגשית, CTA יחיד, ורצועת מניפסט.
+// הסברי התהליך ("איך מתחילים" / רצועת השלבים) הוסרו במכוון: הם חיים ב-/how-it-works.
 export default function HomePage() {
   return (
     <>
       {/* Hero */}
-      <section className="mx-auto max-w-6xl px-4 pt-16 pb-8 sm:px-6 sm:pt-24">
-        <div className="grid items-center gap-12 md:grid-cols-2">
+      <section className="mx-auto max-w-[1240px] px-5 pt-14 pb-12 sm:px-10 sm:pt-[84px] sm:pb-[72px]">
+        <div className="grid items-center gap-12 md:grid-cols-[1.2fr_1fr] md:gap-[72px]">
           <div>
-            <p className="mb-4 text-sm font-medium tracking-wide text-[#a5811b]">
-              {s.tagline}
-            </p>
-            <h1 className="text-3xl font-semibold leading-tight tracking-tight text-stone-900 sm:text-4xl md:text-5xl">
-              {s.heroTitle}
+            <div className="mb-5 font-display text-xs tracking-[0.42em] text-cobalt sm:mb-7">
+              {s.heroEyebrow}
+            </div>
+            <h1
+              className="mb-6 text-[44px] font-semibold leading-[1.03] sm:text-[72px] lg:text-[82px]"
+              style={{ letterSpacing: "-2px", textWrap: "balance" }}
+            >
+              {s.heroTitleLine1}
+              <br />
+              {s.heroTitleLine2}
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-stone-600 sm:text-lg">
+            <p
+              className="mb-10 max-w-[430px] text-[19px] leading-relaxed text-ink80"
+              style={{ textWrap: "pretty" }}
+            >
               {s.heroSubtitle}
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-4.5">
               <Link
-                href="/studio"
-                className="rounded-full bg-stone-900 px-6 py-3 text-sm font-medium text-stone-50 transition-colors hover:bg-stone-700"
+                href="/design"
+                className="rounded-[2px] bg-graphite px-[42px] py-[18px] text-[17px] font-semibold tracking-wide text-porcelain transition-colors hover:bg-graphite/90"
               >
                 {s.heroCtaPrimary}
               </Link>
-              <Link
-                href="/how-it-works"
-                className="rounded-full border border-stone-300 px-6 py-3 text-sm font-medium text-stone-700 transition-colors hover:border-stone-400 hover:bg-stone-100"
-              >
-                {s.heroCtaSecondary}
-              </Link>
+              <span className="font-display text-[13px] tracking-[0.12em] text-mist">
+                {s.heroPriceNote}
+              </span>
             </div>
           </div>
 
-          <div className="flex flex-col gap-4">
-            <PatternMark variant="hexagons" className="w-full drop-shadow-sm" />
-            <PatternMark variant="waves" className="w-full drop-shadow-sm" />
-            <PatternMark variant="circles" className="w-full drop-shadow-sm" />
-          </div>
-        </div>
-      </section>
-
-      {/* ערכים */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <h2 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
-          {s.valuesTitle}
-        </h2>
-        <div className="mt-8 grid gap-6 sm:grid-cols-3">
-          {[
-            { t: s.value1Title, b: s.value1Body },
-            { t: s.value2Title, b: s.value2Body },
-            { t: s.value3Title, b: s.value3Body },
-          ].map((v, i) => (
+          <div className="relative">
+            {/* מסגרת קובלט מוסטת — דקורטיבית בלבד */}
             <div
-              key={i}
-              className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm"
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-5 -left-5 h-full w-full border-[1.5px] border-cobalt/40"
+            />
+            <div
+              className="relative overflow-hidden border border-graphite/10"
+              style={{ aspectRatio: "4 / 5" }}
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c9a227]/15 text-sm font-semibold text-[#a5811b]">
-                {i + 1}
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-stone-900">{v.t}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-stone-600">{v.b}</p>
+              <Image
+                src="/bracelet-hero.webp"
+                alt={s.heroImageAlt}
+                width={1122}
+                height={1402}
+                priority
+                sizes="(max-width: 768px) 100vw, 40vw"
+                className="block h-full w-full object-cover"
+              />
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* חומר ומוצר */}
-      <section className="bg-stone-100">
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-          <div className="grid items-center gap-10 md:grid-cols-2">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
-                {s.materialTitle}
-              </h2>
-              <p className="mt-4 max-w-xl text-base leading-relaxed text-stone-600">
-                {s.materialBody}
-              </p>
-              <dl className="mt-8 grid grid-cols-2 gap-4 sm:max-w-md">
-                {[
-                  { k: s.materialSpecMaterial, v: s.materialSpecMaterialVal },
-                  { k: s.materialSpecCut, v: s.materialSpecCutVal },
-                  { k: s.materialSpecProducts, v: s.materialSpecProductsVal },
-                  { k: s.materialSpecMade, v: s.materialSpecMadeVal },
-                ].map((spec, i) => (
-                  <div key={i} className="rounded-xl border border-stone-200 bg-white p-4">
-                    <dt className="text-xs text-stone-400">{spec.k}</dt>
-                    <dd className="mt-1 text-sm font-medium text-stone-900">{spec.v}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-            <div className="flex flex-col gap-4">
-              <PatternMark variant="diamonds" className="w-full drop-shadow-sm" />
-              <PatternMark variant="drops" className="w-full drop-shadow-sm" />
+            <div className="absolute bottom-5 -right-3.5 whitespace-nowrap border border-graphite/[0.14] bg-porcelain px-[18px] py-2.5 font-display text-[11px] tracking-[0.22em]">
+              {s.heroPieceTag}
             </div>
           </div>
         </div>
       </section>
 
-      {/* איך זה עובד — תקציר */}
-      <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl">
-              {s.howTitle}
-            </h2>
-            <p className="mt-2 text-stone-600">{s.howSubtitle}</p>
-          </div>
-          <Link
-            href="/how-it-works"
-            className="text-sm font-medium text-[#a5811b] hover:underline"
-          >
-            {s.navHowItWorks} →
-          </Link>
-        </div>
-        <ol className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { t: s.step1Title, b: s.step1Body },
-            { t: s.step2Title, b: s.step2Body },
-            { t: s.step3Title, b: s.step3Body },
-            { t: s.step4Title, b: s.step4Body },
-          ].map((step, i) => (
-            <li key={i} className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-              <span className="text-2xl font-semibold text-stone-300">0{i + 1}</span>
-              <h3 className="mt-3 text-base font-semibold text-stone-900">{step.t}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-stone-600">{step.b}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* CTA סופי */}
-      <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6">
-        <div className="overflow-hidden rounded-3xl bg-stone-900 px-8 py-14 text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-stone-50 sm:text-3xl">
-            {s.ctaStartLong}
-          </h2>
-          <p className="mx-auto mt-3 max-w-lg text-stone-300">{s.heroSubtitle}</p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/studio"
-              className="inline-block rounded-full bg-[#c9a227] px-7 py-3 text-sm font-semibold text-stone-900 transition-colors hover:bg-[#e6c766]"
-            >
-              {s.heroCtaPrimary}
-            </Link>
-            <Link
-              href="/order"
-              className="inline-block rounded-full border border-stone-600 px-7 py-3 text-sm font-medium text-stone-100 transition-colors hover:bg-stone-800"
-            >
-              {s.orderCta}
-            </Link>
+      {/* רצועת מניפסט */}
+      <section className="border-y border-graphite/10 bg-porcelain-slab/55">
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-6 px-5 py-9 sm:px-10">
+          <p className="text-[24px] font-light text-graphite" style={{ textWrap: "balance" }}>
+            {s.manifestoLine}
+          </p>
+          <div className="flex items-center gap-3 font-display text-[11px] tracking-[0.2em] text-ink60">
+            <span className="border border-graphite/15 px-3 py-1.5">{s.manifestoTag1}</span>
+            <span className="border border-graphite/15 px-3 py-1.5">{s.manifestoTag2}</span>
           </div>
         </div>
       </section>

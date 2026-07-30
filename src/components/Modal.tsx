@@ -14,20 +14,20 @@ export function ConfirmModal(props: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={props.onCancel}>
       <div
-        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+        className="w-full max-w-sm rounded-[2px] bg-white p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-2 text-lg font-semibold">{props.title}</h3>
-        <p className="mb-5 text-sm text-stone-600">{props.body}</p>
+        <p className="mb-5 text-sm text-ink60">{props.body}</p>
         <div className="flex justify-end gap-2">
           <button
-            className="rounded-lg px-4 py-2 text-sm text-stone-600 hover:bg-stone-100"
+            className="rounded-[2px] px-4 py-2 text-sm text-ink60 hover:bg-porcelain"
             onClick={props.onCancel}
           >
             {he.cancel}
           </button>
           <button
-            className="rounded-lg bg-stone-900 px-4 py-2 text-sm text-white hover:bg-stone-700"
+            className="rounded-[2px] bg-graphite px-4 py-2 text-sm text-white hover:bg-graphite/90"
             onClick={props.onConfirm}
           >
             {props.confirmLabel ?? he.confirm}

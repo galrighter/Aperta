@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/EmptyState";
 // three נטען רק בקליינט ורק כשנכנסים לטאב ההדמיה
 const Preview3D = dynamic(() => import("@/components/Preview3D").then((m) => m.Preview3D), {
   ssr: false,
-  loading: () => <div className="flex h-full items-center justify-center text-stone-400">{he.loading}</div>,
+  loading: () => <div className="flex h-full items-center justify-center text-mist">{he.loading}</div>,
 });
 
 export default function StudioPage() {
@@ -51,7 +51,7 @@ export default function StudioPage() {
         <>
           <ParamsPanel />
           {/* טאבים */}
-          <div className="flex justify-center gap-1 border-b border-stone-200 bg-white py-1">
+          <div className="flex justify-center gap-1 border-b border-graphite/10 bg-white py-1">
             <TabButton active={s.tab === "flat"} onClick={() => s.setTab("flat")}>
               {he.flatView}
             </TabButton>
@@ -77,12 +77,12 @@ export default function StudioPage() {
               ) : s.tab === "3d" ? (
                 <Preview3D />
               ) : (
-                <div className="flex h-full items-center justify-center bg-stone-50 p-4">
+                <div className="flex h-full items-center justify-center bg-porcelain p-4">
                   {s.renderUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={s.renderUrl} alt={he.renderView} className="max-h-full max-w-full rounded-lg object-contain shadow" />
+                    <img src={s.renderUrl} alt={he.renderView} className="max-h-full max-w-full rounded-[2px] object-contain shadow" />
                   ) : (
-                    <div className="text-stone-400">{he.renderView}</div>
+                    <div className="text-mist">{he.renderView}</div>
                   )}
                 </div>
               )
@@ -92,8 +92,8 @@ export default function StudioPage() {
             {/* חיווי יצירה מעל הקנבס כשיש כבר עיצוב */}
             {s.genStatus !== "idle" && s.genStatus !== "error" && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/50">
-                <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm shadow-lg">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-stone-300 border-t-stone-700" />
+                <div className="flex items-center gap-2 rounded-[2px] bg-white px-4 py-2 text-sm shadow-lg">
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-graphite/20 border-t-cobalt" />
                   {s.genStatus === "generating" ? he.statusGenerating : s.genStatus === "validating" ? he.statusValidating : he.statusRepairing}
                 </div>
               </div>
@@ -115,7 +115,7 @@ export default function StudioPage() {
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
-      className={`rounded-lg px-4 py-1 text-sm ${active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+      className={`rounded-[2px] px-4 py-1 text-sm ${active ? "bg-graphite text-white" : "text-ink60 hover:bg-porcelain"}`}
       onClick={onClick}
     >
       {children}
@@ -128,16 +128,16 @@ function NoDesign() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
       <h2 className="text-xl font-semibold">{he.emptyTitle}</h2>
-      <p className="max-w-md text-sm text-stone-600">{he.emptyBody}</p>
+      <p className="max-w-md text-sm text-ink60">{he.emptyBody}</p>
       <div className="flex gap-2">
         <button
-          className="rounded-xl bg-stone-900 px-4 py-2 text-sm text-white hover:bg-stone-700"
+          className="rounded-[2px] bg-graphite px-4 py-2 text-sm text-white hover:bg-graphite/90"
           onClick={() => void s.newDesign("bracelet")}
         >
           {he.bracelet} — {he.newDesign}
         </button>
         <button
-          className="rounded-xl border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
+          className="rounded-[2px] border border-graphite/20 bg-white px-4 py-2 text-sm hover:bg-porcelain"
           onClick={() => void s.newDesign("ring")}
         >
           {he.ring} — {he.newDesign}

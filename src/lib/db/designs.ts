@@ -5,6 +5,9 @@ import type { ProductType } from "@/lib/fabrication.config";
 export interface DesignRow {
   id: string;
   profile_id: string;
+  /** המספר הסידורי (0008) — הרפרנס האנושי (`RM-0047`). null בעיצוב שנוצר
+   *  לפני המיגרציה, ו-undefined במסד שעוד לא קיבל אותה. */
+  serial: number | null;
   name: string;
   product_type: ProductType;
   length_mm: number;

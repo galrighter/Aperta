@@ -1,7 +1,7 @@
 import { ApiError } from "@/lib/api";
 import { type DesignRow, type VersionRow, insertVersion } from "@/lib/db/designs";
-import { supabaseAdmin } from "@/lib/db/supabase";
-import { validateDesign, type DesignDims } from "@/lib/geometry/validate";
+import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
+import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import type { ValidationReport } from "@/lib/geometry/types";
 
@@ -31,13 +31,16 @@ function vectorizerUrl(): string {
 async function postJob(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: string; debug: boolean },
+  opts: { heightMm: number; colorKey: string; minHoleMm: number; debug: boolean },
 ): Promise<Record<string, unknown>> {
   const form = new FormData();
   form.append("image", new Blob([bytes as BlobPart], { type: mediaType }), "design.png");
   form.append("height_mm", String(opts.heightMm));
   form.append("condition", "true");
   form.append("color_key", opts.colorKey);
+  // הפתח המינימלי נשלח כמספר; חוקי הייצור נשארים כאן. פתח שהלייזר לא יכול לפתוח
+  // מושמט בקופסה לפני שהוא מגיע ל-SVG, במקום לפסול את הפס כולו ב-V5.
+  form.append("min_hole_mm", String(opts.minHoleMm));
   if (opts.debug) form.append("debug", "true");
 
   const headers: Record<string, string> = {};
@@ -90,9 +93,9 @@ function extractMetrics(d: VectorizerJson): VectorizeResult["metrics"] {
 export async function vectorizeImageFull(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeFull> {
-  const raw = await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, debug: true });
+  const raw = await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
   const d = raw as VectorizerJson;
   return {
     status: d.status || d.error_code || "unknown",
@@ -107,7 +110,7 @@ export async function vectorizeImageFull(
 export async function vectorizeImage(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeResult> {
   const full = await vectorizeImageFull(bytes, mediaType, opts);
   if (full.status !== "approved" || !full.cutoutsSvg) {
@@ -120,10 +123,10 @@ export async function vectorizeImage(
 export async function vectorizeImageDebug(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto" },
+  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<Record<string, unknown>> {
   try {
-    return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, debug: true });
+    return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
   } catch (e) {
     // מחזירים את השגיאה כאובייקט כדי שהבק־אופיס יציג מה קרה במקום להיכשל.
     if (e instanceof ApiError) return { __error: e.code, __body: e.message };
@@ -136,44 +139,55 @@ export interface IngestResult {
   report: ValidationReport;
   geometry: { material: ReturnType<typeof difference>; cutUnion: unknown } | null;
   lengthMm: number;
+  widthMm: number;
+}
+
+
+export type { FramedCutouts, FramedPreview };
+
+/** המידות שהמסגור צריך מתוך שורת העיצוב. `width_mm` הוא הרוחב שהוזמן. */
+export function designDims(design: DesignRow): DesignDims {
+  return {
+    productType: design.product_type,
+    lengthMm: Number(design.length_mm),
+    widthMm: Number(design.width_mm),
+    thicknessMm: Number(design.thickness_mm),
+  };
+}
+
+/** מסגור מועמד מול שורת עיצוב. החישוב עצמו ב-geometry/frameCutouts. */
+export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutouts {
+  return frameCutoutsDims(designDims(design), cutoutsSvg);
 }
 
 /**
- * מריץ cutouts SVG שהתקבל מה-vectorizer דרך מנוע הוולידציה, מעדכן את אורך הצמיד
- * לפרופורציות שנגזרו, ושומר גרסה. משותף למסלול ההעלאה ולמסלול ה-AI.
+ * מריץ cutouts SVG שהתקבל מה-vectorizer דרך מנוע הוולידציה ושומר גרסה.
+ * משותף למסלול ההעלאה ולמסלול ה-AI.
+ *
+ * האורך שהלקוחה הזמינה הוא מדידה ולא הצעה: הוא נקבע מהיקף היד/האצבע, ופריט
+ * באורך אחר פשוט לא נסגר. לכן הדוגמה נמתחת אל האורך שהוזמן במקום שהאורך יוסט
+ * אל מה שמודל התמונה צייר (שקודם נכתב על השדה — ומחק את מה שהוזמן).
+ *
+ * המתיחה מתחלקת בין שני הצירים: עד 5% מהפער נבלעים ברוחב, ושם זו הגדלה אחידה
+ * שאינה מעוותת את הדוגמה כלל; רק מה שנשאר מעבר לזה נמתח אופקית. הוולידציה רצה
+ * על המסגרת הסופית, כך שאם המתיחה שברה מינימום ייצור — הגרסה נדחית.
+ *
  * renderPngPath (אם קיים) נשמר בתוך דוח הוולידציה כדי להציג את ההדמיה בלי שינוי סכימה.
  */
 export async function ingestCutouts(opts: {
   design: DesignRow;
   cutoutsSvg: string;
-  derivedLength: number;
   userPrompt: string | null;
   renderPngPath: string | null;
   metrics?: VectorizeResult["metrics"];
 }): Promise<IngestResult> {
-  const { design, cutoutsSvg, derivedLength } = opts;
-  const lengthMm = derivedLength > 0 ? derivedLength : Number(design.length_mm);
-
-  const vDims: DesignDims = {
-    productType: design.product_type,
-    lengthMm,
-    widthMm: Number(design.width_mm),
-    thicknessMm: Number(design.thickness_mm),
-  };
-  const { report, normalized } = validateDesign(cutoutsSvg, vDims);
-
-  if (lengthMm !== Number(design.length_mm)) {
-    const sb = supabaseAdmin();
-    const { error } = await sb
-      .from("designs")
-      .update({ length_mm: lengthMm, updated_at: new Date().toISOString() })
-      .eq("id", design.id);
-    if (error) throw new Error(error.message);
-  }
+  const { design, cutoutsSvg } = opts;
+  const framed = frameCutouts(design, cutoutsSvg);
+  const { lengthMm, widthMm, framedSvg, report, normalized } = framed;
 
   const version = await insertVersion({
     design_id: design.id,
-    svg: normalized?.canonicalSvg ?? cutoutsSvg,
+    svg: normalized?.canonicalSvg ?? framedSvg,
     source: "generate",
     user_prompt: opts.userPrompt,
     annotation_png_path: null,
@@ -184,13 +198,10 @@ export async function ingestCutouts(opts: {
 
   const geometry = normalized
     ? {
-        material: difference(
-          [rectPolygon(0, 0, lengthMm, Number(design.width_mm))],
-          normalized.cutUnion,
-        ),
+        material: difference([rectPolygon(0, 0, lengthMm, widthMm)], normalized.cutUnion),
         cutUnion: normalized.cutUnion,
       }
     : null;
 
-  return { version, report, geometry, lengthMm };
+  return { version, report, geometry, lengthMm, widthMm };
 }

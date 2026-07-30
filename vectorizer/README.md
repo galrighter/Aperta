@@ -60,9 +60,11 @@ curl localhost:8000/api/health
 `vectorizer/`, rebuilds the image, and restarts the container. It runs on pushes
 to `main` touching `vectorizer/**`, or via **workflow_dispatch**.
 
-Required repo secrets: `HETZNER_SSH` (private key), `HETZNER_HOST`, `HETZNER_USER`.
+Required repo secrets: `HETZNER_SSH` (private key), `HETZNER_HOST`, `HETZNER_USER`,
+and `OPENAI_KEY` (the image model, for `/api/generate`).
 Optional: `HETZNER_PORT` (default 22), `VECTORIZER_TOKEN` (bearer token gating the
-job endpoints — `/api/health` stays open). The box needs Docker installed.
+job endpoints — `/api/health` stays open), `GENERATE_CONCURRENCY` (how many panels
+are traced at once, default 4 — a memory knob). The box needs Docker installed.
 
 > The container publishes `:8000` on all interfaces, protected by the bearer
 > token. Put a TLS reverse proxy (Caddy/nginx) in front before production
@@ -73,6 +75,7 @@ job endpoints — `/api/health` stays open). The box needs Docker installed.
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
 | GET  | `/api/health` | liveness + active tracer backend |
+| POST | `/api/generate` | JSON `prompt,calls,rows,height_mm,color_key,[inspiration],[base_svg],[artifacts]` → renders + splits + traces every row, uploads the artifacts, returns one candidate per panel. `base_svg` is an edit: the current design, rasterised here and given to the image model as the reference (it wins over `inspiration`) |
 | POST | `/api/jobs` | multipart `image,height_mm,[width_mm],dark_region_role,output_mode,condition,color_key` → result.json + inline `cutouts_svg`/`metal_svg` |
 | GET  | `/api/jobs/{id}` | job status + result |
 | GET  | `/api/jobs/{id}/files/{name}` | download a fixed-name artifact |
@@ -86,6 +89,40 @@ curl -F image=@fixture.png -F width_mm=160 -F height_mm=15 localhost:8000/api/jo
 # (width_mm is derived from the cropped metal; only height_mm is needed)
 curl -F image=@render.png -F height_mm=15 -F condition=true -F color_key=warm localhost:8000/api/jobs
 ```
+
+### `/api/generate` — a whole customer generation
+
+`/api/jobs` traces one image. `/api/generate` runs the heavy half of forme's own
+`/api/generate`: it asks the image model for `calls` renders, cuts each into its
+`rows` bands, traces every band, and returns one candidate per band.
+
+It exists because that work cannot run where it used to. A short, wide piece
+(a 53×10mm ring) plans to four renders, and four 1536×1024 PNGs decoded, cropped
+and re-encoded in JS — plus four debug payloads buffered whole — exceed what a
+Cloudflare isolate may spend (128MB, hard CPU ceiling). The run was killed
+*after* the pipeline had already succeeded: the customer saw `503`, and nothing
+was saved. None of that is edge work.
+
+What deliberately stayed in forme: the plan (`rows`/`calls`), the prompt (it
+carries the fabrication minimums from `resolveFab()`), and the verdict on whether
+a candidate can be manufactured. One geometry engine, in TypeScript.
+
+Artifacts are uploaded by this service, but it holds **no storage credentials**:
+forme mints a short-lived signed upload URL per path and passes them in
+`artifacts` (`renders: [url]`, `stages: {conditioned,overlay,difference,rendered}`).
+The response reports which of them landed. Omit `artifacts` and nothing is
+uploaded.
+
+```bash
+curl -X POST localhost:8000/api/generate -H 'content-type: application/json' -d '{
+  "prompt": "flat top-down render of a pierced ring strip ...",
+  "calls": 4, "rows": 1, "height_mm": 10, "color_key": "dark"
+}'
+```
+
+Needs `OPENAI_KEY` in the container env (the deploy workflow passes the repo
+secret of the same name). Without it the endpoint returns 502 `RENDER_FAILED`;
+`/api/jobs` is unaffected.
 
 With `condition=true` the service colour-keys the metal (`color_key`:
 `warm`|`dark`|`saturation`), crops, denoises and smooths the render into a clean

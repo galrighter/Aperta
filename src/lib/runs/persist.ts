@@ -1,5 +1,11 @@
 import { uploadFile } from "@/lib/db/storage";
-import { insertRun, type RunSource, type RunStagePaths, type RunMetrics } from "@/lib/db/runs";
+import {
+  insertRun,
+  type RunSource,
+  type RunStagePaths,
+  type RunMetrics,
+  type RunInputs,
+} from "@/lib/db/runs";
 import type { ProductType } from "@/lib/fabrication.config";
 
 // שמירת הרצת צינור אחת ליומן הבק־אופיס: מעלה את ההדמיה ואת תמונות שלבי הביניים
@@ -47,9 +53,32 @@ export interface PersistRunInput {
   colorKey?: string | null;
   startedAt: number;
   render?: { path?: string | null; bytes?: Uint8Array | null; mediaType?: string; model?: string | null } | null;
+  /**
+   * תמונות שלבים שכבר הועלו — מסלול היצירה: שירות הרנדר כותב אותן ישירות
+   * ל-storage דרך כתובות חתומות, ומוסר את הנתיבים. במסלול הזה אין כאן בייטים
+   * בכלל. מסלול הבק־אופיס עדיין שולח base64 ב-debug ומעלה למטה.
+   */
+  stagePaths?: RunStagePaths | null;
   /** התגובה הגולמית מה-vectorizer (מצב debug). null כשהצינור בכלל לא רץ (שגיאה מוקדמת). */
   vectorizer?: VectorizerPayload | null;
   error?: string | null;
+  /** הפרומפט המלא שיצא למודל התמונה — לא מה שהמשתמש כתב אלא מה שנשלח. */
+  renderPrompt?: string | null;
+  /** המאפיינים שקבעו את ההרצה (מוצר, מידות, תכנון, מפתח צבע). */
+  inputs?: RunInputs | null;
+  /** קובץ ההשראה שהמשתמש צירף. נשמר כדי שאפשר יהיה לראות מה הוא נתן. */
+  inputImage?: { bytes: Uint8Array; mediaType?: string } | null;
+}
+
+/** מוריד את ה-SVG של כל מועמד ומשאיר את המדדים. אותו קילוף שהרשימה עשתה
+ *  בקריאה — עכשיו בכתיבה, כך שאין מה לשלוף מלכתחילה. */
+function slimCandidates(debug: Record<string, unknown>): unknown {
+  if (!Array.isArray(debug.candidates)) return debug;
+  const candidates = (debug.candidates as Array<Record<string, unknown>>).map((c) => {
+    const { metal_svg, cutouts_svg, ...rest } = c;
+    return { ...rest, has_svg: Boolean(metal_svg || cutouts_svg) };
+  });
+  return { ...debug, candidates };
 }
 
 /** שומר הרצה ליומן. מחזיר תמיד — נכשל בשקט אם ה-storage/DB לא זמינים. */
@@ -64,8 +93,9 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       await uploadFile(renderPath, input.render.bytes, input.render.mediaType ?? "image/png");
     }
 
-    // 2) תמונות שלבי הביניים מתוך ה-debug — מעלים כל אחת ושומרים נתיב.
-    const stagePaths: RunStagePaths = {};
+    // 2) תמונות שלבי הביניים. אם הן כבר ב-storage (מסלול היצירה) לוקחים את
+    // הנתיבים כמו שהם; אחרת מעלים כאן מה-base64 שב-debug.
+    const stagePaths: RunStagePaths = { ...(input.stagePaths ?? {}) };
     const images = vectorizer?.debug?.images ?? {};
     for (const key of STAGE_KEYS) {
       const b64 = images[key];
@@ -79,12 +109,30 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       }
     }
 
-    // 3) מסירים את ה-base64 הכבד מה-debug; שומרים שלבים/מועמדים/שערים.
+    // 2ב) קובץ ההשראה שהמשתמש צירף. עד עכשיו הוא נכנס לקריאה למודל ונעלם,
+    // ואז "ההדמיה לא דומה למה ששלחתי" הייתה טענה שאין מולה מה להעמיד.
+    let inputImagePath: string | null = null;
+    if (input.inputImage?.bytes) {
+      try {
+        inputImagePath = `runs/${id}/input.png`;
+        await uploadFile(inputImagePath, input.inputImage.bytes, input.inputImage.mediaType ?? "image/png");
+      } catch {
+        // תמונת קלט היא תיעוד, לא תנאי לשורה.
+        inputImagePath = null;
+      }
+    }
+
+    // 3) מסירים את ה-base64 הכבד מה-debug, ומפצלים: debug נשאר קל ומכיל את מה
+    // שהרשימה מציגה, ו-debug_full מחזיק את ה-SVG של כל מועמד ונקרא רק בפתיחת
+    // הרצה. בלי הפיצול הרשימה קוראת 80 שורות x עד 13 מועמדים x 2 SVG בשאילתה
+    // אחת, וחוטפת statement timeout.
     let debug: unknown = null;
+    let debugFull: unknown = null;
     if (vectorizer?.debug) {
       const { images: _drop, ...rest } = vectorizer.debug;
       void _drop;
-      debug = rest;
+      debugFull = rest;
+      debug = slimCandidates(rest);
     }
 
     const m = vectorizer?.metrics;
@@ -119,9 +167,38 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       svg: vectorizer?.cutouts_svg ?? null,
       metrics,
       debug,
+      debug_full: debugFull,
+      render_prompt: input.renderPrompt ?? null,
+      inputs: input.inputs ?? null,
+      input_image_path: inputImagePath,
     });
   } catch (e) {
     // יומן הוא best-effort — לא מפילים את בקשת המשתמש בגלל כשל שמירה.
-    console.error("persistRun failed:", (e as Error).message);
+    const message = (e as Error).message;
+    console.error("persistRun failed:", message);
+
+    // אבל שקט הוא לא best-effort, הוא אובדן: שורה שלא נכתבה נראית ביומן בדיוק
+    // כמו הרצה שלא קרתה. מנסים שוב בלי מה שכנראה הפיל את הכתיבה — התמונות,
+    // ה-SVG וה-debug — כדי שלפחות יישאר סימן שהניסיון היה, ולמה הוא חסר.
+    try {
+      await insertRun({
+        id: input.id,
+        source: input.source,
+        design_id: input.designId ?? null,
+        product_type: input.productType ?? null,
+        prompt: input.prompt ?? null,
+        color_key: input.colorKey ?? null,
+        status: "error",
+        error: input.error ?? `run happened, log write failed: ${message}`,
+        duration_ms: Date.now() - input.startedAt,
+        stage_paths: {},
+        // הפרומפט והמאפיינים נשארים גם בנפילה: הם קלים, והם בדיוק מה שנדרש
+        // כדי להבין הרצה שלא השאירה אחריה כלום אחר.
+        render_prompt: input.renderPrompt ?? null,
+        inputs: input.inputs ?? null,
+      });
+    } catch (e2) {
+      console.error("persistRun minimal fallback failed:", (e2 as Error).message);
+    }
   }
 }

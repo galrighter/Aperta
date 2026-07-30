@@ -49,7 +49,7 @@ export function ParamsPanel() {
   const widthAllowance = FAB.widthComfortAllowanceMm(dims.widthMm);
 
   return (
-    <section className="border-b border-stone-200 bg-white">
+    <section className="border-b border-graphite/10 bg-white">
       <button
         className="flex w-full items-center justify-between px-4 py-2 text-sm font-medium"
         onClick={() => setParamsOpen(!paramsOpen)}
@@ -58,18 +58,18 @@ export function ParamsPanel() {
           {he.parameters} · {design.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
           {Number(design.length_mm)}×{Number(design.width_mm)} מ״מ
         </span>
-        <span className="text-stone-400">{paramsOpen ? "▲" : "▼"}</span>
+        <span className="text-mist">{paramsOpen ? "▲" : "▼"}</span>
       </button>
       {paramsOpen && (
         <>
-        <div className="mx-4 mb-3 rounded-lg bg-stone-50 p-3">
-          <div className="mb-2 text-xs font-medium text-stone-700">{he.sizeSection}</div>
+        <div className="mx-4 mb-3 rounded-[2px] bg-porcelain p-3">
+          <div className="mb-2 text-xs font-medium text-graphite">{he.sizeSection}</div>
           <div className="grid grid-cols-2 gap-3">
             {isRing ? (
-              <label className="text-xs text-stone-600">
+              <label className="text-xs text-ink60">
                 {he.ringSizeUs}
                 <select
-                  className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm"
+                  className="mt-1 w-full rounded-[2px] border border-graphite/20 px-2 py-1.5 text-sm"
                   value={String(derived.usRingSize ?? 7)}
                   onChange={(e) => applySize({ idMm: US_RING_ID_MM[e.target.value] })}
                 >
@@ -87,10 +87,10 @@ export function ParamsPanel() {
                   step={0.5}
                   onCommit={(v) => applySize({ wristMm: v * 10 })}
                 />
-                <label className="text-xs text-stone-600">
+                <label className="text-xs text-ink60">
                   {he.fitStyle}
                   <select
-                    className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm"
+                    className="mt-1 w-full rounded-[2px] border border-graphite/20 px-2 py-1.5 text-sm"
                     value={fit}
                     onChange={(e) => {
                       const next = e.target.value as FitStyle;
@@ -107,21 +107,21 @@ export function ParamsPanel() {
               </>
             )}
           </div>
-          <p className="mt-2 text-[11px] text-stone-500">
+          <p className="mt-2 text-[11px] text-mist">
             {he.derivedSizePrefix}{" "}
             {isRing
               ? `${he.derivedRingSize} ${derived.usRingSize} · ID ${r1(derived.nominalIdMm)} מ״מ`
               : `${he.derivedWrist} ${r1((derived.wristMm ?? 0) / 10)} ${he.cm}`}
           </p>
           {widthAllowance > 0 && (
-            <p className="mt-1 text-[11px] text-stone-500">
+            <p className="mt-1 text-[11px] text-mist">
               {he.widthAllowanceNote} {widthAllowance} מ״מ
             </p>
           )}
-          {isRing && <p className="mt-1 text-[11px] text-amber-700">{he.ringNotAdjustable}</p>}
+          {isRing && <p className="mt-1 text-[11px] text-graphite">{he.ringNotAdjustable}</p>}
           <details className="mt-2">
-            <summary className="cursor-pointer text-[11px] text-stone-500">{he.measureTipsTitle}</summary>
-            <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] text-stone-500">
+            <summary className="cursor-pointer text-[11px] text-mist">{he.measureTipsTitle}</summary>
+            <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] text-mist">
               <li>{he.measureTipEvening}</li>
               <li>{he.measureTipTemp}</li>
               <li>{isRing ? he.measureTipKnuckle : he.measureTipWrist}</li>
@@ -129,10 +129,10 @@ export function ParamsPanel() {
           </details>
         </div>
         <div className="grid grid-cols-2 gap-3 px-4 pb-4 sm:grid-cols-4">
-          <label className="text-xs text-stone-600">
+          <label className="text-xs text-ink60">
             {he.productType}
             <select
-              className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm"
+              className="mt-1 w-full rounded-[2px] border border-graphite/20 px-2 py-1.5 text-sm"
               value={design.product_type}
               disabled={hasVersion}
               onChange={(e) => {
@@ -190,7 +190,7 @@ function NumField(props: {
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <label className="text-xs text-stone-600" title={props.hint}>
+    <label className="text-xs text-ink60" title={props.hint}>
       {props.label}
       <input
         type="number"
@@ -198,7 +198,7 @@ function NumField(props: {
         step={props.step}
         min={props.range[0]}
         max={props.range[1]}
-        className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm"
+        className="mt-1 w-full rounded-[2px] border border-graphite/20 px-2 py-1.5 text-sm"
         value={draft ?? String(props.value)}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
@@ -209,7 +209,7 @@ function NumField(props: {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
       />
-      <span className="text-[10px] text-stone-400">
+      <span className="text-[10px] text-mist">
         {props.range[0]}–{props.range[1]}
       </span>
     </label>

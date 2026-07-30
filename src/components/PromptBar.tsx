@@ -50,16 +50,16 @@ export function PromptBar() {
             : null;
 
   return (
-    <footer className="border-t border-stone-200 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <footer className="border-t border-graphite/10 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       {s.annotations.length > 0 && (
         <div className="px-1 pb-1 text-xs text-rose-600">{he.annotationsWillBeSent}</div>
       )}
       {statusText && (
-        <div className={`px-1 pb-1 text-xs ${s.genStatus === "error" ? "text-red-600" : "text-stone-500"}`}>
-          {busy && <span className="me-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600 align-middle" />}
+        <div className={`px-1 pb-1 text-xs ${s.genStatus === "error" ? "text-red-600" : "text-ink60"}`}>
+          {busy && <span className="me-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-graphite/20 border-t-cobalt align-middle" />}
           {statusText}
           {s.genStatus === "error" && (
-            <button className="ms-2 rounded bg-stone-100 px-2 py-0.5 hover:bg-stone-200" onClick={() => void send()}>
+            <button className="ms-2 rounded bg-porcelain px-2 py-0.5 hover:bg-stonesoft" onClick={() => void send()}>
               {he.retry}
             </button>
           )}
@@ -68,7 +68,7 @@ export function PromptBar() {
       {attachment && (
         <div className="px-1 pb-1">
           <button
-            className="w-full rounded-xl border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+            className="w-full rounded-[2px] border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40"
             title={he.convertToSvgHint}
             disabled={busy}
             onClick={() => void convert()}
@@ -79,14 +79,14 @@ export function PromptBar() {
       )}
       <div className="flex items-end gap-2">
         <button
-          className={`relative h-10 w-10 shrink-0 rounded-xl border text-lg ${attachment ? "border-rose-400 bg-rose-50" : "border-stone-200 hover:bg-stone-50"}`}
+          className={`relative h-10 w-10 shrink-0 rounded-[2px] border text-lg ${attachment ? "border-rose-400 bg-rose-50" : "border-graphite/10 hover:bg-porcelain"}`}
           title={he.attachImage}
           onClick={() => fileRef.current?.click()}
         >
           📎
           {attachment && (
             <span
-              className="absolute -end-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 text-[10px] text-white"
+              className="absolute -end-1 -top-1 flex h-4 w-4 items-center justify-center rounded-[2px] bg-rose-600 text-[10px] text-white"
               onClick={(e) => {
                 e.stopPropagation();
                 setAttachment(null);
@@ -108,7 +108,7 @@ export function PromptBar() {
           }}
         />
         <textarea
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-stone-500 focus:outline-none"
+          className="max-h-32 min-h-10 flex-1 resize-none rounded-[2px] border border-graphite/20 px-3 py-2 text-sm focus:border-cobalt focus:outline-none"
           rows={1}
           placeholder={he.promptPlaceholder}
           value={prompt}
@@ -121,7 +121,7 @@ export function PromptBar() {
           }}
         />
         <button
-          className="h-10 shrink-0 rounded-xl bg-stone-900 px-4 text-sm text-white hover:bg-stone-700 disabled:opacity-40"
+          className="h-10 shrink-0 rounded-[2px] bg-graphite px-4 text-sm text-white hover:bg-graphite/90 disabled:opacity-40"
           disabled={busy || !prompt.trim()}
           onClick={() => void send()}
         >

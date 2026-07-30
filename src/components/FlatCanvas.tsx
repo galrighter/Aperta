@@ -203,7 +203,7 @@ export function FlatCanvas() {
   return (
     <div
       ref={containerRef}
-      className="touch-none-canvas relative h-full w-full overflow-hidden bg-stone-100"
+      className="touch-none-canvas relative h-full w-full overflow-hidden bg-porcelain"
       style={{ direction: "ltr" }}
     >
       {view && (

@@ -1,17 +1,32 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
-import { handleRouteError, parseBody, ApiError } from "@/lib/api";
+import { handleRouteError, parseBody } from "@/lib/api";
+import { requireAccountId } from "@/lib/account";
+import { getAccount } from "@/lib/db/accounts";
 import { FAB } from "@/lib/fabrication.config";
 
+/**
+ * העיצובים של פרופיל אחד.
+ *
+ * `profileId` נכבד רק כשהוא של בודק — זהו מסלול הסטודיו הפנימי, שאין לו חשבון.
+ * בכל מקרה אחר הבעלות נלקחת מהעוגייה החתומה. אחרת די היה במזהה פרופיל של חבר
+ * כדי למשוך את כל מה שהוא עיצב.
+ */
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const profileId = url.searchParams.get("profileId");
-    if (!profileId) throw new ApiError("missing_param", "profileId is required", 400);
+    const asked = url.searchParams.get("profileId");
+    let profileId: string | null = null;
+    if (asked) {
+      const target = await getAccount(asked);
+      if (target?.kind === "tester") profileId = target.id;
+    }
+    if (!profileId) profileId = await requireAccountId(req);
+
     const { data, error } = await supabaseAdmin()
       .from("designs")
-      .select("id, name, product_type, length_mm, width_mm, gap_mm, thickness_mm, current_version_id, created_at, updated_at")
+      .select("id, serial, name, product_type, length_mm, width_mm, gap_mm, thickness_mm, current_version_id, created_at, updated_at")
       .eq("profile_id", profileId)
       .order("updated_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -22,7 +37,9 @@ export async function GET(req: Request) {
 }
 
 const createSchema = z.object({
-  profileId: z.string().uuid(),
+  /** מסלול הסטודיו הפנימי בלבד — נכבד רק אם הוא פרופיל בודק. באתר הציבורי
+   *  הבעלות נקבעת מהעוגייה החתומה ולא ממה שהדפדפן מבקש. */
+  profileId: z.string().uuid().optional(),
   name: z.string().min(1).max(120).optional(),
   productType: z.enum(["bracelet", "ring"]),
   lengthMm: z.number().positive().optional(),
@@ -34,9 +51,17 @@ const createSchema = z.object({
 export async function POST(req: Request) {
   try {
     const body = await parseBody(req, createSchema);
+
+    let profileId: string | null = null;
+    if (body.profileId) {
+      const asked = await getAccount(body.profileId);
+      if (asked?.kind === "tester") profileId = asked.id;
+    }
+    if (!profileId) profileId = await requireAccountId(req);
+
     const p = FAB.products[body.productType];
     const insert = {
-      profile_id: body.profileId,
+      profile_id: profileId,
       name: body.name ?? undefined,
       product_type: body.productType,
       length_mm: body.lengthMm ?? p.defaultLengthMm,

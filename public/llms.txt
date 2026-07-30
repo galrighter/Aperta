@@ -1,22 +1,24 @@
-# forme
+# RM JEWEL
 
-> forme is a Hebrew-language platform for designing open brass bracelets and
+> RM JEWEL is a Hebrew-language platform for designing open brass bracelets and
 > rings from a plain-language description. You describe a cutout pattern in
 > words; an AI generates it, automatically checks it is manufacturable
 > (bridge widths, hole sizes, margins, roll-forming survivability), and
-> exports a laser-cutting file (DXF in millimetres).
+> exports a laser-cutting file (DXF in millimetres). Precision jewelry,
+> formed around you.
 
 ## Product
 - Material: C260 brass, 1.5 mm, fiber-laser cut, roll-formed into an open arc.
-- Products: open bracelet, open ring.
-- Made to order.
+- Products: open bracelet (from ₪320), open ring (from ₪240).
+- Made to order, 10–14 working days.
 
 ## Key pages
-- [Home](https://rmjewel.com/): what forme is and how to start.
+- [Home](https://rmjewel.com/): what RM JEWEL is and how to start.
+- [Design](https://rmjewel.com/design): the guided client journey — product, sizes, idea & upload, AI chat, design suggestions, edit, and final visualization & price.
 - [How it works](https://rmjewel.com/how-it-works): the four steps — describe, generate, production check, export.
 - [Gallery](https://rmjewel.com/gallery): illustrative pattern styles.
 - [FAQ](https://rmjewel.com/faq): material, sizes, ordering.
-- [Studio](https://rmjewel.com/studio): the design tool itself.
+- [Studio](https://rmjewel.com/studio): the advanced design tool itself.
 - [Contact](https://rmjewel.com/contact): reach the team.
 
 ## Notes

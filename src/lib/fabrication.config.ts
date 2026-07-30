@@ -90,18 +90,21 @@ export const FAB = {
     widthMm <= 4 ? 0 : widthMm <= 6 ? 0.5 : widthMm <= 9 ? 1.25 : 2.5,
 
   products: {
+    // טווחי הרוחב מיושרים ל-handoff של מסע היצירה (צמיד 5–80, טבעת 4–18),
+    // כדי שהסטודיו והאתר יציעו את אותו טווח. אלה גבולות ממשק בלבד —
+    // הוולידציה עצמה נגזרת מ-resolveFab() ולא מהטווחים כאן.
     bracelet: {
       // 160 מ"מ ≈ פרק יד 16.7 ס"מ ב-comfort, פס צר. פס רחב מוסיף את תוספת הרוחב.
       // התחתית 125 ולא 130: פרק יד 14 ס"מ ב-snug נותן 125.4 מ"מ (§2.4), ו-130
       // היה חותך את הקצה הזה של הטבלה שלנו.
       defaultLengthMm: 160, lengthRangeMm: [125, 215] as [number, number],
-      defaultWidthMm: 15,  widthRangeMm: [10, 30] as [number, number],
+      defaultWidthMm: 18,  widthRangeMm: [5, 80] as [number, number],
       defaultGapMm: 25.4,  gapRangeMm: [22, 32] as [number, number],
     },
     ring: {
       // 55.5 מ"מ = US 7 (ID 17.35) בפער 3 מ"מ. זהו **אורך פריסה**, לא היקף אצבע.
       defaultLengthMm: 55.5, lengthRangeMm: [46, 72] as [number, number],
-      defaultWidthMm: 8,   widthRangeMm: [4, 12] as [number, number],
+      defaultWidthMm: 6,   widthRangeMm: [4, 18] as [number, number],
       defaultGapMm: 3,     gapRangeMm: [2, 5] as [number, number],
     },
   },

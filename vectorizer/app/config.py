@@ -62,6 +62,10 @@ class Settings:
     # Chaikin corner-cutting passes applied to the trace (0 = off). Smooths
     # raster staircases into flowing curves without fattening thin bridges.
     smooth_iters: int = _i("SMOOTH_ITERS", 2)
+    # Cap on how far one smoothing pass may move the boundary. Without it a
+    # corner is cut by a quarter of its edge, which bends the four-corner strip
+    # outline into a lens (measured: 5.11mm pull-in against a 4mm gate).
+    max_smooth_cut_mm: float = _f("MAX_SMOOTH_CUT_MM", 0.4)
 
     # storage / lifecycle
     job_storage_dir: str = os.environ.get("JOB_STORAGE_DIR", "/tmp/raster-to-svg")
@@ -69,6 +73,12 @@ class Settings:
 
     # optional bearer token; when set, /api/jobs* require Authorization: Bearer <token>
     auth_token: str = os.environ.get("VECTORIZER_TOKEN", "")
+
+    # /api/generate: the image-model key, and how many panels may be traced at
+    # once. Concurrency is a memory knob — each in-flight trace holds a decoded
+    # render — so it is capped here rather than by whatever forme asks for.
+    openai_key: str = os.environ.get("OPENAI_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
+    generate_concurrency: int = _i("GENERATE_CONCURRENCY", 4)
 
 
 SETTINGS = Settings()
