@@ -75,7 +75,7 @@ export async function POST(req: Request) {
     // 3) המרת ההדמיה ל-cutouts SVG נקי (מצב debug כדי לשמור את כל שלבי הביניים).
     const vec = await vectorizeImageFull(renderBytes, render.mediaType, {
       heightMm: Number(design.width_mm),
-      colorKey: "warm",
+      colorKey: "coverage",
     });
 
     // 4) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
       designId: design.id,
       productType: design.product_type,
       prompt: body.userPrompt,
-      colorKey: "warm",
+      colorKey: "coverage",
       startedAt,
       render: { path: renderPngPath, model: render.model },
       vectorizer: vec.raw,
@@ -123,7 +123,7 @@ export async function POST(req: Request) {
         source: "studio",
         designId,
         prompt: userPrompt,
-        colorKey: "warm",
+        colorKey: "coverage",
         startedAt,
         error: err instanceof Error ? err.message : String(err),
         vectorizer: null,

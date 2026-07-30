@@ -6,6 +6,23 @@ on:
     branches: [main]
 
 jobs:
+  # The vectorizer is Python and its own package, so it gets its own job rather
+  # than bolting pip installs onto the Node one — they can also run in parallel.
+  vectorizer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: vectorizer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vectorizer/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest tests -q
+
   test:
     runs-on: ubuntu-latest
     steps:
