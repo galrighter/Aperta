@@ -45,7 +45,7 @@ async def create_job(
     dark_region_role: str = Form("metal"),
     output_mode: str = Form("both"),
     condition: bool = Form(False),
-    color_key: str = Form("warm"),
+    color_key: str = Form("coverage"),
     min_hole_mm: float = Form(0.0),
     debug: bool = Form(False),
 ) -> JSONResponse:
@@ -54,7 +54,7 @@ async def create_job(
         raise HTTPException(413, detail={"error_code": "FILE_TOO_LARGE"})
     if dark_region_role not in ("metal", "background"):
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad dark_region_role"})
-    if color_key not in ("warm", "dark", "saturation", "auto"):
+    if color_key not in ("coverage", "warm", "dark", "saturation", "auto"):
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
     if not condition and width_mm <= 0:
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "width_mm required unless condition=true"})
@@ -128,7 +128,7 @@ class GenerateIn(BaseModel):
     calls: int = Field(default=1, ge=1, le=8)
     rows: int = Field(default=1, ge=1, le=8)
     height_mm: float = Field(default=15.0, gt=0, le=100)
-    color_key: str = "dark"
+    color_key: str = "coverage"
     # forme's minimum opening (mm). It owns the fabrication rules; we only apply
     # this one so openings the cutter cannot make never reach the SVG. 0 = keep all.
     min_hole_mm: float = Field(default=0.0, ge=0, le=5)
@@ -147,7 +147,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
     can actually be manufactured is forme's call, not ours: that engine stays in
     one place.
     """
-    if body.color_key not in ("warm", "dark", "saturation", "auto"):
+    if body.color_key not in ("coverage", "warm", "dark", "saturation", "auto"):
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
 
     inspiration = None

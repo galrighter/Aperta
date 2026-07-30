@@ -93,7 +93,7 @@ function extractMetrics(d: VectorizerJson): VectorizeResult["metrics"] {
 export async function vectorizeImageFull(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
+  opts: { heightMm: number; colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeFull> {
   const raw = await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
   const d = raw as VectorizerJson;
@@ -110,7 +110,7 @@ export async function vectorizeImageFull(
 export async function vectorizeImage(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
+  opts: { heightMm: number; colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<VectorizeResult> {
   const full = await vectorizeImageFull(bytes, mediaType, opts);
   if (full.status !== "approved" || !full.cutoutsSvg) {
@@ -123,7 +123,7 @@ export async function vectorizeImage(
 export async function vectorizeImageDebug(
   bytes: Uint8Array,
   mediaType: string,
-  opts: { heightMm: number; colorKey: "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
+  opts: { heightMm: number; colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
 ): Promise<Record<string, unknown>> {
   try {
     return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });

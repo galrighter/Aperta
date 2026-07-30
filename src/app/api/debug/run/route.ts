@@ -25,7 +25,7 @@ const schema = z.object({
   /** אורך הפס — נכנס לפרומפט כפרופורציה. ברירת מחדל: הערך של המוצר. */
   lengthMm: z.number().min(10).max(300).optional(),
   thicknessMm: z.number().min(0.5).max(5).optional(),
-  colorKey: z.enum(["warm", "dark", "saturation", "auto"]).default("auto"),
+  colorKey: z.enum(["coverage", "warm", "dark", "saturation", "auto"]).default("coverage"),
   productType: z.enum(["bracelet", "ring"]).default("bracelet"),
 });
 
@@ -90,8 +90,10 @@ export async function POST(req: Request) {
       mediaType = dec.mediaType;
     }
 
-    // הדמיה שנוצרה כאן היא תמיד מתכת שחורה -> dark; העלאה משתמשת במפתח שנבחר.
-    const colorKey = body.image ? body.colorKey : "dark";
+    // "coverage" reads the background off the image border, so it needs no
+    // agreement with the render prompt — a generated render and an upload go
+    // through the same key unless one is picked explicitly.
+    const colorKey = body.colorKey;
     // הבק־אופיס מריץ את אותו כלל פתח מינימלי כמו הלקוחה, אחרת היומן מראה
     // גיאומטריה שלא נשלחת לאף אחד.
     const minHoleMm = resolveFab(
