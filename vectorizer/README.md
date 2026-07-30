@@ -121,8 +121,17 @@ curl -X POST localhost:8000/api/generate -H 'content-type: application/json' -d 
 ```
 
 Needs `OPENAI_KEY` in the container env (the deploy workflow passes the repo
-secret of the same name). Without it the endpoint returns 502 `RENDER_FAILED`;
+secret of the same name). Without it the endpoint returns 422 `RENDER_FAILED`;
 `/api/jobs` is unaffected.
+
+A failure of the image model answers **422**, not 5xx, and that is deliberate:
+forme calls this service from a Cloudflare Worker, and Cloudflare replaces the
+body of a 502 with its own error page. On the old status the JSON below never
+survived the trip — forme logged `Render service returned non-JSON (502): error
+code: 502` for a run whose real cause (a spent OpenAI budget, 30.7.26) was
+sitting in a body nobody ever saw. A spent budget answers `QUOTA_EXHAUSTED`
+rather than `RENDER_FAILED`, which is what lets forme mail someone about the one
+failure no retry can fix.
 
 With `condition=true` the service colour-keys the metal (`color_key`:
 `warm`|`dark`|`saturation`), crops, denoises and smooths the render into a clean

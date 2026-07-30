@@ -220,6 +220,30 @@ export async function countRuns(): Promise<{ total: number; failed: number }> {
 }
 
 /**
+ * כמה הרצות נכשלו על תקציב שנגמר בטווח זמן נתון.
+ *
+ * זה מה שמונע הצפת מיילים: התקציב לא מתמלא מעצמו, ולכן כל לקוחה שמנסה ליצור
+ * בינתיים תייצר כשל זהה. אם כבר יש כשל כזה בשעה שקדמה להרצה הנוכחית — ההתראה
+ * כבר נשלחה, ואין מה לחזור עליה.
+ *
+ * החיפוש הוא על טקסט השגיאה כמו שנשמר ביומן: הוא נושא את גוף ה-429 של OpenAI
+ * (`insufficient_quota` / `billing_hard_limit_reached`). עמודת קוד ייעודית
+ * הייתה נקייה יותר, אבל היא מיגרציה שלמה בשביל שאילתה אחת שרצה רק בכשל.
+ */
+export async function countQuotaFailuresSince(sinceIso: string, beforeIso: string): Promise<number> {
+  const sb = supabaseAdmin();
+  const { count, error } = await sb
+    .from("generation_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "error")
+    .gte("created_at", sinceIso)
+    .lt("created_at", beforeIso)
+    .or("error.ilike.%quota%,error.ilike.%billing_hard_limit%");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/**
  * הבעלים **והמספר הסידורי** של כל עיצוב שביומן, בשאילתה אחת. הבעלים הוא מה
  * שמאפשר לקבץ את היומן לפי משתמש במקום לפי זמן.
  *

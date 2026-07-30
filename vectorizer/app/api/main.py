@@ -173,7 +173,16 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         payload = await generate.run(job, artifacts, SETTINGS.openai_key, SETTINGS.generate_concurrency)
     except imagegen.ImageGenError as exc:
         # The image model, not us: forme surfaces this as a retriable failure.
-        raise HTTPException(502, detail={"error_code": "RENDER_FAILED", "message": str(exc)}) from exc
+        #
+        # 422 and not 502, which is what this used to be: forme reaches us from a
+        # Cloudflare Worker, and Cloudflare replaces the *body* of a 502 with its
+        # own error page. The JSON below never arrived — forme logged
+        # "Render service returned non-JSON (502): error code: 502" on a run that
+        # failed for a perfectly legible reason (30.7.26: the OpenAI budget ran
+        # out, and the log said nothing about it). The status has to be one the
+        # edge passes through untouched, or the reason dies in transit.
+        code = "QUOTA_EXHAUSTED" if exc.quota else "RENDER_FAILED"
+        raise HTTPException(422, detail={"error_code": code, "message": str(exc)}) from exc
 
     return JSONResponse(status_code=200, content=payload)
 

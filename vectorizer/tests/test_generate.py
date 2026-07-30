@@ -281,5 +281,66 @@ def test_endpoint_surfaces_an_image_model_failure_as_retriable(wired, monkeypatc
     monkeypatch.setattr(generate.imagegen, "render_many", boom)
     client = TestClient(main.app)
     resp = client.post("/api/generate", json={"prompt": "p"})
-    assert resp.status_code == 502
+    # 422 and not 502: Cloudflare replaces the body of a 502 with its own error
+    # page, so on the old status forme received "error code: 502" and logged that
+    # instead of the reason. The status has to be one the edge passes through.
+    assert resp.status_code == 422
     assert resp.json()["detail"]["error_code"] == "RENDER_FAILED"
+    assert "429" in resp.json()["detail"]["message"]
+
+
+def test_endpoint_names_a_spent_budget_as_its_own_failure(wired, monkeypatch):
+    """A spent OpenAI budget is the one failure nobody can fix from the app.
+
+    It has to arrive at forme as its own code — that is what triggers the alert
+    mail. Folded into RENDER_FAILED it reads like any other flaky render, and the
+    site stays down until somebody happens to look.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.api import main
+
+    async def broke(*a, **k):
+        raise generate.imagegen.ImageGenError(
+            'gpt-image-1-mini: 429 {"error":{"code":"insufficient_quota"}}', quota=True
+        )
+
+    monkeypatch.setattr(generate.imagegen, "render_many", broke)
+    client = TestClient(main.app)
+    resp = client.post("/api/generate", json={"prompt": "p"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error_code"] == "QUOTA_EXHAUSTED"
+    # The provider's own words survive: they are the proof, and they are what
+    # tells a spent budget apart from a failure phrased like one.
+    assert "insufficient_quota" in resp.json()["detail"]["message"]
+
+
+def test_quota_is_read_off_the_provider_body(monkeypatch):
+    from app import imagegen
+
+    assert imagegen._is_quota('{"error":{"code":"insufficient_quota"}}')
+    assert imagegen._is_quota("You exceeded your current quota")
+    assert imagegen._is_quota("billing_hard_limit_reached")
+    # A plain rate limit is not a spent budget: it passes on its own, and an
+    # alert on every busy minute is an alert nobody reads.
+    assert not imagegen._is_quota('{"error":{"code":"rate_limit_exceeded"}}')
+
+
+def test_a_spent_budget_survives_the_aggregation(monkeypatch):
+    """Four calls fail together; one of them says the budget is gone."""
+    import asyncio
+
+    from app import imagegen
+
+    async def scenario():
+        async def one(client, key, prompt, reference):
+            raise imagegen.ImageGenError('429 {"code":"insufficient_quota"}', quota=True)
+
+        monkeypatch.setattr(imagegen, "_one", one)
+        with pytest.raises(imagegen.ImageGenError) as caught:
+            await imagegen.render_many("k", "prompt", 4)
+        assert caught.value.quota is True
+        # Nothing to retry: the next call costs the same and fails the same.
+        assert caught.value.retriable is False
+
+    asyncio.run(scenario())

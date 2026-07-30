@@ -28,12 +28,30 @@ QUALITY = "low"
 TIMEOUT_S = 120.0
 
 
+# A spent OpenAI budget is not a failure anyone can retry their way out of, and
+# it is the one cause that looks identical to every other outage from the outside
+# — so it gets its own flag, read off the words OpenAI puts in the 429 body.
+QUOTA_MARKERS = (
+    "insufficient_quota",
+    "billing_hard_limit_reached",
+    "exceeded your current quota",
+)
+
+
+def _is_quota(body: str) -> bool:
+    low = body.lower()
+    return any(marker in low for marker in QUOTA_MARKERS)
+
+
 class ImageGenError(RuntimeError):
     """The image model did not return a render."""
 
-    def __init__(self, message: str, retriable: bool = True) -> None:
+    def __init__(self, message: str, retriable: bool = True, quota: bool = False) -> None:
         super().__init__(message)
         self.retriable = retriable
+        # The budget ran out. Nothing on the box or in forme is broken, and no
+        # amount of retrying will change it — someone has to top up the account.
+        self.quota = quota
 
 
 def _extract(payload: dict) -> bytes:
@@ -68,7 +86,12 @@ async def _one(
             json={"model": MODEL, "prompt": prompt, "n": 1, "size": SIZE, "quality": QUALITY},
         )
     if resp.status_code >= 400:
-        raise ImageGenError(f"{MODEL}: {resp.status_code} {resp.text[:200]}")
+        quota = _is_quota(resp.text)
+        raise ImageGenError(
+            f"{MODEL}: {resp.status_code} {resp.text[:200]}",
+            retriable=not quota,
+            quota=quota,
+        )
     return _extract(resp.json())
 
 
@@ -99,6 +122,11 @@ async def render_many(
 
     images = [r for r in results if isinstance(r, bytes)]
     if not images:
-        reasons = " | ".join(str(r) for r in results if isinstance(r, BaseException))
-        raise ImageGenError(f"Image generation failed. {reasons}")
+        failures = [r for r in results if isinstance(r, BaseException)]
+        reasons = " | ".join(str(r) for r in failures)
+        # One spent budget is the whole run's cause, even if a second call failed
+        # for its own reason: the flag has to survive the aggregation, or forme
+        # sees a generic failure and nobody learns that the account is empty.
+        quota = any(getattr(f, "quota", False) for f in failures)
+        raise ImageGenError(f"Image generation failed. {reasons}", retriable=not quota, quota=quota)
     return images

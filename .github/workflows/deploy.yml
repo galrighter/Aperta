@@ -42,6 +42,7 @@ jobs:
             "RESEND_API": "${{ secrets.RESEND_API }}",
             "MAIL_FROM": "${{ vars.MAIL_FROM || 'RM JEWEL <noreply@rmjewel.com>' }}",
             "MAIL_TO": "${{ vars.MAIL_TO || 'info@rmjewel.com' }}",
+            "ALERT_TO": "${{ vars.ALERT_TO || vars.MAIL_TO || 'info@rmjewel.com' }}",
             "LLM_MODEL": "${{ vars.LLM_MODEL || 'claude-sonnet-4-6' }}",
             "OPENAI_MODEL": "${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}",
             "LLM_PROVIDER": "${{ vars.LLM_PROVIDER || 'openai' }}",
