@@ -146,6 +146,24 @@ export function sizeFromBlank(
   return out;
 }
 
+/**
+ * מידה אמריקאית → ID במ"מ. מידות שאינן בטבלה (למשל 6.3, שהלקוחה יכולה להקליד)
+ * מתקבלות באינטרפולציה ליניארית בין השכנות, לא בקירוב גלובלי — הטבלה עצמה
+ * אינה ליניארית לגמרי, וקירוב יחיד סוטה יותר ויותר ככל שהמידה עולה.
+ */
+export function idMmFromUsSize(size: number): number {
+  const lo = US_RING_SIZES[0];
+  const hi = US_RING_SIZES[US_RING_SIZES.length - 1];
+  if (size <= lo) return US_RING_ID_MM[String(lo)];
+  if (size >= hi) return US_RING_ID_MM[String(hi)];
+  const below = US_RING_SIZES.filter((n) => n <= size).pop()!;
+  const above = US_RING_SIZES.find((n) => n >= size)!;
+  if (below === above) return US_RING_ID_MM[String(below)];
+  const a = US_RING_ID_MM[String(below)];
+  const b = US_RING_ID_MM[String(above)];
+  return a + ((b - a) * (size - below)) / (above - below);
+}
+
 /** המידה האמריקאית הקרובה ל-ID נתון, מעוגלת לחצי מידה ומוגבלת לטווח הטבלה. */
 export function nearestUsRingSize(idMm: number): number {
   const lo = US_RING_SIZES[0];

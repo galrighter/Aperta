@@ -3,6 +3,8 @@
 import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
 import { svgFrame } from "@/lib/geometry/frame";
+import { FAB, type FitStyle } from "@/lib/fabrication.config";
+import { computeSizing, idMmFromUsSize } from "@/lib/sizing";
 import { priceFor, type Price } from "@/lib/pricing";
 
 const d = he.design;
@@ -36,9 +38,22 @@ export const WIDTH = {
   ring: { min: 4, max: 18, def: 6 },
 } as const;
 
-/** הפתח נגזר מסוג הישיבה — הלקוחה לא מזינה תוספת להיקף (handoff §3.3). */
-export const FIT_GAP_MM: Record<Fit, number> = { tight: 18, regular: 25, loose: 33 };
-export const RING_GAP_MM = 6;
+/**
+ * סגנון הישיבה → רמת החופש במודל המידות. הלקוחה עדיין לא מזינה תוספת להיקף
+ * (handoff §3.3) — היא בוחרת מילה, והתוספת נגזרת ב-lib/sizing.ts.
+ *
+ * שינוי מהמימוש הקודם: הפתח (Gap) *אינו* נגזר מסוג הישיבה יותר. קודם
+ * tight/regular/loose בחרו פתח 18/25/33 מ"מ, ומכיוון שאורך הפריסה היה
+ * `היקף − פתח`, ההיקף הפנימי בפועל כמעט לא זז — שלוש האפשרויות נתנו מרווח של
+ * ‎−3.9 / −3.2 / −1.7 מ"מ, כלומר כולן הדוקות מהיד הנמדדת וההפרש ביניהן 2.2 מ"מ
+ * בלבד. הכפתור שינה את גודל הפתח, לא את הישיבה. עכשיו הפתח הוא קבוע אנטומי
+ * (פתח ההשחלה) והישיבה היא תוספת להיקף — ראו docs/sizing-fit-review.md §4.1.
+ */
+export const FIT_TO_STYLE: Record<Fit, FitStyle> = {
+  tight: "snug",
+  regular: "comfort",
+  loose: "loose",
+};
 
 export interface ImageFile {
   dataUrl: string;
@@ -182,7 +197,12 @@ export function circumferenceMm(s: CreateState): number {
   if (s.product === "ring") {
     const exact = parseFloat(s.ringSize);
     // מידת טבעת (4–13) מומרת להיקף; מעל 30 — הוזן היקף במ"מ ישירות.
-    if (!Number.isNaN(exact) && exact > 0) return exact > 30 ? exact : 44.8 + exact * 1.6;
+    // ההמרה עוברת בטבלת ה-ID התקנית ולא בקירוב ליניארי: הקירוב הקודם
+    // (44.8 + מידה × 1.6) סטה יותר ויותר ככל שהמידה עלתה — במידה 13 הוא
+    // נתן היקף גדול ב-2.5 מ"מ מהתקן.
+    if (!Number.isNaN(exact) && exact > 0) {
+      return exact > 30 ? exact : Math.PI * idMmFromUsSize(exact);
+    }
     return d.ringPresets.find((p) => p.id === s.ringPreset)?.mm ?? 55;
   }
   const exact = parseFloat(s.circ);
@@ -190,13 +210,30 @@ export function circumferenceMm(s: CreateState): number {
   return d.wristPresets.find((p) => p.id === s.wristPreset)?.mm ?? 165;
 }
 
+/** פתח ההשחלה — קבוע אנטומי לפי סוג המוצר, לא פונקציה של הישיבה (ראו FIT_TO_STYLE). */
 export const gapOf = (s: CreateState): number =>
-  s.product === "ring" ? RING_GAP_MM : FIT_GAP_MM[s.fit];
+  s.product === "ring" ? FAB.products.ring.defaultGapMm : FAB.products.bracelet.defaultGapMm;
 
-/** אורך הרצועה השטוחה = היקף − פתח (הטבעת/הצמיד פתוחים). */
+/**
+ * אורך הרצועה השטוחה. עובר דרך מודל המידות (lib/sizing.ts) ולא דרך
+ * `היקף − פתח`: הפריסה נמדדת על הציר הניטרלי ולכן חסר לה האיבר 2πKt, והפתח
+ * הוא מיתר שצריך להמיר לקשת. בצמיד ההפרש קטן, בטבעת הוא הצטבר עד 3.2 מידות
+ * במידה 13. פירוט ומספרים: docs/sizing-fit-review.md §2.
+ */
 export function stripLengthMm(s: CreateState): number {
-  const raw = circumferenceMm(s) - gapOf(s);
-  const [lo, hi] = s.product === "ring" ? [30, 70] : [110, 200];
+  const product = s.product ?? "bracelet";
+  const circ = circumferenceMm(s);
+  const common = {
+    product,
+    thicknessMm: FAB.defaultThicknessMm,
+    widthMm: widthOf(s),
+    gapChordMm: gapOf(s),
+  } as const;
+  const raw =
+    product === "ring"
+      ? computeSizing({ ...common, idMm: circ / Math.PI }).blankLengthMm
+      : computeSizing({ ...common, wristMm: circ, fit: FIT_TO_STYLE[s.fit] }).blankLengthMm;
+  const [lo, hi] = FAB.products[product].lengthRangeMm;
   return Math.round(Math.min(hi, Math.max(lo, raw)) * 10) / 10;
 }
 
