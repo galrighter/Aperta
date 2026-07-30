@@ -6,10 +6,16 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import earcut from "earcut";
 import { useStudio } from "@/lib/client/store";
+import { resolveFab } from "@/lib/fabrication.config";
+import { neutralRadiusFromBlank } from "@/lib/sizing";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 // הדמיה תלת-ממדית — סעיף 9: טריאנגולציה של ה-material (earcut עם חורים),
-// אקסטרוזיה לעובי, כיפוף לקשת R=(L+gap)/(2π), חומר בגוון פליז.
+// אקסטרוזיה לעובי, כיפוף לקשת סביב הציר הניטרלי, חומר בגוון פליז.
+//
+// הרדיוס מגיע מ-neutralRadiusFromBlank (אורך הפריסה הוא אורך הציר הניטרלי,
+// והפער הוא מיתר) ולא מ-(L+gap)/2π. הנוסחה הישנה זיהתה את אורך הפריסה עם
+// ההיקף הפנימי והציגה ID גדול ב-2·K·t — 1.5 מידות טבעת. ראו sizing-fit-review §3.
 
 export function Preview3D() {
   const s = useStudio();
@@ -98,7 +104,8 @@ export function Preview3D() {
     const gap = Number(design.gap_mm);
     const t = Number(design.thickness_mm);
     const W = Number(design.width_mm);
-    const geo = buildBentGeometry(geometry.material, L, W, gap, t);
+    const k = resolveFab(t, design.product_type).kFactor;
+    const geo = buildBentGeometry(geometry.material, L, W, gap, t, k);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xd9b14c,
       metalness: 1.0,
@@ -110,7 +117,7 @@ export function Preview3D() {
     ctx.mesh = mesh;
 
     // מיקום מצלמה יחסי לגודל
-    const R = (L + gap) / (2 * Math.PI);
+    const R = neutralRadiusFromBlank(L, gap);
     ctx.controls.target.set(0, 0, 0);
     ctx.camera.position.set(0, R * 1.6, R * 4.2);
     ctx.controls.update();
@@ -139,6 +146,7 @@ function buildBentGeometry(
   W: number,
   gap: number,
   thickness: number,
+  kFactor: number,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
   // צעד הקשת: ~1.5° לפאה — חלק לעין גם בזום
@@ -218,14 +226,17 @@ function buildBentGeometry(
     }
   }
 
-  // כיפוף: θ=(x−L/2)/R + היסט של π כך שמרכז הטבעת בראשית והמפתח מול המצלמה
-  const R = (L + gap) / (2 * Math.PI);
+  // כיפוף: θ=(x−L/2)/R_n + היסט של π כך שמרכז הטבעת בראשית והמפתח מול המצלמה.
+  // x נמדד על הציר הניטרלי (זה מה שאורך הפריסה מייצג), ולכן הזווית נגזרת מ-R_n.
+  // z רץ מ-0 (פנים) עד thickness (חוץ), והפנים יושבים ב-R_n − K·t.
+  const Rn = neutralRadiusFromBlank(L, gap);
+  const rInner = Rn - kFactor * thickness;
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], y = positions[i + 1], z = positions[i + 2];
-    const theta = (x - L / 2) / R + Math.PI;
-    positions[i] = (R + z) * Math.sin(theta);
+    const theta = (x - L / 2) / Rn + Math.PI;
+    positions[i] = (rInner + z) * Math.sin(theta);
     positions[i + 1] = W / 2 - y; // ציר Y של SVG כלפי מטה → הפוך לתצוגה
-    positions[i + 2] = (R + z) * Math.cos(theta);
+    positions[i + 2] = (rInner + z) * Math.cos(theta);
   }
 
   const geo = new THREE.BufferGeometry();

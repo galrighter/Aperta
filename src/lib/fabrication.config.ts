@@ -1,13 +1,14 @@
 // מקור כל הערכים: docs/fabrication-research.md
-// חומר: פליז C260 מוחזר/רבע-קשה. חיתוך: לייזר סיבים + חנקן.
-// אין לפזר מספרי ייצור בקוד — הכול עובר דרך resolveFab().
-//
-// ⚠ ביקורת פתוחה על ערכי המידות (products.*): docs/sizing-fit-review.md §3.
-//   בין השאר: ring.defaultLengthMm=54 הוא היקף אצבע ולא אורך פריסה (יוצא US 6.4
-//   במקום 7 → 55.5), ring.defaultGapMm=6 גדול פי 2 מהמומלץ (3), וטווחי הפער
-//   רחבים מדי בשני המוצרים. לא שונו כאן — הכרעת מוצר של גל.
+// ערכי המידות וההתאמה (products.*, fitEaseMm, widthComfortAllowanceMm, gapIsChord):
+// docs/sizing-fit-review.md §3 — דלתא שאושרה ע"י גל.
+// חומר: פליז C260 מוחזר (annealed O60). חיתוך: לייזר סיבים + חנקן.
+// אין לפזר מספרי ייצור בקוד — הכול עובר דרך resolveFab() ו-lib/sizing.ts.
 
 export type ProductType = "bracelet" | "ring";
+
+/** רמת ה"חופש" של צמיד על פרק היד. רלוונטי לצמידים בלבד — בטבעת הפער והמידה
+ *  קובעים, ואין לנו מנגנון כוונון (ראו sizing-fit-review §4.4). */
+export type FitStyle = "snug" | "comfort" | "loose";
 
 interface ThicknessConstants {
   kerf: number;
@@ -23,7 +24,10 @@ interface ThicknessConstants {
 }
 
 export const FAB = {
-  material: "C260 brass, annealed / quarter-hard",
+  // הכרעת טמפר (sizing-fit-review §4.4): annealed בלבד. ההפרש בכוח הכוונון הידני
+  // מול quarter-hard הוא פי 2.7 — צמיד quarter-hard 1.5 מ"מ דורש 6–8 ק"ג כוח
+  // ולכן אינו מתכוונן בפועל. גם מטריצת ה-Springback (§4.3) נגזרת מהטמפר הזה.
+  material: "C260 brass, annealed (O60)",
   cutMethod: "fiber-laser",
   defaultThicknessMm: 1.5,
   supportedThicknessesMm: [1, 1.5, 2, 2.5, 3],
@@ -52,6 +56,14 @@ export const FAB = {
   // בהתאם למינימום התעשייתי (סעיף 1.6 במחקר). מסומן כסטייה מאושרת ע"י גל.
   ringEdgeMarginOverride: (t: number) => Math.max(t, 1.5),
 
+  // מקדם K תלוי ב-r/t, לא רק בעובי. עמודת byThickness.kFactor היא הטור של
+  // r/t גבוה (קשת צמיד, ~17–23) — בדיוק הטרנד שב-fabrication-research.md §2.4.
+  // בטבעת r/t יורד ל-3–5 והציר הניטרלי נדחף פנימה, ולכן K נמוך יותר. הפרש של
+  // 0.02 בעובי 1.5 מ"מ שווה 0.19 מ"מ בפריסה = 0.23 מידות טבעת — בדיוק על סף
+  // הרעש של המערכת (sizing-fit-review §4.4), ולכן לא ניתן להזניח אותו.
+  ringKFactorOffset: -0.02,
+  kFactorClamp: [0.35, 0.45] as [number, number],
+
   maxOpenAreaWarnPct: 25,   // מעל זה — warn (ערך שמרני מהמחקר)
   maxOpenAreaFailPct: 30,   // מעל זה — fail (תקרה קשיחה לערגול)
   minFeatureFactor: 1.0,    // פרט עצמאי מינימלי = 1.0×עובי
@@ -63,16 +75,34 @@ export const FAB = {
   applyKerfCompensation: false,   // המכונה מפצה. ערכי הקרף שמורים לעתיד.
   applyBendAllowance: false,      // TODO שלב עתידי: BA = θ(r + K·t). ערכי K שמורים.
 
+  // ⚠ `gap_mm` הוא **מיתר** (chord) — המרחק בקו ישר בין קצות התכשיט, מה שקליבר
+  // מודד ומה שהלקוח רואה. ההמרה לקשת נעשית ב-lib/sizing.ts ולא בשום מקום אחר.
+  gapIsChord: true,
+
+  // תוספות ה-Fit להיקף הפנימי של צמיד (sizing-fit-review §4.1). ערכים נמוכים
+  // מאלה שבמחקר המקורי: המספרים שלו הם של צמיד שרשרת שנשמט, ו-Cuff קשיח לא נשמט.
+  fitEaseMm: { snug: 8, comfort: 15, loose: 22 } as Record<FitStyle, number>,
+
+  /** תוספת נוחות להיקף הפנימי לפי רוחב הפס (sizing-fit-review §2.5).
+   *  מנגנון אחד ומונוטוני במקום "0.5 מ"מ אוטומטי + עלה חצי מידה" של המחקר,
+   *  ששניהם יחד הם ספירה כפולה. מוצג למשתמש, לא מוחל בשקט. */
+  widthComfortAllowanceMm: (widthMm: number): number =>
+    widthMm <= 4 ? 0 : widthMm <= 6 ? 0.5 : widthMm <= 9 ? 1.25 : 2.5,
+
   products: {
     bracelet: {
-      defaultLengthMm: 160, lengthRangeMm: [140, 200] as [number, number],
+      // 160 מ"מ ≈ פרק יד 16.7 ס"מ ב-comfort, פס צר. פס רחב מוסיף את תוספת הרוחב.
+      // התחתית 125 ולא 130: פרק יד 14 ס"מ ב-snug נותן 125.4 מ"מ (§2.4), ו-130
+      // היה חותך את הקצה הזה של הטבלה שלנו.
+      defaultLengthMm: 160, lengthRangeMm: [125, 215] as [number, number],
       defaultWidthMm: 15,  widthRangeMm: [10, 30] as [number, number],
-      defaultGapMm: 25,    gapRangeMm: [15, 40] as [number, number],
+      defaultGapMm: 25.4,  gapRangeMm: [22, 32] as [number, number],
     },
     ring: {
-      defaultLengthMm: 54, lengthRangeMm: [44, 70] as [number, number],   // לפי היקף אצבע
+      // 55.5 מ"מ = US 7 (ID 17.35) בפער 3 מ"מ. זהו **אורך פריסה**, לא היקף אצבע.
+      defaultLengthMm: 55.5, lengthRangeMm: [46, 72] as [number, number],
       defaultWidthMm: 8,   widthRangeMm: [4, 12] as [number, number],
-      defaultGapMm: 6,     gapRangeMm: [3, 12] as [number, number],
+      defaultGapMm: 3,     gapRangeMm: [2, 5] as [number, number],
     },
   },
 
@@ -104,6 +134,8 @@ export interface ResolvedFab {
   minInnerCornerAngleDeg: number;
   outerCornerRadiusMm: number;
 }
+
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 export function resolveFab(thicknessMm: number, product: ProductType): ResolvedFab {
   const keys = Object.keys(FAB.byThickness).map(Number).sort((a, b) => a - b);
@@ -156,7 +188,11 @@ export function resolveFab(thicknessMm: number, product: ProductType): ResolvedF
     edgeMargin: Math.min(edgeMarginRaw, 1.0),
     endMargin: Math.min(c.endMargin, 2.0),
     minInnerRadius: c.minInnerRadius,
-    kFactor: c.kFactor,
+    kFactor: clamp(
+      product === "ring" ? c.kFactor + FAB.ringKFactorOffset : c.kFactor,
+      FAB.kFactorClamp[0],
+      FAB.kFactorClamp[1],
+    ),
     minFeature: FAB.minFeatureFactor * thicknessMm,
     maxOpenAreaWarnPct: FAB.maxOpenAreaWarnPct,
     maxOpenAreaFailPct: FAB.maxOpenAreaFailPct,
