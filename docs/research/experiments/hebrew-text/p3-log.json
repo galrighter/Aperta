@@ -1,0 +1,308 @@
+{
+  "model": "gpt-image-1",
+  "phase": "3",
+  "promptSample": "A flat, top-down, orthographic product image of a laser-cut brass bracelet cuff, laid out perfectly straight and unrolled, filling the full width of the frame edge to edge, on a completely flat pure #FFFFFF white background. The bracelet is a single long horizontal strip of solid warm-gold brass with an intricate decorative cut-out pattern. The cut-out openings are fully cut through, showing the same pure white background through them. Design intent for the cut-out pattern: צמיד עם השם היילי. The bracelet must incorporate the Hebrew word \"היילי\" as part of the cut-out pattern — the letters themselves are cut out of the brass, integrated into the decorative design. Hebrew is written right-to-left. Render the letters exactly as given; do not invent or substitute letterforms. The word is spelled, in reading order from right to left: HE (ה), YOD (י), YOD (י), LAMED (ל), YOD (י). Exactly 5 Hebrew letters, no more and no fewer. Unicode: U+05D4 U+05D9 U+05D9 U+05DC U+05D9. Copy each letterform exactly; a wrong or invented letter makes the product unusable. Render the pattern as bold, cleanly separated cut-outs with generous openings and sturdy connecting metal bands. Suitable for laser-cutting in 1.5mm brass. Avoid hair-thin lines, densely packed fine detail, or bands that nearly touch; keep clear space between adjacent openings. CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration. Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no border framing. High contrast: the brass is a clearly saturated warm gold, distinctly warmer and darker than the pure white, so the metal separates cleanly from the openings.",
+  "results": [
+    {
+      "phase": "3",
+      "name": "היילי",
+      "repeat": 1,
+      "ok": false,
+      "error": "429 {\n  \"error\": {\n    \"message\": \"Rate limit reached for gpt-image-1 (for limit gpt-image) in organization org-qdGvkRH4SgmK4Gkvb7y6FyWE on input-images per min: Limit 5, Used 5, Requested 1. Please try again in 12s. Visit https://platform.openai.com/account/rate-limits to learn more.\",\n    \"type\": "
+    },
+    {
+      "phase": "3",
+      "name": "מישל",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-מישל-1.png",
+      "ok": true,
+      "ms": 38215,
+      "usage": {
+        "input_tokens": 415,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 415
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6623
+      }
+    },
+    {
+      "phase": "3",
+      "name": "קלאופטרה",
+      "repeat": 2,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-קלאופטרה-2.png",
+      "ok": true,
+      "ms": 38302,
+      "usage": {
+        "input_tokens": 457,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 457
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6665
+      }
+    },
+    {
+      "phase": "3",
+      "name": "שני מגידס",
+      "repeat": 3,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-שני-מגידס-3.png",
+      "ok": true,
+      "ms": 38463,
+      "usage": {
+        "input_tokens": 462,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 462
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6670
+      }
+    },
+    {
+      "phase": "3",
+      "name": "קלאופטרה",
+      "repeat": 3,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-קלאופטרה-3.png",
+      "ok": true,
+      "ms": 39216,
+      "usage": {
+        "input_tokens": 457,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 457
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6665
+      }
+    },
+    {
+      "phase": "3",
+      "name": "שני מגידס",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-שני-מגידס-1.png",
+      "ok": true,
+      "ms": 39248,
+      "usage": {
+        "input_tokens": 462,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 462
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6670
+      }
+    },
+    {
+      "phase": "3",
+      "name": "ענבל רייטר",
+      "repeat": 3,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-ענבל-רייטר-3.png",
+      "ok": true,
+      "ms": 39554,
+      "usage": {
+        "input_tokens": 473,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 473
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6681
+      }
+    },
+    {
+      "phase": "3",
+      "name": "היילי",
+      "repeat": 3,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-היילי-3.png",
+      "ok": true,
+      "ms": 39755,
+      "usage": {
+        "input_tokens": 426,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 426
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6634
+      }
+    },
+    {
+      "phase": "3",
+      "name": "קלאופטרה",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-קלאופטרה-1.png",
+      "ok": true,
+      "ms": 40480,
+      "usage": {
+        "input_tokens": 457,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 457
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6665
+      }
+    },
+    {
+      "phase": "3",
+      "name": "ענבל רייטר",
+      "repeat": 2,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-ענבל-רייטר-2.png",
+      "ok": true,
+      "ms": 42845,
+      "usage": {
+        "input_tokens": 473,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 473
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6681
+      }
+    },
+    {
+      "phase": "3",
+      "name": "מישל",
+      "repeat": 2,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-מישל-2.png",
+      "ok": true,
+      "ms": 42898,
+      "usage": {
+        "input_tokens": 415,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 415
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6623
+      }
+    },
+    {
+      "phase": "3",
+      "name": "היילי",
+      "repeat": 2,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-היילי-2.png",
+      "ok": true,
+      "ms": 44662,
+      "usage": {
+        "input_tokens": 426,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 426
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6634
+      }
+    },
+    {
+      "phase": "3",
+      "name": "ענבל רייטר",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-ענבל-רייטר-1.png",
+      "ok": true,
+      "ms": 45605,
+      "usage": {
+        "input_tokens": 473,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 473
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6681
+      }
+    },
+    {
+      "phase": "3",
+      "name": "שני מגידס",
+      "repeat": 2,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-שני-מגידס-2.png",
+      "ok": true,
+      "ms": 47505,
+      "usage": {
+        "input_tokens": 462,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 462
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6670
+      }
+    },
+    {
+      "phase": "3",
+      "name": "מישל",
+      "repeat": 3,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p3-מישל-3.png",
+      "ok": true,
+      "ms": 52996,
+      "usage": {
+        "input_tokens": 415,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 415
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6623
+      }
+    }
+  ]
+}
