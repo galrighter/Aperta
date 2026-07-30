@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { INITIAL, circumferenceMm, gapOf, stripLengthMm, type CreateState } from "../model";
-import { sizeFromBlank, US_RING_ID_MM, idMmFromUsSize } from "@/lib/sizing";
+import { sizeFromBlank, US_RING_ID_MM, idMmFromUsSize, nearestUsRingSize } from "@/lib/sizing";
+import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 
 // מסע היצירה הוא מסלול ההזמנות בפועל. עד לתיקון הזה הוא חישב
@@ -105,6 +106,29 @@ describe("הפער הוא קבוע אנטומי ולא פונקציה של הי�
 
   it("טבעת מקבלת את פער הטבעת", () => {
     expect(gapOf(ring())).toBe(FAB.products.ring.defaultGapMm);
+  });
+});
+
+describe("מדריך המדידה מסכים עם המנוע", () => {
+  // המדריך נוקב במספרים מפורשים ("היקף 52 מ״מ ≈ מידה 6"). הם היו שגויים
+  // בכ-0.8 מידה, ואין דרך לתפוס את זה חוץ מלבדוק את הטקסט מול המודל.
+  it("העוגנים בטקסט נותנים את המידות שהם מבטיחים", () => {
+    const anchors: Array<[number, number]> = [[52, 6], [54.5, 7], [57, 8]];
+    const text = he.design.guideStepsRing.join(" ");
+    for (const [circ, size] of anchors) {
+      expect(text).toContain(`${circ} מ״מ ≈ מידה ${size}`);
+      expect(nearestUsRingSize(circ / Math.PI)).toBe(size);
+    }
+  });
+
+  it("המדריך לא מבטיח שהטבעת מתכווננת ביד", () => {
+    const text = he.design.guideNoteRing + he.design.guideStepsRing.join(" ");
+    expect(text).not.toMatch(/לכוונן אותה|ניתן לכוונן אותה/);
+  });
+
+  it("המדריך לצמיד לא טוען שהפתח נגזר מסוג הישיבה", () => {
+    // התיישן כשהפתח הפך לקבוע אנטומי והישיבה לתוספת להיקף
+    expect(he.design.guideStepsBracelet.join(" ")).not.toMatch(/הפתח לפי סוג הישיבה/);
   });
 });
 
