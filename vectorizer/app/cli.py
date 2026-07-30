@@ -19,7 +19,7 @@ def main() -> int:
     ap.add_argument("--height", type=float, required=True, help="height in mm")
     ap.add_argument("--role", choices=["metal", "background"], default="metal")
     ap.add_argument("--condition", action="store_true", help="condition a raw metallic render into two-tone first")
-    ap.add_argument("--key", choices=["warm", "dark", "saturation"], default="warm")
+    ap.add_argument("--key", choices=["coverage", "warm", "dark", "saturation", "auto"], default="coverage")
     ap.add_argument("--out", default="out")
     args = ap.parse_args()
 

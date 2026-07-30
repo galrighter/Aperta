@@ -264,15 +264,16 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     };
 
     // 2) הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
-    // עצמם לא עוברים כאן. ההדמיה היא מתכת שחורה מט על לבן, ולכן המפתח הוא "dark"
-    // (255 פחות גווני האפור) — הוא והפרומפט חייבים להשתנות יחד.
+    // עצמם לא עוברים כאן. "coverage" קורא את צבע הרקע משולי התמונה ואת צבע המתכת
+    // מהפיקסלים הרחוקים ממנו, ולכן הוא לא תלוי בכך שהמודל ציית לפרומפט — מה
+    // שנכשל בפועל, ובעקבותיו החזרנו הדמיה מוצללת שסף גלובלי יחיד עיגל למתכת.
     const stamp = Date.now();
     const job = await runRenderJob({
       prompt,
       calls: plan.calls,
       rows: plan.rows,
       heightMm: dims.widthMm,
-      colorKey: "dark",
+      colorKey: "coverage",
       // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה
       // מיישמת אותם. בלי זה שערה של 0.17 מ"מ שהטרייסר משאיר לצד עלה נכנסת ל-SVG
       // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
@@ -296,7 +297,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       designId: design.id,
       productType: design.product_type,
       prompt: body.userPrompt,
-      colorKey: "dark",
+      colorKey: "coverage",
       startedAt,
       render: { path: renderPngPath, model: job.model },
       stagePaths: job.stagePaths,
@@ -378,7 +379,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         source: "studio",
         designId,
         prompt: userPrompt,
-        colorKey: "dark",
+        colorKey: "coverage",
         startedAt,
         error: err instanceof Error ? err.message : String(err),
         vectorizer: null,

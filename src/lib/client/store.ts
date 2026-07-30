@@ -40,7 +40,7 @@ interface StudioState {
   deleteDesign: (id: string) => Promise<void>;
   duplicateDesign: (id: string) => Promise<void>;
   generate: (prompt: string, images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>) => Promise<boolean>;
-  vectorize: (dataUrl: string, colorKey?: "warm" | "dark" | "saturation" | "auto") => Promise<boolean>;
+  vectorize: (dataUrl: string, colorKey?: "coverage" | "warm" | "dark" | "saturation" | "auto") => Promise<boolean>;
   gotoVersion: (idx: number) => Promise<void>;
   setTab: (t: "flat" | "3d" | "render") => void;
   setTool: (t: AnnotationTool) => void;

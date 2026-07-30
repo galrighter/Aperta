@@ -60,7 +60,7 @@ export interface RenderJobInput {
   rows: number;
   /** רוחב הפס שהוזמן — ממנו הווקטורייזר גוזר את הסקאלה. */
   heightMm: number;
-  colorKey: "warm" | "dark" | "saturation" | "auto";
+  colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto";
   /** הפתח המינימלי לייצור. חוקי הייצור נשארים כאן — הקופסה רק מיישמת את המספר,
    *  ומשמיטה פתחים שהלייזר לא יכול לפתוח לפני שהם מגיעים ל-SVG. */
   minHoleMm: number;

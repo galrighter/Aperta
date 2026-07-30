@@ -4,6 +4,10 @@
 // הגריד והזוהר הקובלטי יושבים כאן ולא על .rm-scope: כך כל הדקורציה נעולה לאותה
 // שכבה קבועה וזזה יחד. קודם הצורות היו fixed בעוד הגריד גלל עם התוכן, והשתיים
 // החליקו זו מול זו. שכבה fixed אחת גם זולה יותר מ-background-attachment: fixed.
+//
+// הגובה מגיע מ-.rm-bg-layer (100lvh) ולא מ-inset:0: בנייד גובה ה-viewport
+// משתנה תוך כדי גלילה כשסרגל הכתובת נאסף וחוזר, ושכבה שנגררת אחריו מזיזה כל
+// צורה שממוקמת באחוזים או מלמטה — בדיוק בשינוי כיוון הגלילה.
 const GRID_AND_GLOW =
   "linear-gradient(rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px," +
   "linear-gradient(90deg, rgba(32, 35, 38, 0.028) 1px, transparent 1px) 0 0 / 72px 72px," +
@@ -13,9 +17,13 @@ export default function ArchBackground() {
   return (
     <div
       aria-hidden="true"
+      // הגובה מגיע מ-.rm-bg-layer (100lvh) ולא מ-inset:0 — ראה globals.css.
+      className="rm-bg-layer"
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        left: 0,
+        right: 0,
         overflow: "hidden",
         pointerEvents: "none",
         zIndex: 0,

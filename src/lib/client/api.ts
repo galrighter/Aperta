@@ -240,7 +240,7 @@ export const api = {
   vectorize: (input: {
     designId: string;
     image: { dataUrl: string };
-    colorKey?: "warm" | "dark" | "saturation" | "auto";
+    colorKey?: "coverage" | "warm" | "dark" | "saturation" | "auto";
   }) =>
     call<{
       version: Version;
