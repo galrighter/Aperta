@@ -24,6 +24,10 @@ export interface RenderDims {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+/** מינימומי הייצור נגזרים באינטרפולציה, ולכן יוצאים כ-1.7999999999999998. שתי
+ *  ספרות שומרות על 2.25 האמיתי ומנקות את הרעש — מספר כזה בפרומפט הוא רעש למודל
+ *  ושורה שבורה ביומן. הערך עצמו, זה שהוולידציה עובדת מולו, לא נוגעים בו. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** מודל התמונה מציית למילה טוב יותר מלספרה כשמדובר בכמות. */
 const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX" };
@@ -54,6 +58,10 @@ const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE
  * במצב `editing` הפרומפט מדבר על התמונה המצורפת ("שנה רק את X") במקום לתאר פריט
  * חדש. בלי זה בקשת שינוי הגיעה למודל כתיאור עצמאי על קנבס ריק, והתשובה הייתה
  * צמיד אחר לגמרי — הקלט שהעריכה אמורה לשמר לא הגיע אליו מעולם.
+ *
+ * גם משפט ה-LAYOUT משתנה איתו: הרפרנס מראה פריט אחד, הפלט מכיל `rows`, ומה
+ * שנבדל בין השורות הוא איך השינוי מיושם — לא איזה עיצוב זה. השורות עצמן נשארות
+ * מה שהן ביצירה: הידית על יחס הצדדים, וגם החלופות שהלקוחה בוחרת מהן (panels.ts).
  */
 export function buildRenderPrompt(
   userPrompt: string,
@@ -74,15 +82,25 @@ export function buildRenderPrompt(
   };
   const fab = resolveFab(d.thicknessMm, productType);
   const ratio = round1(d.lengthMm / d.widthMm);
+  // מה שהשורות *הן* תלוי במסלול, ורק המשפט האחרון משתנה. ביצירה כל שורה היא
+  // עיצוב אחר באותה רוח; בעריכה כולן אותו פריט, ומה שנבדל ביניהן הוא איך השינוי
+  // המבוקש מיושם. בלי ההבחנה הזו הפרומפט סתר את עצמו: "כל שורה היא עיצוב אחר"
+  // מול "שמור על הפריט המצורף בדיוק כפי שהוא".
+  const word = WORD[rows] ?? rows;
+  const rowsAre = editing
+    ? `Every row is the attached piece with the change request (below) applied — the same piece each time, ` +
+      `${word} different ways of carrying out that one change, and nothing else about it altered.`
+    : "Each row is a different variation of the same design intent: the same spirit, a different design.";
   const layout =
     rows <= 1
       ? " Show the whole piece, unclipped, with plain white all around it."
-      : ` LAYOUT: the image contains exactly ${WORD[rows] ?? rows} separate pieces, stacked one above another as ` +
-        `${WORD[rows] ?? rows} evenly spaced horizontal rows, with plain white space between them and no line, frame, ` +
-        "divider or caption of any kind. Each row is a complete piece on its own, taking up the same overall extent " +
-        "as above, spanning almost the full width of the image with a thin white margin at each end. Each row is a " +
-        "different variation of the same design intent: the same spirit, a different design. " +
-        "Show every piece whole and unclipped.";
+      : (editing
+          ? ` LAYOUT: the attached image shows the piece once; this image contains exactly ${word} copies of it, `
+          : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
+        `stacked one above another as ${word} evenly spaced horizontal rows, with plain white space between them ` +
+        "and no line, frame, divider or caption of any kind. Each row is a complete piece on its own, taking up the " +
+        "same overall extent as above, spanning almost the full width of the image with a thin white margin at each " +
+        `end. ${rowsAre} Show every piece whole and unclipped.`;
 
   const object =
     productType === "ring"
@@ -94,7 +112,7 @@ export function buildRenderPrompt(
   // מדובר בפריט חדש או בשינוי על קיים.
   const intent = editing
     ? [
-        "The attached image is the CURRENT piece — the one being edited. Redraw that same piece: keep its outline, its proportions and its whole cut pattern exactly as they are in the attached image, and change only what the change request below asks for. Anything the request does not mention stays identical to the attached image. This is an edit of an existing design, not a new design.",
+        "The attached image is the CURRENT piece — the one being edited. Keep it: its outline, its proportions and its whole cut pattern stay exactly as they are in the attached image, and only what the change request below asks for changes. Anything the request does not mention stays identical to the attached image. This is an edit of an existing design, not a new design.",
         "CHANGE REQUEST (apply only this): " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
       ]
     : ["Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + "."];
@@ -111,7 +129,7 @@ export function buildRenderPrompt(
     ...intent,
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
-    `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${fab.minHole}mm, and no part of the remaining metal may be thinner than ${fab.minBridgeBend}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
+    `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(fab.minBridgeBend)}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
 
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props. Nothing may be added around the piece: no caption, no label, no watermark, no dimension annotation and no frame around the image — but lettering that is itself part of the cut pattern is welcome when the design asks for it.",

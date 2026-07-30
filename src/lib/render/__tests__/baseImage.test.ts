@@ -76,4 +76,30 @@ describe("buildRenderPrompt in edit mode", () => {
       expect(p).toContain("NO drop shadow");
     }
   });
+
+  // הרפרנס מראה פריט אחד, הפלט מכיל rows — והמודל צריך לדעת גם את זה וגם מה
+  // אמור להיבדל בין השורות.
+  it("tells the model the attached piece is drawn N times, varying only the change", () => {
+    const edit = buildRenderPrompt("לדלל את החיתוכים", "bracelet", dims, 3, true);
+    expect(edit).toContain("the attached image shows the piece once");
+    expect(edit).toContain("exactly THREE copies of it");
+    expect(edit).toContain("THREE different ways of carrying out that one change");
+    // "עיצוב אחר" הוא בדיוק מה שעריכה אינה
+    expect(edit).not.toContain("a different design");
+  });
+
+  it("still asks for N separate designs when generating", () => {
+    const fresh = buildRenderPrompt("עלים", "bracelet", dims, 3);
+    expect(fresh).toContain("exactly THREE separate pieces");
+    expect(fresh).toContain("the same spirit, a different design");
+    expect(fresh).not.toContain("attached image");
+  });
+
+  it("says nothing about rows at all when there is only one", () => {
+    for (const editing of [true, false]) {
+      const p = buildRenderPrompt("x", "bracelet", dims, 1, editing);
+      expect(p).toContain("Show the whole piece, unclipped");
+      expect(p).not.toContain("LAYOUT:");
+    }
+  });
 });
