@@ -31,24 +31,32 @@ export function ResultScreen({
   const cutouts = cutoutsInner(entry?.svg);
   const L = frameLengthMm(s, entry);
   const W = frameWidthMm(s, entry);
+  /**
+   * הדוח מגיע מ-`validation_report` (jsonb), כלומר מכל גרסה שאי פעם נשמרה —
+   * גם כאלה שנכתבו לפני שהמבנה הנוכחי התייצב. הטיפוס מבטיח `metrics` ו-
+   * `locations`, ה-DB לא: דוח חלקי אחד הפיל את המסע כולו ל-"Application
+   * error" (`report.metrics.openAreaPct` על undefined). לכן כל מה שנקרא ממנו
+   * כאן נקרא בהגנה, ומה שחסר מוצג כ-"—" במקום להפיל את העמוד.
+   */
   const report = entry?.report ?? null;
+  const metrics = report?.metrics ?? null;
+  const checks = report?.checks ?? [];
   const flat = s.resultMode === "flat";
   // הצעות שאפשר לייצר בלבד. השרת כבר מסנן; הסינון כאן שומר גם על תשובה ישנה
   // שנשמרה במצב לפני השינוי.
-  const picks = (entry?.candidates ?? []).filter((c) => c.report.status !== "fail");
+  const picks = (entry?.candidates ?? []).filter((c) => c?.report?.status !== "fail");
 
   // כל מה שהוולידציה סימנה, כדי לצייר את זה על הפריסה. המנוע כבר מחשב מיקום
   // לכל ממצא; עד עכשיו זה נזרק והלקוחה קיבלה פסק דין בלי ראיה.
-  const marks: IssueMark[] = (report?.checks ?? [])
+  const marks: IssueMark[] = checks
     .filter((c) => c.status !== "pass")
     .flatMap((c) =>
-      c.locations.map((l) => ({ ...l, status: c.status as IssueMark["status"] })),
+      (c.locations ?? []).map((l) => ({ ...l, status: c.status as IssueMark["status"] })),
     );
 
   const status = report?.status ?? "pass";
-  const statusText =
-    status === "pass" ? d.fabOk : status === "warn" ? d.fabWarn : d.fabFail;
-  const statusColor = STATUS_COLOR[status];
+  const statusText = statusWord(status);
+  const statusColor = STATUS_COLOR[status] ?? STATUS_COLOR.pass;
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
@@ -138,10 +146,10 @@ export function ResultScreen({
                       disabled={s.applying}
                       onClick={() => onChooseCandidate(i, c.svg)}
                       aria-pressed={on}
-                      aria-label={`${d.candidatesLabel} ${i + 1} — ${
-                        c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail
-                      }${on ? ` · ${d.candidateChosen}` : ""}`}
-                      title={c.report.status === "pass" ? d.fabOk : c.report.status === "warn" ? d.fabWarn : d.fabFail}
+                      aria-label={`${d.candidatesLabel} ${i + 1} — ${statusWord(c.report?.status)}${
+                        on ? ` · ${d.candidateChosen}` : ""
+                      }`}
+                      title={statusWord(c.report?.status)}
                       className={`bg-white p-3 text-start transition ${
                         on
                           ? "border-2 border-graphite"
@@ -152,7 +160,7 @@ export function ResultScreen({
                         <span
                           aria-hidden
                           className="block h-1.5 w-1.5 rounded-full"
-                          style={{ background: STATUS_COLOR[c.report.status] }}
+                          style={{ background: STATUS_COLOR[c.report?.status] ?? STATUS_COLOR.pass }}
                         />
                         {on && (
                           <span className="text-[11px] font-semibold tracking-wide text-graphite">
@@ -228,18 +236,15 @@ export function ResultScreen({
                 {statusText}
               </span>
             </div>
-            <Row k={d.fabOpenArea} v={report ? `${report.metrics.openAreaPct.toFixed(1)}%` : "—"} />
-            <Row
-              k={d.fabWeight}
-              v={report ? `${report.metrics.estWeightGrams.toFixed(1)} ${he.grams}` : "—"}
-            />
+            <Row k={d.fabOpenArea} v={num(metrics?.openAreaPct, "%")} />
+            <Row k={d.fabWeight} v={num(metrics?.estWeightGrams, ` ${he.grams}`)} />
             <Row k={d.fabFormat} v={d.fabFormatVal} />
             <Row k={d.specCuts} v={String(entry ? countCuts(entry.svg) : 0)} />
 
             {/* ממצאים מהוולידציה */}
-            {report && report.checks.some((c) => c.status !== "pass") && (
+            {checks.some((c) => c.status !== "pass") && (
               <ul className="mt-3 flex flex-col gap-1.5 border-t border-graphite/10 pt-3">
-                {report.checks
+                {checks
                   .filter((c) => c.status !== "pass")
                   .slice(0, 4)
                   .map((c, i) => (
@@ -247,7 +252,7 @@ export function ResultScreen({
                       {c.message}
                       {/* כמה, ולא רק מה. "פתח קטן מדי" על ממצא אחד ועל שמונה
                           הם שני מצבים שונים לגמרי מבחינת מה שצריך לעשות. */}
-                      {c.locations.length > 0 && (
+                      {(c.locations?.length ?? 0) > 0 && (
                         <span className="text-ink60"> · {d.fabIssueCount(c.locations.length)}</span>
                       )}
                     </li>
@@ -330,6 +335,18 @@ export function ResultScreen({
       </div>
     </section>
   );
+}
+
+/** מספר מהדוח, או "—" אם הוא חסר. ראו ההערה על `report` למעלה. */
+function num(value: number | undefined, suffix: string): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${value.toFixed(1)}${suffix}`
+    : "—";
+}
+
+/** מצב הייצור במילה אחת. סובל גם סטטוס חסר, שנקרא כמו "עובר". */
+function statusWord(status: string | undefined): string {
+  return status === "fail" ? d.fabFail : status === "warn" ? d.fabWarn : d.fabOk;
 }
 
 function Row({ k, v }: { k: string; v: string }) {
