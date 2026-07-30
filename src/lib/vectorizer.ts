@@ -119,20 +119,6 @@ export async function vectorizeImage(
   return { cutoutsSvg: full.cutoutsSvg, widthMm: full.widthMm, metrics: full.metrics };
 }
 
-/** מריץ את ה-vectorizer במצב debug ומחזיר את כל האבחון (כולל בכשל) — לבק־אופיס. */
-export async function vectorizeImageDebug(
-  bytes: Uint8Array,
-  mediaType: string,
-  opts: { heightMm: number; colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto"; minHoleMm: number },
-): Promise<Record<string, unknown>> {
-  try {
-    return await postJob(bytes, mediaType, { heightMm: opts.heightMm, colorKey: opts.colorKey, minHoleMm: opts.minHoleMm, debug: true });
-  } catch (e) {
-    // מחזירים את השגיאה כאובייקט כדי שהבק־אופיס יציג מה קרה במקום להיכשל.
-    if (e instanceof ApiError) return { __error: e.code, __body: e.message };
-    return { __error: "unknown", __body: (e as Error).message };
-  }
-}
 
 export interface IngestResult {
   version: VersionRow;

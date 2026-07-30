@@ -56,6 +56,8 @@ export type LogItem = {
   inputs?: RunInputs | null;
   owner?: Owner | null;
   designId?: string | null;
+  /** `RM-0047` — המספר הסידורי של העיצוב, הרפרנס שתלונה מגיעה איתו. */
+  ref?: string | null;
   stages: { conditioned: string | null; overlay: string | null; difference: string | null; rendered: string | null };
   /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
   hasSvg: boolean;
@@ -389,7 +391,7 @@ export default function RunsLog({
 
       {promptFor && (
         <PromptDialog
-          subtitle={`${new Date(promptFor.createdAt).toLocaleString("he-IL")}${
+          subtitle={`${promptFor.ref ? `${promptFor.ref} · ` : ""}${new Date(promptFor.createdAt).toLocaleString("he-IL")}${
             promptFor.owner ? ` · ${promptFor.owner.name}` : ""
           }`}
           userPrompt={promptFor.prompt ?? detailOf(details[promptFor.id])?.prompt ?? null}
@@ -486,6 +488,12 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
+            {it.ref && (
+              <span className="font-display text-xs font-bold tracking-[0.12em] text-cobalt" dir="ltr">
+                {it.ref}
+              </span>
+            )}
             <span className={`rounded border px-1.5 text-xs ${STATUS_COLOR[it.status] ?? ""}`}>{it.status}</span>
             <span className="rounded border border-graphite/20 bg-porcelain px-1.5 text-xs text-ink60">{SOURCE_LABEL[it.source] ?? it.source}</span>
             {it.owner && (

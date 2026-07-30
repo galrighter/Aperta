@@ -220,28 +220,42 @@ export async function countRuns(): Promise<{ total: number; failed: number }> {
 }
 
 /**
- * הבעלים של כל הרצה, לפי העיצוב שלה — מה שמאפשר לקבץ את היומן לפי משתמש
- * במקום לפי זמן. שאילתה נפרדת ולא embed: היומן חייב להיטען גם כשהעיצוב נמחק,
- * גם כשמיגרציה 0008 עוד לא רצה, וגם כשהעיצוב שייך לבודק בלי חשבון.
- * best-effort — כשל כאן מחזיר מפה ריקה ומשאיר יומן בלי שיוך.
+ * הבעלים **והמספר הסידורי** של כל עיצוב שביומן, בשאילתה אחת. הבעלים הוא מה
+ * שמאפשר לקבץ את היומן לפי משתמש במקום לפי זמן.
+ *
+ * שאילתה נפרדת ולא embed: היומן חייב להיטען גם כשהעיצוב נמחק, גם כשמיגרציה
+ * 0008 עוד לא רצה, וגם כשהעיצוב שייך לבודק בלי חשבון.
+ *
+ * ה-serial הוא הרפרנס האנושי (`RM-0047`) — אותו מספר שמופיע בלשונית העיצובים,
+ * בהזמנה ובמייל ללקוחה. ביומן הוא נדרש בדיוק מאותה סיבה: תלונה מגיעה עם מספר,
+ * ובלעדיו הדרך היחידה לקשור אותה להרצה היא uuid שאיש לא מקריא בטלפון.
+ * best-effort — כשל כאן מחזיר מפות ריקות ומשאיר יומן בלי שיוך.
  */
-export async function ownersByDesign(designIds: string[]): Promise<Map<string, RunOwner>> {
+export async function designsForRuns(
+  designIds: string[],
+): Promise<{ owners: Map<string, RunOwner>; serials: Map<string, number> }> {
   const ids = [...new Set(designIds)];
-  const out = new Map<string, RunOwner>();
-  if (ids.length === 0) return out;
+  const owners = new Map<string, RunOwner>();
+  const serials = new Map<string, number>();
+  if (ids.length === 0) return { owners, serials };
   try {
     const { data, error } = await supabaseAdmin()
       .from("designs")
-      .select("id, profiles(id, name, color, email)")
+      .select("id, serial, profiles(id, name, color, email)")
       .in("id", ids);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as unknown as Array<{ id: string; profiles: RunOwner | null }>) {
-      if (row.profiles) out.set(row.id, row.profiles);
+    for (const row of (data ?? []) as unknown as Array<{
+      id: string;
+      serial: number | null;
+      profiles: RunOwner | null;
+    }>) {
+      if (row.profiles) owners.set(row.id, row.profiles);
+      if (typeof row.serial === "number") serials.set(row.id, row.serial);
     }
   } catch (e) {
-    console.error("run owner lookup failed:", (e as Error).message);
+    console.error("run design lookup failed:", (e as Error).message);
   }
-  return out;
+  return { owners, serials };
 }
 
 /** שורה בודדת מהיומן — לפירוט מלא (כולל ה-SVG של כל מועמד). */

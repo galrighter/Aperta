@@ -1,32 +1,18 @@
-import { LlmError, type LlmImage } from "./core";
-import { decodeDataUrl } from "@/lib/db/storage";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 
-// יצירת רנדר של הצמיד מטקסט/השראה דרך OpenAI Images API.
-// הרנדר נשלח אחר כך ל-vectorizer להמרה ל-SVG. זה החצי ש-LLM ישיר לא הצליח בו:
-// מודל התמונה מייצר הדמיה יפה, וה-vectorizer הופך אותה לוקטור נקי.
+// הפרומפט שנשלח למודל התמונה.
 //
-// עלות (הפרמטר היקר ביותר בצינור — נמצא כאן במספרים כדי שלא ייעלם שוב):
-//   gpt-image-1-mini · low  · 1536x1024  ≈ $0.006 להרצה  ← מה שרץ, הזול ביותר
+// **הקריאה עצמה כבר לא כאן.** ה-Worker בונה את הטקסט; מי שמדבר עם OpenAI הוא
+// שירות הרנדר בקופסה (src/lib/render/service.ts → vectorizer). עד 30.7 ישבה
+// כאן גם `generateRenderPng`, שהקורא היחיד שלה היה מסלול ההרצה של הבק־אופיס —
+// הצינור השני שנמחק. עם מחיקתו ה-Worker הפסיק להחזיק לקוח של מודל תמונה בכלל,
+// כלומר מקום אחד פחות שמחזיק מפתח שעולה כסף.
+//
+// עלות (הפרמטר היקר ביותר בצינור — נשמר כאן במספרים כדי שלא ייעלם):
+//   gpt-image-1-mini · low  · 1536x1024  ≈ $0.006 לקריאה  ← מה שרץ
 //   gpt-image-1-mini · high · 1536x1024  ≈ $0.05
 //   gpt-image-1      · high · 1536x1024  ≈ $0.25          ← מה שהיה עד 26.7
-// אין נסיגה לדגם יקר יותר, בכוונה: נסיגה שקטה שעולה פי ארבעים היא בדיוק סוג
-// ההוצאה שאי אפשר לראות בקוד. כשל מחזיר שגיאה מפורשת ולא חשבון מפתיע.
-//
-// dall-e-3, שהיה כאן כנסיגה, לא היה שבור אלא לא-קיים: dall-e-2/3 הוסרו מה-API
-// ב-12.5.2026, וזה התגלה כשהתקציב נגמר ב-26.7 והענף נקרא בפעם הראשונה.
-const IMAGE_MODELS = ["gpt-image-1-mini"] as const;
-const IMAGE_TIMEOUT_MS = 120_000;
-
-export interface RenderResult {
-  base64: string;
-  mediaType: string;
-  model: string;
-}
-
-function openaiKey(): string | undefined {
-  return process.env.OPENAI_KEY || process.env.OPENAI_API_KEY;
-}
+// ומאז 30.7 יש בדיוק קריאה אחת להרצה, גם ביצירה וגם בעריכה — ראה panels.ts.
 
 export type RenderProductType = "bracelet" | "ring";
 
@@ -131,98 +117,4 @@ export function buildRenderPrompt(
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props. Nothing may be added around the piece: no caption, no label, no watermark, no dimension annotation and no frame around the image — but lettering that is itself part of the cut pattern is welcome when the design asks for it.",
     "Maximum contrast: the metal is one deep, uniform matte black (about #111111) with no sheen, no highlight and no colour cast, so it separates from the pure white background and from the openings as sharply as possible.",
   ].join(" ");
-}
-
-interface Attempt {
-  ok: boolean;
-  base64?: string;
-  error?: string;
-}
-
-async function callImages(
-  path: string,
-  init: RequestInit & { signal: AbortSignal },
-): Promise<Attempt> {
-  const res = await fetch(`https://api.openai.com/v1/images/${path}`, init);
-  if (!res.ok) {
-    return { ok: false, error: `${res.status} ${(await res.text()).slice(0, 200)}` };
-  }
-  const data = (await res.json()) as { data?: Array<{ b64_json?: string }> };
-  const b64 = data.data?.[0]?.b64_json;
-  if (!b64) return { ok: false, error: "no image in response" };
-  return { ok: true, base64: b64 };
-}
-
-/**
- * מייצר רנדר PNG של הצמיד. אם ניתנה תמונת השראה — משתמש ב-edits עם התמונה כרפרנס;
- * אחרת generations מטקסט. דגם אחד בלבד — gpt-image-1-mini ב-quality נמוך.
- */
-export async function generateRenderPng(
-  userPrompt: string,
-  inspiration: LlmImage | null,
-  productType: RenderProductType = "bracelet",
-  dims?: RenderDims,
-  /** עוקף את הפרומפט הבנוי — לבק־אופיס בלבד, כדי לנסות ניסוחים בלי לפרוס. */
-  promptOverride?: string | null,
-  rows = 1,
-): Promise<RenderResult> {
-  const key = openaiKey();
-  if (!key) throw new LlmError("OPENAI_KEY is not configured for image generation", false);
-
-  const prompt = promptOverride?.trim() || buildRenderPrompt(userPrompt, productType, dims, rows);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IMAGE_TIMEOUT_MS);
-  const errors: string[] = [];
-
-  try {
-    for (const model of IMAGE_MODELS) {
-      const useEdit = inspiration !== null;
-      try {
-        let attempt: Attempt;
-        if (useEdit && inspiration) {
-          const { bytes } = decodeDataUrl(`data:${inspiration.mediaType};base64,${inspiration.base64}`);
-          const form = new FormData();
-          form.append("model", model);
-          form.append("prompt", prompt);
-          form.append("size", "1536x1024");
-          // ברירת המחדל של edits היא quality גבוה — נאמר במפורש, אחרת נתיב
-          // ההשראה משלם פי עשרה מנתיב הטקסט על אותה תמונה.
-          form.append("quality", "low");
-          form.append("image", new Blob([bytes as BlobPart], { type: inspiration.mediaType }), "inspiration.png");
-          attempt = await callImages("edits", {
-            method: "POST",
-            headers: { authorization: `Bearer ${key}` },
-            body: form,
-            signal: controller.signal,
-          });
-        } else {
-          const body: Record<string, unknown> = {
-            model,
-            prompt,
-            n: 1,
-            // היחס 3:2 הוא מה שנשלח; הפרופורציה של הפס עצמו נאמרת בפרומפט.
-            size: "1536x1024",
-            quality: "low",
-          };
-          attempt = await callImages("generations", {
-            method: "POST",
-            headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
-        }
-        if (attempt.ok && attempt.base64) {
-          return { base64: attempt.base64, mediaType: "image/png", model };
-        }
-        errors.push(`${model}: ${attempt.error}`);
-      } catch (e) {
-        if (controller.signal.aborted) throw new LlmError("Image generation timed out", true);
-        errors.push(`${model}: ${(e as Error).message}`);
-      }
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-
-  throw new LlmError(`Image generation failed. ${errors.join(" | ")}`, true);
 }

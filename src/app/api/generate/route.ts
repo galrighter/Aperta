@@ -4,11 +4,12 @@ import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { getDesign, countTodayGenerations } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
+import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
-import { CANDIDATE_TARGET, planRender } from "@/lib/render/panels";
+import { planRender } from "@/lib/render/panels";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
@@ -58,6 +59,12 @@ const schema = z.object({
   userPrompt: z.string().min(1).max(4000),
   currentSvg: z.string().max(500_000).nullable().optional(),
   images: z.array(imageSchema).max(3).default([]),
+
+  // --- כיול פרומפט (בק־אופיס בלבד; ראה את השער ב-POST) ---
+  /** הפרומפט המדויק שיישלח למודל, במקום זה שנבנה מהמידות. */
+  promptOverride: z.string().max(8000).optional(),
+  /** כמה פריטים בתמונה, במקום מה ש-planRender גוזר מהיחס. */
+  rowsOverride: z.number().int().min(1).max(40).optional(),
 });
 
 const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -79,6 +86,11 @@ export async function POST(req: Request) {
     // הבעלות היא הראשונה שנבדקת, והיא היחידה שעולה כסף: יצירה היא הרצת מנוע,
     // והמכסה נספרת על הפרופיל של העיצוב. בלי הבדיקה הזו מזהה עיצוב של חבר היה
     // מספיק כדי לשרוף את המכסה שלו — ואת התקציב שלנו.
+    // כיול הפרומפט רץ על **אותו מסלול** כמו הלקוחה — זו כל הנקודה: הבדל אחד
+    // מכוון ולא צינור שני שנשאר תואם בזכות משמעת. אבל טקסט חופשי שנשלח ישירות
+    // למודל התמונה עם המפתח שלנו הוא, בלי שער, כרטיס אשראי פתוח לכל אחד.
+    if (body.promptOverride || body.rowsOverride) requireAdmin(req);
+
     const design = await requireDesignAccess(req, body.designId);
     const used = await countTodayGenerations(design.profile_id);
     if (used >= FAB.DAILY_GENERATION_LIMIT) {
@@ -206,19 +218,23 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       thicknessMm: Number(design.thickness_mm),
     };
     //
-    // עריכה (currentSvg קיים): הפריט הקיים נמסר למודל כתמונה, ולכן שני דברים
-    // משתנים. הפרומפט מדבר על התמונה המצורפת ולא מתאר פריט חדש; והתכנון עובר
-    // לשורה אחת בכל קריאה — מספר השורות הוא הידית על יחס הצדדים, ומול רפרנס
-    // היחס מגיע מהרפרנס. המועמדים נשארים ארבעה, עכשיו מארבע קריאות נפרדות
-    // במקום משורות (~$0.024 להרצת עריכה במקום ~$0.012 — ראה imagegen.ts).
-    const baseSvg = buildBaseRenderSvg(body.currentSvg);
-    const plan = baseSvg
-      ? { rows: 1, calls: CANDIDATE_TARGET, candidates: CANDIDATE_TARGET }
-      : planRender(dims.lengthMm / dims.widthMm, CANDIDATE_TARGET);
-    const prompt = buildRenderPrompt(
-      body.userPrompt, design.product_type, dims, plan.rows, Boolean(baseSvg),
-    );
+    // עריכה (currentSvg קיים): הפריט הקיים נמסר למודל כתמונה, ולכן הפרומפט
+    // מדבר על התמונה המצורפת ולא מתאר פריט חדש. **התכנון זהה** ליצירה מאפס:
+    // רפרנס ושורות דוחפים לאותו יחס, לא זה נגד זה, ואין סיבה לוותר על אחד מהם.
+    // עד 30.7 עריכה קיבלה שורה אחת בארבע קריאות — נימוק שלא נמדד מעולם, ופי
+    // ארבעה בעלות מול הצינור החדש (~$0.006 להרצה).
     const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
+    const baseSvg = buildBaseRenderSvg(body.currentSvg);
+    const plan = body.rowsOverride
+      ? { rows: body.rowsOverride, calls: 1 as const, candidates: body.rowsOverride }
+      : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm });
+    // הפרומפט מהבק־אופיס נשלח **כמו שהוא**. שים לב שמשפט ה-LAYOUT יושב בתוכו,
+    // ומספר השורות שחותך בפועל הוא `plan.rows` — אם הם סותרים, הקופסה תחתוך
+    // לפי plan.rows. זה מכוון (אפשר לנסות ניסוח מול חיתוך אחר), והמסך מציג את
+    // המספר שיחתוך ליד התיבה כדי שהסתירה תהיה גלויה.
+    const prompt =
+      body.promptOverride?.trim() ||
+      buildRenderPrompt(body.userPrompt, design.product_type, dims, plan.rows, Boolean(baseSvg));
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
     // שבנו אותו. הוא נבנה כאן ולא בתוך persistRun כדי ששתי הקריאות — ההצלחה
@@ -238,6 +254,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
         editedFromCurrent: Boolean(baseSvg),
+        /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
+        promptOverride: Boolean(body.promptOverride?.trim()),
       },
       inputImage: inspiration
         ? { bytes: decodeDataUrl(`data:${inspiration.mediaType};base64,${inspiration.base64}`).bytes,

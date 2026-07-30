@@ -1,18 +1,23 @@
 "use client";
 
-// מעבדת היצירה: מריצה את כל הצינור (הדמיה → קונדישנינג → טרייס → החלקה →
-// שערי נאמנות) ומציגה כל שלב וכל קובץ, עם סימון נקודות כשל. כל הרצה נשמרת ליומן.
+// מעבדת הפרומפט.
 //
-// מאחורי אותו שער של `/admin`: כאן יושבים הפרומפטים המלאים, ההדמיות והטקסט
-// החופשי שלקוחות כתבו. השער האמיתי הוא `requireAdmin` על מסלולי ה-API —
-// העטיפה כאן היא כדי שהעמוד יציג טופס כניסה במקום יומן ריק.
+// **אין כאן צינור שני.** ההרצה היא `/api/generate` — אותו מסלול בדיוק שהלקוחה
+// מריצה — עם שני פרמטרים נוספים שמותרים לאדמין: הפרומפט המדויק, ומספר הפריטים
+// בתמונה. כל השאר (הקופסה, החיתוך לפאנלים, המסגור, הוולידציה, שמירת הגרסה)
+// זהה בהגדרה ולא בזכות משמעת.
 //
-// היומן עצמו הוא הרכיב המשותף `RunsLog`, שמוצג גם ב-`/admin/runs`.
-import { useEffect, useRef, useState } from "react";
+// עד 30.7 היה כאן צינור נפרד (`/api/debug/run`): שורה אחת תמיד, ומעקב על
+// התמונה כולה במקום חיתוך לפאנלים. הוא נמחק — מעבדה שמתנהגת אחרת מהייצור
+// גובה יותר משהיא מחזירה, וזה בדיוק מה שקרה: הרצה מהאתר אובחנה כהרצה ממנו.
+//
+// העיצובים נשמרים תחת פרופיל `prompt-debug`, ולכן הם לא מתערבבים ברשימה של אף
+// לקוחה, המכסה היומית שלהם נפרדת, וביומן אפשר לסנן אותם בלחיצה.
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import { AdminGate } from "@/components/admin/AdminGate";
-import RunsLog, { Diagnostics, PromptDialog, type RunDebug } from "@/components/admin/RunsLog";
+import RunsLog from "@/components/admin/RunsLog";
 
 function fileToDataUrl(f: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -23,34 +28,58 @@ function fileToDataUrl(f: File): Promise<string> {
   });
 }
 
+interface LabPlan {
+  profileId: string;
+  dims: { lengthMm: number; widthMm: number; thicknessMm: number };
+  minHoleMm: number;
+  plannedRows: number;
+  maxRows: number;
+  rows: number;
+  prompt: string;
+}
+
+interface RunResult {
+  runId: string;
+  version: { id: string; svg: string; validation_status: string };
+  candidates: Array<{ svg: string; report: { status: string } }>;
+  render: { model: string | null; url: string | null };
+  lengthMm: number;
+  widthMm: number;
+}
+
 export default function DebugPage() {
   return (
     <AdminGate>
-      <DebugConsole />
+      <PromptLab />
     </AdminGate>
   );
 }
 
-function DebugConsole() {
+function PromptLab() {
+  const [view, setView] = useState<"lab" | "log">("lab");
+
+  const [productType, setProductType] = useState<"bracelet" | "ring">("bracelet");
+  const [lengthMm, setLengthMm] = useState(160);
+  const [widthMm, setWidthMm] = useState(18);
+  const [thicknessMm, setThicknessMm] = useState(1.5);
+  const [brief, setBrief] = useState("");
+  const [rows, setRows] = useState<number | null>(null);
+  /** עריכה: ההרצה יוצאת מהתוצאה הקודמת במקום מאפס. */
+  const [editing, setEditing] = useState(false);
+
+  const [plan, setPlan] = useState<LabPlan | null>(null);
   const [prompt, setPrompt] = useState("");
+  /** האם נגעת בטקסט. אחרי שנגעת, שינוי מידות לא ידרוס את מה שכתבת. */
+  const [dirty, setDirty] = useState(false);
+
   const [image, setImage] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
-  const [heightMm, setHeightMm] = useState(15);
-  const [colorKey, setColorKey] = useState("coverage");
-  const [productType, setProductType] = useState("bracelet");
+  const fileRef = useRef<HTMLInputElement>(null);
+
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [render, setRender] = useState<{ dataUrl: string; model: string | null } | null>(null);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [view, setView] = useState<"run" | "log">("run");
-  /** הפרומפט של ההרצה החיה, כפי שהשרת מדווח שנשלח בפועל. */
-  const [runPrompt, setRunPrompt] = useState<string | null>(null);
-  const [showRunPrompt, setShowRunPrompt] = useState(false);
-
-  const debug = (result?.debug ?? null) as RunDebug | null;
-  const svg = (result?.metal_svg ?? result?.cutouts_svg ?? null) as string | null;
+  const [result, setResult] = useState<RunResult | null>(null);
 
   useEffect(() => {
     if (!busy) return;
@@ -58,27 +87,74 @@ function DebugConsole() {
     return () => clearInterval(t);
   }, [busy]);
 
-  const run = async (override?: { image?: string; prompt?: string }) => {
-    const useImage = override?.image ?? image;
-    const usePrompt = override?.prompt ?? prompt;
-    setView("run");
+  /** ברירת המחדל: הפרומפט שהייצור היה בונה לאותן מידות, ומה שהתכנון בוחר. */
+  const loadPlan = useCallback(
+    async (opts: { keepPrompt: boolean }) => {
+      try {
+        const res = await fetch("/api/admin/prompt-lab", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            productType, lengthMm, widthMm, thicknessMm,
+            userPrompt: brief, editing, rows: rows ?? undefined,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as LabPlan;
+        setPlan(data);
+        if (!opts.keepPrompt) {
+          setPrompt(data.prompt);
+          setDirty(false);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [productType, lengthMm, widthMm, thicknessMm, brief, editing, rows],
+  );
+
+  useEffect(() => {
+    void loadPlan({ keepPrompt: dirty });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productType, lengthMm, widthMm, thicknessMm, editing, rows]);
+
+  const run = async () => {
+    if (!plan) return;
     setBusy(true);
     setElapsed(0);
     setError(null);
-    setRender(null);
+    const previous = result;
     setResult(null);
-    setRunPrompt(null);
     try {
-      const resp = await fetch("/api/debug/run", {
+      // עיצוב חדש לכל הרצה, תחת פרופיל הכיול. `/api/designs` מתיר `profileId`
+      // מפורש כשהוא של בודק — ולכן אין כאן צורך בעוגייה או בהרשאה מיוחדת.
+      const dRes = await fetch("/api/designs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: usePrompt || undefined, image: useImage ? { dataUrl: useImage } : null, heightMm, colorKey, productType }),
+        body: JSON.stringify({
+          profileId: plan.profileId,
+          productType, lengthMm, widthMm, thicknessMm,
+          name: `כיול ${new Date().toLocaleTimeString("he-IL")}`,
+        }),
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error?.message || data?.message || `HTTP ${resp.status}`);
-      setRender(data.render);
-      setResult(data.result);
-      setRunPrompt(data.renderPrompt ?? null);
+      if (!dRes.ok) throw new Error(`יצירת עיצוב נכשלה (HTTP ${dRes.status})`);
+      const { design } = (await dRes.json()) as { design: { id: string } };
+
+      const gRes = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          designId: design.id,
+          userPrompt: brief || "כיול פרומפט",
+          promptOverride: prompt,
+          rowsOverride: plan.rows,
+          currentSvg: editing ? (previous?.version.svg ?? null) : null,
+          images: image ? [{ kind: "inspiration", dataUrl: image }] : [],
+        }),
+      });
+      const data = await gRes.json();
+      if (!gRes.ok) throw new Error(data?.error?.message || `HTTP ${gRes.status}`);
+      setResult(data as RunResult);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -86,149 +162,195 @@ function DebugConsole() {
     }
   };
 
-  /** "הרץ מחדש" מהיומן: ההדמיה של ההרצה נטענת לטופס וכל הצינור רץ עליה שוב. */
-  const openInDebug = async (renderUrl: string) => {
-    try {
-      const blob = await (await fetch(renderUrl)).blob();
-      const dataUrl: string = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result as string);
-        r.onerror = rej;
-        r.readAsDataURL(blob);
-      });
-      setImage(dataUrl);
-      setImageName("מהיומן");
-      void run({ image: dataUrl, prompt: "" });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const img = (b64: string) => `data:image/png;base64,${b64}`;
+  const rowsShown = plan?.rows ?? 1;
 
   return (
     <div dir="rtl" className="mx-auto max-w-5xl p-4 text-sm">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-lg font-bold">{he.site.adminNavLab} — צינור תמונה→SVG</h1>
+        <h1 className="text-lg font-bold">{he.site.adminNavLab} — כיול פרומפט</h1>
         <Link href="/admin" className="text-[13px] text-cobalt hover:underline">
           → {he.site.adminBackHome}
         </Link>
       </div>
 
       <div className="mb-4 flex gap-2">
-        <button className={`rounded-[2px] px-4 py-1.5 ${view === "run" ? "bg-graphite text-white" : "border border-graphite/20"}`}
-          onClick={() => setView("run")}>הרצה</button>
+        <button className={`rounded-[2px] px-4 py-1.5 ${view === "lab" ? "bg-graphite text-white" : "border border-graphite/20"}`}
+          onClick={() => setView("lab")}>כיול</button>
         <button className={`rounded-[2px] px-4 py-1.5 ${view === "log" ? "bg-graphite text-white" : "border border-graphite/20"}`}
           onClick={() => setView("log")}>{he.site.adminNavRuns}</button>
       </div>
 
-      {view === "log" && <RunsLog onRerun={(url) => void openInDebug(url)} />}
+      {view === "log" && <RunsLog />}
 
-      {view === "run" && <div className="mb-4 grid gap-2 rounded-[2px] border border-graphite/10 bg-white p-3">
-        <textarea
-          className="min-h-16 w-full rounded-[2px] border border-graphite/20 p-2"
-          placeholder="פרומפט לעיצוב (למסלול טקסט→הדמיה)…"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-            onChange={async (e) => {
-              const f = e.target.files?.[0];
-              setImage(f ? await fileToDataUrl(f) : null);
-              setImageName(f ? f.name : null);
-            }} />
-          <button type="button" className="rounded-[2px] border border-graphite/20 bg-porcelain px-3 py-1.5 hover:bg-porcelain"
-            onClick={() => fileRef.current?.click()}>
-            📎 העלאת תמונה
-          </button>
-          {imageName && (
-            <span className="text-xs text-ink60">{imageName}
-              <button className="ms-1 text-rose-600" onClick={() => { setImage(null); setImageName(null); if (fileRef.current) fileRef.current.value = ""; }}>✕</button>
-            </span>
-          )}
-          <label className="flex items-center gap-1">מוצר:
-            <select className="rounded border border-graphite/20 p-1" value={productType} onChange={(e) => setProductType(e.target.value)}>
-              <option value="bracelet">צמיד</option>
-              <option value="ring">טבעת</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-1">רוחב (מ״מ):
-            <input type="number" className="w-16 rounded border border-graphite/20 p-1" value={heightMm}
-              onChange={(e) => setHeightMm(Number(e.target.value))} />
-          </label>
-          <label className="flex items-center gap-1">צבע:
-            <select className="rounded border border-graphite/20 p-1" value={colorKey} onChange={(e) => setColorKey(e.target.value)}>
-              <option value="coverage">coverage (כיסוי — ברירת מחדל)</option>
-              <option value="auto">אוטומטי</option>
-              <option value="warm">warm (פליז)</option>
-              <option value="dark">dark (מתכת כהה — כמו ההדמיות שנוצרות)</option>
-              <option value="saturation">saturation</option>
-            </select>
-          </label>
-          <button className="rounded-[2px] bg-graphite px-5 py-1.5 text-white disabled:opacity-60" disabled={busy} onClick={() => void run()}>
-            {busy ? `מריץ… ${elapsed}s` : "הרץ"}
-          </button>
-          {runPrompt && (
-            <button
-              type="button"
-              className="rounded-[2px] border border-cobalt px-3 py-1.5 text-cobalt hover:bg-cobalt/5"
-              onClick={() => setShowRunPrompt(true)}
-            >
-              הפרומפט שנשלח
-            </button>
-          )}
-        </div>
-        {busy && (
-          <div className="flex items-center gap-2 rounded-[2px] bg-amber-50 px-3 py-2 text-amber-800">
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-amber-700" />
-            מייצר הדמיה וממיר ל-SVG… זה לוקח בערך 30–60 שניות, אל תסגור את הדף.
+      {view === "lab" && (
+        <div className="grid gap-4">
+          <div className="grid gap-3 rounded-[2px] border border-graphite/10 bg-white p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1">מוצר:
+                <select className="rounded border border-graphite/20 p-1" value={productType}
+                  onChange={(e) => setProductType(e.target.value as "bracelet" | "ring")}>
+                  <option value="bracelet">צמיד</option>
+                  <option value="ring">טבעת</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-1">אורך:
+                <input type="number" className="w-20 rounded border border-graphite/20 p-1" value={lengthMm}
+                  onChange={(e) => setLengthMm(Number(e.target.value))} />
+              </label>
+              <label className="flex items-center gap-1">רוחב:
+                <input type="number" className="w-16 rounded border border-graphite/20 p-1" value={widthMm}
+                  onChange={(e) => setWidthMm(Number(e.target.value))} />
+              </label>
+              <label className="flex items-center gap-1">עובי:
+                <input type="number" step="0.1" className="w-16 rounded border border-graphite/20 p-1" value={thicknessMm}
+                  onChange={(e) => setThicknessMm(Number(e.target.value))} />
+              </label>
+              <label className="flex items-center gap-1">פריטים בתמונה:
+                <input type="number" min={1} max={plan?.maxRows ?? 40}
+                  className="w-16 rounded border border-graphite/20 p-1"
+                  value={rowsShown}
+                  onChange={(e) => setRows(Number(e.target.value) || null)} />
+              </label>
+              {plan && (
+                <span className="text-xs text-mist">
+                  התכנון בוחר {plan.plannedRows} · תקרה {plan.maxRows} (פתח מ׳ {plan.minHoleMm} מ״מ)
+                </span>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-ink60">
+              <input type="checkbox" checked={editing} onChange={(e) => setEditing(e.target.checked)} />
+              עריכה — ההרצה יוצאת מהתוצאה הקודמת כתמונת רפרנס
+              {editing && !result && <span className="text-amber-700">(אין עדיין תוצאה קודמת)</span>}
+            </label>
+
+            <textarea
+              className="min-h-14 w-full rounded-[2px] border border-graphite/20 p-2"
+              placeholder="הבריף של הלקוחה — הוא מוטמע בתוך הפרומפט"
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              onBlur={() => void loadPlan({ keepPrompt: dirty })}
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  setImage(f ? await fileToDataUrl(f) : null);
+                  setImageName(f ? f.name : null);
+                }} />
+              <button type="button" className="rounded-[2px] border border-graphite/20 bg-porcelain px-3 py-1.5"
+                onClick={() => fileRef.current?.click()}>
+                📎 תמונת השראה
+              </button>
+              {imageName && (
+                <span className="text-xs text-ink60">{imageName}
+                  <button className="ms-1 text-rose-600" onClick={() => {
+                    setImage(null); setImageName(null);
+                    if (fileRef.current) fileRef.current.value = "";
+                  }}>✕</button>
+                </span>
+              )}
+            </div>
           </div>
-        )}
-      </div>}
 
-      {view === "run" && error && <div className="mb-4 break-words rounded-[2px] border border-red-300 bg-red-50 p-3 text-red-800">שגיאה: {error}</div>}
+          <div className="grid gap-2 rounded-[2px] border border-graphite/10 bg-white p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold">הפרומפט שיישלח למודל</span>
+              <div className="flex items-center gap-2">
+                {dirty && <span className="text-xs text-amber-700">נערך ידנית</span>}
+                <button type="button" onClick={() => void loadPlan({ keepPrompt: false })}
+                  className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain">
+                  שחזר ברירת מחדל
+                </button>
+              </div>
+            </div>
+            <textarea
+              dir="ltr"
+              className="min-h-64 w-full rounded-[2px] border border-graphite/20 p-2 font-mono text-xs"
+              value={prompt}
+              onChange={(e) => { setPrompt(e.target.value); setDirty(true); }}
+            />
+            {/* משפט ה-LAYOUT יושב בתוך הטקסט, אבל מי שחותך בפועל הוא המספר
+                שלמעלה. אם ערכת אותם לכיוונים שונים — זה מוצג ולא מוסתר. */}
+            <div className="text-xs text-mist">
+              החיתוך בקופסה יהיה ל-{rowsShown} פריטים, ללא תלות במה שכתוב בטקסט ·
+              קריאה אחת למודל (~$0.006)
+            </div>
+          </div>
 
-      {view === "run" && debug && (
-        <Diagnostics
-          images={{
-            render: render?.dataUrl ?? null,
-            conditioned: debug.images?.conditioned ? img(debug.images.conditioned) : null,
-            overlay: debug.images?.overlay ? img(debug.images.overlay) : null,
-            difference: debug.images?.difference ? img(debug.images.difference) : null,
-            rendered: debug.images?.rendered ? img(debug.images.rendered) : null,
-          }}
-          renderModel={render?.model ?? null}
-          svg={svg}
-          debug={debug}
-          svgName="lab-run"
-        />
-      )}
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="rounded-[2px] bg-graphite px-5 py-1.5 text-white disabled:opacity-60"
+              disabled={busy || !plan} onClick={() => void run()}>
+              {busy ? `מריץ… ${elapsed}s` : "הרץ"}
+            </button>
+            {plan && (
+              <span className="text-xs text-mist">
+                נשמר תחת פרופיל <bdi>prompt-debug</bdi>
+              </span>
+            )}
+          </div>
 
-      {view === "run" && result && !debug && (
-        <div className="rounded-[2px] border border-amber-300 bg-amber-50 p-3">
-          <div className="mb-1 font-semibold text-amber-800">אין פירוק שלבים — תגובת המנוע הגולמית:</div>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(result, null, 2)}</pre>
+          {busy && (
+            <div className="flex items-center gap-2 rounded-[2px] bg-amber-50 px-3 py-2 text-amber-800">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-amber-300 border-t-amber-700" />
+              הצינור המלא רץ — הדמיה, חיתוך, וקטור, ולידציה. 30–60 שניות.
+            </div>
+          )}
+
+          {error && (
+            <div className="break-words rounded-[2px] border border-red-300 bg-red-50 p-3 text-red-800">
+              שגיאה: {error}
+            </div>
+          )}
+
+          {result && <RunOutcome result={result} onLog={() => setView("log")} />}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* אותו חלון על ההרצה החיה — הפרומפט חוזר עם התשובה, בלי סיבוב נוסף. */}
-      {showRunPrompt && (
-        <PromptDialog
-          subtitle="ההרצה הנוכחית"
-          userPrompt={prompt || null}
-          imageUrl={image}
-          inputs={{
-            productType,
-            widthMm: heightMm,
-            colorKey,
-            imageUpload: Boolean(image),
-          }}
-          renderPrompt={runPrompt}
-          state="ready"
-          onClose={() => setShowRunPrompt(false)}
-        />
+/**
+ * מה שחזר. בכוונה מצומצם: כל האבחון — השלבים, המועמדים שנדחו, הפרומפט
+ * שנשלח — כבר יושב ביומן על אותה הרצה, ואין סיבה לתחזק אותו בשני מקומות.
+ */
+function RunOutcome({ result, onLog }: { result: RunResult; onLog: () => void }) {
+  return (
+    <div className="grid gap-3 rounded-[2px] border border-cobalt/40 bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold">
+          {result.candidates.length} חלופות · {Math.round(result.lengthMm)}×{result.widthMm} מ״מ
+          <span className="ms-2 text-xs font-normal text-mist">
+            אורך נגזר — כמה שהמודל באמת צייר
+          </span>
+        </div>
+        <button type="button" onClick={onLog} className="text-[13px] text-cobalt hover:underline">
+          → ההרצה ביומן, עם השלבים והפרומפט
+        </button>
+      </div>
+
+      {result.render.url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={result.render.url} alt="ההדמיה שחזרה" className="w-full rounded bg-porcelain object-contain" />
       )}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {result.candidates.map((c, i) => (
+          <div key={i} className="rounded-[2px] border border-graphite/10 p-2">
+            <div className="mb-1 flex items-center justify-between text-xs text-ink60">
+              <span>חלופה {i + 1}</span>
+              <span className={c.report.status === "pass" ? "text-green-700" : "text-amber-700"}>
+                {c.report.status}
+              </span>
+            </div>
+            <div
+              className="w-full rounded bg-[#101114] p-2 [&_svg]:w-full [&_svg]:fill-[#ffd43b] [&_svg_*]:fill-[#ffd43b]"
+              dangerouslySetInnerHTML={{ __html: c.svg }}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
