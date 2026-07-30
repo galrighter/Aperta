@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
-import { listRuns, ownersByDesign, type RunStagePaths } from "@/lib/db/runs";
+import { listRuns, ownersByDesign, type RunStagePaths, type RunStatusFilter } from "@/lib/db/runs";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 
@@ -18,8 +18,23 @@ import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 // העשירית ואילך כל חתימה נכשלה בשקט והיומן הופיע בלי תמונות. מה שחוזר כאן הוא
 // קישור ל-/api/debug/log/<id>/image/<name>, שחותם בעצמו — בקשה לתמונה, תקציב
 // לתמונה. עלות הרשימה ירדה מ-401 בקשות לאחת.
+//
+// והרשימה מעומדת: `limit` + `before` (סמן זמן, לא `offset`). קודם היא החזירה 80
+// הרצות קבועות — גם כבד וגם קטוע, כי הרצה שמעבר ל-80 פשוט לא הייתה קיימת במסך.
+// גם הסינון עבר לכאן: "נכשלו" סורק את כל ההיסטוריה, ולא רק את מה שנטען.
+// הספירה יושבת ב-/api/debug/log/counts — מספר בלי שורות.
 
 export const maxDuration = 60;
+
+/** גודל עמוד. 80 בבת אחת היו תשובה כבדה שנטענה שניות לפני שהופיע משהו. */
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 80;
+
+const pageSize = (raw: string | null): number => {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_LIMIT;
+  return Math.min(Math.floor(n), MAX_LIMIT);
+};
 
 /** מסיר את ה-SVG הכבדים מה-debug ומשאיר את כל המדדים שהרשימה מציגה. */
 function slimDebug(debug: unknown): unknown {
@@ -38,16 +53,34 @@ export async function GET(req: Request) {
     // היומן נושא טקסט חופשי שלקוחות כתבו, את הפרומפט המלא ואת ההדמיות. עד
     // עכשיו הוא היה פתוח לכל מי שידע את הכתובת.
     requireAdmin(req);
-    const rows = await listRuns(80);
+    const params = new URL(req.url).searchParams;
+    const limit = pageSize(params.get("limit"));
+    const before = params.get("before");
+    const statusParam = params.get("status");
+    const status: RunStatusFilter | null =
+      statusParam === "approved" || statusParam === "problem" ? statusParam : null;
+
+    // שורה אחת מעל גודל העמוד היא הדרך הזולה לדעת אם יש עמוד נוסף — בלי
+    // שאילתת ספירה שנייה לכל גלילה.
+    const fetched = await listRuns({ limit: limit + 1, before, status });
+    const hasMore = fetched.length > limit;
+    const rows = hasMore ? fetched.slice(0, limit) : fetched;
+    const nextBefore = hasMore && rows.length ? rows[rows.length - 1].created_at : null;
 
     // ניסיון שלא הגיע לשורת הרצה. בלעדיו יצירה שנקטעה נעדרת מהיומן לגמרי,
     // ו"אין שורה" נראה בדיוק כמו "לא היה ניסיון" — המקרה היחיד שאי אפשר לאבחן.
+    // בסינון "הצליחו" אין להם מקום: בקשה בלי הרצה לא הצליחה בהגדרה.
     let orphans: OrphanItem[] = [];
-    try {
-      orphans = orphanJobs(await listRecentJobs(80), rows);
-    } catch (e) {
-      // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
-      console.error("orphan job lookup failed:", (e as Error).message);
+    if (status !== "approved") {
+      try {
+        orphans = orphanJobs(await listRecentJobs(80), rows, {
+          before,
+          toEnd: !hasMore,
+        });
+      } catch (e) {
+        // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
+        console.error("orphan job lookup failed:", (e as Error).message);
+      }
     }
 
     // הבעלים של כל שורה, בשאילתה אחת לכל היומן — כדי שאפשר יהיה לקבץ אותו לפי
@@ -96,7 +129,7 @@ export async function GET(req: Request) {
     }));
 
     const merged = [...items, ...withOwners].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return NextResponse.json({ items: merged });
+    return NextResponse.json({ items: merged, hasMore, nextBefore });
   } catch (err) {
     return handleRouteError(err);
   }

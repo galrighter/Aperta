@@ -37,7 +37,7 @@ describe("admin-only API routes", () => {
 
   it("covers every debug route", () => {
     // אם נוסף מסלול debug והמספר לא עודכן — סימן שמישהו צריך להסתכל עליו.
-    expect(routeFiles(join(API, "debug")).length).toBe(4);
+    expect(routeFiles(join(API, "debug")).length).toBe(5);
   });
 
   it.each(guarded.map((f) => [f.slice(API.length + 1), f]))(

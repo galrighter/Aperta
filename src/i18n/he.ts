@@ -329,6 +329,7 @@ export const he = {
     adminStatOpenOrders: "הזמנות פתוחות",
     adminStatNewInquiries: "פניות חדשות",
     adminStatDesigns: "עיצובים",
+    adminStatFailedRuns: "יצירות שנכשלו",
     adminStatUnavailable: "—",
     adminLoginTitle: "כניסת מנהל",
     adminTokenLabel: "סיסמת ניהול",

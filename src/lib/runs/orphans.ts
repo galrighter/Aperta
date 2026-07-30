@@ -66,15 +66,35 @@ export function orphanItem(job: JobListRow, now = Date.now()): OrphanItem {
   };
 }
 
+export interface OrphanWindow {
+  now?: number;
+  /** הגבול העליון של העמוד — אותה חותמת שהעמוד נשלף לפניה. */
+  before?: string | null;
+  /** זה העמוד האחרון: מתחת להרצה הישנה ביותר אין עוד עמוד שיציג את הבקשה. */
+  toEnd?: boolean;
+}
+
 /**
- * הבקשות שלא הפכו להרצה, בטווח הזמן שהרשימה מציגה ממילא. ההצלבה היא על
+ * הבקשות שלא הפכו להרצה, בטווח הזמן שהעמוד הזה מציג ממילא. ההצלבה היא על
  * `run_id` — המזהה שהבקשה הקצתה להרצה לפני שהצינור התחיל.
+ *
+ * הטווח הוא של העמוד ולא של היומן כולו, אחרת בקשה שנקטעה לפני שבוע הייתה
+ * מופיעה בראש העמוד הראשון — בין הרצות של היום — ואז שוב בעמוד שלה. בעמוד
+ * האחרון הגבול התחתון נופל לאפס: מתחת אליו אין עמוד נוסף שיציג אותה.
  */
-export function orphanJobs(jobs: JobListRow[], runs: RunListRow[], now = Date.now()): OrphanItem[] {
-  const since = runs.length ? new Date(runs[runs.length - 1].created_at).getTime() : 0;
+export function orphanJobs(
+  jobs: JobListRow[],
+  runs: RunListRow[],
+  { now = Date.now(), before = null, toEnd = true }: OrphanWindow = {},
+): OrphanItem[] {
+  const since = toEnd || !runs.length ? 0 : new Date(runs[runs.length - 1].created_at).getTime();
+  const until = before ? new Date(before).getTime() : Infinity;
   const seen = new Set(runs.map((r) => r.id));
   return jobs
     .filter((j) => !j.run_id || !seen.has(j.run_id))
-    .filter((j) => new Date(j.created_at).getTime() >= since)
+    .filter((j) => {
+      const at = new Date(j.created_at).getTime();
+      return at >= since && at < until;
+    })
     .map((j) => orphanItem(j, now));
 }
