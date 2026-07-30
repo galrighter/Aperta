@@ -36,7 +36,7 @@ function DebugConsole() {
   const [image, setImage] = useState<string | null>(null);
   const [imageName, setImageName] = useState<string | null>(null);
   const [heightMm, setHeightMm] = useState(15);
-  const [colorKey, setColorKey] = useState("auto");
+  const [colorKey, setColorKey] = useState("coverage");
   const [productType, setProductType] = useState("bracelet");
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -159,6 +159,7 @@ function DebugConsole() {
           </label>
           <label className="flex items-center gap-1">צבע:
             <select className="rounded border border-graphite/20 p-1" value={colorKey} onChange={(e) => setColorKey(e.target.value)}>
+              <option value="coverage">coverage (כיסוי — ברירת מחדל)</option>
               <option value="auto">אוטומטי</option>
               <option value="warm">warm (פליז)</option>
               <option value="dark">dark (מתכת כהה — כמו ההדמיות שנוצרות)</option>
