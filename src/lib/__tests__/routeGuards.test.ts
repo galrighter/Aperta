@@ -30,6 +30,9 @@ const ADMIN_ONLY = [
   // עיצוב שאיש מהמסלולים המזוהים אינו הבעלים שלו. השער הוא ADMIN_TOKEN, והוא
   // חייב להופיע בכל מסלול בתיקייה.
   join(API, "admin/designs"),
+  // מסך כיול הפרומפט. הוא רק מכין — ההרצה היא /api/generate — אבל הוא מחזיר
+  // את הפרומפט המלא ויוצר פרופיל, ושניהם לא לציבור.
+  join(API, "admin/prompt-lab"),
 ];
 
 describe("admin-only API routes", () => {
@@ -37,7 +40,8 @@ describe("admin-only API routes", () => {
 
   it("covers every debug route", () => {
     // אם נוסף מסלול debug והמספר לא עודכן — סימן שמישהו צריך להסתכל עליו.
-    expect(routeFiles(join(API, "debug")).length).toBe(5);
+    // ירד מ-5 ל-4 ב-30.7: מסלול ההרצה נמחק, וההרצה עברה ל-/api/generate.
+    expect(routeFiles(join(API, "debug")).length).toBe(4);
   });
 
   it.each(guarded.map((f) => [f.slice(API.length + 1), f]))(
