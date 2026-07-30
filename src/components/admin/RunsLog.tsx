@@ -56,6 +56,8 @@ export type LogItem = {
   inputs?: RunInputs | null;
   owner?: Owner | null;
   designId?: string | null;
+  /** `RM-0047` — המספר הסידורי של העיצוב, הרפרנס שתלונה מגיעה איתו. */
+  ref?: string | null;
   stages: { conditioned: string | null; overlay: string | null; difference: string | null; rendered: string | null };
   /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
   hasSvg: boolean;
@@ -91,8 +93,24 @@ const SOURCE_LABEL: Record<string, string> = {
   studio: "אתר", debug: "מעבדה", upload: "העלאה",
 };
 
-/** סינון היומן. "נכשלו" הוא השאלה שנשאלת בפועל כשמגיעה תלונה. */
+/** סינון היומן. "נכשלו" הוא השאלה שנשאלת בפועל כשמגיעה תלונה. מסונן בשרת,
+ *  כדי שהתשובה תהיה על כל ההיסטוריה ולא רק על מה שנטען למסך. */
 type StatusFilter = "" | "approved" | "problem";
+
+/** כמה שורות בכל טעינה. */
+const PAGE = 20;
+
+/**
+ * הסינון מגיע גם מהכתובת (`?status=problem`), כדי שהמספר "יצירות שנכשלו" במסך
+ * הסקירה יוביל לשורות שהוא מדבר עליהן — ולא לראש היומן. הבדיקה על `window`
+ * היא לרינדור בשרת: היומן עצמו נטען רק אחרי שהשער אישר, אבל אין טעם לתלות את
+ * זה בהתנהגות של רכיב אחר.
+ */
+const statusFromUrl = (): StatusFilter => {
+  if (typeof window === "undefined") return "";
+  const q = new URLSearchParams(window.location.search).get("status");
+  return q === "problem" || q === "approved" ? q : "";
+};
 
 /**
  * הורדת SVG כקובץ.
@@ -121,34 +139,95 @@ export default function RunsLog({
   const [log, setLog] = useState<LogItem[] | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
+  /** הסמן לעמוד הבא (`before`), ו-null כשאין עוד. */
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  /** סך ההרצות והכשלים — מהשרת, כי הרשימה כבר לא מחזיקה את כולן. */
+  const [counts, setCounts] = useState<{ total: number; failed: number } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, LogDetail | "loading" | "error">>({});
   /** לפי זמן (ברירת מחדל) או מרוכז לפי משתמש. */
   const [groupBy, setGroupBy] = useState<"time" | "user">("time");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(statusFromUrl);
   /** ההרצה שחלון הפרומפט פתוח עליה. חלון ולא הרחבה — הפרומפט ארוך משאר השורה. */
   const [promptFor, setPromptFor] = useState<LogItem | null>(null);
 
-  const loadLog = useCallback(async () => {
-    setLogBusy(true);
-    setLogError(null);
+  /**
+   * עמוד יומן. `before=null` הוא עמוד ראשון (מחליף), אחרת המשך (מוסיף).
+   *
+   * המונה הוא מי שמונע החלפת סינון שמסתיימת בתשובה של הסינון הקודם: שתי לחיצות
+   * מהירות הן שתי בקשות, והאחרונה שנשלחה — לא האחרונה שחזרה — היא הנכונה.
+   */
+  const seq = useRef(0);
+  const loadLog = useCallback(
+    async (before: string | null) => {
+      const mine = ++seq.current;
+      setLogBusy(true);
+      setLogError(null);
+      // עמוד ראשון: הסמן הישן שייך לרשימה שעומדת להיעלם.
+      if (!before) setNextBefore(null);
+      try {
+        const qs = new URLSearchParams({ limit: String(PAGE) });
+        if (statusFilter) qs.set("status", statusFilter);
+        if (before) qs.set("before", before);
+        const resp = await fetch(`/api/debug/log?${qs}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = (await resp.json()) as {
+          items?: LogItem[];
+          nextBefore?: string | null;
+        };
+        if (mine !== seq.current) return;
+        const items = data.items ?? [];
+        setLog((prev) => {
+          if (!before || !prev) return items;
+          // הרצה שנכתבה בין עמוד לעמוד יכולה לחזור פעמיים; המזהה מכריע.
+          const seen = new Set(prev.map((i) => i.id));
+          return [...prev, ...items.filter((i) => !seen.has(i.id))];
+        });
+        setNextBefore(data.nextBefore ?? null);
+      } catch (e) {
+        // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
+        // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
+        if (mine === seq.current) setLogError((e as Error).message);
+      } finally {
+        if (mine === seq.current) setLogBusy(false);
+      }
+    },
+    [statusFilter],
+  );
+
+  /** הספירה נטענת בנפרד: היא לא משתנה בין עמוד לעמוד, והכשל בה לא מפיל יומן. */
+  const loadCounts = useCallback(async () => {
     try {
-      const resp = await fetch("/api/debug/log");
+      const resp = await fetch("/api/debug/log/counts");
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      setLog(data.items ?? []);
-    } catch (e) {
-      // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
-      // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
-      setLogError((e as Error).message);
-    } finally {
-      setLogBusy(false);
+      setCounts((await resp.json()) as { total: number; failed: number });
+    } catch {
+      setCounts(null);
     }
   }, []);
 
+  // שינוי סינון הוא שאילתה חדשה בשרת, ולכן טעינה מהתחלה ולא סינון של הטעון.
   useEffect(() => {
-    void loadLog();
+    void loadLog(null);
   }, [loadLog]);
+
+  // הסינון נשמר בכתובת, כך שמסך היומן ניתן לשליחה כמו שהוא. `replaceState`
+  // ולא ניווט: אין כאן מעבר עמוד, ולא צריך צעד נוסף בהיסטוריית הדפדפן.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (statusFilter) url.searchParams.set("status", statusFilter);
+    else url.searchParams.delete("status");
+    window.history.replaceState(null, "", url);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    void loadCounts();
+  }, [loadCounts]);
+
+  const refresh = () => {
+    void loadLog(null);
+    void loadCounts();
+  };
 
   /** פירוט הרצה (SVG סופי, SVG לכל מועמד, והפרומפט המלא) — נטען רק לפי דרישה.
    *  ה-ref הוא מי שמונע טעינה כפולה: בדיקה מתוך פונקציית העדכון של ה-state
@@ -197,16 +276,12 @@ export default function RunsLog({
    * קיבוץ היומן. ברירת המחדל היא זמן — סדר ההרצות. "לפי משתמש" עונה על שאלה
    * אחרת לגמרי: מה עשה מי, ברצף אחד, בלי לרדוף אחרי שורות שמפוזרות בין
    * משתמשים. הקבוצה הפעילה ביותר קודם.
+   *
+   * מקבץ את מה שנטען, לא את כל היומן — בתצוגה מעומדת "כל ההרצות של פלונית"
+   * פירושו "מבין העמודים שנפתחו". הסינון, לעומת זאת, קורה בשרת.
    */
   const groups = useMemo(() => {
-    const all = log ?? [];
-    const items = all.filter((it) =>
-      statusFilter === ""
-        ? true
-        : statusFilter === "approved"
-          ? it.status === "approved"
-          : it.status !== "approved",
-    );
+    const items = log ?? [];
     if (groupBy === "time" || items.length === 0) {
       return [{ key: "all", owner: null as Owner | null, items }];
     }
@@ -218,17 +293,16 @@ export default function RunsLog({
       by.set(key, g);
     }
     return [...by.values()].sort((a, b) => b.items[0].createdAt.localeCompare(a.items[0].createdAt));
-  }, [log, groupBy, statusFilter]);
+  }, [log, groupBy]);
 
   const shown = groups.reduce((n, g) => n + g.items.length, 0);
-  const failed = (log ?? []).filter((it) => it.status !== "approved").length;
 
   return (
     <div className="grid gap-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="rounded-[2px] border border-graphite/20 px-3 py-1 text-xs hover:bg-porcelain"
-          onClick={() => void loadLog()}
+          onClick={refresh}
         >
           רענון
         </button>
@@ -268,7 +342,8 @@ export default function RunsLog({
         {logBusy && <span className="text-xs text-ink60">טוען…</span>}
         {log && (
           <span className="text-xs text-mist">
-            {shown} מתוך {log.length} הרצות · {failed} נכשלו
+            {shown} שורות טעונות
+            {counts && ` · ${counts.total} הרצות ביומן, ${counts.failed} נכשלו`}
           </span>
         )}
       </div>
@@ -298,9 +373,25 @@ export default function RunsLog({
 
       {log && shown === 0 && !logBusy && <div className="text-mist">אין הרצות שתואמות את הסינון.</div>}
 
+      {/* המשך היומן. הכפתור מופיע רק כשהשרת אמר שיש עוד — "אין עוד" הוא מידע
+          שהוא מחזיק, לא ניחוש מספירת השורות שהתקבלו. */}
+      {nextBefore && (
+        <button
+          type="button"
+          disabled={logBusy}
+          onClick={() => void loadLog(nextBefore)}
+          className="mt-1 self-center rounded-[2px] border border-graphite/20 px-4 py-1.5 text-xs hover:bg-porcelain disabled:opacity-50"
+        >
+          {logBusy ? "טוען…" : `עוד ${PAGE} הרצות`}
+        </button>
+      )}
+      {log && shown > 0 && !nextBefore && !logBusy && (
+        <div className="mt-1 text-center text-[11px] text-mist">סוף היומן.</div>
+      )}
+
       {promptFor && (
         <PromptDialog
-          subtitle={`${new Date(promptFor.createdAt).toLocaleString("he-IL")}${
+          subtitle={`${promptFor.ref ? `${promptFor.ref} · ` : ""}${new Date(promptFor.createdAt).toLocaleString("he-IL")}${
             promptFor.owner ? ` · ${promptFor.owner.name}` : ""
           }`}
           userPrompt={promptFor.prompt ?? detailOf(details[promptFor.id])?.prompt ?? null}
@@ -397,6 +488,12 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
         )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
+            {it.ref && (
+              <span className="font-display text-xs font-bold tracking-[0.12em] text-cobalt" dir="ltr">
+                {it.ref}
+              </span>
+            )}
             <span className={`rounded border px-1.5 text-xs ${STATUS_COLOR[it.status] ?? ""}`}>{it.status}</span>
             <span className="rounded border border-graphite/20 bg-porcelain px-1.5 text-xs text-ink60">{SOURCE_LABEL[it.source] ?? it.source}</span>
             {it.owner && (

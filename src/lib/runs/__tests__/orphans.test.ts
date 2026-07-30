@@ -27,11 +27,11 @@ const run = (over: Partial<RunListRow> = {}): RunListRow =>
 
 describe("orphan jobs in the log", () => {
   it("leaves out a job that already has its run", () => {
-    expect(orphanJobs([job()], [run({ id: "r1" })], NOW)).toEqual([]);
+    expect(orphanJobs([job()], [run({ id: "r1" })], { now: NOW })).toEqual([]);
   });
 
   it("surfaces a job whose run was never written", () => {
-    const [item] = orphanJobs([job({ run_id: "r-missing" })], [run({ id: "r1" })], NOW);
+    const [item] = orphanJobs([job({ run_id: "r-missing" })], [run({ id: "r1" })], { now: NOW });
     expect(item.id).toBe("j1");
     expect(item.hasSvg).toBe(false);
   });
@@ -59,9 +59,24 @@ describe("orphan jobs in the log", () => {
     expect(item.error).toContain("Billing hard limit");
   });
 
-  it("ignores jobs older than the window the list shows", () => {
-    // ההרצה הישנה ביותר ברשימה קובעת את הגבול; מעבר לו היומן ממילא לא מציג.
+  it("leaves an old job to a later page when there is one", () => {
+    // אחרת בקשה שנקטעה לפני שבוע הייתה מופיעה בראש העמוד הראשון, בין הרצות
+    // של היום — ואז שוב בעמוד שלה.
     const old = job({ id: "j-old", run_id: "r-gone", created_at: at(999_000) });
-    expect(orphanJobs([old], [run({ created_at: at(120_000) })], NOW)).toEqual([]);
+    const page = [run({ created_at: at(120_000) })];
+    expect(orphanJobs([old], page, { now: NOW, toEnd: false })).toEqual([]);
+  });
+
+  it("shows that same old job once the last page is reached", () => {
+    // בעמוד האחרון אין מתחת עמוד נוסף שיציג אותה, ולכן כאן היא כן שייכת.
+    const old = job({ id: "j-old", run_id: "r-gone", created_at: at(999_000) });
+    const [item] = orphanJobs([old], [run({ created_at: at(120_000) })], { now: NOW });
+    expect(item.id).toBe("j-old");
+  });
+
+  it("keeps a job out of a page that starts below it", () => {
+    // `before` הוא הגבול העליון של העמוד: מה שקדם לו נמצא בעמוד שכבר נטען.
+    const recent = job({ id: "j-new", run_id: "r-gone", created_at: at(10_000) });
+    expect(orphanJobs([recent], [], { now: NOW, before: at(60_000) })).toEqual([]);
   });
 });

@@ -158,10 +158,31 @@ const BASE_COLUMNS =
  *  ברשימה. הוא נטען עם הפירוט, בפתיחת חלון הפרומפט. */
 const LIST_COLUMNS = `${BASE_COLUMNS}, inputs, input_image_path, has_svg`;
 
-export async function listRuns(limit = 80): Promise<RunListRow[]> {
+/** "נכשלו" ביומן = כל מה שאינו `approved`: גם דחייה של הצינור וגם שגיאה. */
+export type RunStatusFilter = "approved" | "problem";
+
+export interface ListRunsOptions {
+  limit?: number;
+  /**
+   * העמוד הבא: רק הרצות שקדמו לחותמת הזמן הזו. סמן ולא `offset` — היומן מקבל
+   * שורות חדשות בראשו כל הזמן, ו-offset היה מדלג על שורה או מכפיל אותה בכל
+   * פעם שהרצה נוספת נכתבה בין עמוד לעמוד.
+   */
+  before?: string | null;
+  /** סינון בשרת, כדי ש"נכשלו" יסרוק את כל ההיסטוריה ולא רק את העמוד הראשון. */
+  status?: RunStatusFilter | null;
+}
+
+export async function listRuns(opts: ListRunsOptions = {}): Promise<RunListRow[]> {
+  const { limit = 20, before = null, status = null } = opts;
   const sb = supabaseAdmin();
-  const query = (columns: string) =>
-    sb.from("generation_runs").select(columns).order("created_at", { ascending: false }).limit(limit);
+  const query = (columns: string) => {
+    let q = sb.from("generation_runs").select(columns);
+    if (before) q = q.lt("created_at", before);
+    if (status === "approved") q = q.eq("status", "approved");
+    if (status === "problem") q = q.neq("status", "approved");
+    return q.order("created_at", { ascending: false }).limit(limit);
+  };
 
   const { data, error } = await query(LIST_COLUMNS);
   if (!error) return (data ?? []) as unknown as RunListRow[];
@@ -180,6 +201,22 @@ export async function listRuns(limit = 80): Promise<RunListRow[]> {
     inputs: null,
     input_image_path: null,
   }));
+}
+
+/**
+ * ספירה בלבד — `head: true` מחזיר את המספר בלי אף שורה.
+ *
+ * זה מה שמאפשר להציג "כמה נכשלו" גם כשהרשימה עצמה מעומדת: לספור דרך הרשימה
+ * היה אומר לשלוף את כל ההרצות עם הפרומפטים והמדדים שלהן רק כדי למנות כמה מהן
+ * אדומות — בדיוק הקריאה שהעימוד בא להפסיק.
+ */
+export async function countRuns(): Promise<{ total: number; failed: number }> {
+  const sb = supabaseAdmin();
+  const head = () => sb.from("generation_runs").select("id", { count: "exact", head: true });
+  const [total, failed] = await Promise.all([head(), head().neq("status", "approved")]);
+  if (total.error) throw new Error(total.error.message);
+  if (failed.error) throw new Error(failed.error.message);
+  return { total: total.count ?? 0, failed: failed.count ?? 0 };
 }
 
 /**
