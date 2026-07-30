@@ -1,11 +1,14 @@
 "use client";
 
+// פניות יצירת קשר — ועימן ההזמנות ההיסטוריות שנכתבו לטבלה הזאת לפני שהזמנה
+// קיבלה טבלה משלה (`orders`, מיגרציה 0011). לכן ברירת המחדל היא "הכול",
+// וסינון "הזמנות" מראה בדיוק את הישנות.
+//
+// הוצא מ-`AdminDashboard` כשהלשוניות הפכו לכתובות. הרכיב מנהל את הטעינה שלו
+// בעצמו, כמו `AdminOrders` ו-`AdminDesigns`.
 import { useCallback, useEffect, useState } from "react";
 import { he } from "@/i18n/he";
 import type { Inquiry, InquiryKind, InquiryStatus } from "@/lib/db/inquiries";
-import AdminDesigns from "./AdminDesigns";
-import AdminOrders from "./AdminOrders";
-import { AdminLogin, type AdminAuth } from "./AdminGate";
 
 const s = he.site;
 
@@ -21,54 +24,42 @@ const statusColor: Record<InquiryStatus, string> = {
   closed: "bg-stonesoft text-ink60",
 };
 
-type Auth = AdminAuth;
-type Tab = "orders" | "inquiries" | "designs";
-
-export default function AdminDashboard() {
-  const [auth, setAuth] = useState<Auth>("checking");
-  // ההזמנות ראשונות, וכברירת מחדל: זה מה שמחפשים כשנכנסים לבק־אופיס.
-  const [tab, setTab] = useState<Tab>("orders");
+export default function AdminInquiries({
+  onAuthLost,
+}: {
+  onAuthLost: (state: "out" | "disabled") => void;
+}) {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
-  /** מאז שההזמנות קיבלו טבלה ולשונית משלהן, מה שנשאר כאן הוא פניות יצירת קשר
-   *  — ועימן ההזמנות ההיסטוריות שנכתבו לטבלה הזאת לפני המעבר. לכן ברירת המחדל
-   *  היא "הכול", וסינון "הזמנות" מראה בדיוק את הישנות. */
   const [kind, setKind] = useState<InquiryKind | "">("");
   const [listError, setListError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (status: InquiryStatus | "", k: InquiryKind | "") => {
-    const params = new URLSearchParams();
-    if (status) params.set("status", status);
-    if (k) params.set("kind", k);
-    const qs = params.toString();
-    const res = await fetch(`/api/inquiries${qs ? `?${qs}` : ""}`);
-    if (res.status === 401) {
-      setAuth("out");
-      return;
-    }
-    if (res.status === 503) {
-      setAuth("disabled");
-      return;
-    }
-    if (!res.ok) {
-      setListError(s.adminLoadError);
-      return;
-    }
-    const body = (await res.json()) as { inquiries: Inquiry[] };
-    setInquiries(body.inquiries);
-    setListError(null);
-    setAuth("in");
-  }, []);
+  const load = useCallback(
+    async (status: InquiryStatus | "", k: InquiryKind | "") => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (k) params.set("kind", k);
+      const qs = params.toString();
+      const res = await fetch(`/api/inquiries${qs ? `?${qs}` : ""}`);
+      setLoading(false);
+      if (res.status === 401) return onAuthLost("out");
+      if (res.status === 503) return onAuthLost("disabled");
+      if (!res.ok) {
+        setListError(s.adminLoadError);
+        return;
+      }
+      const body = (await res.json()) as { inquiries: Inquiry[] };
+      setInquiries(body.inquiries);
+      setListError(null);
+    },
+    [onAuthLost],
+  );
 
   useEffect(() => {
     void load("", "");
   }, [load]);
-
-  async function onLogout() {
-    await fetch("/api/admin/session", { method: "DELETE" });
-    setInquiries([]);
-    setAuth("out");
-  }
 
   async function changeStatus(id: string, status: InquiryStatus) {
     const res = await fetch(`/api/inquiries/${id}`, {
@@ -77,87 +68,10 @@ export default function AdminDashboard() {
       body: JSON.stringify({ status }),
     });
     if (res.ok) {
-      setInquiries((prev) =>
-        prev.map((q) => (q.id === id ? { ...q, status } : q)),
-      );
+      setInquiries((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)));
     }
   }
 
-  function applyFilter(f: InquiryStatus | "") {
-    setFilter(f);
-    void load(f, kind);
-  }
-
-  function applyKind(k: InquiryKind | "") {
-    setKind(k);
-    void load(filter, k);
-  }
-
-  if (auth !== "in") {
-    return <AdminLogin auth={auth} onAuthed={() => load(filter, kind)} />;
-  }
-
-  // auth === "in"
-  return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-graphite/10">
-        <div className="flex gap-6">
-          {([
-            ["orders", s.adminTabOrders],
-            ["inquiries", s.adminTabInquiries],
-            ["designs", s.adminTabDesigns],
-          ] as const).map(
-            ([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                aria-current={tab === key ? "page" : undefined}
-                className={`-mb-px border-b-2 pb-2.5 text-sm transition-colors ${
-                  tab === key
-                    ? "border-b-graphite font-semibold text-graphite"
-                    : "border-b-transparent text-ink60 hover:text-graphite"
-                }`}
-              >
-                {label}
-              </button>
-            ),
-          )}
-        </div>
-        <button onClick={onLogout} className="pb-2.5 text-sm text-ink60 hover:text-graphite">
-          {s.adminLogout}
-        </button>
-      </div>
-
-      {tab === "orders" ? (
-        <AdminOrders onAuthLost={setAuth} />
-      ) : tab === "designs" ? (
-        <AdminDesigns onAuthLost={setAuth} />
-      ) : (
-        <Inquiries
-          inquiries={inquiries}
-          filter={filter}
-          kind={kind}
-          onFilter={applyFilter}
-          onKind={applyKind}
-          onStatus={changeStatus}
-          listError={listError}
-        />
-      )}
-    </div>
-  );
-}
-
-function Inquiries({
-  inquiries, filter, kind, onFilter, onKind, onStatus, listError,
-}: {
-  inquiries: Inquiry[];
-  filter: InquiryStatus | "";
-  kind: InquiryKind | "";
-  onFilter: (f: InquiryStatus | "") => void;
-  onKind: (k: InquiryKind | "") => void;
-  onStatus: (id: string, status: InquiryStatus) => void;
-  listError: string | null;
-}) {
   return (
     <div>
       {/* סוג הפנייה — הזמנה שבוצעה בפועל מול פניית יצירת קשר */}
@@ -166,12 +80,13 @@ function Inquiries({
           ([k, label]) => (
             <button
               key={k || "all"}
-              onClick={() => onKind(k)}
+              onClick={() => {
+                setKind(k);
+                void load(filter, k);
+              }}
               aria-pressed={kind === k}
               className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
-                kind === k
-                  ? "bg-cobalt text-white"
-                  : "bg-porcelain text-ink60 hover:bg-stonesoft"
+                kind === k ? "bg-cobalt text-white" : "bg-porcelain text-ink60 hover:bg-stonesoft"
               }`}
             >
               {label}
@@ -184,11 +99,12 @@ function Inquiries({
         {(["", ...STATUSES] as const).map((f) => (
           <button
             key={f || "all"}
-            onClick={() => onFilter(f)}
+            onClick={() => {
+              setFilter(f);
+              void load(f, kind);
+            }}
             className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
-              filter === f
-                ? "bg-graphite text-porcelain"
-                : "bg-porcelain text-ink60 hover:bg-stonesoft"
+              filter === f ? "bg-graphite text-porcelain" : "bg-porcelain text-ink60 hover:bg-stonesoft"
             }`}
           >
             {f === "" ? s.adminFilterAll : statusLabel[f]}
@@ -198,7 +114,9 @@ function Inquiries({
 
       {listError && <p className="mb-4 text-sm text-red-600">{listError}</p>}
 
-      {inquiries.length === 0 ? (
+      {loading && inquiries.length === 0 ? (
+        <p className="text-ink60">{he.loading}</p>
+      ) : inquiries.length === 0 ? (
         <p className="text-ink60">{s.adminEmpty}</p>
       ) : (
         <div className="overflow-x-auto">
@@ -242,7 +160,7 @@ function Inquiries({
                   <td className="py-3 pl-3">
                     <select
                       value={q.status}
-                      onChange={(e) => onStatus(q.id, e.target.value as InquiryStatus)}
+                      onChange={(e) => void changeStatus(q.id, e.target.value as InquiryStatus)}
                       className={`rounded-[2px] px-3 py-1 text-xs font-medium ${statusColor[q.status]}`}
                     >
                       {STATUSES.map((st) => (

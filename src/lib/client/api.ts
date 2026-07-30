@@ -109,10 +109,13 @@ async function startAndAwaitGeneration(
     images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
   },
   onStage?: (stage: string | null) => void,
+  /** המזהה, ברגע שנקבע — כדי שהקורא יוכל לזכור אותו ולמצוא את התוצאה אחר כך. */
+  onJob?: (jobId: string) => void,
 ): Promise<GenerationResult> {
   // המזהה נקבע כאן ולא בשרת: אם הבקשה עצמה תיקטע, הוא מה שמאפשר לחזור ולשאול
   // מה עלה בגורל ההרצה במקום להניח שאבדה.
   const jobId = crypto.randomUUID();
+  onJob?.(jobId);
   let started: { jobId?: string } & Partial<GenerationResult>;
   try {
     started = await call<{ jobId?: string } & Partial<GenerationResult>>("/api/generate", {
@@ -133,6 +136,9 @@ async function startAndAwaitGeneration(
   }
   // השרת מריץ בתוך הבקשה ומחזיר את התוצאה. 202 עם מזהה הוא מסלול ישן/חלופי.
   if (!started.jobId) return started as GenerationResult;
+  // במסלול הזה המזהה הוא של השרת. בפועל הוא שווה לשלנו (הוא מקבל אותו בגוף),
+  // אבל אם ייבדל — מי שזוכר אותו צריך לדעת על מה באמת לשאול.
+  if (started.jobId !== jobId) onJob?.(started.jobId);
   return pollJob(started.jobId, onStage);
 }
 
@@ -210,7 +216,17 @@ export const api = {
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
     },
     onStage?: (stage: string | null) => void,
-  ) => startAndAwaitGeneration(input, onStage),
+    onJob?: (jobId: string) => void,
+  ) => startAndAwaitGeneration(input, onStage, onJob),
+
+  /** מצב הרצה לפי מזהה — למי שחזר אחרי שיצא מהמסך באמצע היצירה. */
+  job: (jobId: string) =>
+    call<{
+      status: "running" | "done" | "error";
+      stage?: string | null;
+      result?: GenerationResult;
+      error?: { code?: string; message?: string };
+    }>(`/api/generate/${jobId}`),
 
   chooseCandidate: (designId: string, svg: string) =>
     call<{

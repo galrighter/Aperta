@@ -26,10 +26,14 @@ import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
+import {
+  beatPendingJob, clearPendingJob, setPendingJob,
+} from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
-  countCuts, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf, stripLengthMm, widthOf,
+  countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
+  stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -49,6 +53,14 @@ export default function DesignPage() {
   const [saved, setSaved] = useState<SavedDesign[]>([]);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
+  const [savedOpen, setSavedOpen] = useState(false);
+  /**
+   * מזהה ההרצה שרצה עכשיו. נשמר גם ב-localStorage (`pendingJob`) כדי שמי
+   * שיצאה מהמסך תקבל חיווי כשהעיצוב מוכן; כאן הוא נדרש לפעימת הלב שאומרת
+   * "יש מסך שמחכה", כדי שהחלון הקופץ לא יופיע על מסך שמראה את אותו דבר.
+   */
+  const jobRef = useRef<string | null>(null);
 
   /* ===== זיהוי =====
      החשבון נטען פעם אחת בכניסה; השער עצמו נפתח רק כשמבקשים ליצור. */
@@ -103,6 +115,7 @@ export default function DesignPage() {
       density: st.density,
       feel: st.feel,
       fit: st.fit,
+      attrsAuto: st.attrsAuto || undefined,
     });
     setSaved(listMyDesigns());
   }, []);
@@ -197,16 +210,27 @@ export default function DesignPage() {
       const res =
         st.imageRole === "ready" && st.image
           ? await api.vectorize({ designId: design.id, image: { dataUrl: st.image.dataUrl } })
-          : await api.generate({
-              designId: design.id,
-              userPrompt: buildPrompt(st),
-              currentSvg: null,
-              images:
-                st.image && st.imageRole !== "ready"
-                  ? [{ kind: "inspiration" as const, dataUrl: st.image.dataUrl }]
-                  : [],
-            });
+          : await api.generate(
+              {
+                designId: design.id,
+                userPrompt: buildPrompt(st),
+                currentSvg: null,
+                images:
+                  st.image && st.imageRole !== "ready"
+                    ? [{ kind: "inspiration" as const, dataUrl: st.image.dataUrl }]
+                    : [],
+              },
+              undefined,
+              // רושמים את ההרצה לפני שהיא מסתיימת: זה מה שמאפשר לחלון "העיצוב
+              // מוכן" למצוא אותה אם הלקוחה יצאה מהמסך באמצע.
+              (jobId) => {
+                jobRef.current = jobId;
+                setPendingJob({ jobId, designId: design.id, first: true });
+              },
+            );
 
+      clearPendingJob();
+      jobRef.current = null;
       pushEntry(withId, {
         versionId: res.version.id,
         versionNo: res.version.version_no,
@@ -221,6 +245,13 @@ export default function DesignPage() {
       go("result");
     } catch (e) {
       const apiErr = e instanceof ClientApiError ? e : null;
+      // תשובה אמיתית של השרת סוגרת את ההרצה; כשל רשת/תפוגה **לא**. במקרה
+      // השני ההרצה עשויה להמשיך בשרת ולהצליח, ואז החלון הקופץ הוא הדרך
+      // היחידה של הלקוחה לדעת — ולכן הרשומה נשארת.
+      if (apiErr && !["network", "truncated", "timeout"].includes(apiErr.code)) {
+        clearPendingJob();
+        jobRef.current = null;
+      }
       setState((prev) => ({
         ...prev,
         procError: apiErr?.message ?? he.errGeneric,
@@ -230,6 +261,20 @@ export default function DesignPage() {
       }));
     }
   }, [s, account, go, pushEntry, remember]);
+
+  /* ===== פעימת לב: "יש מסך שמחכה ליצירה הזו" =====
+     `DesignReadyWatch` (ב-layout) מציג חלון קופץ רק כשהפעימה מתיישנת. דגל
+     בוליאני היה נשאר דלוק כשהלשונית נסגרת — כלומר בדיוק כשצריך להתריע. */
+  const waiting = (s.screen === "processing" && !s.procError) || s.applying;
+  useEffect(() => {
+    if (!waiting) return;
+    const beat = () => {
+      if (jobRef.current) beatPendingJob(jobRef.current);
+    };
+    beat();
+    const t = setInterval(beat, 4000);
+    return () => clearInterval(t);
+  }, [waiting]);
 
   /* ===== כניסה / החלפת משתמש ===== */
 
@@ -337,12 +382,23 @@ export default function DesignPage() {
     if (!s.designId || !entry || !s.editReq.trim()) return;
     set({ applying: true });
     try {
-      const res = await api.generate({
-        designId: s.designId,
-        userPrompt: buildEditPrompt(s),
-        currentSvg: entry.svg,
-        images: [],
-      });
+      const res = await api.generate(
+        {
+          designId: s.designId,
+          userPrompt: buildEditPrompt(s),
+          currentSvg: entry.svg,
+          images: [],
+        },
+        undefined,
+        // `first: false` — עריכה אינה "העיצוב שלך מוכן". מה שכן נדרש הוא שכשל
+        // שקרה אחרי שהלקוחה עזבה את המסך לא ייעלם בשקט.
+        (jobId) => {
+          jobRef.current = jobId;
+          setPendingJob({ jobId, designId: s.designId!, first: false });
+        },
+      );
+      clearPendingJob();
+      jobRef.current = null;
       pushEntry(s, {
         versionId: res.version.id,
         versionNo: res.version.version_no,
@@ -392,9 +448,11 @@ export default function DesignPage() {
     [s, set, pushEntry],
   );
 
-  /* ===== המשך עיצוב שמור ===== */
+  /* ===== המשך עיצוב שמור =====
+     `item` יכול להגיע גם מכתובת (`?resume=<id>`) ולא רק מהרשימה המקומית, ולכן
+     כל מה שנדרש הוא המזהה: השאר משמש להשלמת מה שרק הדפדפן מכיר. */
   const resume = useCallback(
-    async (item: SavedDesign) => {
+    async (item: Pick<SavedDesign, "id"> & Partial<SavedDesign>) => {
       const id = item.id;
       setResumingId(id);
       setResumeError(null);
@@ -422,6 +480,7 @@ export default function DesignPage() {
             density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
             feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
             fit: pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit),
+            attrsAuto: item.attrsAuto ?? INITIAL.attrsAuto,
           });
           setMaxReached(2);
           setResumingId(null);
@@ -467,6 +526,31 @@ export default function DesignPage() {
     [],
   );
 
+  /* ===== כניסה עם כתובת =====
+     `?resume=<id>` — פתיחת עיצוב מסוים: מהחלון "העיצוב שלך מוכן", ומקישור
+     בבק־אופיס. `?designs=1` — כניסה דרך "העיצובים שלי" בכותרת.
+     נקרא מ-`window.location` ולא מ-`useSearchParams` כדי לא לחייב את העמוד
+     כולו ב-Suspense; שני הפרמטרים נכנסים בטעינה מלאה. */
+  const urlHandled = useRef(false);
+  useEffect(() => {
+    if (urlHandled.current) return;
+    urlHandled.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const resumeId = params.get("resume");
+    const wantsDesigns = params.get("designs");
+    if (!resumeId && !wantsDesigns) return;
+
+    // ניקוי הכתובת: רענון אחרי שהעיצוב נפתח לא אמור לפתוח אותו שוב מאפס.
+    window.history.replaceState({}, "", window.location.pathname);
+
+    if (resumeId) {
+      const known = listMyDesigns().find((x) => x.id === resumeId);
+      void resume(known ?? { id: resumeId });
+      return;
+    }
+    setSavedOpen(true);
+  }, [resume]);
+
   /* ===== שליחת ההזמנה ===== */
   const submitOrder = useCallback(async () => {
     set({ sending: true, sendError: null, sendMailto: null });
@@ -507,8 +591,9 @@ export default function DesignPage() {
           circumferenceMm: Math.round(circumferenceMm(s) * 10) / 10,
           widthMm: Math.round(frameWidthMm(s, entry) * 10) / 10,
           fit: s.product === "ring" ? undefined : s.fit,
-          // המחיר עצמו מחושב בשרת מאותה פונקציה; מה שנשלח הוא מה שקבע אותו.
-          density: s.density,
+          // המחיר עצמו מחושב בשרת מאותה פונקציה; מה שנשלח הוא מה שקבע אותו —
+          // ולכן `densityForPrice`: ב"שהמודל יחליט" לא נבחרה צפיפות.
+          density: densityForPrice(s),
           cuts: countCuts(entry?.svg ?? null),
           brief: s.brief.trim() || undefined,
         }),
@@ -584,6 +669,7 @@ export default function DesignPage() {
                 }}
                 loadingId={resumingId}
                 error={resumeError}
+                defaultOpen={savedOpen}
               />
             </div>
             <ProductScreen

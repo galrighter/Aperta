@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { he } from "@/i18n/he";
 import { NAV } from "@/lib/site.config";
 import BrandMark from "./BrandMark";
+import AccountMenu from "./AccountMenu";
 
 const s = he.site;
 
@@ -84,6 +85,8 @@ export default function SiteHeader() {
           <Link href="/design" className={CTA_CLASS}>
             {s.ctaStart}
           </Link>
+          {/* מי מחובר, מעבר לעיצובים שלו, ויציאה */}
+          <AccountMenu />
         </div>
 
         {/* כפתור תפריט מובייל */}
@@ -120,6 +123,7 @@ export default function SiteHeader() {
             <Link href="/design" onClick={() => setOpen(false)} className={CTA_CLASS}>
               {s.ctaStart}
             </Link>
+            <AccountMenu variant="menu" onNavigate={() => setOpen(false)} />
           </div>
         </div>
       )}

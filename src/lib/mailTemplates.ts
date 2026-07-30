@@ -75,6 +75,45 @@ export function orderAckMail(q: InquiryMail): { subject: string; text: string } 
   return { subject, text };
 }
 
+/**
+ * "העיצוב שלך מוכן" — נשלח על הגרסה הראשונה של עיצוב בלבד.
+ *
+ * למה זה קיים: היצירה נמשכת דקה ויותר, ומי שסגרה את החלון באמצע לא קיבלה שום
+ * חיווי — העיצוב נוצר, נשמר, ופשוט חיכה בשרת בלי שאיש יידע. החלון הקופץ באתר
+ * מכסה את מי שחוזרת לאתר; המייל מכסה את מי שלא.
+ *
+ * **פעם אחת לעיצוב, ולא על כל גרסה.** עריכה היא שינוי שהלקוחה מבקשת בזמן
+ * שהיא מול המסך; מייל על כל אחת מהן הופך התראה שימושית לרעש שמסמנים כספאם.
+ */
+export function designReadyMail(input: {
+  name: string;
+  /** `RM-0047` — הרפרנס האנושי לעיצוב, כשיש. */
+  code: string | null;
+  /** הקישור שפותח בדיוק את העיצוב הזה. */
+  url: string;
+}): { subject: string; text: string } {
+  const ref = input.code ? ` ${input.code}` : "";
+  const subject = `${he.site.brand} — ${m.readySubject}${ref}`;
+
+  const text = [
+    `${m.readyHello} ${input.name},`,
+    "",
+    m.readyIntro,
+    "",
+    input.code ? `${m.readyRef}: ${input.code}` : null,
+    `${m.readyCta} ${input.url}`,
+    "",
+    m.readyNote,
+    "",
+    m.readySignature,
+    SITE.url,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  return { subject, text };
+}
+
 /* ===== הזמנות (טבלת orders, migration 0011) ===== */
 
 /**

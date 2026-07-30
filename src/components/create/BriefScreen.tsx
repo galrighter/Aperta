@@ -30,6 +30,8 @@ export function BriefScreen({
   const fileRef = useRef<HTMLInputElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const locked = s.imageRole === "ready";
+  /** המאפיינים כבויים כשהקובץ מוכן לחיתוך, וגם כשהמודל מחליט לבד. */
+  const attrsOff = locked || s.attrsAuto;
   const canSubmit = Boolean(s.brief.trim() || s.image || locked);
 
   const pickFile = (f: File | undefined) => {
@@ -173,34 +175,57 @@ export function BriefScreen({
             style={{ opacity: locked ? 0.35 : 1 }}
             aria-hidden={locked}
           >
-            <CardLabel>{d.attrsTitle}</CardLabel>
+            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <CardLabel>{d.attrsTitle}</CardLabel>
+              {/* "שהמודל יחליט" — האפשרות לא לבחור. צ'קבוקס אחד ולא ערך רביעי
+                  בכל שורה: שלוש פעמים "ללא העדפה" הן שלוש בחירות באותו דבר,
+                  והשורות עצמן ממילא מאבדות משמעות ברגע שאין העדפה. */}
+              <label className="-mb-2 flex cursor-pointer select-none items-center gap-2 text-[13px] text-ink60">
+                <input
+                  type="checkbox"
+                  checked={s.attrsAuto}
+                  disabled={locked}
+                  onChange={(e) => set({ attrsAuto: e.target.checked })}
+                  className="h-[15px] w-[15px] accent-cobalt"
+                />
+                {d.attrsAuto}
+              </label>
+            </div>
 
-            <ChipRow label={d.symmetryLabel}>
-              {(Object.keys(d.syms) as Symmetry[]).map((v) => (
-                <Chip key={v} on={s.symmetry === v} disabled={locked} onClick={() => set({ symmetry: v })}>
-                  {d.syms[v]}{v === "symmetric" ? " ·" : ""}
-                </Chip>
-              ))}
-            </ChipRow>
+            {/* המאפיינים נשארים על המסך גם כשהמודל מחליט — מעומעמים ולא נעלמים,
+                כדי שיהיה ברור מה בדיוק לא נשלח, ושביטול הסימון מחזיר אותם. */}
+            <div
+              className="transition-opacity"
+              style={{ opacity: s.attrsAuto ? 0.4 : 1 }}
+              aria-hidden={s.attrsAuto}
+            >
+              <ChipRow label={d.symmetryLabel}>
+                {(Object.keys(d.syms) as Symmetry[]).map((v) => (
+                  <Chip key={v} on={s.symmetry === v} disabled={attrsOff} onClick={() => set({ symmetry: v })}>
+                    {d.syms[v]}{v === "symmetric" ? " ·" : ""}
+                  </Chip>
+                ))}
+              </ChipRow>
 
-            <ChipRow label={d.densityLabel}>
-              {(Object.keys(d.densities) as Density[]).map((v) => (
-                <Chip key={v} on={s.density === v} disabled={locked} onClick={() => set({ density: v })}>
-                  {d.densities[v]}{v === "medium" ? " ·" : ""}
-                </Chip>
-              ))}
-            </ChipRow>
+              <ChipRow label={d.densityLabel}>
+                {(Object.keys(d.densities) as Density[]).map((v) => (
+                  <Chip key={v} on={s.density === v} disabled={attrsOff} onClick={() => set({ density: v })}>
+                    {d.densities[v]}{v === "medium" ? " ·" : ""}
+                  </Chip>
+                ))}
+              </ChipRow>
 
-            <ChipRow label={d.feelLabel}>
-              {(Object.keys(d.feels) as Feel[]).map((v) => (
-                <Chip key={v} on={s.feel === v} disabled={locked} onClick={() => set({ feel: v })}>
-                  {d.feels[v]}{v === "balanced" ? " ·" : ""}
-                </Chip>
-              ))}
-            </ChipRow>
+              <ChipRow label={d.feelLabel}>
+                {(Object.keys(d.feels) as Feel[]).map((v) => (
+                  <Chip key={v} on={s.feel === v} disabled={attrsOff} onClick={() => set({ feel: v })}>
+                    {d.feels[v]}{v === "balanced" ? " ·" : ""}
+                  </Chip>
+                ))}
+              </ChipRow>
+            </div>
 
             <p className="mt-1 text-[12px] leading-relaxed text-mist">
-              {locked ? d.readyLockNote : d.attrsDefaultNote}
+              {locked ? d.readyLockNote : s.attrsAuto ? d.attrsAutoNote : d.attrsDefaultNote}
             </p>
           </div>
 

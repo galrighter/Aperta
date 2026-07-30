@@ -1,6 +1,6 @@
 "use client";
 
-// ההדמיה במסע היצירה: הצמיד מעורגל בתלת-ממד וניתן לסובב אותו — אותה הדמיה
+// ההדמיה במסע היצירה: התכשיט מעורגל בתלת-ממד וניתן לסובב אותו — אותה הדמיה
 // שהסטודיו מציג, מוזנת מהגאומטריה של הגרסה הפעילה.
 // אם אין גאומטריה (גרסה שחזרה בלי material) נופלים לתצוגה השטוחה עם גרדיאנט
 // של הפליז, כדי שלעולם לא יוצג מסך ריק במקום המוצר.
@@ -30,10 +30,17 @@ export function RolledStage({
   widthMm: number;
   gapMm: number;
 }) {
-  // במסך מגע קנבס שתופס גרירה חוסם את גלילת העמוד. עד נגיעה ראשונה השליטה
-  // כבויה ושכבה שקופה מעליה מעבירה את הגלילה הלאה; הסיבוב האוטומטי רץ בכל מקרה.
+  /**
+   * הסיבוב פעיל מהרגע הראשון.
+   *
+   * קודם היה כאן שער: במסך מגע השליטה הייתה כבויה עד לחיצה על "לגעת כדי
+   * לסובב", כדי שגרירה על הקנבס לא תחסום את גלילת העמוד. המחיר היה שהדבר
+   * הראשון שהלקוחה רוצה לעשות עם התוצאה — לסובב אותה — דרש קליק שלא הסביר
+   * את עצמו. הפתרון נמצא במקום הנכון: `touch-action: pan-y` על הקנבס (ראה
+   * Preview3D), שמשאיר את הגלילה האנכית לדפדפן ואת הגרירה הצידה לסיבוב.
+   * הרמז מתחלף לפי סוג המצביע — במגע ובעכבר לא עושים את אותה תנועה.
+   */
   const [coarse, setCoarse] = useState(false);
-  const [active, setActive] = useState(false);
 
   useEffect(() => {
     setCoarse(window.matchMedia("(pointer: coarse)").matches);
@@ -42,8 +49,6 @@ export function RolledStage({
   if (!material || material.length === 0) {
     return <RolledPreview cutouts={cutouts} lengthMm={lengthMm} widthMm={widthMm} />;
   }
-
-  const gated = coarse && !active;
 
   return (
     <div className="relative h-[320px] w-full sm:h-[440px]">
@@ -54,25 +59,12 @@ export function RolledStage({
         gapMm={gapMm}
         thicknessMm={FAB.defaultThicknessMm}
         background={null}
-        enabled={!gated}
       />
-      {gated ? (
-        <button
-          type="button"
-          onClick={() => setActive(true)}
-          className="absolute inset-0 flex items-end justify-center pb-4"
-        >
-          <span className="bg-porcelain/85 px-3 py-1.5 text-[12px] text-ink60">
-            {d.renderTapToRotate}
-          </span>
-        </button>
-      ) : (
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-          <span className="bg-porcelain/70 px-3 py-1.5 text-[12px] text-ink60">
-            {d.renderDragHint}
-          </span>
-        </div>
-      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
+        <span className="bg-porcelain/70 px-3 py-1.5 text-center text-[12px] text-ink60">
+          {coarse ? d.renderDragHintTouch : d.renderDragHint}
+        </span>
+      </div>
     </div>
   );
 }
