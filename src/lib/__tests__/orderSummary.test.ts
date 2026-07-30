@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { orderItemLines, orderPriceLines, orderSummaryText } from "../orderSummary";
 import { orderNotifyMail, orderCustomerAckMail, orderStatusMail } from "../mailTemplates";
 import type { OrderRow } from "../db/orders";
+import { he } from "@/i18n/he";
 
 const ORDER: OrderRow = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -92,5 +93,13 @@ describe("מיילים של הזמנה", () => {
     }
     // חזרה ל-sent היא תיקון פנימי של גל, לא אירוע שהלקוחה צריכה לשמוע עליו.
     expect(orderStatusMail(ORDER, "sent")).toBeNull();
+  });
+
+  it("הנוסח נגזר מהסטטוס המבוקש ולא מזה שההזמנה נמצאת בו", () => {
+    // התצוגה המקדימה בדיאלוג האישור נבנית **לפני** המעבר: ההזמנה עוד "אושרה",
+    // והנוסח שיוצג — ויישלח — חייב להיות של היעד. אחרת מאשרים טקסט אחד ונשלח אחר.
+    const mail = orderStatusMail({ ...ORDER, status: "approved" }, "shipped");
+    expect(mail!.subject).toContain(he.mail.statusSubjectShipped);
+    expect(mail!.text).toContain(he.mail.statusBodyShipped);
   });
 });
