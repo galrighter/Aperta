@@ -4,7 +4,7 @@
 // שהסטודיו מציג, מוזנת מהגאומטריה של הגרסה הפעילה.
 // אם אין גאומטריה (גרסה שחזרה בלי material) נופלים לתצוגה השטוחה עם גרדיאנט
 // של הפליז, כדי שלעולם לא יוצג מסך ריק במקום המוצר.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
@@ -41,12 +41,19 @@ export function RolledStage({
    * הרמז מתחלף לפי סוג המצביע — במגע ובעכבר לא עושים את אותה תנועה.
    */
   const [coarse, setCoarse] = useState(false);
+  /**
+   * הדפדפן לא נתן WebGL. קורה בכרום באנדרואיד עם הרבה לשוניות פתוחות, ובלי
+   * האצת חומרה — ועד שההדמיה למדה ליפול חיננית זה הפיל את העמוד כולו. אותה
+   * חלופה כמו גרסה בלי material: הפריסה עם גוון הפליז, ולא מסך ריק.
+   */
+  const [no3d, setNo3d] = useState(false);
+  const on3dUnavailable = useCallback(() => setNo3d(true), []);
 
   useEffect(() => {
     setCoarse(window.matchMedia("(pointer: coarse)").matches);
   }, []);
 
-  if (!material || material.length === 0) {
+  if (no3d || !material || material.length === 0) {
     return <RolledPreview cutouts={cutouts} lengthMm={lengthMm} widthMm={widthMm} />;
   }
 
@@ -59,6 +66,7 @@ export function RolledStage({
         gapMm={gapMm}
         thicknessMm={FAB.defaultThicknessMm}
         background={null}
+        onUnavailable={on3dUnavailable}
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
         <span className="bg-porcelain/70 px-3 py-1.5 text-center text-[12px] text-ink60">

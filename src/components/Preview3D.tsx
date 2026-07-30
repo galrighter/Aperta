@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import earcut from "earcut";
+import { he } from "@/i18n/he";
 import { useStudio } from "@/lib/client/store";
 import { resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { neutralRadiusFromBlank } from "@/lib/sizing";
@@ -32,13 +33,32 @@ export interface Rolled3DProps {
   background?: number | null;
   /** כיבוי אינטראקציה (הסיבוב האוטומטי ממשיך) — לשער המגע במובייל. */
   enabled?: boolean;
+  /** הדפדפן לא נותן WebGL (או שההקשר אבד). מי שמעל מציג חלופה משלו. */
+  onUnavailable?: () => void;
 }
 
 export function Rolled3D({
   material, lengthMm, widthMm, gapMm, thicknessMm, productType = "bracelet",
-  background = 0xf4f1eb, enabled = true,
+  background = 0xf4f1eb, enabled = true, onUnavailable,
 }: Rolled3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
+  /**
+   * WebGL אינו זמין תמיד: בכרום באנדרואיד עם הרבה לשוניות פתוחות ההקשר פשוט
+   * לא נוצר, וגם כשהאצת החומרה כבויה או שהמכשיר ברשימת החסימה. `new
+   * THREE.WebGLRenderer` זורק במקרה הזה, וזריקה מתוך אפקט של רכיב לקוח מפילה
+   * את **כל** העמוד ל-"Application error: a client-side exception has
+   * occurred". זה נמדד בייצור על טלפון אמיתי. ההדמיה היא תוספת על הפריסה,
+   * ולכן כישלון שלה חייב להיות נפילה חיננית לתצוגה השטוחה ולא מסך לבן.
+   */
+  const [unavailable, setUnavailable] = useState(false);
+  /** ברפ כדי שהאפקט יישאר חד-פעמי גם כשהקורא מעביר פונקציה חדשה בכל רנדר. */
+  const unavailableCb = useRef(onUnavailable);
+  unavailableCb.current = onUnavailable;
+
+  const giveUp = useCallback(() => {
+    setUnavailable(true);
+    unavailableCb.current?.();
+  }, []);
   const sceneRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -53,7 +73,14 @@ export function Rolled3D({
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    } catch {
+      giveUp();
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // הקנבס נמדד ע"י ה-CSS, לא ע"י התכולה שלו. בלי זה הוא נולד עם ברירת המחדל
@@ -67,10 +94,26 @@ export function Rolled3D({
     canvas.style.height = "100%";
     mount.appendChild(canvas);
 
+    // אובדן ההקשר — GPU שנפל או שהדפדפן לקח אותו בחזרה תחת לחץ זיכרון.
+    // preventDefault שומר על האפשרות לשחזר; אנחנו לא מנסים, אלא עוברים לחלופה.
+    const onContextLost = (e: Event) => {
+      e.preventDefault();
+      giveUp();
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
+
     const scene = new THREE.Scene();
     scene.background = background === null ? null : new THREE.Color(background);
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    // סביבת התאורה היא איכות תמונה בלבד. אם היא נכשלה (הקשר חלש/מוגבל) עדיף
+    // חומר בלי השתקפויות מאשר לאבד את ההדמיה כולה.
+    let pmrem: THREE.PMREMGenerator | null = null;
+    try {
+      pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    } catch {
+      pmrem?.dispose();
+      pmrem = null;
+    }
 
     // עדשה ארוכה (28°) ולא רחבה: ב-40° הצד הקרוב של הטבעת יושב בערך פי 1.6
     // קרוב מהצד הרחוק, והדופן הקדמית נראית עבה בהרבה ממה שהיא. צילום תכשיטים
@@ -115,8 +158,15 @@ export function Rolled3D({
     let raf = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      controls.update();
-      renderer.render(scene, camera);
+      // זריקה מתוך requestAnimationFrame היא חריגה גלובלית לא מטופלת, ולכן גם
+      // כאן עוצרים ועוברים לחלופה במקום להפיל את העמוד — שישים פעם בשנייה.
+      try {
+        controls.update();
+        renderer.render(scene, camera);
+      } catch {
+        cancelAnimationFrame(raf);
+        giveUp();
+      }
     };
     loop();
 
@@ -124,10 +174,11 @@ export function Rolled3D({
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
       controls.dispose();
-      pmrem.dispose();
+      pmrem?.dispose();
       renderer.dispose();
-      mount.removeChild(renderer.domElement);
+      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       sceneRef.current = null;
     };
     // הסצנה נבנית פעם אחת; ה-background מסונכרן באפקט נפרד.
@@ -160,7 +211,14 @@ export function Rolled3D({
     const t = thicknessMm;
     const W = widthMm;
     const k = resolveFab(t, productType).kFactor;
-    const geo = buildBentGeometry(material, L, W, gap, t, k);
+    // גיאומטריה חריגה (מצולע פגום, מידות אפס) לא אמורה להפיל את המסע כולו.
+    let geo: THREE.BufferGeometry;
+    try {
+      geo = buildBentGeometry(material, L, W, gap, t, k);
+    } catch {
+      giveUp();
+      return;
+    }
     const mat = new THREE.MeshStandardMaterial({
       color: 0xd9b14c,
       metalness: 1.0,
@@ -199,7 +257,17 @@ export function Rolled3D({
       ctx.fit = fit;
       fit();
     }
-  }, [material, lengthMm, widthMm, gapMm, thicknessMm, productType]);
+  }, [material, lengthMm, widthMm, gapMm, thicknessMm, productType, giveUp]);
+
+  // מי שמעל קיבל `onUnavailable` ומציג חלופה משלו; לשאר נשארת אמירה מפורשת,
+  // כי מסך ריק במקום ההדמיה נראה כמו תקלה בלי שם.
+  if (unavailable) {
+    return (
+      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-mist">
+        {he.err3dUnavailable}
+      </div>
+    );
+  }
 
   return <div ref={mountRef} className="h-full w-full" style={{ direction: "ltr" }} />;
 }
