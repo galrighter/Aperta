@@ -117,6 +117,19 @@ export function buildRenderPrompt(
       ? "CLOSURE: the band is rolled into a ring and has no clasp or fastening — do not add slots, loops, fastening holes or tabs at either end."
       : "CLOSURE: the cuff is closed by bending it around the wrist and has no buckle or fastening — do not add slots, loops, fastening holes or tabs at either end.";
 
+  // הכיתוב מגיע מהפונט, לא מהמודל — הוא כבר חתוך בתמונה המצורפת, וכל מה שנדרש
+  // כאן הוא שהמודל לא יגע בו. אין מסלול שבו המודל מצייר אותיות בעצמו.
+  //
+  // המשפט על הצורה הלא-מוכרת הוא הלקח היקר: בגרסה מקוצרת של ההוראה, שלוש
+  // מארבע הרצות שמרו על הכיתוב והרביעית החזירה "פוזפוזתי" במקום "פספסתי" —
+  // הסמ״ך המגושרת היא הגליף היחיד שאין לו מקבילה בשום פונט, המודל לא זיהה
+  // אותה כאות ו"תיקן" אותה לו-ז. אותו רפלקס שהפך appologize ל-APOLOGIZE.
+  const lettering =
+    "LETTERING: the attached image already carries the lettering, cut into the piece. " +
+    "Copy it across unchanged — the same glyphs in the same places, including the small bridges that hold the enclosed parts of letters in place. " +
+    "Do not redraw, restyle or move a letter, and do not replace a shape that looks unfamiliar: those bridged letterforms are deliberate. " +
+    "Design only in the empty metal around the lettering.";
+
   // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
   // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם
   // מדובר בפריט חדש או בשינוי על קיים.
@@ -139,6 +152,7 @@ export function buildRenderPrompt(
 
     "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
     ...intent,
+    lettering,
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
     `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(fab.minBridgeBend)}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
