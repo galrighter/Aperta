@@ -1,8 +1,9 @@
-import { normalizeSvg } from "@/lib/geometry/normalize";
+import { normalizeSvg, dropThinCutouts } from "@/lib/geometry/normalize";
 import { union, difference, intersection, rectPolygon, multiPolygonArea } from "@/lib/geometry/poly";
 import { ringToPathD } from "@/lib/geometry/paths";
 import { polygonsBBox, translatePolygons } from "@/lib/text/stencil";
 import { svgFrame } from "@/lib/geometry/frame";
+
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 // החתמת הכיתוב על התוצאה — שלב הווקטור, אחרי שהמודל החזיר את העיצוב.
@@ -26,11 +27,24 @@ import type { MultiPolygon } from "@/lib/geometry/types";
 // שמקווים לו למשהו שנכון בבנייה.
 
 /**
- * כמה מרווח לפנות מסביב לכיתוב. נגזר מגובה האות ולא קבוע: מה שהמודל צייר
- * במקום האותיות רחב מהן, וסטייה של רוחב אות שלמה נראית כמו שאריות צמודות
- * לכיתוב. רצפה של 1.2 מ"מ כדי שגם אות קטנה תקבל אוויר מהעיטור.
+ * כמה מרווח לפנות מסביב לכיתוב.
+ *
+ * נגזר מ**רוחב הכיתוב** ולא מגובה האות: מה שהמודל כותב במקום האותיות שלנו
+ * לא רק מעוות אלא גם ארוך יותר, והסטייה מצטברת לאורך המילה. נמדד — מודל
+ * הפרודקשן כתב `פפפיסוי רייטר` וגלש כמה מ"מ מעבר לתיבה שלנו, והשאריות נראות
+ * כמו אותיות זרות צמודות לכיתוב. עשירית מרוחב הכיתוב מכסה את הסטייה שנמדדה
+ * ועדיין רחוקה מהעיטור, שיושב בקצוות. רצפה של 1.2 מ"מ כדי שגם כיתוב קצר
+ * יקבל אוויר.
  */
-const clearance = (letterHeightMm: number) => Math.max(1.2, letterHeightMm * 0.4);
+const clearance = (textWidthMm: number) => Math.max(1.2, textWidthMm * 0.1);
+
+
+// מה שלא נעשה, ובכוונה: לסנן שאריות לפי צורה. כשהמודל כותב יותר אותיות
+// משלנו, חלקן נוחתות מעבר למלבן ונראות כמו אותיות זרות צמודות לכיתוב. נוסה
+// סינון של כל חיתוך שכולו בתוך רצועת הכיתוב וקרוב אליה — הוא הסיר חלק
+// מהשאריות, אבל גם קטע גבעולים של הענף שעברו באותה רצועה. העיצוב נפגע יותר
+// ממה שנוקה. השאריות נשארות, וההערכה של המודל היא זו שצריכה להשתפר:
+// gpt-image-2 מייצר כיתוב ברוחב שלנו ולא משאיר כלום.
 
 /**
  * מחליף את מה שהמודל צייר במקום הכיתוב בכיתוב עצמו.
@@ -44,7 +58,7 @@ const clearance = (letterHeightMm: number) => Math.max(1.2, letterHeightMm * 0.4
  * מחזיר את ה-SVG כמו שהוא אם אין מה להחתים, כדי שמסלול בלי כיתוב לא ישלם
  * על בנייה מחדש.
  */
-export function stampLettering(svg: string, glyphs: MultiPolygon): string {
+export function stampLettering(svg: string, glyphs: MultiPolygon, minHoleMm = 0): string {
   if (!glyphs.length) return svg;
   const frame = svgFrame(svg);
   if (!frame) return svg;
@@ -57,7 +71,7 @@ export function stampLettering(svg: string, glyphs: MultiPolygon): string {
     lengthMm / 2 - (box[0] + box[2]) / 2,
     widthMm / 2 - (box[1] + box[3]) / 2,
   );
-  const [gx0, gy0, gx1, gy1] = polygonsBBox(glyphs);
+  const [gx0, , gx1] = polygonsBBox(glyphs);
 
   const n = normalizeSvg(svg, lengthMm, widthMm);
   const strip: MultiPolygon = [rectPolygon(0, 0, lengthMm, widthMm)];
@@ -66,7 +80,7 @@ export function stampLettering(svg: string, glyphs: MultiPolygon): string {
   // שאריות — מה שהמודל צייר במקום האותיות גולש מעט מעל ומתחת לתיבה שלהן,
   // והשאריות האלה נראות כמו לכלוך צמוד לכיתוב. ממילא אין מקום לעיטור מעל
   // ומתחת: אות בגובה 7.5 מ"מ על פס של 15 משאירה כ-3 מ"מ לכל צד.
-  const pad = clearance(gy1 - gy0);
+  const pad = clearance(gx1 - gx0);
   const clear = intersection([rectPolygon(gx0 - pad, -1, gx1 + pad, widthMm + 1)], strip);
 
   // האותיות עצמן נחתכות לפס גם הן: אם המסגור מתח את המועמד, קצה אות עלול
@@ -83,8 +97,13 @@ export function stampLettering(svg: string, glyphs: MultiPolygon): string {
   const paths = cutouts
     .map((poly) => `<path d="${poly.map((r) => ringToPathD(r)).join("")}" fill="black"/>`)
     .join("");
-  return (
+  const out =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(lengthMm)} ${fmt(widthMm)}">` +
-    `<g id="cutouts">${paths}</g></svg>`
-  );
+    `<g id="cutouts">${paths}</g></svg>`;
+
+  // חיתוך העיטור בגבול המלבן משאיר שבבים דקים מהפתח המינימלי, וכל אחד מהם
+  // מפיל את המועמד ב-V5 — נמדד על שניים מארבעה מועמדים. אותו ניקוי שהמסגור
+  // עושה ממילא (`dropThinCutouts`), רק אחרי ההחתמה ולא לפניה.
+  if (minHoleMm <= 0) return out;
+  return dropThinCutouts(normalizeSvg(out, lengthMm, widthMm), minHoleMm).canonicalSvg;
 }

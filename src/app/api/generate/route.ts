@@ -375,8 +375,18 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       ? framed.map((c, i) => {
           const row = lettering.rows[approved[i].panel];
           if (!row) return c;
-          const svg = stampLettering(c.framedSvg, row.glyphs);
-          return { ...c, framedSvg: svg, report: validateDesign(svg, designDims(design)).report };
+          const svg = stampLettering(c.framedSvg, row.glyphs, minHoleMm);
+          // הוולידציה מול המסגרת של **המועמד** ולא מול המידה שהוזמנה: המסגור
+          // מתקן את הרוחב למה שהמודל צייר בפועל (160×14.25 נמדד), ובדיקה מול
+          // 15 נופלת על חוזה ה-viewBox — כלומר כל מועמד עם כיתוב היה מדווח
+          // כפסול ונופל מהרשימה שהלקוחה בוחרת ממנה.
+          const framedDims = {
+            productType: design.product_type,
+            lengthMm: c.lengthMm,
+            widthMm: c.widthMm,
+            thicknessMm: dims.thicknessMm,
+          };
+          return { ...c, framedSvg: svg, report: validateDesign(svg, framedDims).report };
         })
       : framed;
     const candidates = stamped
