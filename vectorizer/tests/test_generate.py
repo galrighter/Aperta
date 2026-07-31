@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app import generate
+from app import generate, imagegen
 
 
 def striped_png(rows: int) -> bytes:
@@ -71,10 +71,11 @@ def wired(monkeypatch):
     """Patch out the model, the tracer and the network; keep the real splitter."""
     state: dict = {"calls": 0, "uploads": []}
 
-    async def render_many(key, prompt, calls, reference=None):
+    async def render_many(key, prompt, calls, reference=None, model=None):
         state["calls"] = calls
         state["prompt"] = prompt
         state["reference"] = reference
+        state["model"] = model
         return [striped_png(state.get("rows", 1)) for _ in range(calls)]
 
     async def put_all(items, content_type="image/png"):
@@ -333,7 +334,7 @@ def test_a_spent_budget_survives_the_aggregation(monkeypatch):
     from app import imagegen
 
     async def scenario():
-        async def one(client, key, prompt, reference):
+        async def one(client, key, prompt, reference, model=None):
             raise imagegen.ImageGenError('429 {"code":"insufficient_quota"}', quota=True)
 
         monkeypatch.setattr(imagegen, "_one", one)
@@ -344,3 +345,36 @@ def test_a_spent_budget_survives_the_aggregation(monkeypatch):
         assert caught.value.retriable is False
 
     asyncio.run(scenario())
+
+
+def test_the_default_model_is_what_renders_unless_forme_names_another(wired):
+    """The model is forme's decision and the box's default. Both directions are
+    load-bearing: a run that carries lettering asks for a model that copies the
+    reference lettering (see forme's LETTERING_MODEL), and every other run must
+    stay on the cheap default without anyone remembering to say so."""
+    from fastapi.testclient import TestClient
+
+    from app.api import main
+
+    client = TestClient(main.app)
+
+    resp = client.post("/api/generate", json={"prompt": "p"})
+    assert resp.status_code == 200
+    assert wired["model"] == imagegen.MODEL
+    assert resp.json()["model"] == imagegen.MODEL
+
+    resp = client.post("/api/generate", json={"prompt": "p", "model": "gpt-image-2"})
+    assert resp.status_code == 200
+    assert wired["model"] == "gpt-image-2"
+    # ...and the log says which one actually ran, not which one is the default
+    assert resp.json()["model"] == "gpt-image-2"
+
+
+def test_a_model_the_box_does_not_know_is_refused():
+    """An allowlist and not a pass-through: the name reaches OpenAI on our key."""
+    from fastapi.testclient import TestClient
+
+    from app.api import main
+
+    resp = TestClient(main.app).post("/api/generate", json={"prompt": "p", "model": "gpt-9"})
+    assert resp.status_code == 400

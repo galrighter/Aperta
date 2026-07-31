@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { stampLettering } from "../stampLettering";
+import { LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { buildLetteringRenderSvg } from "../letteringImage";
 import { validateDesign } from "@/lib/geometry/validate";
 import { normalizeSvg } from "@/lib/geometry/normalize";
@@ -63,5 +64,16 @@ describe("stampLettering", () => {
   it("does nothing when there is no lettering to stamp", () => {
     const svg = modelOutput();
     expect(stampLettering(svg, [])).toBe(svg);
+  });
+});
+
+// המודל שרץ הוא החלטה של forme ולא של הקופסה, ולכן היא נבדקת כאן. ההרצה
+// מקצה לקצה מדדה 0/4 שורות נכונות ב-gpt-image-1-mini מול 4/4 ב-gpt-image-2
+// על אותה תמונת ייחוס — ההחתמה מתקנת את האיות בשניהם, אבל מה שנשאר סביב
+// הכיתוב שונה. ראה HEBREW_TEXT_LETTERING_FIELD.md §6.6.
+describe("the model a lettering run asks for", () => {
+  it("is not the cheap default the rest of the pipeline uses", () => {
+    expect(LETTERING_MODEL).toBe("gpt-image-2");
+    expect(LETTERING_MODEL).not.toBe("gpt-image-1-mini");
   });
 });

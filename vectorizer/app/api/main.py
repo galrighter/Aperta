@@ -136,6 +136,9 @@ class GenerateIn(BaseModel):
     # An edit: the design as it stands, already drawn as a render would look.
     # We rasterise it and hand it to the image model as the reference.
     base_svg: str | None = Field(default=None, max_length=2_000_000)
+    # Which image model to render with. Validated against imagegen.ALLOWED_MODELS
+    # rather than passed through: the name goes to OpenAI on our key.
+    model: str | None = None
     artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
 
 
@@ -149,6 +152,8 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
     """
     if body.color_key not in ("coverage", "warm", "dark", "saturation", "auto"):
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
+    if body.model is not None and body.model not in imagegen.ALLOWED_MODELS:
+        raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad model"})
 
     inspiration = None
     if body.inspiration is not None:
@@ -166,6 +171,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         inspiration=inspiration,
         base_svg=body.base_svg,
         min_hole_mm=body.min_hole_mm,
+        model=body.model,
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
 

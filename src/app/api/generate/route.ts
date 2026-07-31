@@ -6,7 +6,7 @@ import { getDesign, countTodayGenerations } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
-import { buildRenderPrompt } from "@/lib/llm/imagegen";
+import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { planRender } from "@/lib/render/panels";
@@ -321,6 +321,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       minHoleMm,
       inspiration,
       baseSvg,
+      // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
+      // נשארות על ברירת המחדל הזולה.
+      model: lettering ? LETTERING_MODEL : undefined,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {
         conditioned: `runs/${runId}/conditioned.png`,
