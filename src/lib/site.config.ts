@@ -15,6 +15,7 @@ export const NAV = [
   { href: "/", key: "navHome" as const },
   { href: "/how-it-works", key: "navHowItWorks" as const },
   { href: "/gallery", key: "navGallery" as const },
+  { href: "/sizing", key: "navSizing" as const },
   { href: "/faq", key: "navFaq" as const },
   { href: "/contact", key: "navContact" as const },
 ] as const;
