@@ -169,9 +169,12 @@ export function BriefScreen({
 
             {/* טקסט על התכשיט — שדה נפרד, ומכוון.
                 הכיתוב אינו חלק מהתיאור: הוא לא מגיע למודל התמונה כמילים אלא
-                נחתך מהפונט ונמסר לו כתמונה (lib/render/letteringImage.ts).
-                לקוחה שתכתוב "צמיד עם השם ענבל" בתיאור החופשי תקבל את מה
-                שהמודל יאיית — וזה בדיוק מה שהשדה הזה קיים כדי למנוע. */}
+                נחתך מהפונט ונמסר לו כתמונה (lib/render/letteringImage.ts), כך
+                שיש לו מה להעתיק במקום מה לנחש. לקוחה שתכתוב "צמיד עם השם
+                ענבל" בתיאור החופשי תקבל את מה שהמודל יאיית מכלום — הפרש
+                מדוד של פי כמה בדיוק.
+                מה שזה **לא** נותן: ערובה. המודל מדייק ברוב החלופות ולא בכולן,
+                ולכן הבחירה של הלקוחה היא האישור — וזה מה ש-textVerify אומר. */}
             <div className="mt-4 border border-graphite/10 bg-white p-6">
               <div className="mb-4 flex items-baseline justify-between gap-4">
                 <CardLabel>{d.textLabel}</CardLabel>
@@ -188,6 +191,13 @@ export function BriefScreen({
                 className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
               />
               <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.textHint}</p>
+              {/* האזהרה מופיעה רק כשיש כיתוב — היא מיותרת עד שיש מה לבדוק,
+                  ואזהרה שמוצגת תמיד מפסיקה להיקרא. */}
+              {s.lettering.trim() && (
+                <p className="mt-3 border-s-2 border-cobalt bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                  {d.textVerify}
+                </p>
+              )}
               {s.lettering.trim() && s.image && s.imageRole !== "ready" && (
                 <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.textOverridesImage}</p>
               )}

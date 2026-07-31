@@ -12,8 +12,6 @@ import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { planRender } from "@/lib/render/panels";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
-import { stampLettering } from "@/lib/render/stampLettering";
-import { validateDesign } from "@/lib/geometry/validate";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
@@ -63,8 +61,9 @@ const schema = z.object({
   userPrompt: z.string().min(1).max(4000),
   /**
    * הכיתוב שהלקוחה ביקשה על התכשיט. הוא **אינו** נכנס לפרומפט אלא נחתך
-   * אצלנו מהפונט ונמסר למודל כתמונת ייחוס (lib/render/letteringImage.ts) —
-   * מודל התמונה כותב עברית תקינה אבל לא תמיד את המילה שביקשו.
+   * אצלנו מהפונט ונמסר למודל כתמונת ייחוס (lib/render/letteringImage.ts):
+   * כשהוא כותב לפי מילים הוא בולע אותיות ומתקן כתיב, וכשיש לו מה להעתיק הוא
+   * מדייק ברוב החלופות. ברוב, לא בכולן — הלקוחה בוחרת ומאשרת.
    */
   text: z.string().max(40).optional(),
   currentSvg: z.string().max(500_000).nullable().optional(),
@@ -293,8 +292,21 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
         editedFromCurrent: Boolean(editSvg),
         /** הכיתוב שנחתך, והטיפוגרפיה שכל שורה קיבלה. בלי זה אי אפשר להסביר
-         *  ביומן למה חלופה אחת נראית אחרת מהשנייה. */
-        lettering: lettering ? { text: body.text?.trim(), rows: lettering.rows } : null,
+         *  ביומן למה חלופה אחת נראית אחרת מהשנייה.
+         *
+         *  השדות נבחרים אחד-אחד ולא נשפכים: `LetteringRow` נושאת גם את
+         *  הפוליגונים של האותיות, וזו גאומטריה במשקל של עשרות קילובייט
+         *  לשורה. שורת יומן היא דיווח, לא עותק. */
+        lettering: lettering
+          ? {
+              text: body.text?.trim(),
+              rows: lettering.rows.map((r) => ({
+                fontId: r.fontId,
+                letterHeightMm: r.letterHeightMm,
+                textWidthMm: r.textWidthMm,
+              })),
+            }
+          : null,
         /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
         promptOverride: Boolean(body.promptOverride?.trim()),
       },
@@ -365,34 +377,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
     const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
-    const framed = await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!));
-    // הכיתוב מוחזר מהפונט אחרי המסגור. מודל התמונה **לא** משמר אותו: נמדד על
-    // הצינור האמיתי, gpt-image-1-mini החזיר 0 מתוך 4 שורות נכונות ו-gpt-image-2
-    // החזיר 2 מתוך 4, והכשלים בדיוק באותיות המגושרות. הפירוט והמספרים:
-    // src/lib/render/stampLettering.ts. מכאן שמהמודל נלקח העיטור בלבד.
-    //
-    // ההצמדה היא לפי `panel`: הקופסה מחזירה את מספר השורה שממנה נחתך המועמד,
-    // וכל שורה בתמונת הייחוס נשאה טיפוגרפיה אחרת. השוואה לפי מיקום ברשימה
-    // הייתה מזיזה טיפוגרפיה לשורה שאינה שלה ברגע שמועמד אחד נפסל.
-    const stamped = lettering
-      ? framed.map((c, i) => {
-          const row = lettering.rows[approved[i].panel];
-          if (!row) return c;
-          const svg = stampLettering(c.framedSvg, row.glyphs, minHoleMm);
-          // הוולידציה מול המסגרת של **המועמד** ולא מול המידה שהוזמנה: המסגור
-          // מתקן את הרוחב למה שהמודל צייר בפועל (160×14.25 נמדד), ובדיקה מול
-          // 15 נופלת על חוזה ה-viewBox — כלומר כל מועמד עם כיתוב היה מדווח
-          // כפסול ונופל מהרשימה שהלקוחה בוחרת ממנה.
-          const framedDims = {
-            productType: design.product_type,
-            lengthMm: c.lengthMm,
-            widthMm: c.widthMm,
-            thicknessMm: dims.thicknessMm,
-          };
-          return { ...c, framedSvg: svg, report: validateDesign(svg, framedDims).report };
-        })
-      : framed;
-    const candidates = stamped
+    // הכיתוב **אינו** נדרס אחרי שהמודל מחזיר. היה כאן שלב שהחליף את מה
+    // שהמודל צייר בנתיבי הפונט המקוריים, והוא הוסר (החלטת גל, 31/07): המודל
+    // מדויק ב-3 מתוך 4 חלופות, הלקוחה בוחרת ומאשרת בעצמה, והעיצוב שהיא
+    // רואה הוא זה שנחתך — בלי שכבה שמדביקה אותיות על גביו. המחיר מוצג לה
+    // במפורש בשדה הכיתוב (`textVerify`): לוודא את האיות לפני הזמנה.
+    // המדידות ששני הכיוונים נשענים עליהן: docs/research/HEBREW_TEXT_LETTERING_FIELD.md §6.8.
+    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!)))
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {
