@@ -187,6 +187,23 @@ export const INITIAL: CreateState = {
   orderNo: null,
 };
 
+/**
+ * מה מוצג בשורה ביומן הגרסאות.
+ *
+ * שלוש דרכים בלבד יוצרות גרסה, ורק אחת מהן נושאת טקסט: היצירה הראשונה (אינדקס
+ * 0, בלי טקסט), בקשת שינוי (עם הטקסט שהוזן), ובחירת הצעה אחרת (בלי טקסט).
+ * לכן "אינדקס גדול מ-0 ובלי טקסט" הוא בדיוק בחירת הצעה.
+ *
+ * קודם היומן הציג `text || versionOriginal`, וכך כל בחירת הצעה הופיעה בתור
+ * "העיצוב המקורי" — מי שבחר שלוש הצעות ראה שלוש שורות שכולן טוענות שהן המקור.
+ * ההבחנה כאן לפי מיקום ולא לפי שדה חדש, כדי שהיא תעבוד גם על עיצוב שנטען
+ * מחדש מהשרת: שם `user_prompt` של בחירת הצעה הוא null, בדיוק כמו של הראשונה.
+ */
+export function versionEntryLabel(entry: EditEntry, index: number): string {
+  if (entry.text) return entry.text;
+  return index === 0 ? d.versionOriginal : d.versionPicked;
+}
+
 /* ===== נגזרות מידה ===== */
 
 export const widthOf = (s: CreateState): number =>

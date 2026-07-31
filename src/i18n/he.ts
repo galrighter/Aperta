@@ -771,6 +771,9 @@ export const he = {
     versionLabel: "גרסה",
     versionRestore: "חזרה לגרסה זו",
     versionOriginal: "העיצוב המקורי",
+    /** גרסה שנוצרה מבחירת הצעה אחרת ולא מבקשת שינוי — בלעדיה היא נפלה
+     *  ל-versionOriginal, וכל בחירה הופיעה ביומן כ"העיצוב המקורי". */
+    versionPicked: "בחירת הצעה אחרת",
 
     tuneTitle: "כוונון מהיר",
     tuneDensity: "צפיפות חיתוכים",

@@ -10,7 +10,8 @@ import {
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
 import { RolledStage } from "./RolledStage";
 import {
-  activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, type CreateState,
+  activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, versionEntryLabel,
+  type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -309,7 +310,7 @@ export function ResultScreen({
                           {e.region ? ` · ${d.regions[e.region]}` : ""}
                         </div>
                         <div className="mt-0.5 truncate text-[13px] text-ink60">
-                          {e.text || d.versionOriginal}
+                          {versionEntryLabel(e, i)}
                         </div>
                       </div>
                       {!on && (
