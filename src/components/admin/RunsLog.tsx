@@ -42,6 +42,8 @@ export type RunInputs = {
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** האם ההרצה יצאה מהעיצוב הקיים (עריכה) או מאפס. */
   editedFromCurrent?: boolean;
+  /** מספר הגרסה שנמסרה למודל כבסיס לעריכה. חסר בהרצות שנשמרו לפני שהוא נרשם. */
+  editedFromVersion?: number;
 };
 
 /** הבעלים של ההרצה, לקיבוץ היומן לפי משתמש. */
@@ -440,7 +442,10 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
   if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
-  if (inputs.editedFromCurrent) chips.push("עריכה של הקיים");
+  // כשידוע *על איזו* גרסה השינוי נשלח, זה מה שנכתב: "עריכה של הקיים" לבדו לא
+  // מאפשר להעמיד את הפרומפט מול התמונה שהמודל קיבל.
+  if (inputs.editedFromVersion != null) chips.push(`עריכה של גרסה ${inputs.editedFromVersion}`);
+  else if (inputs.editedFromCurrent) chips.push("עריכה של הקיים");
   if (inputs.imageUpload) chips.push("תמונה שהועלתה");
   if (inputs.promptOverride) chips.push("פרומפט ידני");
   if (inputs.imageCount) chips.push(`${inputs.imageCount} קבצים`);
