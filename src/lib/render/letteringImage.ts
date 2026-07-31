@@ -53,6 +53,8 @@ export interface LetteringRow {
   letterHeightMm: number;
   /** רוחב הכיתוב במ"מ. */
   textWidthMm: number;
+  /** האותיות עצמן, בקואורדינטות הפס — מהן נחתם הכיתוב על התוצאה. */
+  glyphs: MultiPolygon;
 }
 
 export interface LetteringReference {
@@ -138,7 +140,15 @@ async function letteringPolygons(
     // הצורה שבאמת נחתכת. מירכוז לפי מטריקות הפונט היה מזיז את הכיתוב ממרכז הפס.
     const [x0, y0, x1, y1] = polygonsBBox(raw);
     const mp = translatePolygons(raw, dims.lengthMm / 2 - (x0 + x1) / 2, dims.widthMm / 2 - (y0 + y1) / 2);
-    return { mp, row: { fontId: style.fontId, letterHeightMm: r2(y1 - y0), textWidthMm: r2(x1 - x0) } };
+    return {
+      mp,
+      row: {
+        fontId: style.fontId,
+        letterHeightMm: r2(y1 - y0),
+        textWidthMm: r2(x1 - x0),
+        glyphs: mp,
+      },
+    };
   }
   return null;
 }

@@ -12,6 +12,8 @@ import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { planRender } from "@/lib/render/panels";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
+import { stampLettering } from "@/lib/render/stampLettering";
+import { validateDesign } from "@/lib/geometry/validate";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
@@ -360,7 +362,24 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
     const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
-    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!)))
+    const framed = await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!));
+    // הכיתוב מוחזר מהפונט אחרי המסגור. מודל התמונה **לא** משמר אותו: נמדד על
+    // הצינור האמיתי, gpt-image-1-mini החזיר 0 מתוך 4 שורות נכונות ו-gpt-image-2
+    // החזיר 2 מתוך 4, והכשלים בדיוק באותיות המגושרות. הפירוט והמספרים:
+    // src/lib/render/stampLettering.ts. מכאן שמהמודל נלקח העיטור בלבד.
+    //
+    // ההצמדה היא לפי `panel`: הקופסה מחזירה את מספר השורה שממנה נחתך המועמד,
+    // וכל שורה בתמונת הייחוס נשאה טיפוגרפיה אחרת. השוואה לפי מיקום ברשימה
+    // הייתה מזיזה טיפוגרפיה לשורה שאינה שלה ברגע שמועמד אחד נפסל.
+    const stamped = lettering
+      ? framed.map((c, i) => {
+          const row = lettering.rows[approved[i].panel];
+          if (!row) return c;
+          const svg = stampLettering(c.framedSvg, row.glyphs);
+          return { ...c, framedSvg: svg, report: validateDesign(svg, designDims(design)).report };
+        })
+      : framed;
+    const candidates = stamped
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {
