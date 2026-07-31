@@ -107,6 +107,32 @@ export function buildRenderPrompt(
       ? "a laser-cut matte black metal ring, opened out and lying completely flat (this is the flat blank that gets rolled into a ring)"
       : "a laser-cut matte black metal bracelet cuff, opened out and lying completely flat";
 
+  // הפריט נסגר בכיפוף, ואין לו אבזם. בלי המשפט הזה המודל הוסיף לשני הקצוות
+  // חריצים, לולאות ולשוניות — בכל הרצה, בכל שם, בשתי הפולריות. "צמיד שטוח
+  // לחיתוך" הוא מחלקת תמונות שכמעט תמיד יש בה סגירה, והוא השלים אותה. החריצים
+  // אוכלים בדיוק את הקצוות שבהם endMargin דורש מתכת מלאה, והווקטורייזר מתרגם
+  // אותם לחורים אמיתיים ב-DXF.
+  const closure =
+    productType === "ring"
+      ? "CLOSURE: the band is rolled into a ring and has no clasp or fastening — do not add slots, loops, fastening holes or tabs at either end."
+      : "CLOSURE: the cuff is closed by bending it around the wrist and has no buckle or fastening — do not add slots, loops, fastening holes or tabs at either end.";
+
+  // כיתוב: הפולריות היא ההחלטה, לא בקשה מהמודל להיזהר.
+  //
+  // כשהאותיות הן המתכת, כל יו״ד היא אי מנותק שנופל מהגיליון — וביקשנו במפורש,
+  // בשלוש נוסחאות שונות ובשלושה סבבים, שהאותיות הקטנות יקבלו נקודות מגע. המודל
+  // חיבר את האותיות הגדולות והתעלם מהקטנות בכל פעם. כשהאותיות הן הפתחים הבעיה
+  // לא נפתרת אלא מפסיקה להתקיים: חור לא נופל. נשאר רק החלל הסגור של ם/ס, ואת
+  // הגשר שם המודל דווקא כן מבצע כשמסבירים לו למה הוא נחוץ.
+  //
+  // זו גם הפולריות שחוזה ה-cutouts שלנו מניח ממילא. הרישום המלא של הניסויים:
+  // docs/research/HEBREW_TEXT_EXPERIMENT_RESULTS.md.
+  const lettering =
+    "LETTERING (whenever the design intent asks for a name, a word or any lettering): the letters are cut out of the metal — each letter is an opening the white background shows through, and the metal stays one continuous body around them. " +
+    "Never draw the letters as standing metal shapes of their own: a small letter drawn that way — the Hebrew yod, vav, zayin or final nun, or a dot in an ornament — is a detached island and drops out of the sheet the moment the cut is finished. " +
+    "Where a letter encloses an area of its own, as ם and ס do in Hebrew and O, A, B, D, P and R do in Latin, leave a small metal bridge joining that inner area to the metal around the letter so it cannot fall out. " +
+    "Use letterforms drawn for cutting — stencil-style — not a typeface that assumes ink.";
+
   // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
   // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם
   // מדובר בפריט חדש או בשינוי על קיים.
@@ -125,8 +151,11 @@ export function buildRenderPrompt(
     // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
     `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
 
+    closure,
+
     "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
     ...intent,
+    lettering,
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
     `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(fab.minBridgeBend)}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
