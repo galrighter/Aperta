@@ -127,20 +127,16 @@ export function FlatDrawing({
         role="img"
         aria-label={d.modeFlat}
       >
-        {/* מסגרת הרצועה */}
-        <rect
-          x="0" y="0" width={lengthMm} height={widthMm}
-          fill="none" stroke="rgba(32,35,38,0.35)" strokeWidth={Math.max(0.25, widthMm / 90)}
-        />
-        {/* החיתוכים בקו כחול, ישירות מה-SVG של הגרסה */}
+        {/* הרצועה מלאה, והחיתוכים בצבע הרקע — אותה קוטביות כמו בסטודיו: כהה
+            הוא מתכת ובהיר הוא אוויר.
+
+            מה שהיה כאן קודם ניסה לצייר קווי מתאר כחולים (`fill="none"` על ה-g),
+            אבל זה מעולם לא רץ: כל path בחוזה נושא `fill="black"` משלו, ותכונת
+            הצגה על הצאצא גוברת על ערך שיורש מההורה. בפועל הוצגו צורות שחורות
+            מלאות על רקע בהיר — כלומר נגטיב, עם קו כחול דק סביבן. */}
+        <rect x="0" y="0" width={lengthMm} height={widthMm} fill="var(--color-graphite)" />
         {cutouts && (
-          <g
-            fill="none"
-            stroke={COBALT}
-            strokeWidth={Math.max(0.2, widthMm / 110)}
-            strokeLinejoin="round"
-            dangerouslySetInnerHTML={{ __html: cutouts }}
-          />
+          <g className="flat-cutouts" dangerouslySetInnerHTML={{ __html: cutouts }} />
         )}
         {/* מה שהוולידציה פסלה, במקום שבו הוא יושב. אותו סימון כמו בסטודיו: עיגול
             מקווקו סביב הממצא. בלי זה "פתח קטן מדי לחיתוך" הוא פסק דין בלי ראיה —
@@ -152,7 +148,7 @@ export function FlatDrawing({
             cy={h.y}
             r={Math.max(h.r ?? 0, widthMm / 12)}
             fill="none"
-            stroke={h.status === "fail" ? "#c0413b" : "#b9762e"}
+            stroke={h.status === "fail" ? "#f0736c" : "#f0a75a"}
             strokeWidth={Math.max(0.25, widthMm / 80)}
             strokeDasharray={`${Math.max(0.6, widthMm / 30)} ${Math.max(0.4, widthMm / 45)}`}
           />
@@ -167,7 +163,7 @@ export function FlatDrawing({
                 y={0}
                 width={lengthMm * (z.to - z.from)}
                 height={widthMm}
-                fill={on ? "rgba(49,91,255,0.10)" : "transparent"}
+                fill={on ? "rgba(49,91,255,0.20)" : "transparent"}
                 stroke={on ? COBALT : "transparent"}
                 strokeWidth={Math.max(0.3, widthMm / 70)}
                 strokeDasharray={`${Math.max(1, widthMm / 8)} ${Math.max(0.8, widthMm / 12)}`}
