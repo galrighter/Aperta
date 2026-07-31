@@ -1,6 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { samplePathToRings, ringToPathD } from "./paths";
-import { union, difference, intersection, offset, rectPolygon, ringArea, multiPolygonArea } from "./poly";
+import { union, difference, intersection, offset, rectPolygon, ringArea, multiPolygonArea, polygonArea } from "./poly";
 import type { MultiPolygon, Polygon, Ring } from "./types";
 
 // נרמול SVG גולמי מה-LLM לפי החוזה (סעיף 5): פרסינג קפדני → המרת primitives
@@ -307,6 +307,58 @@ export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): Normali
     lengthMm: n.lengthMm,
     widthMm: n.widthMm,
     cutouts: kept,
+    cutUnion,
+  };
+}
+
+/**
+ * מסיר חתיכות מתכת שאינן מחוברות לגוף — הפגם שמייצר גם V2 וגם V3.
+ *
+ * "אי" הוא חומר שמוקף כולו בחיתוכים, כלומר רכיב נפרד של המתכת. הוא נושר
+ * בחיתוך ומשאיר חור שאיש לא תכנן, ולכן עיצוב כזה פשוט אינו ניתן לייצור.
+ * המחיקה היא פעולה גיאומטרית טהורה — משאירים את הרכיב הגדול, וכל השאר הופך
+ * לחיתוך — ולכן היא מיידית, דטרמיניסטית, ולא דורשת סבב נוסף מול המודל.
+ *
+ * **למה מחיקה ולא גשר.** גישור מוסיף פס מתכת שאיש לא צייר: הוא חוצה חיתוך,
+ * נראה כמו טעות, והבחירה איפה למקם אותו היא החלטה עיצובית שאין לנו בסיס
+ * לקבל. הלקוחה לא ראתה את הגרסה ה"מקורית" ולכן אינה יכולה להתגעגע לשבב שהוסר,
+ * אבל היא בהחלט תראה קו שהופיע משום מקום.
+ *
+ * **הסף.** מחיקה גדולה אינה תיקון אלא עיצוב אחר, ולכן מעל `maxDroppedFraction`
+ * מהחומר לא נוגעים — עדיף להחזיר עיצוב שנכשל בוולידציה מאשר להחזיר בשקט משהו
+ * אחר ממה שהמודל ייצר. במדידה על RM-0060 האי היה 67.6 מ"מ² = 1.95% מהחומר,
+ * כלומר המקרה האמיתי רחוק מהסף בסדר גודל.
+ *
+ * מחזיר את אותו אובייקט כשאין מה להסיר, כמו `dropThinCutouts`.
+ */
+export function dropDetachedMaterial(
+  n: NormalizedDesign,
+  maxDroppedFraction: number,
+): NormalizedDesign {
+  const strip: MultiPolygon = [rectPolygon(0, 0, n.lengthMm, n.widthMm)];
+  const material = difference(strip, n.cutUnion);
+  if (material.length <= 1) return n;
+
+  const areas = material.map(polygonArea);
+  const total = areas.reduce((a, b) => a + b, 0);
+  if (total <= 0) return n;
+  let keep = 0;
+  for (let i = 1; i < areas.length; i++) if (areas[i] > areas[keep]) keep = i;
+  if ((total - areas[keep]) / total > maxDroppedFraction) return n;
+
+  // ה-cutouts נבנים מחדש מהמשלים של החומר שנשאר: האי היה חור *בתוך* חיתוך,
+  // ומחיקתו מאחדת אותו עם החיתוך שהקיף אותו. לכן זו אינה סינון של הרשימה
+  // הקיימת (כמו ב-dropThinCutouts) אלא גזירה מחדש.
+  const cutUnion = difference(strip, [material[keep]]);
+  const cutouts = cutUnion.map((poly) => [poly]);
+  const pathEls = cutUnion.map((poly) => `<path d="${polygonToPathD(poly)}" fill="black"/>`);
+  return {
+    canonicalSvg:
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(n.lengthMm)} ${fmt(n.widthMm)}">` +
+      `<g id="cutouts">${pathEls.join("")}</g></svg>`,
+    lengthMm: n.lengthMm,
+    widthMm: n.widthMm,
+    cutouts,
     cutUnion,
   };
 }

@@ -1,6 +1,6 @@
 import { resolveFab } from "@/lib/fabrication.config";
 import { rescaleCutoutsSvg, svgFrame } from "./frame";
-import { dropThinCutouts } from "./normalize";
+import { dropDetachedMaterial, dropThinCutouts } from "./normalize";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
 
@@ -15,6 +15,13 @@ import type { ValidationReport } from "./types";
 
 /** כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7. */
 const WIDTH_TOLERANCE = 0.05;
+
+/**
+ * מעל כמה מהחומר מפסיקים להסיר אי בשקט. מעל הסף זה כבר לא תיקון אלא עיצוב
+ * אחר, ועדיף להחזיר כשל בוולידציה מאשר להחזיר בשקט משהו שהמודל לא ייצר.
+ * 10% נבחר מול מדידה: האי ב-RM-0060 היה 1.95% מהחומר — סדר גודל מתחת.
+ */
+const MAX_DROPPED_MATERIAL = 0.1;
 
 /** מה שהמסך צריך ממועמד — בלי גרף הפוליגונים. זה מה שעובר על החוט. */
 export interface FramedPreview {
@@ -71,6 +78,19 @@ export function frameCutoutsDims(dims: DesignDims, cutoutsSvg: string): FramedCu
       normalized = cleaned;
       framedSvg = cleaned.canonicalSvg;
       report = validateNormalized(cleaned, framedDims);
+    }
+  }
+
+  // אי חומר (V2/V3) הוא הכשל הנפוץ שנשאר, והוא הפרש בין "לא ניתן לייצור" לבין
+  // "מוכן" — לא בין שני עיצובים. מסירים אותו כאן, לפני שמישהו רואה את התוצאה,
+  // מאותה סיבה שמסירים פתחים שאי אפשר לחתוך: הלקוחה לא ראתה גרסה אחרת ולכן
+  // אין ממה לגרוע, אבל היא כן הייתה נתקעת עם עיצוב שאי אפשר להזמין.
+  if (normalized) {
+    const joined = dropDetachedMaterial(normalized, MAX_DROPPED_MATERIAL);
+    if (joined !== normalized) {
+      normalized = joined;
+      framedSvg = joined.canonicalSvg;
+      report = validateNormalized(joined, framedDims);
     }
   }
 
