@@ -19,6 +19,14 @@ export interface DesignRow {
   updated_at: string;
 }
 
+/** הצעה שהוצעה יחד עם גרסה. בדיוק מה ש-/api/generate מחזיר. */
+export interface VersionCandidate {
+  svg: string;
+  report: unknown;
+  drawnRatio?: number;
+  stretch?: number;
+}
+
 export interface VersionRow {
   id: string;
   design_id: string;
@@ -30,6 +38,10 @@ export interface VersionRow {
   validation_report: unknown;
   validation_status: "pass" | "warn" | "fail";
   created_at: string;
+  /** 0012 — undefined במסד שעוד לא קיבל את המיגרציה, כמו `serial` ב-0008. */
+  candidates?: VersionCandidate[] | null;
+  generation_id?: string | null;
+  picked_index?: number | null;
 }
 
 export async function getDesign(id: string): Promise<DesignRow> {
@@ -55,9 +67,13 @@ export async function getVersion(id: string): Promise<VersionRow> {
 }
 
 export async function listVersions(designId: string): Promise<VersionRow[]> {
+  // `*` ולא רשימה מפורשת: העמודות של 0012 חסרות במסד שעוד לא קיבל את המיגרציה,
+  // ורשימה מפורשת הייתה מפילה את הקריאה כולה במקום להחזיר אותן כ-undefined.
+  // הרשימה המפורשת ממילא כללה את `svg` ו-`validation_report`, כלומר את כל מה
+  // שכבד בשורה — אין כאן ויתור על חיסכון.
   const { data, error } = await supabaseAdmin()
     .from("design_versions")
-    .select("id, design_id, version_no, source, user_prompt, validation_status, created_at, svg, validation_report, annotation_png_path")
+    .select("*")
     .eq("design_id", designId)
     .order("version_no", { ascending: true });
   if (error) throw new Error(error.message);
@@ -73,8 +89,21 @@ export async function insertVersion(v: {
   annotation_png_path: string | null;
   validation_report: unknown;
   validation_status: VersionRow["validation_status"];
+  /** 0012 — נשלחות רק כשהוגדרו, ונופלות בשקט אם המיגרציה עוד לא רצה (ראו להלן). */
+  candidates?: VersionCandidate[] | null;
+  generation_id?: string | null;
+  picked_index?: number | null;
 }): Promise<VersionRow> {
   const sb = supabaseAdmin();
+  // שדות 0012 נשלחים רק אם יש להם ערך: מסד שעוד לא קיבל את המיגרציה דוחה
+  // עמודה לא מוכרת, וכשלון כאן הוא כשלון של *היצירה כולה* — לא של שמירת נספח.
+  const { candidates, generation_id, picked_index, ...core } = v;
+  const extras: Record<string, unknown> = {};
+  if (candidates !== undefined) extras.candidates = candidates;
+  if (generation_id !== undefined) extras.generation_id = generation_id;
+  if (picked_index !== undefined) extras.picked_index = picked_index;
+  let withExtras = Object.keys(extras).length > 0;
+
   // ניסיון חוזר במקרה של התנגשות על unique(design_id, version_no)
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: maxRow, error: maxErr } = await sb
@@ -88,7 +117,7 @@ export async function insertVersion(v: {
     const nextNo = (maxRow?.version_no ?? 0) + 1;
     const { data, error } = await sb
       .from("design_versions")
-      .insert({ ...v, version_no: nextNo })
+      .insert({ ...core, ...(withExtras ? extras : {}), version_no: nextNo })
       .select("*")
       .single();
     if (!error && data) {
@@ -98,6 +127,12 @@ export async function insertVersion(v: {
         .eq("id", v.design_id);
       if (updErr) throw new Error(updErr.message);
       return data as VersionRow;
+    }
+    // מסד בלי 0012: הגרסה עצמה חשובה יותר מההצעות שנלוות לה. מוותרים על הנספח
+    // וממשיכים, במקום להפיל יצירה שהצליחה בגלל שלוש עמודות שאינן קיימות עדיין.
+    if (withExtras && /column .* does not exist|schema cache/i.test(error?.message ?? "")) {
+      withExtras = false;
+      continue;
     }
     if (!/duplicate|unique/i.test(error?.message ?? "")) {
       throw new Error(error?.message ?? "insert version failed");

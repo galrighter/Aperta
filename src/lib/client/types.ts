@@ -40,6 +40,10 @@ export interface Version {
   validation_report: ValidationReport;
   validation_status: "pass" | "warn" | "fail";
   created_at: string;
+  /** 0012 — ההצעות שהוצעו יחד עם הגרסה. undefined במסד שלפני המיגרציה. */
+  candidates?: Array<{ svg: string; report: ValidationReport }> | null;
+  generation_id?: string | null;
+  picked_index?: number | null;
 }
 
 export interface Geometry {

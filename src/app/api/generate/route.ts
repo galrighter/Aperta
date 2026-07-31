@@ -345,12 +345,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       meanDeviationMm: raw?.mean_contour_deviation_mm,
       maxDeviationMm: raw?.max_contour_deviation_mm,
     };
+    // ההצעות נשמרות על הגרסה עצמה (0012). עד כאן הן חזרו בגוף התשובה בלבד,
+    // כלומר חיו רק בזיכרון הדפדפן ונמחקו בכל רענון.
+    const offeredRows = offered.map((c) => ({
+      svg: c.framedSvg,
+      report: c.report,
+      drawnRatio: Math.round(c.drawnRatio * 100) / 100,
+      stretch: Math.round(c.stretch * 1000) / 1000,
+    }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,
       cutoutsSvg: candidates[0].framedSvg,
       userPrompt: body.userPrompt,
       renderPngPath,
       metrics,
+      candidates: offeredRows,
+      generationId: runId,
+      // candidates ממוין כך שהזוכה ראשון, ו-offered שומר על הסדר — הגרסה
+      // שנשמרת כאן היא ההצעה הראשונה, אלא אם היא נפלה בוולידציה ואינה מוצעת.
+      pickedIndex: offeredRows.length > 0 && offered[0] === candidates[0] ? 0 : null,
     });
 
     // ההדמיה חוזרת כקישור חתום ולא כ-data URL. ה-PNG שוקל ~2.3MB, כלומר ~3.1MB
@@ -366,12 +379,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       geometry,
       lengthMm,
       widthMm,
-      candidates: offered.map((c) => ({
-        svg: c.framedSvg,
-        report: c.report,
-        drawnRatio: Math.round(c.drawnRatio * 100) / 100,
-        stretch: Math.round(c.stretch * 1000) / 1000,
-      })),
+      candidates: offeredRows,
       render: { model: job.model, url: renderUrl },
       vectorizer: metrics,
     };

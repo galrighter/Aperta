@@ -231,14 +231,14 @@ export const api = {
       error?: { code?: string; message?: string };
     }>(`/api/generate/${jobId}`),
 
-  chooseCandidate: (designId: string, svg: string) =>
+  chooseCandidate: (designId: string, svg: string, index?: number) =>
     call<{
       version: Version;
       report: ValidationReport;
       geometry: Geometry | null;
       lengthMm: number;
       widthMm: number;
-    }>(`/api/designs/${designId}/choose`, { method: "POST", body: JSON.stringify({ svg }) }),
+    }>(`/api/designs/${designId}/choose`, { method: "POST", body: JSON.stringify({ svg, index }) }),
 
   vectorize: (input: {
     designId: string;
