@@ -1,7 +1,7 @@
 import opentype from "opentype.js";
 import { loadFace, DEFAULT_FONT, type FontId } from "./fonts";
 import { samplePathToRings, ringToPathD } from "@/lib/geometry/paths";
-import { union, difference, intersection, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
+import { union, difference, intersection, offset, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
 import { resolveFab } from "@/lib/fabrication.config";
 import type { DesignDims } from "@/lib/geometry/validate";
 import type { MultiPolygon, Ring } from "@/lib/geometry/types";
@@ -20,6 +20,9 @@ function attr(attrsStr: string, name: string): string | null {
   const m = new RegExp(`${name}\\s*=\\s*"([^"]*)"`).exec(attrsStr);
   return m ? m[1] : null;
 }
+
+/** ההרחבה שמפרידה תפר ברוחב אפס בגליף לחור אמיתי. ראה islandsOf. */
+const SEAM_MM = 0.05;
 
 const HEBREW_RE = /[֐-׿]/;
 /** מה שנקרא משמאל לימין גם בתוך משפט עברי: לטינית, ספרות. */
@@ -213,11 +216,15 @@ export async function textToPolygons(
     const outer = enclosing(solidBoxes, h.bbox);
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
     const left = hx0 - outer[0] <= outer[2] - hx1;
-    // מהחומר שמחוץ לאות ועד למרכז הקונטור. מה שמחוץ לאות לא מוריד כלום — שם
-    // ממילא אין חיתוך — ומה שבתוך הקונטור הוא מה שמבטיח את החיבור.
+    // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור. הקצה החיצוני חורג מהאות ולא
+    // מוריד שם כלום (אין חיתוך מחוץ לאות); הקצה הפנימי הוא מה שמבטיח חיבור,
+    // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות. הגרסה הקודמת
+    // הגיעה עד מרכז הקונטור, כלומר בלעה חצי ממנו — וזה מה שגרם ל-ס׳ להיראות
+    // כמו כ׳ בייחוס. עומק של רוחב גשר מספיק לחפיפה ודאית.
+    const depth = Math.min(bridgeWidthMm, (hx1 - hx0) / 2);
     const [x0s, x1s] = left
-      ? [outer[0] - bridgeWidthMm, (hx0 + hx1) / 2]
-      : [(hx0 + hx1) / 2, outer[2] + bridgeWidthMm];
+      ? [outer[0] - bridgeWidthMm, hx0 + depth]
+      : [hx1 - depth, outer[2] + bridgeWidthMm];
     const offsets = height > bridgeWidthMm * 4 ? [cy - height / 4, cy + height / 4] : [cy];
     const strips: MultiPolygon = offsets.map((sy) => rectPolygon(
       x0s, sy - bridgeWidthMm / 2, x1s, sy + bridgeWidthMm / 2,
@@ -241,15 +248,22 @@ export async function textToPolygons(
 function islandsOf(glyphs: MultiPolygon, margin: number): { bbox: [number, number, number, number] }[] {
   const [x0, y0, x1, y1] = polygonsBBox(glyphs);
   if (!isFinite(x0)) return [];
-  const around = difference(
-    [rectPolygon(x0 - margin, y0 - margin, x1 + margin, y1 + margin)],
-    glyphs,
-  );
-  const out: { bbox: [number, number, number, number] }[] = [];
-  for (const poly of around) {
-    for (let i = 1; i < poly.length; i++) out.push({ bbox: bboxOf(poly[i]) });
-  }
-  return out;
+  const box: [number, number, number, number] = [x0 - margin, y0 - margin, x1 + margin, y1 + margin];
+  // החיתוך מורחב בשערה לפני החישוב. זה לא ניקוי נומרי אלא הצהרה פיזיקלית:
+  // ס׳ של Frank Ruhl Libre מצוירת כמסלול אחד שנכנס לתוך עצמו דרך תפר ברוחב
+  // אפס, ולפי הטופולוגיה החלל שלה מחובר לחוץ — אבל תפר ברוחב אפס אינו חיבור
+  // שלייזר יכול לחתוך, והחלל ייפול. ההרחבה פותחת אותו לחור אמיתי, וכל הפנים
+  // נמדדות אז באותה דרך.
+  const around = difference([rectPolygon(...box)], offset(glyphs, SEAM_MM));
+
+  // האי הוא **פוליגון שלם** של מתכת שאינו נוגע בגבול התיבה, ולא טבעת פנימית.
+  // הטבעות הפנימיות של המתכת שמסביב הן צלליות האותיות עצמן — מדידה לפיהן
+  // החזירה את תיבת האות כולה במקום את החלל שלה, והגשר נחת במקום שגוי.
+  const touches = (b: [number, number, number, number]) =>
+    b[0] <= box[0] + 1e-6 || b[1] <= box[1] + 1e-6 || b[2] >= box[2] - 1e-6 || b[3] >= box[3] - 1e-6;
+  return around
+    .map((poly) => ({ bbox: bboxOf(poly[0]) }))
+    .filter((p) => !touches(p.bbox));
 }
 
 /** תיבת האות שסוגרת על הקונטור — ממנה נמדד לאיזה צד הגשר קצר יותר.

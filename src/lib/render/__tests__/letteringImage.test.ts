@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { buildLetteringRenderSvg } from "../letteringImage";
 import { BASE_CANVAS } from "../baseImage";
 import { validateDesign } from "@/lib/geometry/validate";
-import { textToPolygons } from "@/lib/text/stencil";
 import { ringToPathD } from "@/lib/geometry/paths";
 import { FONT_IDS } from "@/lib/text/fonts";
 
@@ -66,15 +65,24 @@ describe("buildLetteringRenderSvg", () => {
 // האותיות הן פתחים, ולכן מה שצריך להחזיק הוא החלקים הסגורים שלהן: החלל של
 // ם׳ ו-ס׳ הוא אי מתכת שנופל בלי גשר. זו הבדיקה שמגנה על הגישור עצמו.
 describe("bridging holds the enclosed parts of letters", () => {
-  const dims = { productType: "bracelet" as const, lengthMm: 160, widthMm: 15, thicknessMm: 1.2 };
+  const dd = { productType: "bracelet" as const, ...CUFF };
   const wrap = (inner: string) =>
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 15"><g id="cutouts">${inner}</g></svg>`;
 
-  it.each(FONT_IDS)("leaves no trapped island in %s", async (fontId) => {
-    const mp = await textToPolygons("מםעסטד", 20, 3, 8, "start", 1.2, { fontId });
-    const svg = wrap(mp.map((p) => `<path d="${p.map(ringToPathD).join("")}" fill="black"/>`).join(""));
-    const { report } = validateDesign(svg, dims);
-    expect(report.checks.find((c) => c.check === "V3")!.status).toBe("pass");
-    expect(report.checks.find((c) => c.check === "V2")!.status).toBe("pass");
-  });
+  // דרך המסלול האמיתי ולא בהצבה ידנית: הגובה והמיקום של הכיתוב הם חלק
+  // מהאילוץ. אות בגובה שרירותי קרוב לקצה מנתקת את הפס ונופלת ב-V2 — וזה
+  // כשל של ההצבה, לא של הגישור.
+  it("holds every face in the roster", async () => {
+    const ref = (await buildLetteringRenderSvg("מםעסטד רייטר", CUFF, "bracelet", FONT_IDS.length, ""))!;
+    expect(ref.rows).toHaveLength(FONT_IDS.length);
+    for (const row of ref.rows) {
+      const svg = wrap(row.glyphs
+        .map((p) => `<path d="${p.map(ringToPathD).join("")}" fill="black"/>`).join(""));
+      const { report } = validateDesign(svg, dd);
+      for (const check of ["V2", "V3", "V5"]) {
+        expect(report.checks.find((c) => c.check === check), `${row.fontId} ${check}`)
+          .toMatchObject({ status: "pass" });
+      }
+    }
+  }, 60_000);
 });
