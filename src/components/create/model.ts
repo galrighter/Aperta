@@ -187,6 +187,31 @@ export const INITIAL: CreateState = {
   orderNo: null,
 };
 
+/** מה שדרוש כדי לאתר את ההצעות של גרסה — לא הטיפוס המלא, כדי שהפונקציות
+ *  למטה יהיו ניתנות לבדיקה בלי לבנות שורת גרסה שלמה. */
+type CandidateCarrier<C> = { generation_id?: string | null; candidates?: C[] | null };
+
+/**
+ * ההצעות שמורות **פעם אחת** לכל הרצה — על הגרסה שההרצה יצרה. גרסה שנוצרה
+ * מבחירת הצעה נושאת רק את `generation_id` ולא משכפלת את הרשימה, אחרת עיצוב עם
+ * חמש בחירות היה סוחב את אותן ארבע הצעות חמש פעמים בכל טעינה.
+ */
+export function candidatesByGeneration<C>(versions: Array<CandidateCarrier<C>>): Map<string, C[]> {
+  const byRun = new Map<string, C[]>();
+  for (const v of versions) {
+    if (v.generation_id && v.candidates?.length) byRun.set(v.generation_id, v.candidates);
+  }
+  return byRun;
+}
+
+/** ההצעות של גרסה: שלה אם יש, אחרת אלה של ההרצה שממנה היא באה. */
+export function candidatesOf<C>(
+  v: CandidateCarrier<C>,
+  byRun: Map<string, C[]>,
+): C[] | undefined {
+  return v.candidates?.length ? v.candidates : byRun.get(v.generation_id ?? "");
+}
+
 /**
  * מה מוצג בשורה ביומן הגרסאות.
  *

@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api";
-import { type DesignRow, type VersionRow, insertVersion } from "@/lib/db/designs";
+import { type DesignRow, type VersionRow, type VersionCandidate, insertVersion } from "@/lib/db/designs";
 import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
@@ -166,6 +166,10 @@ export async function ingestCutouts(opts: {
   userPrompt: string | null;
   renderPngPath: string | null;
   metrics?: VectorizeResult["metrics"];
+  /** 0012 — ההצעות שהוצעו יחד עם הגרסה, ומאיזו הרצה/הצעה היא באה. */
+  candidates?: VersionCandidate[] | null;
+  generationId?: string | null;
+  pickedIndex?: number | null;
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
   const framed = frameCutouts(design, cutoutsSvg);
@@ -180,6 +184,9 @@ export async function ingestCutouts(opts: {
     // שומרים נתיב הדמיה + מדדי vectorizer בתוך הדוח (jsonb) — בלי מיגרציה. משמש ליומן הבק־אופיס.
     validation_report: { ...report, renderPngPath: opts.renderPngPath, vectorizer: opts.metrics ?? null },
     validation_status: report.status,
+    ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
+    ...(opts.generationId !== undefined ? { generation_id: opts.generationId } : {}),
+    ...(opts.pickedIndex !== undefined ? { picked_index: opts.pickedIndex } : {}),
   });
 
   const geometry = normalized

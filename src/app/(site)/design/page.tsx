@@ -31,7 +31,8 @@ import {
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
-  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, circumferenceMm,
+  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
+  candidatesOf, circumferenceMm,
   countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
   stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
@@ -424,7 +425,7 @@ export default function DesignPage() {
       if (!s.designId || !entry || (entry.chosen ?? 0) === index) return;
       set({ applying: true, chooseError: null });
       try {
-        const res = await api.chooseCandidate(s.designId, svg);
+        const res = await api.chooseCandidate(s.designId, svg, index);
         pushEntry(s, {
           versionId: res.version.id,
           versionNo: res.version.version_no,
@@ -495,6 +496,7 @@ export default function DesignPage() {
           widthMm: Number(design.width_mm),
           thicknessMm: Number(design.thickness_mm),
         });
+        const byRun = candidatesByGeneration(versions);
         setState({
           ...INITIAL,
           screen: "result",
@@ -503,6 +505,8 @@ export default function DesignPage() {
           designSerial: design.serial ?? null,
           ...sizes,
           brief: item.brief ?? "",
+          // ההצעות שמורות פעם אחת, על הגרסה שההרצה יצרה. גרסה שנוצרה מבחירה
+          // נושאת רק את מזהה ההרצה, ומאתרת דרכו את אותן הצעות.
           edits: versions.map((v, i) => ({
             versionId: v.id,
             versionNo: v.version_no,
@@ -512,6 +516,10 @@ export default function DesignPage() {
             svg: v.svg,
             report: v.validation_report,
             geometry: i === versions.length - 1 ? val.geometry : null,
+            // ההצעות חוזרות מהשרת (0012). קודם הן לא נשלפו כלל, ולכן כל פתיחה
+            // של עיצוב שמור — וכל רענון — מחקה את רצועת החלופות.
+            candidates: candidatesOf(v, byRun),
+            chosen: v.picked_index ?? undefined,
           })),
           activeEdit: versions.length - 1,
         });
