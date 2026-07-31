@@ -103,3 +103,20 @@ describe("buildRenderPrompt in edit mode", () => {
     }
   });
 });
+
+// הכיתוב מגיע מהפונט כתמונה מצורפת, ולכן ההוראה לשמר אותו נכונה רק כשיש מה
+// לשמר. בקריאה בלי תמונה כזו היא מפנה את המודל לקובץ שאינו קיים.
+describe("lettering reference", () => {
+  const dims = { lengthMm: 140, widthMm: 15, thicknessMm: 1.2 };
+
+  it("stays silent unless a lettering reference is attached", () => {
+    expect(buildRenderPrompt("עלים", "bracelet", dims, 3)).not.toContain("LETTERING");
+  });
+
+  it("asks for the attached lettering to be copied unchanged", () => {
+    const p = buildRenderPrompt("עלים", "bracelet", dims, 1, false, true);
+    expect(p).toContain("LETTERING");
+    expect(p).toContain("Copy it across unchanged");
+    expect(p).toContain("including the small bridges");
+  });
+});
