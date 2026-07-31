@@ -39,6 +39,18 @@ body {
   touch-action: none;
 }
 
+/* החיתוכים בתצוגת הפריסה (FlatCanvas), בצבע הרקע כדי שייקראו כחורים אמיתיים.
+   חייב להיות כלל CSS ולא fill על ה-<g> העוטף: כל path בחוזה ה-SVG נושא
+   `fill="black"` משלו, ותכונת הצגה על הצאצא גוברת על ערך שיורש מההורה. כלל
+   CSS, לעומת זאת, גובר על תכונת הצגה — זה מה שהופך את הכלל הזה לדרך היחידה
+   לצבוע אותם בלי לגעת ב-SVG עצמו. */
+.flat-cutouts path,
+.flat-cutouts circle,
+.flat-cutouts ellipse,
+.flat-cutouts rect {
+  fill: var(--color-porcelain);
+}
+
 /* שכבת הרקע הדקורטיבית (ArchBackground).
    הגובה נעול ל-lvh ולא נגזר מ-inset:0. בנייד, סרגל הכתובת נאסף בגלילה למטה
    וחוזר בגלילה למעלה, וה-viewport משנה גובה תוך כדי — שכבה של inset:0 משנה

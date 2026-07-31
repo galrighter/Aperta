@@ -216,13 +216,19 @@ export function FlatCanvas() {
           onWheel={onWheel}
         >
           <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
-            {/* הרצועה */}
-            <rect x={0} y={0} width={L} height={W} rx={2} fill="white" stroke="#a8a29e" strokeWidth={strokeW / 2} />
-            {/* cutouts */}
-            <g
-              style={{ fill: "#292524" }}
-              dangerouslySetInnerHTML={{ __html: cutoutsInner }}
-            />
+            {/* הרצועה והחיתוכים, בקוטביות של המוצר ולא של קובץ החיתוך.
+                קודם המתכת הייתה לבנה והחיתוכים כהים — זו הקוטביות של ה-SVG
+                לייצור, שבו שחור הוא "הסר את זה". על המסך היא קוראת הפוך: העין
+                מפרשת את הכהה כחומר ואת הבהיר כאוויר, ולכן הדוגמה נראתה כנגטיב
+                של עצמה. כאן המתכת כהה והחיתוכים בצבע הרקע, כך שהם נקראים
+                כחורים אמיתיים שדרכם רואים את מה שמאחור.
+
+                הצבע של החיתוכים מגיע מכלל CSS (`.flat-cutouts`) ולא מ-fill על
+                ה-<g>: כל path בחוזה נושא `fill="black"` משלו, ותכונת הצגה על
+                הצאצא גוברת על ערך שיורש מההורה. הניסיון הראשון כאן צבע את ה-g
+                ולא שינה כלום — וזה לא נראה, כי #292524 ושחור נראים זהים. */}
+            <rect x={0} y={0} width={L} height={W} rx={2} style={{ fill: "var(--color-graphite)" }} />
+            <g className="flat-cutouts" dangerouslySetInnerHTML={{ __html: cutoutsInner }} />
             {/* הדגשות ולידציה */}
             {highlights.map((h, i) => (
               <circle

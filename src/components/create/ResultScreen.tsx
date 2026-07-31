@@ -174,11 +174,12 @@ export function ResultScreen({
                           </span>
                         )}
                       </span>
+                      {/* אותה קוטביות כמו בפריסה — כהה הוא מתכת. כאן זה חשוב
+                          במיוחד: תפקיד הרצועה הוא להשוות בין הצעות, וקווי מתאר
+                          מחייבים לפענח כל צורה לפני שאפשר להשוות שתיים. */}
                       <svg viewBox={`-1 -1 ${L + 2} ${W + 2}`} className="h-auto w-full" role="img">
-                        <rect x="0" y="0" width={L} height={W} fill="none"
-                          stroke="rgba(32,35,38,0.3)" strokeWidth={Math.max(0.2, W / 90)} />
-                        <g dangerouslySetInnerHTML={{ __html: cutoutsInner(c.svg) }}
-                          fill="none" stroke={COBALT} strokeWidth={Math.max(0.2, W / 110)} />
+                        <rect x="0" y="0" width={L} height={W} fill="var(--color-graphite)" />
+                        <g className="flat-cutouts" dangerouslySetInnerHTML={{ __html: cutoutsInner(c.svg) }} />
                       </svg>
                     </button>
                   );
