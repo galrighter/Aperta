@@ -25,6 +25,8 @@ export interface SavedDesign {
   pending?: boolean;
   /** מה שהוזן בטופס, כדי שאפשר יהיה לחזור ולנסות שוב עם אותם פרטים. */
   brief?: string;
+  /** הכיתוב שהוזמן על התכשיט — כדי שחזרה לעיצוב שנקטע תשחזר גם אותו. */
+  lettering?: string;
   symmetry?: string;
   density?: string;
   feel?: string;

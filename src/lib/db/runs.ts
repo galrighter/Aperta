@@ -44,6 +44,15 @@ export interface RunInputs {
   imageUpload?: boolean;
   /** הפרומפט נכתב ידנית בבק־אופיס במקום להיבנות מהמידות. */
   promptOverride?: boolean;
+  /**
+   * הכיתוב שנחתך מהפונט ונמסר למודל כתמונת ייחוס, והטיפוגרפיה של כל שורה.
+   * בלי זה אי אפשר להסביר ביומן למה חלופה אחת נראית אחרת מהשנייה — הפרומפט
+   * זהה לכולן, וההבדל יושב בתמונה.
+   */
+  lettering?: {
+    text?: string;
+    rows: Array<{ fontId: string; letterHeightMm: number; textWidthMm: number }>;
+  } | null;
 }
 
 /** הבעלים של ההרצה — נגזר מהעיצוב, לקיבוץ היומן לפי משתמש. */

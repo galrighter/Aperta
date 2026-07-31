@@ -132,7 +132,13 @@ export function buildRenderPrompt(
     "LETTERING: the attached image already carries the lettering, cut into the piece. " +
     "Copy it across unchanged — the same glyphs in the same places, including the small bridges that hold the enclosed parts of letters in place. " +
     "Do not redraw, restyle or move a letter, and do not replace a shape that looks unfamiliar: those bridged letterforms are deliberate. " +
-    "Design only in the empty metal around the lettering.";
+    "Design only in the empty metal around the lettering." +
+    // כל שורה בייחוס נחתכה בפנים אחרות (lib/text/style.ts) — זה כל המגוון
+    // הטיפוגרפי שהלקוחה תבחר ממנו. בלי המשפט הזה המודל מאחיד אותן, ושלוש
+    // החלופות חוזרות עם אותו כיתוב בדיוק.
+    (rows > 1
+      ? ` The attached image already shows ${WORD[rows] ?? rows} rows, and the lettering is drawn in a different typeface in each one. Keep every row's own lettering exactly as it is in that row — do not carry one row's letterforms over to another.`
+      : "");
 
   // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
   // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם

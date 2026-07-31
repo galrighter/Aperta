@@ -108,6 +108,8 @@ async function startAndAwaitGeneration(
   input: {
     designId: string;
     userPrompt: string;
+    /** הכיתוב על התכשיט. השרת חותך אותו מהפונט ומוסר אותו למודל כתמונה. */
+    text?: string;
     currentSvg: string | null;
     images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
   },
@@ -215,6 +217,7 @@ export const api = {
     input: {
       designId: string;
       userPrompt: string;
+      text?: string;
       currentSvg: string | null;
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
     },

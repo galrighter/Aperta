@@ -1,24 +1,18 @@
 import opentype from "opentype.js";
-import { FONT_BASE64 } from "./fontData";
+import { loadFace, DEFAULT_FONT, type FontId } from "./fonts";
 import { samplePathToRings, ringToPathD } from "@/lib/geometry/paths";
 import { union, difference, intersection, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
 import { resolveFab } from "@/lib/fabrication.config";
 import type { DesignDims } from "@/lib/geometry/validate";
 import type { MultiPolygon, Ring } from "@/lib/geometry/types";
 
-// סעיף 6.4: המרת <text-request content x y height align/> לנתיבי אותיות.
-// פונט: Secular One (עברי+לטיני, OFL). לא נמצא פונט סטנסיל עברי חופשי מתאים,
-// לכן ממומש הגישור האוטומטי מהמפרט: לכל קונטור פנימי (counter של אות כמו ם/O)
-// נוספים שני גשרים אנכיים ברוחב minBridgeCut שמחברים את ה"אי" לחומר שמסביב.
-
-let cachedFont: opentype.Font | null = null;
-
-function getFont(): opentype.Font {
-  if (cachedFont) return cachedFont;
-  const bin = Uint8Array.from(atob(FONT_BASE64), (c) => c.charCodeAt(0));
-  cachedFont = opentype.parse(bin.buffer);
-  return cachedFont;
-}
+// סעיף 6.4: המרת <text-request content x y height align/> לנתיבי אותיות, וגם
+// מנוע הכיתוב של תמונת הייחוס (src/lib/render/baseImage.ts).
+//
+// פונטים: מאגר OFL בן שמונה פנים (./fonts). לא נמצא פונט סטנסיל עברי חופשי
+// מתאים, לכן ממומש הגישור האוטומטי מהמפרט: לכל קונטור פנימי (counter של אות
+// כמו ם/O) נוספים שני גשרים אנכיים ברוחב minBridgeCut שמחברים את ה"אי" לחומר
+// שמסביב.
 
 const TEXT_REQUEST_RE = /<text-request\b([^>]*?)\/?>(?:<\/text-request>)?/gi;
 
@@ -28,10 +22,109 @@ function attr(attrsStr: string, name: string): string | null {
 }
 
 const HEBREW_RE = /[֐-׿]/;
+/** מה שנקרא משמאל לימין גם בתוך משפט עברי: לטינית, ספרות. */
+const LTR_RUN_RE = /[A-Za-z0-9]/;
+
+/** סוגריים וכיוצא בהם מתהפכים כשהסדר מתהפך, אחרת "(רייטר" יוצא ")רייטר". */
+const MIRROR: Record<string, string> = {
+  "(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{", "<": ">", ">": "<",
+};
+
+/**
+ * סדר התווים שיש למסור ל-opentype, שמצייר תמיד משמאל לימין.
+ *
+ * opentype.js לא מבצע bidi. היפוך המחרוזת לבדו — מה שהיה כאן — נותן עברית
+ * תקינה אבל הופך גם את מה שאסור להפוך: `ענבל ABC 12` חזר כ-`21 CBA לבנע`,
+ * כלומר השם נכון והמספר והמילה הלטינית הפוכים. לכן אחרי ההיפוך הכולל מוחזרים
+ * למקומם רצפים של לטינית וספרות — קירוב פשוט ל-UAX#9 שמכסה את מה שבאמת מוזמן
+ * על תכשיט (שם, תאריך, מילה לועזית), ואינו bidi מלא.
+ */
+export function visualOrder(text: string): string {
+  if (!HEBREW_RE.test(text)) return text;
+  const chars = [...text].reverse().map((c) => MIRROR[c] ?? c);
+  for (let i = 0; i < chars.length; ) {
+    if (!LTR_RUN_RE.test(chars[i])) { i++; continue; }
+    let j = i;
+    while (j < chars.length && LTR_RUN_RE.test(chars[j])) j++;
+    // רווח בין שתי מילים לטיניות שייך לרצף; רווח בגבול העברית אינו.
+    const run = chars.slice(i, j).reverse();
+    chars.splice(i, j - i, ...run);
+    i = j;
+  }
+  return chars.join("");
+}
+
+export interface TextStyle {
+  fontId?: FontId;
+  /** מרווח בין־אותי כשבריר מגובה האות. שלילי = צפוף. */
+  trackingEm?: number;
+}
+
+/** מידות הטקסט לפני הגישור, במ"מ. הכל ליניארי ב-heightMm. */
+export interface TextMetrics {
+  /** רוחב ההתקדמות הכולל — כולל המרווח האחרון. */
+  widthMm: number;
+  /** גובה הדיו בפועל של המחרוזת הזו (כולל יורדות אם יש). */
+  inkHeightMm: number;
+}
+
+interface Placed {
+  path: opentype.Path;
+  advance: number;
+}
+
+/**
+ * פריסת הגליפים ביד ולא דרך `font.getPath`, כי רק כך אפשר להוסיף מרווח
+ * בין־אותי — פרמטר סגנון שאין לו מחיר (עוד "פנים" בלי עוד פונט).
+ */
+function place(
+  font: opentype.Font,
+  visual: string,
+  fontSize: number,
+  baseline: number,
+  trackingPx: number,
+): Placed {
+  const full = new opentype.Path();
+  let x = 0;
+  let prev: opentype.Glyph | null = null;
+  for (const ch of visual) {
+    const glyph = font.charToGlyph(ch);
+    if (prev) x += (font.getKerningValue(prev, glyph) / font.unitsPerEm) * fontSize;
+    full.extend(glyph.getPath(x, baseline, fontSize));
+    x += ((glyph.advanceWidth ?? 0) / font.unitsPerEm) * fontSize + trackingPx;
+    prev = glyph;
+  }
+  return { path: full, advance: x };
+}
+
+/** גודל הפונט שנותן `heightMm` בגובה אות (cap height), כמו שהיה מאז ומתמיד. */
+function sizeFor(font: opentype.Font, heightMm: number): number {
+  const upm = font.unitsPerEm;
+  const capHeight = (font.tables.os2?.sCapHeight as number | undefined) || upm * 0.7;
+  return (heightMm * upm) / capHeight;
+}
+
+/** מדידה בלי לחשב פוליגונים — לבחירת גובה שנכנס לפס. */
+export async function measureText(
+  text: string,
+  heightMm: number,
+  style: TextStyle = {},
+): Promise<TextMetrics> {
+  const font = await loadFace(style.fontId ?? DEFAULT_FONT);
+  const visual = visualOrder(text);
+  const fontSize = sizeFor(font, heightMm);
+  const { path, advance } = place(font, visual, fontSize, 0, (style.trackingEm ?? 0) * heightMm);
+  const bb = path.getBoundingBox();
+  const inkHeightMm = Number.isFinite(bb.y2 - bb.y1) ? bb.y2 - bb.y1 : 0;
+  return { widthMm: advance, inkHeightMm };
+}
 
 export async function renderTextRequests(svg: string, dims: DesignDims): Promise<string> {
   const fab = resolveFab(dims.thicknessMm, dims.productType);
-  return svg.replace(TEXT_REQUEST_RE, (_m, attrsStr: string) => {
+  // ההחלפה עצמה סינכרונית, ולכן הפוליגונים מחושבים מראש בסדר ההופעה.
+  const requests = [...svg.matchAll(TEXT_REQUEST_RE)];
+  const rendered = await Promise.all(requests.map(async (m) => {
+    const attrsStr = m[1];
     const content = attr(attrsStr, "content") ?? "";
     const x = parseFloat(attr(attrsStr, "x") ?? "NaN");
     const y = parseFloat(attr(attrsStr, "y") ?? "NaN");
@@ -41,53 +134,56 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
       // בקשה לא תקינה — מסירים; הוולידציה תמשיך על שאר העיצוב
       return "";
     }
-    const mp = textToPolygons(content.trim(), x, y, height, align, fab.minBridgeCut);
+    const mp = await textToPolygons(content.trim(), x, y, height, align, fab.minBridgeCut);
     return mp
       .map((poly) => `<path d="${poly.map((r) => ringToPathD(r)).join("")}" fill="black"/>`)
       .join("");
-  });
+  }));
+  let i = 0;
+  return svg.replace(TEXT_REQUEST_RE, () => rendered[i++]);
 }
 
 /** טקסט → פוליגונים בקואורדינטות מ"מ, כולל גישור קונטורים פנימיים */
-export function textToPolygons(
+export async function textToPolygons(
   text: string,
   x: number,
   y: number,
   heightMm: number,
   align: "start" | "middle" | "end",
   bridgeWidthMm: number,
-): MultiPolygon {
-  const font = getFont();
-  // עברית: opentype.js לא מבצע bidi — הופכים סדר תווים למחרוזת RTL
-  const logical = HEBREW_RE.test(text) ? [...text].reverse().join("") : text;
-
-  const upm = font.unitsPerEm;
-  const capHeight = (font.tables.os2?.sCapHeight as number | undefined) || upm * 0.7;
-  const fontSize = (heightMm * upm) / capHeight;
-
-  const widthUnits = font.getAdvanceWidth(logical, fontSize);
-  let startX = x;
-  if (align === "middle") startX = x - widthUnits / 2;
-  else if (align === "end") startX = x - widthUnits;
+  style: TextStyle = {},
+): Promise<MultiPolygon> {
+  const font = await loadFace(style.fontId ?? DEFAULT_FONT);
+  const visual = visualOrder(text);
+  const fontSize = sizeFor(font, heightMm);
+  const trackingPx = (style.trackingEm ?? 0) * heightMm;
 
   // y = מרכז אנכי של הטקסט → baseline
   const baseline = y + heightMm / 2;
-  const otPath = font.getPath(logical, startX, baseline, fontSize, { kerning: true });
-  const d = otPath.toPathData(3);
+  const { path, advance } = place(font, visual, fontSize, baseline, trackingPx);
+  let startX = x;
+  if (align === "middle") startX = x - advance / 2;
+  else if (align === "end") startX = x - advance;
+
+  const d = path.toPathData(3);
   if (!d) return [];
 
   const subs = samplePathToRings(d);
   // גליפים: טבעות בכיוון הדומיננטי = מילוי, הפוכות = counters
-  const rings = subs.map((s) => s.ring).filter((r) => r.length >= 3);
+  const rings = subs.map((s) => s.ring.map(([px, py]) => [px + startX, py] as [number, number]))
+    .filter((r) => r.length >= 3);
   if (rings.length === 0) return [];
   const areas = rings.map(ringArea);
   const total = areas.reduce((s, a) => s + a, 0);
   const dominant = Math.sign(total) || 1;
   const solids: MultiPolygon[] = [];
+  const solidBoxes: [number, number, number, number][] = [];
   const holes: { ring: Ring; bbox: [number, number, number, number] }[] = [];
   for (let i = 0; i < rings.length; i++) {
-    if (Math.sign(areas[i]) === dominant) solids.push([[rings[i]]]);
-    else holes.push({ ring: rings[i], bbox: bboxOf(rings[i]) });
+    if (Math.sign(areas[i]) === dominant) {
+      solids.push([[rings[i]]]);
+      solidBoxes.push(bboxOf(rings[i]));
+    } else holes.push({ ring: rings[i], bbox: bboxOf(rings[i]) });
   }
   if (solids.length === 0) return [];
   let glyphs = difference(
@@ -95,23 +191,80 @@ export function textToPolygons(
     holes.length ? union(...holes.map((h) => [[[...h.ring].reverse()]] as MultiPolygon)) : [],
   );
 
-  // גישור: לכל קונטור פנימי — שני פסים אנכיים ברוחב הגשר, שמוסרים מהחיתוך
-  // ומחברים את האי לחומר. הפסים נחתכים רק בתחום האנכי של האות המכילה.
-  for (const h of holes) {
-    const [hx0, , hx1] = h.bbox;
-    const w = hx1 - hx0;
-    const cx = (hx0 + hx1) / 2;
-    const offsets = w > bridgeWidthMm * 4 ? [cx - w / 4, cx + w / 4] : [cx];
-    const strips: MultiPolygon = offsets.map((sx) => rectPolygon(
-      sx - bridgeWidthMm / 2, -1e4, sx + bridgeWidthMm / 2, 1e4,
+  // גישור: לכל קונטור פנימי גשר **אופקי מהצד**, ברוחב הגשר, שמוסר מהחיתוך
+  // ומחבר את האי לחומר שמסביב.
+  //
+  // שתי החלטות כאן, ושתיהן נמדדו על שמונה הפנים מול `פספסתי מםעטד`:
+  //
+  // 1. **מהצד ולא מלמעלה/מלמטה.** בעברית ההבדל בין ם׳ ל-ח׳ ובין ס׳ ל-ט׳ הוא
+  //    בדיוק הסגירה האופקית: חריץ בבר התחתון קורא ח׳, חריץ בעליון קורא ט׳.
+  //    הגרסה הראשונה גישרה אנכית ו-`פספסתי` יצא `פטפטתי` — **אות אחרת**, לא
+  //    אות פגומה, וזה בלבל גם אותנו במחקר. חריץ בגזע הצדדי, לעומת זאת, לא
+  //    מזיז שום אות עברית לשכנתה, וזה גם מה שפונטי סטנסיל לטיניים עושים ל-O.
+  //
+  // 2. **צד אחד בלבד.** פס שעובר מקצה לקצה קוטע את שני הגזעים; אי שמוחזק
+  //    מגשר יחיד מוחזק באותה מידה, והנזק נחתך בחצי.
+  //
+  // האיים נמדדים מצד המתכת ולא מכיווני הטבעות של הפונט — ראה islandsOf.
+  for (const h of islandsOf(glyphs, heightMm)) {
+    const [hx0, hy0, hx1, hy1] = h.bbox;
+    const height = hy1 - hy0;
+    const cy = (hy0 + hy1) / 2;
+    const outer = enclosing(solidBoxes, h.bbox);
+    // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
+    const left = hx0 - outer[0] <= outer[2] - hx1;
+    // מהחומר שמחוץ לאות ועד למרכז הקונטור. מה שמחוץ לאות לא מוריד כלום — שם
+    // ממילא אין חיתוך — ומה שבתוך הקונטור הוא מה שמבטיח את החיבור.
+    const [x0s, x1s] = left
+      ? [outer[0] - bridgeWidthMm, (hx0 + hx1) / 2]
+      : [(hx0 + hx1) / 2, outer[2] + bridgeWidthMm];
+    const offsets = height > bridgeWidthMm * 4 ? [cy - height / 4, cy + height / 4] : [cy];
+    const strips: MultiPolygon = offsets.map((sy) => rectPolygon(
+      x0s, sy - bridgeWidthMm / 2, x1s, sy + bridgeWidthMm / 2,
     ));
-    // מגבילים את הפס לאזור סביב החור בלבד (לא לחתוך אותיות שכנות מעל/מתחת)
-    const [, hy0, , hy1] = h.bbox;
-    const bounded = intersection(strips, [rectPolygon(hx0 - bridgeWidthMm, hy0 - heightMm, hx1 + bridgeWidthMm, hy1 + heightMm)]);
-    glyphs = difference(glyphs, bounded);
+    glyphs = difference(glyphs, strips);
   }
 
   return glyphs.filter((p) => multiPolygonArea([p]) > 0.01);
+}
+
+/**
+ * האיים שהחיתוך באמת יוצר — נמדדים **מצד המתכת**, בדיוק כמו V3.
+ *
+ * הדרך המתבקשת (טבעת פנימית של גליף = חור) לא עובדת: לא כל פונט מצייר קונטור
+ * פנימי כתת-מסלול נפרד. הס״ך של Frank Ruhl Libre היא מסלול **אחד** שמקיף את
+ * החוץ, נכנס דרך תפר ברוחב אפס ומקיף את הפנים — לפי סימני השטח אין לה חור,
+ * לפי כלל המילוי יש, ולייזר התפר בכלול אפס אינו חיבור. היא לא גושרה והאי נפל
+ * ב-V3. לכן החישוב כאן זהה לזה של הוולידציה: מחסרים את החיתוך ממלבן שמקיף
+ * אותו, וכל טבעת פנימית של מה שנשאר היא אי מתכת מנותק.
+ */
+function islandsOf(glyphs: MultiPolygon, margin: number): { bbox: [number, number, number, number] }[] {
+  const [x0, y0, x1, y1] = polygonsBBox(glyphs);
+  if (!isFinite(x0)) return [];
+  const around = difference(
+    [rectPolygon(x0 - margin, y0 - margin, x1 + margin, y1 + margin)],
+    glyphs,
+  );
+  const out: { bbox: [number, number, number, number] }[] = [];
+  for (const poly of around) {
+    for (let i = 1; i < poly.length; i++) out.push({ bbox: bboxOf(poly[i]) });
+  }
+  return out;
+}
+
+/** תיבת האות שסוגרת על הקונטור — ממנה נמדד לאיזה צד הגשר קצר יותר.
+ *  אם משום מה אין מכילה, נופלים לתיבת הקונטור עצמו והגשר יהיה קצר מדי
+ *  בלי לשבור כלום. */
+function enclosing(
+  boxes: [number, number, number, number][],
+  hole: [number, number, number, number],
+): [number, number, number, number] {
+  let best: [number, number, number, number] | null = null;
+  for (const b of boxes) {
+    if (b[0] > hole[0] || b[1] > hole[1] || b[2] < hole[2] || b[3] < hole[3]) continue;
+    if (!best || (b[2] - b[0]) * (b[3] - b[1]) < (best[2] - best[0]) * (best[3] - best[1])) best = b;
+  }
+  return best ?? hole;
 }
 
 function bboxOf(ring: Ring): [number, number, number, number] {
@@ -123,4 +276,24 @@ function bboxOf(ring: Ring): [number, number, number, number] {
     if (py > y1) y1 = py;
   }
   return [x0, y0, x1, y1];
+}
+
+/** תיבת המידה של קבוצת פוליגונים — לפריסה מדויקת אחרי הגישור. */
+export function polygonsBBox(mp: MultiPolygon): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const poly of mp) {
+    for (const ring of poly) {
+      const [a, b, c, dd] = bboxOf(ring);
+      if (a < x0) x0 = a;
+      if (b < y0) y0 = b;
+      if (c > x1) x1 = c;
+      if (dd > y1) y1 = dd;
+    }
+  }
+  return [x0, y0, x1, y1];
+}
+
+/** הזזה קשיחה של הפוליגונים — הגשרים נעים איתם ולכן הרוחב שלהם נשמר. */
+export function translatePolygons(mp: MultiPolygon, dx: number, dy: number): MultiPolygon {
+  return mp.map((poly) => poly.map((ring) => ring.map(([px, py]) => [px + dx, py + dy] as [number, number])));
 }

@@ -114,6 +114,12 @@ export interface CreateState {
   image: ImageFile | null;
   imageRole: ImageRole | null;
   brief: string;
+  /**
+   * הכיתוב שיופיע על התכשיט. **אינו חלק מהפרומפט** — הוא נחתך מהפונט בשרת
+   * ונמסר למודל התמונה כתמונת ייחוס (lib/render/letteringImage.ts), כי מודל
+   * התמונה כותב עברית תקינה אבל לא תמיד את המילה שביקשו.
+   */
+  lettering: string;
 
   // מנוע
   designId: string | null;
@@ -166,6 +172,7 @@ export const INITIAL: CreateState = {
   image: null,
   imageRole: null,
   brief: "",
+  lettering: "",
   designId: null,
   designSerial: null,
   edits: [],
@@ -348,14 +355,23 @@ export function buildPrompt(s: CreateState): string {
     parts.push(`${SYM_HE[s.symmetry]}, ${DENS_HE[s.density]}, ${FEEL_HE[s.feel]}.`);
   }
   if (s.brief.trim()) parts.push(`תיאור הלקוחה: ${s.brief.trim()}`);
-  if (s.image && s.imageRole === "inspiration") {
-    parts.push("התמונה המצורפת היא השראה בלבד — יש לקחת ממנה רוח וסגנון, לא להעתיק.");
-  }
-  if (s.image && s.imageRole === "sketch") {
-    parts.push("התמונה המצורפת היא סקיצה של הלקוחה — יש לצאת ממנה כבסיס לעיצוב.");
+  // כשיש כיתוב, התמונה שמצורפת למודל היא הכיתוב החתוך ולא הקובץ של הלקוחה
+  // (`_reference` בקופסה בוחר אחת). משפט שמפנה ל"תמונה המצורפת" היה מפנה
+  // אותו לתמונה הלא נכונה — הוא היה קורא את פס הכיתוב כסקיצה שלה.
+  if (!s.lettering.trim()) {
+    if (s.image && s.imageRole === "inspiration") {
+      parts.push("התמונה המצורפת היא השראה בלבד — יש לקחת ממנה רוח וסגנון, לא להעתיק.");
+    }
+    if (s.image && s.imageRole === "sketch") {
+      parts.push("התמונה המצורפת היא סקיצה של הלקוחה — יש לצאת ממנה כבסיס לעיצוב.");
+    }
   }
   return parts.join(" ");
 }
+
+/** אורך הכיתוב המרבי בממשק. הגבול האמיתי הוא הפס עצמו והוא נבדק בשרת — כאן
+ *  רק תקרה שמונעת מהלקוחה לכתוב משפט שלם ולגלות זאת רק אחרי ההמתנה. */
+export const MAX_LETTERING = 24;
 
 /**
  * פרומפט לשינוי. העיצוב הקיים נמסר למודל כתמונה (src/lib/render/baseImage.ts),

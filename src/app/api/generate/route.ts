@@ -11,6 +11,7 @@ import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { planRender } from "@/lib/render/panels";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
+import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
@@ -58,6 +59,12 @@ const schema = z.object({
    *  אחרי שהחיבור נקטע, בלי לחכות שהשרת יחזיר אותו. */
   jobId: z.string().uuid().optional(),
   userPrompt: z.string().min(1).max(4000),
+  /**
+   * הכיתוב שהלקוחה ביקשה על התכשיט. הוא **אינו** נכנס לפרומפט אלא נחתך
+   * אצלנו מהפונט ונמסר למודל כתמונת ייחוס (lib/render/letteringImage.ts) —
+   * מודל התמונה כותב עברית תקינה אבל לא תמיד את המילה שביקשו.
+   */
+  text: z.string().max(40).optional(),
   currentSvg: z.string().max(500_000).nullable().optional(),
   images: z.array(imageSchema).max(3).default([]),
 
@@ -228,17 +235,42 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // עד 30.7 עריכה קיבלה שורה אחת בארבע קריאות — נימוק שלא נמדד מעולם, ופי
     // ארבעה בעלות מול הצינור החדש (~$0.006 להרצה).
     const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
-    const baseSvg = buildBaseRenderSvg(body.currentSvg);
+    const editSvg = buildBaseRenderSvg(body.currentSvg);
     const plan = body.rowsOverride
       ? { rows: body.rowsOverride, calls: 1 as const, candidates: body.rowsOverride }
       : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm });
+
+    // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
+    // תמונת הייחוס היא כבר העיצוב הקיים, והכיתוב יושב בתוכו; שתי תמונות אין
+    // לאן לשלוח, ועדיף לשמר את מה שעל המסך.
+    const lettering = editSvg || !body.text?.trim()
+      ? null
+      : await buildLetteringRenderSvg(
+          body.text, dims, design.product_type, plan.rows, body.userPrompt,
+        );
+    if (!editSvg && body.text?.trim() && !lettering) {
+      throw new ApiError(
+        "text_too_long",
+        `הכיתוב "${body.text.trim()}" ארוך מדי לפריט בגודל הזה — נסו טקסט קצר יותר.`,
+        400,
+      );
+    }
+    const baseSvg = editSvg ?? lettering?.svg ?? null;
+    // למודל התמונה יש מקום לתמונת ייחוס אחת (`_reference` בקופסה בוחר את
+    // base_svg על פני ההשראה). כשיש כיתוב הוא זה שנוסע — הוא ההבטחה הקשיחה
+    // ללקוחה, וההשראה היא רוח שאפשר לתאר במילים. נאפס אותה כאן ולא נשאיר
+    // ליומן דיווח על תמונה שלא נשלחה.
+    if (lettering) inspiration = null;
     // הפרומפט מהבק־אופיס נשלח **כמו שהוא**. שים לב שמשפט ה-LAYOUT יושב בתוכו,
     // ומספר השורות שחותך בפועל הוא `plan.rows` — אם הם סותרים, הקופסה תחתוך
     // לפי plan.rows. זה מכוון (אפשר לנסות ניסוח מול חיתוך אחר), והמסך מציג את
     // המספר שיחתוך ליד התיבה כדי שהסתירה תהיה גלויה.
     const prompt =
       body.promptOverride?.trim() ||
-      buildRenderPrompt(body.userPrompt, design.product_type, dims, plan.rows, Boolean(baseSvg));
+      buildRenderPrompt(
+        body.userPrompt, design.product_type, dims, plan.rows,
+        Boolean(editSvg), Boolean(lettering),
+      );
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
     // שבנו אותו. הוא נבנה כאן ולא בתוך persistRun כדי ששתי הקריאות — ההצלחה
@@ -257,7 +289,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         imageCount: body.images.length,
         // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
-        editedFromCurrent: Boolean(baseSvg),
+        editedFromCurrent: Boolean(editSvg),
+        /** הכיתוב שנחתך, והטיפוגרפיה שכל שורה קיבלה. בלי זה אי אפשר להסביר
+         *  ביומן למה חלופה אחת נראית אחרת מהשנייה. */
+        lettering: lettering ? { text: body.text?.trim(), rows: lettering.rows } : null,
         /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
         promptOverride: Boolean(body.promptOverride?.trim()),
       },
