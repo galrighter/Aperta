@@ -112,6 +112,7 @@ export default function DesignPage() {
       lengthMm: entry?.lengthMm && entry.lengthMm > 0 ? entry.lengthMm : stripLengthMm(st),
       pending: entry ? undefined : true,
       brief: st.brief.trim() || undefined,
+      lettering: st.lettering.trim() || undefined,
       symmetry: st.symmetry,
       density: st.density,
       feel: st.feel,
@@ -215,6 +216,10 @@ export default function DesignPage() {
               {
                 designId: design.id,
                 userPrompt: buildPrompt(st),
+                // הכיתוב נשלח בשדה נפרד ולא בתוך הפרומפט: השרת חותך אותו
+                // מהפונט ומוסר אותו למודל כתמונה, כדי שהאיות לא יהיה נתון
+                // לפרשנות (docs/research/HEBREW_TEXT_HANDOFF.md).
+                text: st.lettering.trim() || undefined,
                 currentSvg: null,
                 images:
                   st.image && st.imageRole !== "ready"
@@ -477,6 +482,7 @@ export default function DesignPage() {
             designSerial: design.serial ?? null,
             ...sizes,
             brief: item.brief ?? "",
+            lettering: item.lettering ?? "",
             symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
             density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
             feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
@@ -605,6 +611,7 @@ export default function DesignPage() {
       `סה"כ: ${d.ils}${p.total}`,
       "",
       `כתובת: ${s.addr.street}, ${s.addr.city}${s.addr.zip ? ` ${s.addr.zip}` : ""}`,
+      s.lettering.trim() ? `כיתוב על התכשיט: ${s.lettering.trim()}` : "",
       s.brief.trim() ? `תיאור הלקוחה: ${s.brief.trim()}` : "",
     ].filter(Boolean);
 
@@ -631,7 +638,13 @@ export default function DesignPage() {
           // ולכן `densityForPrice`: ב"שהמודל יחליט" לא נבחרה צפיפות.
           density: densityForPrice(s),
           cuts: countCuts(entry?.svg ?? null),
-          brief: s.brief.trim() || undefined,
+          // הכיתוב נוסע בתוך שדה התיאור ולא בעמודה משלו: הוא כבר חתוך
+          // בגאומטריה שהסדנה מקבלת, ומה שנחוץ כאן הוא שמי שקורא את ההזמנה
+          // יראה במילים מה אמור להיות כתוב — ויוכל להשוות.
+          brief: [
+            s.lettering.trim() ? `כיתוב על התכשיט: "${s.lettering.trim()}"` : "",
+            s.brief.trim(),
+          ].filter(Boolean).join(" · ") || undefined,
         }),
       });
       if (!res.ok) throw new Error("failed");

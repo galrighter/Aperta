@@ -47,6 +47,9 @@ class GenerateJob:
     base_svg: Optional[str] = None
     # forme's minimum opening, in mm. 0 keeps every traced opening.
     min_hole_mm: float = 0.0
+    # Which image model to render with. None = the default. forme names it when
+    # the run needs one in particular; the reason lives there, not here.
+    model: Optional[str] = None
 
 
 @dataclass
@@ -99,7 +102,8 @@ def _reference(job: GenerateJob) -> Optional[tuple[bytes, str]]:
 
 
 async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurrency: int = 4) -> dict:
-    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, _reference(job))
+    model = imagegen.resolve_model(job.model)
+    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, _reference(job), model)
 
     # One panel per row of every render. A single-row render passes through
     # untouched, so the common case costs nothing.
@@ -162,7 +166,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     uploaded = [label for label, url, _ in labelled if url in landed]
 
     payload: dict = {
-        "model": imagegen.MODEL,
+        "model": model,
         "rows": job.rows,
         "calls": job.calls,
         "panels": len(panels),

@@ -80,6 +80,12 @@ export interface RenderJobInput {
    *  כרפרנס. גובר על `inspiration` — זה הפריט עצמו ולא השראה. בנייה:
    *  src/lib/render/baseImage.ts. */
   baseSvg: string | null;
+  /**
+   * איזה מודל תמונה לרנדר איתו. `undefined` = ברירת המחדל של הקופסה
+   * (`gpt-image-1-mini`). הבחירה מתקבלת ב-forme ולא בקופסה, כי הסיבה לה חיה
+   * כאן — ראה LETTERING_MODEL ב-lib/llm/imagegen.ts.
+   */
+  model?: string;
   /** לאן ייכתבו ההדמיות ותמונות השלבים. אנחנו חותמים, השירות כותב. */
   renderPaths: string[];
   stagePaths: RunStagePaths;
@@ -111,6 +117,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
       ? { media_type: input.inspiration.mediaType, base64: input.inspiration.base64 }
       : null,
     base_svg: input.baseSvg,
+    model: input.model ?? null,
     artifacts: { renders: renderUrls, stages: stageUrls },
   });
   const post = () =>

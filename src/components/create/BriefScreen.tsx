@@ -7,6 +7,7 @@ import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, PrimaryBtn,
 } from "./ui";
+import { MAX_LETTERING } from "./model";
 import type {
   CreateState, Density, Feel, ImageRole, Symmetry,
 } from "./model";
@@ -32,7 +33,7 @@ export function BriefScreen({
   const locked = s.imageRole === "ready";
   /** המאפיינים כבויים כשהקובץ מוכן לחיתוך, וגם כשהמודל מחליט לבד. */
   const attrsOff = locked || s.attrsAuto;
-  const canSubmit = Boolean(s.brief.trim() || s.image || locked);
+  const canSubmit = Boolean(s.brief.trim() || s.lettering.trim() || s.image || locked);
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
@@ -164,6 +165,42 @@ export function BriefScreen({
                 style={{ minHeight: 150 }}
               />
               <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.briefHint}</p>
+            </div>
+
+            {/* טקסט על התכשיט — שדה נפרד, ומכוון.
+                הכיתוב אינו חלק מהתיאור: הוא לא מגיע למודל התמונה כמילים אלא
+                נחתך מהפונט ונמסר לו כתמונה (lib/render/letteringImage.ts), כך
+                שיש לו מה להעתיק במקום מה לנחש. לקוחה שתכתוב "צמיד עם השם
+                ענבל" בתיאור החופשי תקבל את מה שהמודל יאיית מכלום — הפרש
+                מדוד של פי כמה בדיוק.
+                מה שזה **לא** נותן: ערובה. המודל מדייק ברוב החלופות ולא בכולן,
+                ולכן הבחירה של הלקוחה היא האישור — וזה מה ש-textVerify אומר. */}
+            <div className="mt-4 border border-graphite/10 bg-white p-6">
+              <div className="mb-4 flex items-baseline justify-between gap-4">
+                <CardLabel>{d.textLabel}</CardLabel>
+                <span className="text-[12px] text-mist">{d.textTooLong(MAX_LETTERING)}</span>
+              </div>
+              <input
+                type="text"
+                value={s.lettering}
+                onChange={(e) => set({ lettering: e.target.value.slice(0, MAX_LETTERING) })}
+                placeholder={d.textPlaceholder}
+                maxLength={MAX_LETTERING}
+                disabled={locked}
+                dir="auto"
+                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
+              />
+              <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.textHint}</p>
+              {/* האזהרה מופיעה רק כשיש כיתוב — היא מיותרת עד שיש מה לבדוק,
+                  ואזהרה שמוצגת תמיד מפסיקה להיקרא. */}
+              {s.lettering.trim() && (
+                <p className="mt-3 border-s-2 border-cobalt bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                  {d.textVerify}
+                </p>
+              )}
+              {s.lettering.trim() && s.image && s.imageRole !== "ready" && (
+                <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.textOverridesImage}</p>
+              )}
             </div>
           </div>
         </div>

@@ -14,6 +14,25 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 //   gpt-image-1      · high · 1536x1024  ≈ $0.25          ← מה שהיה עד 26.7
 // ומאז 30.7 יש בדיוק קריאה אחת להרצה, גם ביצירה וגם בעריכה — ראה panels.ts.
 
+/**
+ * מודל התמונה להרצה שנושאת כיתוב.
+ *
+ * ברירת המחדל של הצינור היא `gpt-image-1-mini`, והיא נשארת כך לכל השאר: היא
+ * זולה (~$0.006 להדמיה) ומספיקה לעיטור. מול כיתוב היא לא מספיקה — היא כותבת
+ * טקסט משלה במקום להעתיק את הייחוס.
+ *
+ * הפרש מדוד (31/07, אותה תמונת ייחוס ואותו פרומפט, ארבע חלופות):
+ * `gpt-image-1-mini` 0 מתוך 4 נכונות — ג׳יבריש. `gpt-image-2` 3–4 מתוך 4.
+ *
+ * **זה הדיוק שעליו הכיתוב נשען**, מאז שהוסר השלב שהחליף את האותיות בנתיבי
+ * הפונט (31/07): מה שהמודל מחזיר הוא מה שנחתך. הפער בין המודלים הוא ההבדל
+ * בין "רוב החלופות נכונות" לבין "אף אחת".
+ *
+ * ההחלטה כאן ולא בקופסה: הקופסה מריצה, forme מחליטה. הרשימה המותרת נאכפת שם
+ * (`imagegen.ALLOWED_MODELS`).
+ */
+export const LETTERING_MODEL = "gpt-image-2";
+
 export type RenderProductType = "bracelet" | "ring";
 
 /** מידות הפס השטוח שההדמיה מתארת. הן קובעות את הפרופורציה ואת המינימומים. */
@@ -73,6 +92,10 @@ export function buildRenderPrompt(
   /** עריכה: לתמונה מצורף העיצוב הקיים, ו-userPrompt הוא בקשת שינוי עליו ולא
    *  תיאור של פריט חדש. ראה src/lib/render/baseImage.ts. */
   editing = false,
+  /** לתמונה מצורף כיתוב שכבר נחתך בפס מהפונט שלנו, והמודל רק מעצב סביבו.
+   *  ברירת המחדל היא false, כי בלי תמונה כזו אין למודל "כיתוב מצורף" לשמר —
+   *  והפרומפט שמדבר על תמונה שאינה שם הוא הזיה שהוא ימלא בעצמו. */
+  letteringReference = false,
 ): string {
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
@@ -107,6 +130,39 @@ export function buildRenderPrompt(
       ? "a laser-cut matte black metal ring, opened out and lying completely flat (this is the flat blank that gets rolled into a ring)"
       : "a laser-cut matte black metal bracelet cuff, opened out and lying completely flat";
 
+  // הפריט נסגר בכיפוף, ואין לו אבזם. בלי המשפט הזה המודל הוסיף לשני הקצוות
+  // חריצים, לולאות ולשוניות — בכל הרצה, בכל שם, בשתי הפולריות. "צמיד שטוח
+  // לחיתוך" הוא מחלקת תמונות שכמעט תמיד יש בה סגירה, והוא השלים אותה. החריצים
+  // אוכלים בדיוק את הקצוות שבהם endMargin דורש מתכת מלאה, והווקטורייזר מתרגם
+  // אותם לחורים אמיתיים ב-DXF.
+  const closure =
+    productType === "ring"
+      ? "CLOSURE: the band is rolled into a ring and has no clasp or fastening — do not add slots, loops, fastening holes or tabs at either end."
+      : "CLOSURE: the cuff is closed by bending it around the wrist and has no buckle or fastening — do not add slots, loops, fastening holes or tabs at either end.";
+
+  // הכיתוב מגיע מהפונט, לא מהמודל — הוא כבר חתוך בתמונה המצורפת, וכל מה שנדרש
+  // כאן הוא שהמודל לא יגע בו. אין מסלול שבו המודל ממציא אותיות בעצמו.
+  //
+  // **הבלוק הזה הוא כל מה שמגן על האיות.** עד 31/07 היה אחריו שלב שהחליף את
+  // האותיות שהמודל צייר בנתיבי הפונט, כך שנוסח גרוע היה עולה בעיטור בלבד.
+  // הוא הוסר, ומה שהמודל מחזיר הוא מה שנחתך.
+  //
+  // המשפט על הצורה הלא-מוכרת מכוון לרפלקס שכן נמדד: המודל "מתקן" קלט שנראה לו
+  // שגוי — appologize חזר כ-APOLOGIZE בכל הרצה. הסמ״ך המגושרת היא הגליף שהכי
+  // חשוף לזה, כי אין לה מקבילה בשום פונט. עד כה היא שרדה בכל ההרצות, גם בגרסה
+  // מקוצרת של ההוראה, ולכן המשפט הזה הוא ביטוח ולא תיקון של כשל שנמדד.
+  const lettering = !letteringReference ? null :
+    "LETTERING: the attached image already carries the lettering, cut into the piece. " +
+    "Copy it across unchanged — the same glyphs in the same places, including the small bridges that hold the enclosed parts of letters in place. " +
+    "Do not redraw, restyle or move a letter, and do not replace a shape that looks unfamiliar: those bridged letterforms are deliberate. " +
+    "Design only in the empty metal around the lettering." +
+    // כל שורה בייחוס נחתכה בפנים אחרות (lib/text/style.ts) — זה כל המגוון
+    // הטיפוגרפי שהלקוחה תבחר ממנו. בלי המשפט הזה המודל מאחיד אותן, ושלוש
+    // החלופות חוזרות עם אותו כיתוב בדיוק.
+    (rows > 1
+      ? ` The attached image already shows ${WORD[rows] ?? rows} rows, and the lettering is drawn in a different typeface in each one. Keep every row's own lettering exactly as it is in that row — do not carry one row's letterforms over to another.`
+      : "");
+
   // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
   // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם
   // מדובר בפריט חדש או בשינוי על קיים.
@@ -125,8 +181,11 @@ export function buildRenderPrompt(
     // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
     `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
 
+    closure,
+
     "Wherever the metal is cut away — inside the piece and along its edges alike — the same pure white background shows through.",
     ...intent,
+    ...(lettering ? [lettering] : []),
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
     `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(fab.minBridgeBend)}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,

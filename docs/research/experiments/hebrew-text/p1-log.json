@@ -1,0 +1,112 @@
+{
+  "model": "gpt-image-1",
+  "phase": "1",
+  "promptSample": "A flat, top-down, orthographic product image of a laser-cut brass bracelet cuff, laid out perfectly straight and unrolled, filling the full width of the frame edge to edge, on a completely flat pure #FFFFFF white background. The bracelet is a single long horizontal strip of solid warm-gold brass with an intricate decorative cut-out pattern. The cut-out openings are fully cut through, showing the same pure white background through them. Design intent for the cut-out pattern: צמיד עם השם היילי. Render the pattern as bold, cleanly separated cut-outs with generous openings and sturdy connecting metal bands. Suitable for laser-cutting in 1.5mm brass. Avoid hair-thin lines, densely packed fine detail, or bands that nearly touch; keep clear space between adjacent openings. CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration. Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props, no text, no border framing. High contrast: the brass is a clearly saturated warm gold, distinctly warmer and darker than the pure white, so the metal separates cleanly from the openings.",
+  "results": [
+    {
+      "phase": "1",
+      "name": "היילי",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p1-היילי-1.png",
+      "ok": true,
+      "ms": 36386,
+      "usage": {
+        "input_tokens": 277,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 277
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6485
+      }
+    },
+    {
+      "phase": "1",
+      "name": "שני מגידס",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p1-שני-מגידס-1.png",
+      "ok": true,
+      "ms": 37339,
+      "usage": {
+        "input_tokens": 278,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 278
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6486
+      }
+    },
+    {
+      "phase": "1",
+      "name": "ענבל רייטר",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p1-ענבל-רייטר-1.png",
+      "ok": true,
+      "ms": 39223,
+      "usage": {
+        "input_tokens": 279,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 279
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6487
+      }
+    },
+    {
+      "phase": "1",
+      "name": "מישל",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p1-מישל-1.png",
+      "ok": true,
+      "ms": 39259,
+      "usage": {
+        "input_tokens": 277,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 277
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6485
+      }
+    },
+    {
+      "phase": "1",
+      "name": "קלאופטרה",
+      "repeat": 1,
+      "file": "/tmp/claude-0/-home-user-forme/f966d894-5bb1-5503-8f4d-b9ce1fec0e95/scratchpad/exp/out/p1-קלאופטרה-1.png",
+      "ok": true,
+      "ms": 40273,
+      "usage": {
+        "input_tokens": 278,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 278
+        },
+        "output_tokens": 6208,
+        "output_tokens_details": {
+          "image_tokens": 6208,
+          "text_tokens": 0
+        },
+        "total_tokens": 6486
+      }
+    }
+  ]
+}
