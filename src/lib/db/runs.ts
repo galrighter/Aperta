@@ -39,6 +39,9 @@ export interface RunInputs {
   rows?: number;
   cols?: number;
   calls?: number;
+  /** צורת הקנבס שנשלחה למודל, `"1536x1024"`. שתי הרצות של אותו פריט על קנבסים
+   *  שונים זהות בכל שדה אחר, ובלי זה אי אפשר להעמיד אותן זו מול זו ביומן. */
+  canvasSize?: string;
   minHoleMm?: number;
   colorKey?: string;
   /** כמה קבצים המשתמש צירף (השראה/סימון). */

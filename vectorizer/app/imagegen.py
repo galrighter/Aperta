@@ -42,7 +42,20 @@ MODEL = "gpt-image-1-mini"
 # model name reaches OpenAI on our key, and "whatever the caller sent" is how a
 # typo becomes a bill.
 ALLOWED_MODELS = frozenset({"gpt-image-1-mini", "gpt-image-1", "gpt-image-2"})
+
+# The canvas shapes the model will draw on. An allowlist for the same reason as
+# the models: the value reaches OpenAI on our key, and an unrecognised size is a
+# 400 at best. Landscape is the default and was the only option until forme
+# started choosing — see src/lib/render/canvas.ts for why it chooses.
 SIZE = "1536x1024"
+ALLOWED_SIZES = frozenset({"1536x1024", "1024x1536", "1024x1024"})
+
+
+def resolve_size(size: str | None) -> str:
+    """The requested canvas, or the default. An unknown value falls back rather
+    than failing: a render on the wrong shape is recoverable, a dead run is not.
+    """
+    return size if size in ALLOWED_SIZES else SIZE
 QUALITY = "low"
 TIMEOUT_S = 120.0
 
@@ -97,6 +110,7 @@ async def _one(
     prompt: str,
     reference: tuple[bytes, str] | None,
     model: str = MODEL,
+    size: str = SIZE,
 ) -> bytes:
     headers = {"authorization": f"Bearer {key}"}
     if reference is not None:
@@ -106,14 +120,14 @@ async def _one(
         resp = await client.post(
             "https://api.openai.com/v1/images/edits",
             headers=headers,
-            data={"model": model, "prompt": prompt, "size": SIZE, "quality": QUALITY},
+            data={"model": model, "prompt": prompt, "size": size, "quality": QUALITY},
             files={"image": ("reference.png", data, media_type)},
         )
     else:
         resp = await client.post(
             "https://api.openai.com/v1/images/generations",
             headers={**headers, "content-type": "application/json"},
-            json={"model": model, "prompt": prompt, "n": 1, "size": SIZE, "quality": QUALITY},
+            json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": QUALITY},
         )
     if resp.status_code >= 400:
         quota = _is_quota(resp.text)
@@ -131,6 +145,7 @@ async def render_many(
     calls: int,
     reference: tuple[bytes, str] | None = None,
     model: str | None = None,
+    size: str | None = None,
 ) -> list[bytes]:
     """Ask the model for `calls` renders of the same prompt, concurrently.
 
@@ -145,10 +160,11 @@ async def render_many(
     if not key:
         raise ImageGenError("OPENAI_KEY is not configured for image generation", retriable=False)
     chosen = resolve_model(model)
+    canvas = resolve_size(size)
 
     async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
         results = await asyncio.gather(
-            *(_one(client, key, prompt, reference, chosen) for _ in range(max(1, calls))),
+            *(_one(client, key, prompt, reference, chosen, size=canvas) for _ in range(max(1, calls))),
             return_exceptions=True,
         )
 

@@ -1,4 +1,5 @@
 import { FAB } from "@/lib/fabrication.config";
+import { LANDSCAPE, aspect, type Canvas } from "./canvas";
 
 // כמה פריטים לבקש בתמונה אחת.
 //
@@ -42,14 +43,26 @@ import { FAB } from "@/lib/fabrication.config";
  * שורות ועמודות יחד: 2x2 מצייר את אותו יחס כמו 1x1, בארבעה פריטים במקום אחד.
  * זו כל הידית שהעמודות נותנות (ראה planRender).
  */
-export const NATURAL_RATIO = (rows: number, cols = 1) => 5.3 + (1.25 * rows) / cols;
+const RATIO_INTERCEPT = 5.3;
+/** מה ששורה אחת שווה ביחס המצויר בקנבס לרוחב. הכללה: `SLOPE · יחס-הקנבס/1.5`,
+ *  כך שהמספרים לרוחב נשארים בדיוק מה שהיו (1.5/1.5 = 1). */
+const RATIO_PER_ROW_LANDSCAPE = 1.25;
+const ratioPerRow = (c: Canvas) => RATIO_PER_ROW_LANDSCAPE * (aspect(c) / aspect(LANDSCAPE));
+
+export const NATURAL_RATIO = (rows: number, cols = 1, canvas: Canvas = LANDSCAPE) =>
+  RATIO_INTERCEPT + (ratioPerRow(canvas) * rows) / cols;
 
 /** ההיפוך: כמה שורות **לכל עמודה** צריך כדי שהיחס המצויר יהיה זה שהוזמן. */
-const rowsPerColumn = (ratio: number) => Math.round((ratio - 5.3) / 1.25);
+const rowsPerColumn = (ratio: number, canvas: Canvas) =>
+  Math.round((ratio - RATIO_INTERCEPT) / ratioPerRow(canvas));
 
-/** מידות הקנבס שהמודל מחזיר (1536x1024). מכאן תקציב הפיקסלים לכל תא. */
-const CANVAS_H_PX = 1024;
-const CANVAS_W_PX = 1536;
+/**
+ * צפיפות הייחוס: מה שצמיד באורך ברירת המחדל מקבל היום, בעמודה אחת, לרוחב.
+ * 8.64 px/mm. כל שאר החסמים נמדדים מולה, ולכן היא נשארת קבועה גם כשהקנבס משתנה
+ * — קנבס אחר לא אמור להזיז את הרף, רק לשנות מי עומד בו.
+ */
+const REFERENCE_PX_PER_MM =
+  (LANDSCAPE.widthPx * 0.9) / FAB.products.bracelet.defaultLengthMm;
 
 /**
  * כמה מגובה השורה הפריט באמת תופס. נמדד: בשלוש שורות מסגרת השורה היא 4.5:1
@@ -86,6 +99,8 @@ export interface PlanInput {
   widthMm: number;
   /** הפתח הקטן ביותר שאפשר לחתוך, במ"מ (resolveFab). */
   minHoleMm: number;
+  /** צורת הקנבס שיתבקש. ברירת מחדל: לרוחב — ההתנהגות שהייתה תמיד. */
+  canvas?: Canvas;
 }
 
 export interface RenderPlan {
@@ -97,6 +112,8 @@ export interface RenderPlan {
   /** תמיד 1. נשאר בחוזה כי הקופסה והיומן מדווחים אותו. */
   calls: 1;
   candidates: number;
+  /** הקנבס שהתכנון נעשה עבורו. הקופסה והיומן מדווחים אותו. */
+  canvas: Canvas;
 }
 
 /**
@@ -107,8 +124,8 @@ export interface RenderPlan {
  * בפועל היא כמעט לא נוגעת: פריט רחב (שבו התקרה נמוכה) הוא גם פריט ביחס נמוך,
  * שממילא מבקש מעט שורות. היא נועדה למקרה הקצה, לא לניהול היומיום.
  */
-export function maxRows(widthMm: number, minHoleMm: number): number {
-  const pxPerMmAtOneRow = (CANVAS_H_PX * ROW_FILL) / widthMm;
+export function maxRows(widthMm: number, minHoleMm: number, canvas: Canvas = LANDSCAPE): number {
+  const pxPerMmAtOneRow = (canvas.heightPx * ROW_FILL) / widthMm;
   return Math.max(1, Math.floor((pxPerMmAtOneRow * minHoleMm) / MIN_FEATURE_PX));
 }
 
@@ -126,10 +143,11 @@ export function maxRows(widthMm: number, minHoleMm: number): number {
  * יותר פיקסלים למ"מ מ-‎160 מ"מ על קנבס שלם, ולכן העמודה השנייה בטבעת לא רק שאינה
  * פוגעת באיכות — היא נשארת מעליה. על צמיד באורך מלא אין מרחק כזה, והחסם מחזיר 1.
  */
-export function maxCols(lengthMm: number, minHoleMm: number): number {
-  const pxPerMmAtOneCol = (CANVAS_W_PX * COL_FILL) / lengthMm;
+export function maxCols(lengthMm: number, minHoleMm: number, canvas: Canvas = LANDSCAPE): number {
+  const pxPerMmAtOneCol = (canvas.widthPx * COL_FILL) / lengthMm;
   const feature = Math.floor((pxPerMmAtOneCol * minHoleMm) / MIN_FEATURE_PX);
-  const density = Math.floor(FAB.products.bracelet.defaultLengthMm / lengthMm);
+  // זהה ל-`floor(defaultLengthMm / lengthMm)` בקנבס לרוחב, ונכון גם באחר.
+  const density = Math.floor(pxPerMmAtOneCol / REFERENCE_PX_PER_MM);
   return Math.max(1, Math.min(feature, density));
 }
 
@@ -141,11 +159,11 @@ export function maxCols(lengthMm: number, minHoleMm: number): number {
  * לחלופות דרך שורות ונשאר בעמודה אחת; פריט קצר, שהשורות לבדן מחזירות לו חלופה
  * אחת, מקבל עמודה שנייה — אותה קריאה, אותו יחס, ארבע חלופות במקום אחת.
  */
-export function planRender({ ratio, widthMm, minHoleMm }: PlanInput): RenderPlan {
+export function planRender({ ratio, widthMm, minHoleMm, canvas = LANDSCAPE }: PlanInput): RenderPlan {
   const lengthMm = ratio * widthMm;
-  const rowCap = maxRows(widthMm, minHoleMm);
-  const colCap = maxCols(lengthMm, minHoleMm);
-  const perColumn = Math.min(Math.max(1, rowsPerColumn(ratio)), rowCap);
+  const rowCap = maxRows(widthMm, minHoleMm, canvas);
+  const colCap = maxCols(lengthMm, minHoleMm, canvas);
+  const perColumn = Math.min(Math.max(1, rowsPerColumn(ratio, canvas)), rowCap);
 
   let cols = 1;
   while (
@@ -158,5 +176,5 @@ export function planRender({ ratio, widthMm, minHoleMm }: PlanInput): RenderPlan
   }
 
   const rows = perColumn * cols;
-  return { rows, cols, calls: 1, candidates: rows * cols };
+  return { rows, cols, calls: 1, candidates: rows * cols, canvas };
 }

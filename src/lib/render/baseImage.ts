@@ -1,4 +1,5 @@
 import { svgFrame } from "@/lib/geometry/frame";
+import { LANDSCAPE, type Canvas } from "./canvas";
 
 // תמונת הבסיס לעריכה: העיצוב שהלקוחה רואה עכשיו, מצויר בדיוק כמו הדמיה של מודל
 // התמונה — מתכת שחורה מט על לבן שטוח — כדי שאפשר יהיה למסור אותו כרפרנס ל-
@@ -12,8 +13,9 @@ import { svgFrame } from "@/lib/geometry/frame";
 // היפוך: ב-SVG הקנוני החיתוכים הם המסלולים השחורים; בהדמיה המתכת היא השחורה
 // והחיתוכים הם הרקע הלבן שנראה מבעדם. לכן החיתוכים נכנסים כמסכה על פס מלא.
 
-/** קנבס ההדמיה — אותו יחס שמודל התמונה מצייר (SIZE ב-imagegen). */
-export const BASE_CANVAS = { widthPx: 1536, heightPx: 1024 } as const;
+/** קנבס ההדמיה — חייב להיות **אותו** קנבס שנשלח למודל, אחרת תמונת הייחוס
+ *  והפלט בצורות שונות. ברירת המחדל היא לרוחב, מה שהיה תמיד. */
+export const BASE_CANVAS = LANDSCAPE;
 
 /** כמה מהקנבס הפריט תופס. שוליים לבנים נדיבים, כמו בהדמיה אמיתית. */
 const FILL = 0.9;
@@ -36,14 +38,17 @@ function cutoutPathData(svg: string): string[] {
  * קנבס לבן ביחס ההדמיה. מחזיר null אם אין מה לצייר — ואז העריכה נופלת חזרה
  * ליצירה רגילה במקום למסור למודל תמונה ריקה.
  */
-export function buildBaseRenderSvg(canonicalSvg: string | null | undefined): string | null {
+export function buildBaseRenderSvg(
+  canonicalSvg: string | null | undefined,
+  canvas: Canvas = BASE_CANVAS,
+): string | null {
   if (!canonicalSvg) return null;
   const frame = svgFrame(canonicalSvg);
   if (!frame) return null;
   const ds = cutoutPathData(canonicalSvg);
   if (ds.length === 0) return null;
 
-  const { widthPx: cw, heightPx: ch } = BASE_CANVAS;
+  const { widthPx: cw, heightPx: ch } = canvas;
   const scale = Math.min((cw * FILL) / frame.lengthMm, (ch * FILL) / frame.widthMm);
   const x = (cw - frame.lengthMm * scale) / 2;
   const y = (ch - frame.widthMm * scale) / 2;

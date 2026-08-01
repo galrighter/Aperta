@@ -71,6 +71,9 @@ export interface RenderJobInput {
   rows: number;
   /** עמודות בתמונה. הקופסה חותכת רשת rows×cols; 1 = טור אחד, כמו קודם. */
   cols: number;
+  /** צורת הקנבס לבקש מהמודל, `"1536x1024"`. `undefined` = ברירת המחדל של
+   *  הקופסה, שהיא לרוחב — מה שכל הרצה קיבלה עד היום. */
+  size?: string;
   /** רוחב הפס שהוזמן — ממנו הווקטורייזר גוזר את הסקאלה. */
   heightMm: number;
   colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto";
@@ -113,6 +116,10 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     calls: input.calls,
     rows: input.rows,
     cols: input.cols,
+    // הקופסה נופלת חזרה ללרוחב על ערך שאינה מכירה, ולכן גרסה ישנה שלה מתעלמת
+    // מהשדה במקום להיכשל עליו. זו רשת ביטחון בלבד — המתג באפליקציה הוא
+    // מה שמונע את המצב הזה מלכתחילה.
+    size: input.size ?? null,
     height_mm: input.heightMm,
     color_key: input.colorKey,
     min_hole_mm: input.minHoleMm,

@@ -140,6 +140,11 @@ class GenerateIn(BaseModel):
     # An edit: the design as it stands, already drawn as a render would look.
     # We rasterise it and hand it to the image model as the reference.
     base_svg: str | None = Field(default=None, max_length=2_000_000)
+    # The canvas to draw on, "WIDTHxHEIGHT". None = landscape, the only shape
+    # that existed before forme started choosing. Validated against
+    # imagegen.ALLOWED_SIZES for the same reason as the model: it reaches OpenAI
+    # on our key.
+    size: str | None = None
     # Which image model to render with. Validated against imagegen.ALLOWED_MODELS
     # rather than passed through: the name goes to OpenAI on our key.
     model: str | None = None
@@ -158,6 +163,8 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
     if body.model is not None and body.model not in imagegen.ALLOWED_MODELS:
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad model"})
+    if body.size is not None and body.size not in imagegen.ALLOWED_SIZES:
+        raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad size"})
 
     inspiration = None
     if body.inspiration is not None:
@@ -177,6 +184,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         base_svg=body.base_svg,
         min_hole_mm=body.min_hole_mm,
         model=body.model,
+        size=body.size,
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
 
