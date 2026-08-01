@@ -55,6 +55,25 @@ export async function getDesign(id: string): Promise<DesignRow> {
   return data as DesignRow;
 }
 
+/**
+ * הגשרים שנוצרו אחרי המעקב בגרסה שההרצה הזו שמרה.
+ *
+ * נקרא מהגרסה ולא מההרצה כי שם הם נכתבו: הם תכונה של הגאומטריה שנשמרה, ושתי
+ * הצעות מאותה הרצה מגושרות אחרת. `null` = הרצה בלי גרסה, או גרסה מלפני השדה.
+ */
+export async function bridgesForRun(generationId: string): Promise<unknown[] | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("design_versions")
+    .select("validation_report")
+    .eq("generation_id", generationId)
+    .order("version_no", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const report = (data as { validation_report?: { bridges?: unknown[] } }).validation_report;
+  return report?.bridges ?? null;
+}
+
 export async function getVersion(id: string): Promise<VersionRow> {
   const { data, error } = await supabaseAdmin()
     .from("design_versions")

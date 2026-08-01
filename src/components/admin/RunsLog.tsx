@@ -74,6 +74,14 @@ export type LogItem = {
   debug: DebugMeta | null;
 };
 
+/** מה שנעשה לאי מתכת שחזר מהמעקב. `letter` = הוחזר גשר שאנחנו חתכנו,
+ *  `ornament` = חובר לנקודה הקרובה, `dropped` = נמחק כי לא היה לאן. */
+export type BridgeRecord = {
+  kind: "letter" | "ornament" | "dropped";
+  x: number; y: number; widthMm: number; heightMm: number;
+  bridgeMm?: number; spanMm?: number; char?: string | null; matchMm?: number;
+};
+
 /** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
 export type LogDetail = {
   svg: string | null;
@@ -82,6 +90,8 @@ export type LogDetail = {
   renderPrompt?: string | null;
   prompt?: string | null;
   inputs?: RunInputs | null;
+  /** הגשרים שנוצרו אחרי המעקב, מהגרסה שנשמרה. */
+  bridges?: BridgeRecord[] | null;
 };
 
 const detailOf = (d: LogDetail | "loading" | "error" | undefined): LogDetail | null =>
@@ -96,6 +106,12 @@ export const STATUS_COLOR: Record<string, string> = {
   rejected: "bg-red-100 text-red-800 border-red-300",
   error: "bg-red-100 text-red-800 border-red-300",
   fail: "bg-red-100 text-red-800 border-red-300",
+};
+
+const BRIDGE_KIND: Record<string, string> = {
+  letter: "חלל של אות — הוחזר",
+  ornament: "עיטור — חובר",
+  dropped: "נמחק",
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -608,6 +624,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             }}
             renderModel={it.renderModel}
             svg={svg}
+            bridges={detailOf(detail)?.bridges ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
             debug={detailOf(detail)?.debug ?? it.debug}
             svgName={`run-${it.id.slice(0, 8)}`}
@@ -761,8 +778,10 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, debug, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, debug, bridges = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
+  /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
+  bridges?: BridgeRecord[] | null;
   /** בסיס שם הקובץ להורדות מהמסך הזה. */
   svgName?: string;
 }) {
@@ -816,6 +835,42 @@ export function Diagnostics({ images, renderModel, svg, debug, svgName = "design
         {images.rendered && <ImgCard title="רינדור חוזר של ה-SVG" src={images.rendered} />}
         {svg && <SvgCard title="SVG סופי" svg={svg} filename={svgName} />}
       </div>
+
+      {/* גשרים שנוצרו אחרי המעקב */}
+      {bridges && bridges.length > 0 && (
+        <div className="overflow-x-auto rounded-[2px] border border-graphite/10 bg-white p-3">
+          <div className="mb-1 font-semibold">
+            גשרים שנוספו אחרי המעקב ({bridges.length})
+          </div>
+          {/* המשפט הזה הוא כל ההבדל: אלה לא חלק ממה שהמודל צייר. */}
+          <div className="mb-2 text-xs text-ink60">
+            אי מתכת שחזר מהמעקב מנותק — נגשר כאן, אחרי שהמודל סיים. חלל של אות מקבל
+            בחזרה את הגשר שאנחנו חתכנו; אי בעיטור מחובר לנקודה הקרובה; ומה שרחוק מדי נמחק.
+          </div>
+          <table className="w-full text-right text-xs">
+            <thead className="text-ink60">
+              <tr>
+                <th className="p-1">סוג</th><th className="p-1">אות</th><th className="p-1">גודל האי</th>
+                <th className="p-1">רוחב הגשר</th><th className="p-1">אורך</th>
+                <th className="p-1">התאמה</th><th className="p-1">מיקום</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bridges.map((b, i) => (
+                <tr key={i} className={`border-t border-graphite/10 ${b.kind === "dropped" ? "text-red-700" : ""}`}>
+                  <td className="p-1">{BRIDGE_KIND[b.kind]}</td>
+                  <td className="p-1" dir="ltr">{b.char ?? "—"}</td>
+                  <td className="p-1">{b.widthMm.toFixed(2)}×{b.heightMm.toFixed(2)}</td>
+                  <td className="p-1">{b.bridgeMm != null ? `${b.bridgeMm.toFixed(2)} מ״מ` : "—"}</td>
+                  <td className="p-1">{b.spanMm != null ? `${b.spanMm.toFixed(2)} מ״מ` : "—"}</td>
+                  <td className="p-1">{b.matchMm != null ? `${b.matchMm.toFixed(2)} מ״מ` : "—"}</td>
+                  <td className="p-1" dir="ltr">{b.x.toFixed(1)}, {b.y.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* candidates */}
       {candidates.length > 0 && (

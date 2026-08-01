@@ -1,6 +1,7 @@
 import { resolveFab } from "@/lib/fabrication.config";
 import { rescaleCutoutsSvg, svgFrame } from "./frame";
-import { dropDetachedMaterial, dropThinCutouts } from "./normalize";
+import { dropThinCutouts } from "./normalize";
+import { restoreBridges, type BridgeRecord, type LetterBridge } from "./restoreBridges";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
 
@@ -44,10 +45,21 @@ const WIDTH_TOLERANCE = 0.05;
  */
 const MAX_DROPPED_MATERIAL = 0.1;
 
+/**
+ * מעל אורך הגשר הזה עדיף למחוק אי מאשר לגשר אותו (החלטת גל).
+ *
+ * גשר קצר בתוך עיטור נראה כמו חלק ממנו; גשר ארוך הוא פס מתכת שחוצה את העיצוב,
+ * והוא מזיק יותר מחלל חסר — שאיש ממילא לא מחפש, כי הלקוחה לא ראתה מה המודל
+ * נתן. חלל של אות אינו מושפע מהסף: שם הגשר מוחזר למקומו ולא נמתח לשום מקום.
+ */
+const MAX_BRIDGE_SPAN_MM = 2;
+
 /** מה שהמסך צריך ממועמד — בלי גרף הפוליגונים. זה מה שעובר על החוט. */
 export interface FramedPreview {
   /** ה-SVG אחרי מתיחה למסגרת שהוזמנה. */
   framedSvg: string;
+  /** מה שנעשה לכל אי מתכת — גושר, חובר, או נמחק. ליומן. */
+  bridges: BridgeRecord[];
   lengthMm: number;
   widthMm: number;
   /** היחס שהמודל צייר בפועל, לפני המתיחה. */
@@ -65,7 +77,22 @@ export interface FramedCutouts extends FramedPreview {
  * מותח cutouts גולמיים למסגרת שהוזמנה ומריץ ולידציה — בלי לשמור כלום.
  * משמש גם להערכת מועמדים לפני שבוחרים אחד מהם.
  */
-export function frameCutoutsDims(dims: DesignDims, cutoutsSvg: string): FramedCutouts {
+/**
+ * מה שהמסגור צריך לדעת כדי לגשר איים במקום למחוק אותם.
+ *
+ * `letterBridges` הוא מה שנחתך בכיתוב (`LetteringRow.bridges`), בקואורדינטות
+ * הפס שהוזמן — אותן קואורדינטות שהמסגור עובד בהן אחרי המתיחה, ולכן ההשוואה
+ * ישירה. בלעדיו כל אי מטופל כאי בעיטור, וזו התנהגות נכונה להרצה בלי כיתוב.
+ */
+export interface BridgePlan {
+  letterBridges?: readonly LetterBridge[];
+}
+
+export function frameCutoutsDims(
+  dims: DesignDims,
+  cutoutsSvg: string,
+  plan: BridgePlan = {},
+): FramedCutouts {
   const { lengthMm } = dims;
   const orderedWidth = dims.widthMm;
 
@@ -104,20 +131,31 @@ export function frameCutoutsDims(dims: DesignDims, cutoutsSvg: string): FramedCu
   }
 
   // אי חומר (V2/V3) הוא הכשל הנפוץ שנשאר, והוא הפרש בין "לא ניתן לייצור" לבין
-  // "מוכן" — לא בין שני עיצובים. מסירים אותו כאן, לפני שמישהו רואה את התוצאה,
-  // מאותה סיבה שמסירים פתחים שאי אפשר לחתוך: הלקוחה לא ראתה גרסה אחרת ולכן
-  // אין ממה לגרוע, אבל היא כן הייתה נתקעת עם עיצוב שאי אפשר להזמין.
+  // "מוכן" — לא בין שני עיצובים. מטפלים בו כאן, לפני שמישהו רואה את התוצאה,
+  // מאותה סיבה שמסירים פתחים שאי אפשר לחתוך.
+  //
+  // **מגשרים, ולא מוחקים** — ראה restoreBridges. מחיקה נשארה רק למה שאי אפשר
+  // לגשר, כי היא זו שהפכה חלל של אות לכתם.
+  let bridges: BridgeRecord[] = [];
   if (normalized) {
-    const joined = dropDetachedMaterial(normalized, MAX_DROPPED_MATERIAL);
-    if (joined !== normalized) {
-      normalized = joined;
-      framedSvg = joined.canonicalSvg;
-      report = validateNormalized(joined, framedDims);
+    const fab = resolveFab(framedDims.thicknessMm, framedDims.productType);
+    const restored = restoreBridges(normalized, {
+      letterBridges: plan.letterBridges,
+      ornamentBridgeMm: fab.minBridgeCut,
+      maxSpanMm: MAX_BRIDGE_SPAN_MM,
+      maxDroppedFraction: MAX_DROPPED_MATERIAL,
+    });
+    bridges = restored.records;
+    if (restored.design !== normalized) {
+      normalized = restored.design;
+      framedSvg = restored.design.canonicalSvg;
+      report = validateNormalized(restored.design, framedDims);
     }
   }
 
   return {
     framedSvg,
+    bridges,
     lengthMm,
     widthMm,
     drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
@@ -128,7 +166,8 @@ export function frameCutoutsDims(dims: DesignDims, cutoutsSvg: string): FramedCu
 }
 
 /** אותו חישוב, בלי גרף הפוליגונים — מה שמוחזר דרך גבול תהליך. */
-export function framePreview(dims: DesignDims, cutoutsSvg: string): FramedPreview {
-  const { framedSvg, lengthMm, widthMm, drawnRatio, stretch, report } = frameCutoutsDims(dims, cutoutsSvg);
-  return { framedSvg, lengthMm, widthMm, drawnRatio, stretch, report };
+export function framePreview(dims: DesignDims, cutoutsSvg: string, plan: BridgePlan = {}): FramedPreview {
+  const { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report } =
+    frameCutoutsDims(dims, cutoutsSvg, plan);
+  return { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report };
 }

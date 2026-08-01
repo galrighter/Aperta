@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { framePreview, type FramedPreview } from "@/lib/geometry/frameCutouts";
+import { framePreview, type BridgePlan, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 
 // מסגור מועמדים דרך ה-Worker הנפרד (binding בשם FRAME).
@@ -35,12 +35,17 @@ function frameService(): FrameBinding | null {
   }
 }
 
-async function frameOne(svc: FrameBinding, dims: DesignDims, cutoutsSvg: string): Promise<FramedPreview> {
+async function frameOne(
+  svc: FrameBinding,
+  dims: DesignDims,
+  cutoutsSvg: string,
+  plan: BridgePlan,
+): Promise<FramedPreview> {
   // ה-host לא נקרא: service binding מנתב לפי ה-binding, לא לפי ה-URL.
   const resp = await svc.fetch("https://frame.internal/", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ dims, cutoutsSvg }),
+    body: JSON.stringify({ dims, cutoutsSvg, plan }),
   });
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
@@ -53,19 +58,25 @@ async function frameOne(svc: FrameBinding, dims: DesignDims, cutoutsSvg: string)
  * ממסגר את כל המועמדים. מחזיר בדיוק את מה שהמסגור המקומי היה מחזיר, פחות
  * `normalized` — הזוכה עובר בהמשך ב-ingestCutouts שגוזר את הגאומטריה ממילא.
  */
-export async function frameCandidates(dims: DesignDims, svgs: string[]): Promise<FramedPreview[]> {
+export async function frameCandidates(
+  dims: DesignDims,
+  svgs: string[],
+  /** הגשרים שנחתכו בכיתוב. חייב להיות זהה למה ש-ingestCutouts יקבל: אחרת
+   *  ההצעה שהלקוחה רואה מגושרת אחרת מהגרסה שנשמרת ממנה. */
+  plan: BridgePlan = {},
+): Promise<FramedPreview[]> {
   const svc = frameService();
   const out: FramedPreview[] = [];
   for (const svg of svgs) {
     if (svc) {
       try {
-        out.push(await frameOne(svc, dims, svg));
+        out.push(await frameOne(svc, dims, svg, plan));
         continue;
       } catch (e) {
         console.error("frame worker failed, framing locally:", (e as Error).message);
       }
     }
-    out.push(framePreview(dims, svg));
+    out.push(framePreview(dims, svg, plan));
   }
   return out;
 }

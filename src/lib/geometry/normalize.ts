@@ -230,7 +230,7 @@ const fmt = (v: number) => {
   return Object.is(r, -0) ? "0" : String(r);
 };
 
-function polygonToPathD(poly: Polygon): string {
+export function polygonToPathD(poly: Polygon): string {
   return poly.map((ring) => ringToPathD(ring)).join("");
 }
 
