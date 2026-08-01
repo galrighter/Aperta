@@ -53,6 +53,12 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const url = `${SITE.url}/d/${share.token}`;
   // ההדמיה של המודל אם יש; אחרת תמונת ברירת המחדל של האתר (app/opengraph-image).
   // כתובת מוחלטת: זחלני התצוגה המקדימה של וואטסאפ/טלגרם אינם פותרים נתיב יחסי.
+  //
+  // **בלי `width`/`height`.** הקנבס של מודל התמונה הוא 1536x1024 או 1024x1536
+  // לפי צורת הפריט (ראו docs/OPS_PORTRAIT_CANVAS.md), ואיזה מהם — לא כתוב
+  // בשורה. מידות מוצהרות שגויות גרועות ממידות חסרות: חלק מהזחלנים פורסים
+  // לפיהן לפני שהתמונה ירדה, וריבוע מוצהר על תמונה רחבה נחתך. בלעדיהן הם
+  // מודדים את מה שהורידו.
   const image = share.render_path ? `${url}/render` : undefined;
 
   return {
@@ -67,7 +73,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       title,
       description: t.subtitle,
       url,
-      ...(image ? { images: [{ url: image, width: 1024, height: 1024, alt: name }] } : {}),
+      ...(image ? { images: [{ url: image, alt: name }] } : {}),
     },
     twitter: {
       card: "summary_large_image",
