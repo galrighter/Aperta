@@ -1,9 +1,10 @@
 import { ApiError } from "./api";
+import { ADMIN_COOKIE } from "./adminCookie";
 
 // שער אדמין קליל מבוסס shared-secret (ADMIN_TOKEN). זה אינו auth משתמשים מלא —
 // הוא מיועד למפעיל יחיד (גל) כדי לנהל פניות. בלי ADMIN_TOKEN — האדמין מושבת.
 
-export const ADMIN_COOKIE = "forme_admin";
+export { ADMIN_COOKIE };
 
 function adminToken(): string | null {
   const t = process.env.ADMIN_TOKEN;

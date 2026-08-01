@@ -132,6 +132,17 @@ export default function DesignPage() {
     [remember],
   );
 
+  /** עדכון שורה קיימת ביומן. משמש מעבר בין ההצעות של אותה הרצה, שבו השרת
+   *  מעדכן את שורת הבחירה במקום להוסיף אחת — היומן חייב לשקף את אותו דבר. */
+  const replaceEntry = useCallback(
+    (st: CreateState, index: number, entry: EditEntry) => {
+      const edits = st.edits.map((e, i) => (i === index ? entry : e));
+      setState((prev) => ({ ...prev, edits, activeEdit: index }));
+      remember(st, entry);
+    },
+    [remember],
+  );
+
   /* ===== גאומטריה להדמיה המעורגלת =====
      ההדמיה בתלת-ממד צריכה את ה-material, וגרסאות שנשלפו מיומן הגרסאות (או
      מעיצוב שמור) מגיעות בלעדיו. משלימים אותו לפי דרישה מהוולידציה. */
@@ -422,14 +433,19 @@ export default function DesignPage() {
       if (!s.designId || !entry || (entry.chosen ?? 0) === index) return;
       set({ applying: true, chooseError: null });
       try {
-        const res = await api.chooseCandidate(s.designId, svg, index);
-        pushEntry(s, {
+        const res = await api.chooseCandidate(s.designId, svg, index, entry.versionId);
+        const next: EditEntry = {
           ...entryFromGeneration(res, { region: null, text: "" }),
           // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה — הבחירה עצמה אינה
           // הרצה, והתשובה שלה לא נושאת אותן.
           candidates: entry.candidates,
           chosen: index,
-        });
+        };
+        // בחירה בתוך אותה הרצה מעדכנת שורה קיימת ולא מוסיפה — והשרת מודיע על
+        // כך בכך שהוא מחזיר את **אותו** מזהה גרסה. אין צורך בשדה נוסף בתשובה,
+        // והתנהגות שרת ישן (מזהה חדש בכל פעם) ממשיכה לעבוד בלי שינוי.
+        if (res.version.id === entry.versionId) replaceEntry(s, s.activeEdit, next);
+        else pushEntry(s, next);
         set({ applying: false });
       } catch (e) {
         // בליעה שקטה נראתה בדיוק כמו כפתור מת: לחיצה, שום שינוי, שום הסבר.
@@ -437,7 +453,7 @@ export default function DesignPage() {
         set({ applying: false, chooseError: apiErr?.message ?? he.errGeneric });
       }
     },
-    [s, set, pushEntry],
+    [s, set, pushEntry, replaceEntry],
   );
 
   /* ===== המשך עיצוב שמור =====
