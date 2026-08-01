@@ -1,15 +1,47 @@
 import { describe, expect, it } from "vitest";
-import { LANDSCAPE, PORTRAIT, PORTRAIT_BAND_MM, aspect, canvasFor, sizeParam } from "../canvas";
+import {
+  LANDSCAPE, PORTRAIT, PORTRAIT_BAND_MM, aspect, canvasFor, portraitEnabled, sizeParam,
+} from "../canvas";
 import { NATURAL_RATIO, maxCols, maxRows, planRender } from "../panels";
 
 const BRACELET = { widthMm: 18, minHoleMm: 0.5 };
 
 describe("canvasFor", () => {
-  it("כבוי כברירת מחדל — כל אורך מקבל לרוחב", () => {
-    // המתג מגן על פער הפריסה: האפליקציה עולה לפני הקופסה, ובקשה לקנבס
-    // שהקופסה לא מכירה הייתה מרנדרת לרוחב מול ייחוס שנבנה לאורך.
+  it("כבוי — כל אורך מקבל לרוחב", () => {
+    // דרך החזרה אחורה: `PORTRAIT_CANVAS=0`. בלי revert ובלי פריסה מחדש.
     for (const L of [55, 104.4, 125, 153, 160, 215]) {
       expect(canvasFor(L, false)).toBe(LANDSCAPE);
+    }
+  });
+
+  it("דלוק כברירת מחדל, וכבוי רק על '0' מפורש", () => {
+    const before = process.env.PORTRAIT_CANVAS;
+    try {
+      delete process.env.PORTRAIT_CANVAS;
+      expect(portraitEnabled()).toBe(true);
+      process.env.PORTRAIT_CANVAS = "1";
+      expect(portraitEnabled()).toBe(true);
+      process.env.PORTRAIT_CANVAS = "0";
+      expect(portraitEnabled()).toBe(false);
+      // רק "0" מכבה. ערך שלא מזוהה משאיר דלוק, כי כיבוי בטעות הוא חזרה
+      // שקטה להתנהגות שנזנחה — בדיוק סוג הדבר שלא מבחינים בו.
+      process.env.PORTRAIT_CANVAS = "false";
+      expect(portraitEnabled()).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.PORTRAIT_CANVAS;
+      else process.env.PORTRAIT_CANVAS = before;
+    }
+  });
+
+  it("ברירת המחדל של canvasFor עוברת דרך המתג", () => {
+    const before = process.env.PORTRAIT_CANVAS;
+    try {
+      delete process.env.PORTRAIT_CANVAS;
+      expect(canvasFor(135)).toBe(PORTRAIT);
+      expect(canvasFor(160)).toBe(LANDSCAPE);
+    } finally {
+      if (before === undefined) delete process.env.PORTRAIT_CANVAS;
+      else process.env.PORTRAIT_CANVAS = before;
     }
   });
 
