@@ -12,6 +12,7 @@ import {
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
 import { RolledStage } from "./RolledStage";
+import { ShareButton } from "./ShareButton";
 import {
   activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, versionEntryLabel,
   type CreateState,
@@ -362,6 +363,16 @@ export function ResultScreen({
               </ol>
             )}
           </div>
+
+          {/* שיתוף. מתחת ליומן ומעל ההזמנה: זו פעולה על העיצוב שכבר קיים,
+              ולא צריכה להתחרות עם הכפתור הראשי. מוצג רק כשיש מה לשתף. */}
+          {s.designId && entry && (
+            <ShareButton
+              designId={s.designId}
+              versionId={entry.versionId}
+              serial={s.designSerial}
+            />
+          )}
 
           <PrimaryBtn onClick={onOrder} full>
             {d.resultOrder}

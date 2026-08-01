@@ -121,6 +121,22 @@ export interface CreateState {
    */
   lettering: string;
 
+  /**
+   * הגיעו לכאן מ"להזמין כזה" בדף שיתוף — הטוקן של העיצוב שמזמינים.
+   *
+   * יושב ב-`CreateState` ולא ב-state נפרד כדי שישרוד את היציאה לגוגל וחזרה:
+   * `stashCreateState` שומר את המצב הזה, ומי שנדרש להזדהות באמצע חוזר לאותו
+   * עיצוב במקום למסך בחירת מוצר ריק.
+   */
+  fromShare: string | null;
+  /** המספר הסידורי של העיצוב **ששותף** — לשורה "מזמינים את עיצוב RM-0047".
+   *  שדה משלו ולא `designSerial`: זה מספר של עיצוב אחר, של מישהו אחר, ומה
+   *  שייווצר כאן יקבל מספר משלו. */
+  fromShareSerial: number | null;
+  /** רץ עכשיו העתק של העיצוב המשותף למידה שנבחרה. */
+  adopting: boolean;
+  adoptError: string | null;
+
   // מנוע
   designId: string | null;
   /** המספר הסידורי של העיצוב, כפי שהוקצה במסד. הרפרנס האנושי אליו. */
@@ -174,6 +190,10 @@ export const INITIAL: CreateState = {
   imageRole: null,
   brief: "",
   lettering: "",
+  fromShare: null,
+  fromShareSerial: null,
+  adopting: false,
+  adoptError: null,
   designId: null,
   designSerial: null,
   edits: [],
@@ -269,6 +289,20 @@ export function candidatesOf<C>(
 export function versionEntryLabel(entry: EditEntry, index: number): string {
   if (entry.text) return entry.text;
   return index === 0 ? d.versionOriginal : d.versionPicked;
+}
+
+/**
+ * האם בחירת מוצר עכשיו מוותרת על העיצוב ששותף.
+ *
+ * מי שהגיע מ"להזמין כזה" נוחת על מסך המידות, אבל סרגל השלבים מאפשר לחזור
+ * למסך המוצר. עיצוב ששותף הוא צמיד **או** טבעת: בחירת האחר פירושה שאין יותר
+ * מה להעתיק, והמסע חוזר להיות רגיל. בלי ההכרעה הזו האורך היה מחושב למוצר
+ * החדש בזמן שהשרת מעתיק את הישן.
+ *
+ * בחירה חוזרת באותו מוצר אינה ויתור — שום דבר לא השתנה.
+ */
+export function abandonsShare(s: CreateState, picked: Product): boolean {
+  return s.fromShare != null && s.product != null && picked !== s.product;
 }
 
 /* ===== נגזרות מידה ===== */

@@ -12,6 +12,7 @@ import {
   type SavedDesign,
 } from "@/lib/client/myDesigns";
 import { designCode } from "@/lib/designCode";
+import { isShareToken } from "@/lib/shareToken";
 import { SITE } from "@/lib/site.config";
 import type { Account } from "@/lib/client/types";
 import { StepRail } from "@/components/create/ui";
@@ -31,7 +32,7 @@ import {
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
-  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
+  INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
   countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
   stripLengthMm, widthOf,
@@ -71,6 +72,13 @@ export default function DesignPage() {
   const [gateError, setGateError] = useState<string | null>(null);
   /** נדלק כשהשער נפתח מתוך ניסיון ליצור — כדי להמשיך אוטומטית אחרי הכניסה. */
   const startAfterSignIn = useRef(false);
+  /**
+   * *מה* להמשיך אחרי הכניסה. שני מסלולים מגיעים לשער: יצירה מהתיאור, והעתקת
+   * עיצוב ששותף ("להזמין כזה"). נשמר בנפרד מ-`startAfterSignIn` ונוסע גם
+   * ב-stash של ה-OAuth — אחרת מי שנדרש להזדהות באמצע הזמנת עיצוב משותף היה
+   * חוזר מגוגל היישר לתוך יצירה חדשה מאפס.
+   */
+  const pendingAction = useRef<"generate" | "adopt">("generate");
 
   const set = useCallback((patch: Partial<CreateState>) => {
     setState((prev) => ({ ...prev, ...patch }));
@@ -182,6 +190,7 @@ export default function DesignPage() {
     const who = signedIn ?? account;
     if (!who) {
       startAfterSignIn.current = true;
+      pendingAction.current = "generate";
       setGateError(null);
       setGateOpen(true);
       return;
@@ -269,6 +278,57 @@ export default function DesignPage() {
     }
   }, [s, account, go, pushEntry, remember]);
 
+  /* ===== "להזמין כזה" — עיצוב ששותף, במידה של מי שמזמין =====
+     נכנסים לכאן במקום ל-`brief`: אין מה לתאר ואין מה לייצר, הדוגמה כבר קיימת.
+     מה שכן חייב לקרות הוא מתיחה למידה שנבחרה עכשיו, והיא רצה בשרת (ראו
+     `/api/shares/[token]/adopt`) כדי שהוולידציה תרוץ על מה שבאמת ייחתך. */
+  const adoptShared = useCallback(async (signedIn?: Account) => {
+    const token = s.fromShare;
+    if (!token) return;
+
+    // אותו רגע בדיוק כמו ביצירה: כאן נוצרת רשומה שצריכה בעלים.
+    const who = signedIn ?? account;
+    if (!who) {
+      startAfterSignIn.current = true;
+      pendingAction.current = "adopt";
+      setGateError(null);
+      setGateOpen(true);
+      return;
+    }
+
+    set({ adopting: true, adoptError: null });
+    try {
+      const res = await api.adoptShare(token, {
+        lengthMm: stripLengthMm(s),
+        widthMm: widthOf(s),
+        gapMm: gapOf(s),
+      });
+      const entry = entryFromGeneration(res, { region: null, text: "" });
+      const next: CreateState = {
+        ...s,
+        adopting: false,
+        adoptError: null,
+        designId: res.design.id,
+        designSerial: res.design.serial ?? null,
+        edits: [entry],
+        activeEdit: 0,
+        screen: "result",
+      };
+      setState(next);
+      setMaxReached(3);
+      remember(next, entry);
+      if (typeof window !== "undefined") window.scrollTo(0, 0);
+    } catch (e) {
+      // נשארים על מסך המידות: מידה אחרת עשויה לעבור, וזו הפעולה שיש למי
+      // שנתקל בזה. `rescale_failed` הוא דחייה אמיתית ולא תקלה.
+      const apiErr = e instanceof ClientApiError ? e : null;
+      set({
+        adopting: false,
+        adoptError: apiErr?.code === "not_found" ? he.share.adoptGone : he.share.adoptFailed,
+      });
+    }
+  }, [s, account, set, remember]);
+
   /* ===== פעימת לב: "יש מסך שמחכה ליצירה הזו" =====
      `DesignReadyWatch` (ב-layout) מציג חלון קופץ רק כשהפעימה מתיישנת. דגל
      בוליאני היה נשאר דלוק כשהלשונית נסגרת — כלומר בדיוק כשצריך להתריע. */
@@ -320,14 +380,16 @@ export default function DesignPage() {
         setGateOpen(false);
         if (opts?.resume ?? startAfterSignIn.current) {
           startAfterSignIn.current = false;
-          void startGeneration(a);
+          // לאן חוזרים — למסלול שממנו נפתח השער, ולא תמיד ליצירה.
+          if (pendingAction.current === "adopt") void adoptShared(a);
+          else void startGeneration(a);
         }
       } catch (e) {
         setGateBusy(false);
         setGateError(e instanceof ClientApiError ? e.message : d.acctError);
       }
     },
-    [startGeneration],
+    [startGeneration, adoptShared],
   );
 
   /* ===== חזרה מגוגל =====
@@ -339,10 +401,17 @@ export default function DesignPage() {
     if (returnHandled.current) return;
     returnHandled.current = true;
 
-    const stash = popCreateState<{ state: CreateState; maxReached: number; resume: boolean }>();
+    const stash = popCreateState<{
+      state: CreateState;
+      maxReached: number;
+      resume: boolean;
+      action?: "generate" | "adopt";
+    }>();
     if (!stash) return;
     setState(stash.state);
     setMaxReached(stash.maxReached);
+    // המסלול נוסע עם המצב: הרפרנס עצמו לא שורד טעינת עמוד מחדש.
+    pendingAction.current = stash.action ?? "generate";
 
     const url = new URL(window.location.href);
     const failed = url.searchParams.get("auth") === "failed";
@@ -558,10 +627,45 @@ export default function DesignPage() {
     const resumeId = params.get("resume");
     const wantsDesigns = params.get("designs");
     const wantsSignIn = params.get("signin");
-    if (!resumeId && !wantsDesigns && !wantsSignIn) return;
+    const shareToken = params.get("from");
+    if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken) return;
 
     // ניקוי הכתובת: רענון אחרי שהעיצוב נפתח לא אמור לפתוח אותו שוב מאפס.
     window.history.replaceState({}, "", window.location.pathname);
+
+    if (shareToken) {
+      // מחרוזת שאינה טוקן כלל אינה מגיעה לשרת — אבל היא **כן** חייבת לעצור
+      // כאן. בלי ה-return הזה לינק פגום היה נופל להמשך הפונקציה ופותח את
+      // מגירת "העיצובים שלי", שאין לה שום קשר למה שנלחץ.
+      if (!isShareToken(shareToken)) {
+        setState((prev) => ({ ...prev, adoptError: he.share.adoptGone }));
+        return;
+      }
+      // המסע נפתח על המידות ולא על בחירת המוצר: המוצר כבר נקבע בעיצוב
+      // ששותף, והמידה היא הדבר היחיד שחייב להיות של מי שמזמין עכשיו.
+      // הרוחב **כן** מגיע מהשיתוף — הוא חלק מאיך שהפריט נראה, לא מדידה של גוף.
+      void api
+        .share(shareToken)
+        .then((sh) => {
+          setState((prev) => ({
+            ...prev,
+            screen: "sizes",
+            product: sh.productType,
+            fromShare: sh.token,
+            fromShareSerial: sh.serial,
+            ...(sh.productType === "ring"
+              ? { ringWidth: sh.widthMm }
+              : { braceletWidth: sh.widthMm }),
+          }));
+          setMaxReached(1);
+        })
+        .catch(() => {
+          // לינק מבוטל או שגוי: נשארים במסע רגיל מהתחלה, עם הסבר. עדיף
+          // ממסך בחירת מוצר שלא מסביר לאן נעלם העיצוב שנלחץ.
+          setState((prev) => ({ ...prev, adoptError: he.share.adoptGone }));
+        });
+      return;
+    }
 
     if (resumeId) {
       const known = listMyDesigns().find((x) => x.id === resumeId);
@@ -710,6 +814,13 @@ export default function DesignPage() {
         {s.screen === "product" && (
           <>
             <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+              {/* הגיעו מלינק שיתוף שכבר לא פעיל. בלי המשפט הזה הם נוחתים על
+                  מסך בחירת מוצר רגיל, בלי שום סימן למה שנלחץ. */}
+              {!s.fromShare && s.adoptError && (
+                <div className="mb-6 border border-graphite/15 bg-white px-5 py-4 text-[13px] text-ink60">
+                  {s.adoptError}
+                </div>
+              )}
               {account && <AccountBar name={account.name} onSwitch={onSwitchAccount} />}
               <SavedDesigns
                 items={saved}
@@ -725,14 +836,56 @@ export default function DesignPage() {
             </div>
             <ProductScreen
               onPick={(p: Product) => {
-                set({ product: p });
+                set(
+                  abandonsShare(s, p)
+                    ? { product: p, fromShare: null, fromShareSerial: null, adoptError: null }
+                    : { product: p },
+                );
                 go("sizes");
               }}
             />
           </>
         )}
 
-        {s.screen === "sizes" && <SizesScreen s={s} set={set} onNext={() => go("brief")} />}
+        {s.screen === "sizes" && (
+          <>
+            {/* מזמינים עיצוב ששותף — אומרים את זה במפורש. בלי זה המסך נראה
+                כמו תחילת מסע רגיל, ומי שלחץ "להזמין כזה" לא יודע אם העיצוב
+                שראה עוד איתו. */}
+            {s.fromShare && (
+              <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+                <div className="border border-cobalt/30 bg-cobalt/[0.06] px-5 py-4">
+                  <div className="text-[13px] font-semibold text-graphite">
+                    {designCode(s.fromShareSerial)
+                      ? he.share.adoptBanner(designCode(s.fromShareSerial)!)
+                      : he.share.adoptBannerNoCode}
+                  </div>
+                  <p className="mt-1 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+                    {he.share.adoptSizeNote}
+                  </p>
+                  {s.adoptError && (
+                    <p className="mt-2 text-[13px]" style={{ color: "#c0413b" }}>{s.adoptError}</p>
+                  )}
+                </div>
+              </div>
+            )}
+            <SizesScreen
+              s={s}
+              set={set}
+              // עיצוב ששותף כבר קיים: אין תיאור לכתוב ואין מה לייצר, רק
+              // להתאים אותו למידה שנבחרה כאן.
+              onNext={() => (s.fromShare ? void adoptShared() : go("brief"))}
+              busy={s.adopting}
+              nextLabel={
+                s.fromShare
+                  ? s.adopting
+                    ? he.share.adoptWorking
+                    : he.share.adoptStart
+                  : undefined
+              }
+            />
+          </>
+        )}
 
         {s.screen === "brief" && <BriefScreen s={s} set={set} onSubmit={() => void startGeneration()} />}
 
@@ -778,7 +931,14 @@ export default function DesignPage() {
       <AccountGate
         open={gateOpen}
         onSignedIn={() => afterSignedIn()}
-        onBeforeRedirect={() => stashCreateState({ state: s, maxReached, resume: startAfterSignIn.current })}
+        onBeforeRedirect={() =>
+          stashCreateState({
+            state: s,
+            maxReached,
+            resume: startAfterSignIn.current,
+            action: pendingAction.current,
+          })
+        }
         onCancel={() => {
           startAfterSignIn.current = false;
           setGateError(null);

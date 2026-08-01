@@ -283,4 +283,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ versionId, forced }),
     }),
+
+  /** לינק שיתוף לגרסה. קריאה חוזרת על אותה גרסה מחזירה את אותו לינק. */
+  createShare: (designId: string, versionId: string) =>
+    call<{ token: string; url: string; reused: boolean }>("/api/shares", {
+      method: "POST",
+      body: JSON.stringify({ designId, versionId }),
+    }),
+
+  /** "להזמין כזה": עותק של עיצוב ששותף, במידות של המזמין. */
+  adoptShare: (token: string, dims: { lengthMm: number; widthMm: number; gapMm?: number }) =>
+    call<{
+      design: Design;
+      version: Version;
+      report: ValidationReport;
+      geometry: Geometry | null;
+      lengthMm: number;
+      widthMm: number;
+    }>(`/api/shares/${encodeURIComponent(token)}/adopt`, {
+      method: "POST",
+      body: JSON.stringify(dims),
+    }),
+
+  /** הצילום הציבורי של שיתוף — מה שהמסע צריך כדי לפתוח במידות הנכונות. */
+  share: (token: string) =>
+    call<{
+      token: string;
+      productType: "bracelet" | "ring";
+      lengthMm: number;
+      widthMm: number;
+      gapMm: number;
+      serial: number | null;
+    }>(`/api/shares/${encodeURIComponent(token)}`),
 };
