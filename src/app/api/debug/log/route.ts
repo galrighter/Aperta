@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
-import { listRuns, designsForRuns, type RunStagePaths, type RunStatusFilter } from "@/lib/db/runs";
+import {
+  existingRunIds, listRuns, designsForRuns, type RunStagePaths, type RunStatusFilter,
+} from "@/lib/db/runs";
 import { designCode } from "@/lib/designCode";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
@@ -74,10 +76,11 @@ export async function GET(req: Request) {
     let orphans: OrphanItem[] = [];
     if (status !== "approved") {
       try {
-        orphans = orphanJobs(await listRecentJobs(80), rows, {
-          before,
-          toEnd: !hasMore,
-        });
+        const jobs = await listRecentJobs(80);
+        // הקיום נשאל מול הטבלה ולא מול העמוד: תחת "נכשלו" העמוד מכיל רק הרצות
+        // שלא אושרו, וכל השאר היו נראות משם כאילו לא נכתבו מעולם.
+        const known = await existingRunIds(jobs.map((j) => j.run_id).filter((v): v is string => !!v));
+        orphans = orphanJobs(jobs, rows, { before, toEnd: !hasMore, known });
       } catch (e) {
         // תוספת, לא תנאי: אם טבלת ה-jobs לא זמינה עדיף יומן בלעדיה מאשר בלי יומן.
         console.error("orphan job lookup failed:", (e as Error).message);

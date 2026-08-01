@@ -179,6 +179,22 @@ const BASE_COLUMNS =
  *  ברשימה. הוא נטען עם הפירוט, בפתיחת חלון הפרומפט. */
 const LIST_COLUMNS = `${BASE_COLUMNS}, inputs, input_image_path, has_svg`;
 
+/**
+ * מאילו מהמזהים האלה קיימת שורת הרצה.
+ *
+ * צריך להישאל מול הטבלה ולא מול העמוד שנטען: תחת סינון ("נכשלו") העמוד מכיל
+ * רק חלק מההרצות, וכל השאר נראות משם כאילו אינן קיימות. זה מה שגרם ליומן
+ * להציג "כתיבת ההרצה נכשלה" על יצירות שהצליחו ונרשמו כשורה — ראה runs/orphans.
+ */
+export async function existingRunIds(ids: string[]): Promise<Set<string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return new Set();
+  const sb = supabaseAdmin();
+  const { data, error } = await sb.from("generation_runs").select("id").in("id", unique);
+  if (error) throw new Error(error.message);
+  return new Set(((data ?? []) as Array<{ id: string }>).map((r) => r.id));
+}
+
 /** "נכשלו" ביומן = כל מה שאינו `approved`: גם דחייה של הצינור וגם שגיאה. */
 export type RunStatusFilter = "approved" | "problem";
 
