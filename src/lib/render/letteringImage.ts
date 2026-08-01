@@ -177,9 +177,16 @@ async function letteringPolygons(
 }
 
 /**
- * תמונת הייחוס: `rows` פסים שחורים על קנבס לבן, בכל אחד אותו כיתוב בפנים
- * אחרות. הקופסה חותכת את התמונה לאותן שורות (render/panels.ts), ולכן כל שורה
- * חוזרת ללקוחה כחלופה נפרדת — מגוון טיפוגרפי בקריאה אחת למודל.
+ * תמונת הייחוס: פס שחור לכל תא ברשת שהתכנון ביקש, בכל אחד אותו כיתוב בפנים
+ * אחרות. הקופסה חותכת את התמונה לאותם תאים (render/panels.ts), ולכן כל תא
+ * חוזר ללקוחה כחלופה נפרדת — מגוון טיפוגרפי בקריאה אחת למודל.
+ *
+ * הרשת כאן היא **אותה רשת** שהפרומפט מבקש מהמודל. כשהיא לא הייתה — הייחוס
+ * הראה שתי שורות בזמן שהפרומפט ביקש ארבעה פריטים — הפריסה שנמסרה סתרה את
+ * ההוראה, ולשני פריטים לא היה מה להעתיק.
+ *
+ * מספר הפנים מוגבל בפועל בכמה מהן נכנסות לפס הזה: אם נכנסות פחות מכפי שיש
+ * תאים, הן חוזרות במחזוריות — תא בלי כיתוב הוא פריט שהמודל ימציא לו אותיות.
  *
  * `null` = הטקסט לא נכנס לפס בשום פנים. הקורא אחראי להגיד את זה ללקוחה.
  */
@@ -189,30 +196,35 @@ export async function buildLetteringRenderSvg(
   productType: "bracelet" | "ring",
   rows: number,
   brief: string,
+  cols = 1,
 ): Promise<LetteringReference | null> {
   const content = text.trim();
   if (!content) return null;
 
   // הסדר הוא סדר ההעדפה: מה שהבריף ביקש, ואחריו משלימים מרוחקים ממנו באופי.
-  // כולן נבדקות ולא רק ה-`rows` הראשונות, כי פנים עשויות ליפול על הפס הזה —
-  // כיתוב ארוך על טבעת, למשל, נכנס בפנים צרות ולא ברחבות. עדיף לתת ללקוחה
-  // טיפוגרפיה שנייה בבחירה מאשר להגיד לה שהטקסט לא נכנס כשהוא כן.
+  // כולן נבדקות ולא רק הראשונות, כי פנים עשויות ליפול על הפס הזה — כיתוב ארוך
+  // על טבעת, למשל, נכנס בפנים צרות ולא ברחבות. עדיף לתת ללקוחה טיפוגרפיה
+  // שנייה בבחירה מאשר להגיד לה שהטקסט לא נכנס כשהוא כן.
+  const cells = Math.max(1, rows * cols);
   const ordered = stylesForBrief(brief);
   const drawnAll = await Promise.all(
     ordered.map((style) => letteringPolygons(content, dims, productType, style)),
   );
-  const cuts = drawnAll.filter((d): d is NonNullable<typeof d> => d !== null).slice(0, rows);
-  if (cuts.length === 0) return null;
+  const fitting = drawnAll.filter((d): d is NonNullable<typeof d> => d !== null);
+  if (fitting.length === 0) return null;
+  // תא לכל פריט שהמודל יצייר. פחות פנים מתאימות מתאים — חוזרים עליהן.
+  const cuts = Array.from({ length: cells }, (_, i) => fitting[i % fitting.length]);
 
   const { widthPx: cw, heightPx: ch } = BASE_CANVAS;
-  const bandH = ch / cuts.length;
-  const scale = Math.min((cw * FILL) / dims.lengthMm, (bandH * ROW_FILL) / dims.widthMm);
+  const cellW = cw / cols;
+  const cellH = ch / rows;
+  const scale = Math.min((cellW * FILL) / dims.lengthMm, (cellH * ROW_FILL) / dims.widthMm);
   const l = r2(dims.lengthMm);
   const w = r2(dims.widthMm);
-  const x = (cw - dims.lengthMm * scale) / 2;
 
   const bands = cuts.map((cut, i) => {
-    const y = i * bandH + (bandH - dims.widthMm * scale) / 2;
+    const x = (i % cols) * cellW + (cellW - dims.lengthMm * scale) / 2;
+    const y = Math.floor(i / cols) * cellH + (cellH - dims.widthMm * scale) / 2;
     const paths = cut.mp
       .map((poly) => `<path d="${poly.map((r) => ringToPathD(r)).join("")}" fill="#000000"/>`)
       .join("");

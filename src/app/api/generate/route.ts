@@ -290,7 +290,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const lettering = editSvg || !body.text?.trim()
       ? null
       : await buildLetteringRenderSvg(
-          body.text, dims, design.product_type, plan.rows, body.userPrompt,
+          body.text, dims, design.product_type, plan.rows, body.userPrompt, plan.cols,
         );
     if (!editSvg && body.text?.trim() && !lettering) {
       throw new ApiError(

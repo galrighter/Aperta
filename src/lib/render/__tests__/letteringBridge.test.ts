@@ -30,3 +30,34 @@ describe("lettering bridges", () => {
     expect(ref!.tightShare).toBeNull();
   });
 });
+
+// הרשת בייחוס היא אותה רשת שהפרומפט מבקש. כשהיא לא הייתה, טבעת ברשת 2x2 קיבלה
+// ייחוס עם שתי שורות בלבד — ולשני פריטים לא היה מה להעתיק.
+describe("the reference grid follows the plan", () => {
+  const cellsIn = (svg: string) => (svg.match(/<rect [^>]*mask="url\(#lt/g) ?? []).length;
+
+  it("draws one lettered strip per piece the model is asked for", async () => {
+    const one = await buildLetteringRenderSvg("RMJewel", RING, "ring", 2, BRIEF, 1);
+    const grid = await buildLetteringRenderSvg("RMJewel", RING, "ring", 2, BRIEF, 2);
+    expect(cellsIn(one!.svg)).toBe(2);
+    expect(cellsIn(grid!.svg)).toBe(4);
+    expect(grid!.rows).toHaveLength(4);
+  });
+
+  it("puts the strips in columns, not all across the image", async () => {
+    const grid = await buildLetteringRenderSvg("RMJewel", RING, "ring", 2, BRIEF, 2);
+    const xs = [...grid!.svg.matchAll(/translate\((-?[\d.]+) (-?[\d.]+)\)/g)].map((m) => [
+      Number(m[1]), Number(m[2]),
+    ]);
+    // שני x שונים ושני y שונים — כלומר רשת ולא ערימה.
+    expect(new Set(xs.map((p) => p[0])).size).toBe(2);
+    expect(new Set(xs.map((p) => p[1])).size).toBe(2);
+  });
+
+  it("repeats the faces that fit rather than leaving a piece with nothing to copy", async () => {
+    // טקסט ארוך על טבעת: נכנס בפחות פנים ממספר התאים, וכולם עדיין מאוישים.
+    const grid = await buildLetteringRenderSvg("Wonderfully", RING, "ring", 3, BRIEF, 2);
+    expect(grid).not.toBeNull();
+    expect(cellsIn(grid!.svg)).toBe(6);
+  });
+});
