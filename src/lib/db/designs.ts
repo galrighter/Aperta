@@ -141,6 +141,50 @@ export async function insertVersion(v: {
   throw new Error("Failed to allocate version number");
 }
 
+/**
+ * דריסת גרסה קיימת בתוכן חדש, במקום להוסיף שורה.
+ *
+ * קיים בשביל מקרה אחד: מעבר בין ההצעות של אותה הרצה. זה **ניווט ולא שינוי** —
+ * הלקוחה משווה בין אפשרויות שכבר נוצרו, ולא מבקשת מהמנוע דבר. עד כה כל לחיצה
+ * הוסיפה גרסה, ו-RM-0061 (נמדד) הגיע לשש שורות ביומן על יצירה אחת עם שלוש
+ * הצעות — שלוש מהן אותה גיאומטריה בדיוק, כי חזרה להצעה שכבר נבחרה נספרה
+ * כאירוע חדש. כאן הבחירה מקבלת שורה אחת לכל הרצה, שמתעדכנת.
+ *
+ * `version_no` ו-`generation_id` נשמרים: זו אותה שורה, לא חדשה.
+ */
+export async function replaceVersion(
+  id: string,
+  v: {
+    svg: string;
+    validation_report: unknown;
+    validation_status: VersionRow["validation_status"];
+    picked_index?: number | null;
+  },
+): Promise<VersionRow> {
+  const sb = supabaseAdmin();
+  const { picked_index, ...core } = v;
+  // כמו ב-insertVersion: מסד בלי 0012 דוחה את העמודה, והתוכן חשוב מהסימון.
+  for (const withPick of picked_index !== undefined ? [true, false] : [false]) {
+    const { data, error } = await sb
+      .from("design_versions")
+      .update({ ...core, ...(withPick ? { picked_index } : {}) })
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (!error && data) {
+      const { error: updErr } = await sb
+        .from("designs")
+        .update({ current_version_id: data.id, updated_at: new Date().toISOString() })
+        .eq("id", (data as VersionRow).design_id);
+      if (updErr) throw new Error(updErr.message);
+      return data as VersionRow;
+    }
+    if (withPick && /column .* does not exist|schema cache/i.test(error?.message ?? "")) continue;
+    throw new Error(error?.message ?? "update version failed");
+  }
+  throw new Error("update version failed");
+}
+
 /** מכסת בקשות יומית: מספר הגרסאות שנוצרו היום לכל עיצובי הפרופיל. */
 export interface RecentVersionRow extends VersionRow {
   design_name: string;

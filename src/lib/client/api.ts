@@ -234,14 +234,22 @@ export const api = {
       error?: { code?: string; message?: string };
     }>(`/api/generate/${jobId}`),
 
-  chooseCandidate: (designId: string, svg: string, index?: number) =>
+  /**
+   * `fromVersionId` — הגרסה שהלקוחה צופה בה כשהיא בוחרת. השרת קובע לפיה גם את
+   * ההרצה שההצעה שייכת לה וגם אם לעדכן את שורת הבחירה הקיימת במקום להוסיף
+   * חדשה. בלעדיה הוא נופל ל-`current_version_id`, שאינו בהכרח מה שמוצג.
+   */
+  chooseCandidate: (designId: string, svg: string, index?: number, fromVersionId?: string) =>
     call<{
       version: Version;
       report: ValidationReport;
       geometry: Geometry | null;
       lengthMm: number;
       widthMm: number;
-    }>(`/api/designs/${designId}/choose`, { method: "POST", body: JSON.stringify({ svg, index }) }),
+    }>(`/api/designs/${designId}/choose`, {
+      method: "POST",
+      body: JSON.stringify({ svg, index, fromVersionId }),
+    }),
 
   vectorize: (input: {
     designId: string;
