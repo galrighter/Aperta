@@ -416,6 +416,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       stagePaths: job.stagePaths,
       vectorizer: job.raw,
       ...runLog,
+      inputs: {
+        ...runLog.inputs,
+        // נכתב כאן ולא למעלה: המספר השני ידוע רק אחרי שהקופסה ענתה. פער בין
+        // השניים אומר שהמודל לא צייר את הרשת שהתבקשה.
+        plannedCandidates: plan.candidates,
+        deliveredPanels: job.candidates.length,
+      },
     });
     persisted = true;
 
