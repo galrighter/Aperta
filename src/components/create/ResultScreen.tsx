@@ -127,7 +127,14 @@ export function ResultScreen({
         })}
       </div>
 
-      <div className={`grid items-start gap-8 ${flat ? "lg:grid-cols-[1.5fr_1fr]" : "lg:grid-cols-1"}`}>
+      {/* אותו גריד בשני מצבי התצוגה.
+          במצב הדמיה הוא היה עמודה אחת, ואז כרטיסי הצד — מצב ייצור, יומן
+          הגרסאות וכפתור ההזמנה — נמתחו לרוחב מלא של 1200px מתחת לתכשיט,
+          ה-`lg:sticky` שלהם לא עשה כלום (אין לצידו מה לגלול), וההזמנה ישבה
+          בתחתית עמוד ארוך. ההדמיה עצמה לא מפסידה מהצמצום: המצלמה ממוסגרת לפי
+          הממד הקטן (ראו fit ב-Preview3D), והגובה קבוע — כלומר התכשיט מוצג
+          באותו גודל בדיוק, ומה שנחתך הוא הרקע הריק משני צדיו. */}
+      <div className="grid items-start gap-8 lg:grid-cols-[1.5fr_1fr]">
         {/* ===== תצוגה ===== */}
         <div>
           <div className="border border-graphite/10 bg-white">

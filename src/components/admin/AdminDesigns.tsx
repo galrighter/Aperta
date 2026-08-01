@@ -10,12 +10,36 @@ const s = he.site;
 
 const PAGE = 24;
 
+/* הקוטביות של הפריסה, זהה לזו של הלקוחה (`.flat-cutouts` ב-globals.css):
+   כהה הוא מתכת, בהיר הוא מה שנחתך. הערכים כתובים כאן במפורש ולא כמשתני CSS —
+   ה-SVG נטען כתמונה, כלומר כמסמך נפרד שאינו רואה את משתני העמוד. */
+const METAL = "#202326"; // graphite
+const CUT = "#f4f1eb";   // porcelain
+
 /**
  * ה-SVG נטען כתמונה ולא מוזרק ל-DOM. הוא נבנה מפרומפט של משתמש, ותמונה
  * מ-data: URI לא מריצה סקריפט — בעוד הזרקה ישירה כן הייתה יכולה.
+ *
+ * הצביעה נעשית על מחרוזת ה-SVG לפני ההצפנה, ולכן היא נשארת בתוך התמונה. ה-SVG
+ * הקנוני הוא חיתוכים ב-`fill="black"` על רקע שקוף, וכך הכרטיס הראה מתכת לבנה
+ * וחורים שחורים — בדיוק ההפך ממה שהמסך של הלקוחה מראה, וקריאה הפוכה של מה
+ * נשאר ומה נופל. כאן נוסף מלבן מתכת מתחת לחיתוכים, והם נצבעים בגוון הרקע.
+ *
+ * הכלל ב-`<style>` ולא בתכונות: `fill` על אלמנט הוא תכונת הצגה, וכל כלל CSS
+ * גובר עליה — כך אין צורך לדעת באיזה ערך כל נתיב נצבע.
  */
 function preview(svg: string): string {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // בלי שכבת החיתוכים אין מה לצבוע, ומלבן מתכת היה מכסה את מה שכן יש. זה
+  // החוזה של normalize.ts, אבל הכרטיס מציג גם מה שנשמר לפניו.
+  const painted = svg.includes('<g id="cutouts"')
+    ? svg.replace(
+        /<svg\b[^>]*>/,
+        (open) =>
+          `${open}<style>#cutouts *{fill:${CUT}}</style>` +
+          `<rect x="0" y="0" width="100%" height="100%" fill="${METAL}"/>`,
+      )
+    : svg;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(painted)}`;
 }
 
 export default function AdminDesigns({
@@ -70,10 +94,16 @@ export default function AdminDesigns({
         {s.adminShowing} {rows.length} {s.adminOf} {total}
       </p>
 
-      <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* גבול הכרטיס, ולא רק המרווח בינו לבין הבא.
+          קודם הכרטיס היה לבן עם קו שיער של 10%, וחלון התצוגה שלו היה
+          `bg-porcelain` — בדיוק צבע הרקע של העמוד. כלומר שליש מהכרטיס נראה כמו
+          הרקע, והשוליים העליונים שלו פשוט לא היו שם. בעמודה אחת (טלפון) זה
+          נקרא כרצף אחד ארוך שאי אפשר לומר איפה עיצוב אחד נגמר. עכשיו הכרטיס
+          לבן לכל אורכו, הקו כפול בעוצמתו, והמרווח גדול יותר. */}
+      <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((r) => (
-          <li key={r.id} className="flex flex-col border border-graphite/10 bg-white">
-            <div className="flex h-[110px] items-center justify-center overflow-hidden border-b border-graphite/10 bg-porcelain p-3">
+          <li key={r.id} className="flex flex-col border border-graphite/20 bg-white">
+            <div className="flex h-[110px] items-center justify-center overflow-hidden border-b border-graphite/10 bg-white p-3">
               {r.svg ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={preview(r.svg)} alt={r.name} className="max-h-full max-w-full object-contain" />
