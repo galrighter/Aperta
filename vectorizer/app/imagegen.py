@@ -10,9 +10,16 @@ resolveFab(), and a second copy of those numbers here is exactly the kind of
 duplication that drifts. This module only executes what it is handed.
 
 Cost (the most expensive knob in the pipeline — kept in numbers so it cannot go
-missing): gpt-image-1-mini - low - 1536x1024 = ~$0.006 per render. There is no
-*fallback* to a pricier model on purpose: a silent fallback that costs forty
-times more is precisely the spend nobody sees in the code.
+missing), measured 31/07 from the usage the API returns on exactly the request
+this module sends, priced off developers.openai.com/api/docs/pricing:
+
+    gpt-image-1-mini - low - 1536x1024 = $0.0057 per render, ~11s
+    gpt-image-2      - low - 1536x1024 = $0.0212 per render, ~20s
+
+3.7x, and the whole gap is the input image: gpt-image-2 encodes the reference at
+4.75x the tokens. It is paying attention to it, which is also what the output
+shows. There is no *fallback* to a pricier model on purpose: a silent fallback
+that costs forty times more is precisely the spend nobody sees in the code.
 
 forme may name a different model per run, from ALLOWED_MODELS below — never a
 fallback, always an explicit choice made where the reason lives. The one that
