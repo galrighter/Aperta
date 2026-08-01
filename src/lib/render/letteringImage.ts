@@ -1,4 +1,5 @@
 import { BASE_CANVAS } from "./baseImage";
+import type { Canvas } from "./canvas";
 import { textToStencil, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
 import { stylesForBrief, type LetteringStyle } from "@/lib/text/style";
 import { offset, multiPolygonArea } from "@/lib/geometry/poly";
@@ -197,6 +198,7 @@ export async function buildLetteringRenderSvg(
   rows: number,
   brief: string,
   cols = 1,
+  canvas: Canvas = BASE_CANVAS,
 ): Promise<LetteringReference | null> {
   const content = text.trim();
   if (!content) return null;
@@ -215,7 +217,7 @@ export async function buildLetteringRenderSvg(
   // תא לכל פריט שהמודל יצייר. פחות פנים מתאימות מתאים — חוזרים עליהן.
   const cuts = Array.from({ length: cells }, (_, i) => fitting[i % fitting.length]);
 
-  const { widthPx: cw, heightPx: ch } = BASE_CANVAS;
+  const { widthPx: cw, heightPx: ch } = canvas;
   const cellW = cw / cols;
   const cellH = ch / rows;
   const scale = Math.min((cellW * FILL) / dims.lengthMm, (cellH * ROW_FILL) / dims.widthMm);

@@ -53,6 +53,11 @@ class GenerateJob:
     # Which image model to render with. None = the default. forme names it when
     # the run needs one in particular; the reason lives there, not here.
     model: Optional[str] = None
+    # The canvas to draw on, "WIDTHxHEIGHT". None = landscape, which is what
+    # every run was until forme started choosing. The shape is not cosmetic: it
+    # sets the aspect ratio of each cell, and the model fills the cell it is
+    # given. Unknown values fall back rather than fail (imagegen.resolve_size).
+    size: Optional[str] = None
 
 
 @dataclass
@@ -97,7 +102,7 @@ def _reference(job: GenerateJob) -> Optional[tuple[bytes, str]]:
     """
     if job.base_svg is None:
         return job.inspiration
-    width, height = (int(n) for n in imagegen.SIZE.split("x"))
+    width, height = (int(n) for n in imagegen.resolve_size(job.size).split("x"))
     try:
         return (renderer.render_svg_to_png(job.base_svg, width, height), "image/png")
     except renderer.RenderError as exc:
@@ -111,7 +116,9 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     # rasterised here, so nothing upstream has the bytes. Rebuilding it from the
     # same inputs is not the same claim as keeping what was sent.
     reference = _reference(job)
-    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, reference, model)
+    renders = await imagegen.render_many(
+        openai_key, job.prompt, job.calls, reference, model, size=job.size
+    )
 
     # One panel per piece of every render. A render holding a single piece
     # passes through untouched, so the common case costs nothing.
@@ -179,6 +186,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
         "model": model,
         "rows": job.rows,
         "cols": job.cols,
+        "size": imagegen.resolve_size(job.size),
         "calls": job.calls,
         "panels": len(panels),
         "renders": len(renders),

@@ -10,6 +10,7 @@ import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { planRender } from "@/lib/render/panels";
+import { canvasFor, sizeParam } from "@/lib/render/canvas";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
@@ -280,9 +281,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       : undefined;
     // עקיפת הכיול נוגעת בשורות בלבד; העמודות נשארות 1 כדי שהניסוי יהיה על
     // משתנה אחד — ומספר החלופות שווה למספר השורות, כמו לפני שהיו עמודות.
+    // צורת הקנבס נגזרת מהאורך, לא מהעדפה: בפס שבו הפריט קצר מכדי לבקש שורות
+    // בקנבס לרוחב וארוך מכדי לקבל עמודה שנייה, קנבס לאורך הוא הידית היחידה.
+    // המתג כבוי כברירת מחדל עד שהקופסה נפרסת — ראו lib/render/canvas.ts.
+    const canvas = canvasFor(dims.lengthMm);
     const plan = body.rowsOverride
-      ? { rows: body.rowsOverride, cols: 1, calls: 1 as const, candidates: body.rowsOverride }
-      : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm });
+      ? { rows: body.rowsOverride, cols: 1, calls: 1 as const, candidates: body.rowsOverride, canvas }
+      : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
     // תמונת הייחוס היא כבר העיצוב הקיים, והכיתוב יושב בתוכו; שתי תמונות אין
@@ -290,7 +295,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const lettering = editSvg || !body.text?.trim()
       ? null
       : await buildLetteringRenderSvg(
-          body.text, dims, design.product_type, plan.rows, body.userPrompt, plan.cols,
+          body.text, dims, design.product_type, plan.rows, body.userPrompt, plan.cols, canvas,
         );
     if (!editSvg && body.text?.trim() && !lettering) {
       throw new ApiError(
@@ -329,6 +334,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         rows: plan.rows,
         cols: plan.cols,
         calls: plan.calls,
+        /** צורת הקנבס שנשלחה בפועל. בלי זה אי אפשר להעמיד ביומן הרצה בפס
+         *  מול הרצה מחוצה לו — ושתיהן נראות זהות בכל שדה אחר. */
+        canvasSize: sizeParam(canvas),
         minHoleMm,
         colorKey: "dark",
         imageCount: body.images.length,
@@ -370,6 +378,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       prompt,
       calls: plan.calls,
       rows: plan.rows,
+      size: sizeParam(canvas),
       cols: plan.cols,
       heightMm: dims.widthMm,
       colorKey: "coverage",
