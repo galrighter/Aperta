@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { getDesign, countTodayGenerations } from "@/lib/db/designs";
+import { getDesign, getVersion, countTodayGenerations } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
@@ -67,6 +67,10 @@ const schema = z.object({
    */
   text: z.string().max(40).optional(),
   currentSvg: z.string().max(500_000).nullable().optional(),
+  /** הגרסה ש-`currentSvg` נלקח ממנה — ליומן בלבד, כדי שיהיה אפשר להעמיד את
+   *  הפרומפט מול מה שהמודל באמת ראה. הלקוחה יכולה לערוך גרסה ישנה, ולכן זו
+   *  לא בהכרח הגרסה הנוכחית של העיצוב. */
+  baseVersionId: z.string().uuid().optional(),
   images: z.array(imageSchema).max(3).default([]),
 
   // --- כיול פרומפט (בק־אופיס בלבד; ראה את השער ב-POST) ---
@@ -237,6 +241,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // ארבעה בעלות מול הצינור החדש (~$0.006 להרצה).
     const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
     const editSvg = buildBaseRenderSvg(body.currentSvg);
+    // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
+    // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
+    const baseVersionNo = editSvg && body.baseVersionId
+      ? await getVersion(body.baseVersionId)
+          .then((v) => (v.design_id === design.id ? v.version_no : undefined))
+          .catch(() => undefined)
+      : undefined;
     const plan = body.rowsOverride
       ? { rows: body.rowsOverride, calls: 1 as const, candidates: body.rowsOverride }
       : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm });
@@ -291,6 +302,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
         editedFromCurrent: Boolean(editSvg),
+        editedFromVersion: baseVersionNo,
         /** הכיתוב שנחתך, והטיפוגרפיה שכל שורה קיבלה. בלי זה אי אפשר להסביר
          *  ביומן למה חלופה אחת נראית אחרת מהשנייה.
          *
