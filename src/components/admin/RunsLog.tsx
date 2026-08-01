@@ -31,6 +31,8 @@ export type DebugMeta = {
 export type RunDebug = DebugMeta & { images?: Record<string, string> };
 
 export type StageUrls = {
+  /** הקובץ שהמשתמש צירף — הקלט, להבדיל מההדמיה שיצאה ממנו. */
+  input?: string | null;
   render?: string | null; conditioned?: string | null; overlay?: string | null;
   difference?: string | null; rendered?: string | null;
 };
@@ -566,6 +568,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           )}
           <Diagnostics
             images={{
+              input: it.inputImageUrl ?? null,
               render: it.renderUrl,
               conditioned: it.stages.conditioned,
               overlay: it.stages.overlay,
@@ -746,6 +749,9 @@ export function Diagnostics({ images, renderModel, svg, debug, svgName = "design
 
       {/* images */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {/* הקלט לפני הפלט: בלי הכרטיס הזה אי אפשר לראות בשלבים מה המשתמש נתן,
+            רק מה חזר — וזו השאלה הראשונה כשהדמיה לא דומה למה שביקשו. */}
+        {images.input && <ImgCard title="קובץ שהמשתמש צירף (קלט)" src={images.input} />}
         {images.render && <ImgCard title={`הדמיית AI${renderModel ? ` (${renderModel})` : ""}`} src={images.render} />}
         {images.conditioned && <ImgCard title="דו־גוני (קונדישנינג)" src={images.conditioned} />}
         {images.overlay && <ImgCard title="Overlay (טרייס מול מקור)" src={images.overlay} />}
