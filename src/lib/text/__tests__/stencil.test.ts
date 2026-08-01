@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { convertTextRequests } from "../textToPath";
 import { validateDesign } from "@/lib/geometry/validate";
-import { textToStencil } from "../stencil";
-import { multiPolygonArea } from "@/lib/geometry/poly";
+import { polygonsBBox, textToStencil } from "../stencil";
+import { difference, multiPolygonArea } from "@/lib/geometry/poly";
+
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 
 const DIMS = { productType: "bracelet" as const, lengthMm: 160, widthMm: 15, thicknessMm: 1.5 };
@@ -67,10 +68,11 @@ describe("bridge width against the counter it holds", () => {
     const { tightBridges } = await textToStencil(
       "e", 0, 0, 6, "start", fab.minBridgeCut, {}, LETTER_MIN,
     );
-    // החלל של e בגובה 6 מ"מ הוא 0.85 מ"מ — 40% ממנו הם 0.34, מתחת לרצפה.
+    // החלל של e בגובה 6 מ"מ צר מכדי להחזיק גשר יחסי — הגשר יושב על הרצפה.
     expect(tightBridges).toHaveLength(1);
     expect(tightBridges[0].widthMm).toBe(LETTER_MIN);
-    expect(tightBridges[0].counterMm).toBeLessThan(LETTER_MIN);
+    // ...והרצפה תופסת יותר מהיחס שהיה נבחר אילו היה מקום.
+    expect(tightBridges[0].widthMm / tightBridges[0].counterMm).toBeGreaterThan(0.4);
   });
 
   it("stays silent when the counter has room for the letter minimum", async () => {
@@ -93,6 +95,37 @@ describe("bridge width against the counter it holds", () => {
         ch, 0, 0, 6, "start", fab.minBridgeCut, {}, LETTER_MIN,
       );
       for (const poly of polygons) expect(poly.length, `${ch} keeps an island`).toBe(1);
+    }
+  });
+});
+
+// כיוון הגשר נקבע לפי הכתב, כי שני הכתבים רוצים הפוך: חריץ בצד מעביר `o`
+// ל-`C`, וחריץ מלמעלה/מלמטה מעביר ם׳ ל-ח׳. אין כיוון אחד שנכון לשניהם.
+describe("bridge direction by script", () => {
+  const fab = resolveFab(1.5, "ring");
+  const cut = (ch: string) =>
+    textToStencil(ch, 0, 0, 6, "start", fab.minBridgeCut, {}, FAB.minLetterBridgeMm);
+
+  /** האם החלל הסגור נפתח לצד (שמאל/ימין) או למעלה/למטה. */
+  async function opensSideways(ch: string): Promise<boolean> {
+    const plain = await textToStencil(ch, 0, 0, 6, "start", 0);
+    const bridged = await cut(ch);
+    // ההפרש בין הלא־מגושר למגושר הוא הרצועה שהוסרה. הצורה שלה מספרת את הכיוון.
+    const removed = difference(plain.polygons, bridged.polygons);
+    const box = polygonsBBox(removed);
+    return box[2] - box[0] > box[3] - box[1];
+  }
+
+  it("cuts a Latin counter from above or below, so o stays o", async () => {
+    for (const ch of ["o", "e", "a", "R"]) {
+      expect(await opensSideways(ch), `${ch} opens vertically`).toBe(false);
+    }
+  });
+
+  it("cuts a Hebrew counter from the side, so ם stays ם", async () => {
+    // זו ההכרעה שנמדדה על שמונה הפנים: חריץ בבר האופקי קורא אות אחרת.
+    for (const ch of ["ם", "ס"]) {
+      expect(await opensSideways(ch), `${ch} opens sideways`).toBe(true);
     }
   });
 });

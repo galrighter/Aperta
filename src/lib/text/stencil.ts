@@ -74,6 +74,8 @@ export interface TextMetrics {
 interface Placed {
   path: opentype.Path;
   advance: number;
+  /** טווח ה-x של כל תו, כדי שאפשר יהיה לשייך אי לאות שהוא בא ממנה. */
+  spans: { char: string; x0: number; x1: number }[];
 }
 
 /**
@@ -88,16 +90,19 @@ function place(
   trackingPx: number,
 ): Placed {
   const full = new opentype.Path();
+  const spans: Placed["spans"] = [];
   let x = 0;
   let prev: opentype.Glyph | null = null;
   for (const ch of visual) {
     const glyph = font.charToGlyph(ch);
     if (prev) x += (font.getKerningValue(prev, glyph) / font.unitsPerEm) * fontSize;
     full.extend(glyph.getPath(x, baseline, fontSize));
+    const x0 = x;
     x += ((glyph.advanceWidth ?? 0) / font.unitsPerEm) * fontSize + trackingPx;
+    spans.push({ char: ch, x0, x1: x });
     prev = glyph;
   }
-  return { path: full, advance: x };
+  return { path: full, advance: x, spans };
 }
 
 /** גודל הפונט שנותן `heightMm` בגובה אות (cap height), כמו שהיה מאז ומתמיד. */
@@ -206,10 +211,13 @@ export async function textToStencil(
 
   // y = מרכז אנכי של הטקסט → baseline
   const baseline = y + heightMm / 2;
-  const { path, advance } = place(font, visual, fontSize, baseline, trackingPx);
+  const { path, advance, spans } = place(font, visual, fontSize, baseline, trackingPx);
   let startX = x;
   if (align === "middle") startX = x - advance / 2;
   else if (align === "end") startX = x - advance;
+  /** האות שהאי הזה בא ממנה — לפי מרכזו, בקואורדינטות אחרי ההזזה. */
+  const charAt = (cx: number): string | null =>
+    spans.find((sp) => cx >= sp.x0 + startX && cx <= sp.x1 + startX)?.char ?? null;
 
   const d = path.toPathData(3);
   if (!d) return { polygons: [], tightBridges };
@@ -237,61 +245,66 @@ export async function textToStencil(
     holes.length ? union(...holes.map((h) => [[[...h.ring].reverse()]] as MultiPolygon)) : [],
   );
 
-  // גישור: לכל קונטור פנימי גשר **אופקי מהצד**, ברוחב הגשר, שמוסר מהחיתוך
-  // ומחבר את האי לחומר שמסביב.
+  // גישור: לכל קונטור פנימי גשר שמוסר מהחיתוך ומחבר את האי לחומר שמסביב.
   //
-  // שתי החלטות כאן, ושתיהן נמדדו על שמונה הפנים מול `פספסתי מםעטד`:
+  // **הכיוון נקבע לפי הכתב, ולא אחד לשניהם.** שני הכתבים רוצים הפוך, וזו לא
+  // העדפה אלא זהות האות:
   //
-  // 1. **מהצד ולא מלמעלה/מלמטה.** בעברית ההבדל בין ם׳ ל-ח׳ ובין ס׳ ל-ט׳ הוא
-  //    בדיוק הסגירה האופקית: חריץ בבר התחתון קורא ח׳, חריץ בעליון קורא ט׳.
-  //    הגרסה הראשונה גישרה אנכית ו-`פספסתי` יצא `פטפטתי` — **אות אחרת**, לא
-  //    אות פגומה, וזה בלבל גם אותנו במחקר. חריץ בגזע הצדדי, לעומת זאת, לא
-  //    מזיז שום אות עברית לשכנתה, וזה גם מה שפונטי סטנסיל לטיניים עושים ל-O.
+  //  · **עברית — מהצד.** ההבדל בין ם׳ ל-ח׳ ובין ס׳ ל-ט׳ הוא הסגירה האופקית:
+  //    חריץ בבר התחתון קורא ח׳, בעליון קורא ט׳. גישור אנכי הפך `פספסתי`
+  //    ל-`פטפטתי` — אות אחרת, לא אות פגומה. נמדד על שמונה הפנים.
   //
-  // 2. **צד אחד בלבד.** פס שעובר מקצה לקצה קוטע את שני הגזעים; אי שמוחזק
-  //    מגשר יחיד מוחזק באותה מידה, והנזק נחתך בחצי.
+  //  · **לטינית — מלמעלה/מלמטה.** בדיוק ההפך: חריץ בצד, באמצע הגובה, חותך את
+  //    הקשת בנקודה הרחבה שלה ומעביר את האות לאות אחרת — `o` יצאה `C`, `a`
+  //    יצאה `cl`. זה גם מה שפונטי סטנסיל לטיניים עושים: השבר יושב בכתף או
+  //    בראש הקערה, לא בצידה.
+  //
+  // **צד אחד בלבד**, בשני הכתבים: פס שעובר מקצה לקצה קוטע את שני הגזעים; אי
+  // שמוחזק מגשר יחיד מוחזק באותה מידה, והנזק נחתך בחצי.
   //
   // האיים נמדדים מצד המתכת ולא מכיווני הטבעות של הפונט — ראה islandsOf.
   for (const h of islandsOf(glyphs, heightMm)) {
     const [hx0, hy0, hx1, hy1] = h.bbox;
-    const height = hy1 - hy0;
+    const cx = (hx0 + hx1) / 2;
     const cy = (hy0 + hy1) / 2;
     const outer = enclosing(solidBoxes, h.bbox);
-    // **רוחב הגשר נגזר מהקונטור שהוא מחזיק**, ולא מהמינימום לייצור לבדו.
+    // אנכי בעברית, אופקי בלטינית — הציר שהגשר **חוצה**.
+    const sideways = HEBREW_RE.test(charAt(cx) ?? "");
+    /** המידה של הקונטור לאורך הציר שהגשר צר בו. */
+    const across = sideways ? hy1 - hy0 : hx1 - hx0;
+    /** ...ולאורך הציר שהוא נכנס בו. */
+    const along = sideways ? hx1 - hx0 : hy1 - hy0;
+
+    // **רוחב הגשר נגזר מהקונטור שהוא מחזיק**, ולא מהמינימום למבנה.
     //
     // `minBridgeCut` הוא 1.5 מ"מ, והקונטור של `e` באות בגובה 6 מ"מ הוא 0.85 מ"מ
     // — הגשר היה 177% ממנו, כלומר לא גישר אלא בלע אותו ואכל את הגזעים משני
-    // צדיו. ספירת הטבעות: 2 לפני, 1 אחרי. גם באות 12 מ"מ הוא עדיין 89%.
-    // האותיות שנפגעו הן בדיוק אלה שיש להן קונטור קטן — e, a, ס׳ — והשאר נראו
-    // תקינות, ולכן זה נראה כמו שגיאה של מודל התמונה ולא כמו הייחוס שנמסר לו.
-    //
-    // התקרה היא שבריר מגובה הקונטור: גשר צר יותר מחזיק את האי באותה מידה
-    // (הוא מוחזק, לא נושא עומס) ומשאיר את האות קריאה. מה שהוא **כן** עולה הוא
-    // שגשר מתחת ל-minBridgeCut דק מכפי שהייצור מבטיח — וזה מדווח החוצה
-    // כ-narrowBridges במקום להיבלע כאן.
-    const ideal = height * BRIDGE_COUNTER_RATIO;
+    // צדיו. גשר צר יותר מחזיק את האי באותה מידה (הוא מוחזק, לא נושא עומס)
+    // ומשאיר את האות קריאה. הרצפה היא FAB.minLetterBridgeMm.
+    const ideal = across * BRIDGE_COUNTER_RATIO;
     const width = Math.min(bridgeWidthMm, Math.max(ideal, minWidthMm));
     // הרצפה נגעה: הקונטור קטן מכדי להכיל גשר גם במינימום לאות, ולכן הגשר
     // בולט לתוכו. זה לא עניין של ייצור אלא של איך האות נראית — ולכן זה מדווח
     // ללקוחה לאישור ולא נבלע כאן.
     if (ideal < minWidthMm && width > ideal) {
-      tightBridges.push({ widthMm: width, counterMm: height, x: (hx0 + hx1) / 2, y: cy });
+      tightBridges.push({ widthMm: width, counterMm: across, x: cx, y: cy });
     }
+
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
-    const left = hx0 - outer[0] <= outer[2] - hx1;
+    const near = sideways ? hx0 - outer[0] <= outer[2] - hx1 : hy0 - outer[1] <= outer[3] - hy1;
     // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור. הקצה החיצוני חורג מהאות ולא
     // מוריד שם כלום (אין חיתוך מחוץ לאות); הקצה הפנימי הוא מה שמבטיח חיבור,
-    // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות. הגרסה הקודמת
-    // הגיעה עד מרכז הקונטור, כלומר בלעה חצי ממנו — וזה מה שגרם ל-ס׳ להיראות
-    // כמו כ׳ בייחוס. עומק של רוחב גשר מספיק לחפיפה ודאית.
-    const depth = Math.min(width, (hx1 - hx0) / 2);
-    const [x0s, x1s] = left
-      ? [outer[0] - width, hx0 + depth]
-      : [hx1 - depth, outer[2] + width];
-    const offsets = height > width * 4 ? [cy - height / 4, cy + height / 4] : [cy];
-    const strips: MultiPolygon = offsets.map((sy) => rectPolygon(
-      x0s, sy - width / 2, x1s, sy + width / 2,
-    ));
+    // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות.
+    const depth = Math.min(width, along / 2);
+    const [a0, a1] = sideways
+      ? (near ? [outer[0] - width, hx0 + depth] : [hx1 - depth, outer[2] + width])
+      : (near ? [outer[1] - width, hy0 + depth] : [hy1 - depth, outer[3] + width]);
+    // קונטור ארוך מחזיק שני גשרים בלי להיסגר; קצר מקבל אחד באמצע.
+    const center = sideways ? cy : cx;
+    const offsets = across > width * 4 ? [center - across / 4, center + across / 4] : [center];
+    const strips: MultiPolygon = offsets.map((s) => sideways
+      ? rectPolygon(a0, s - width / 2, a1, s + width / 2)
+      : rectPolygon(s - width / 2, a0, s + width / 2, a1));
     glyphs = difference(glyphs, strips);
   }
 

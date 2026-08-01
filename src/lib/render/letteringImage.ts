@@ -57,9 +57,9 @@ export interface LetteringRow {
   letterHeightMm: number;
   /** רוחב הכיתוב במ"מ. */
   textWidthMm: number;
-  /** הקונטור הקטן ביותר שהגשר בלט לתוכו, במ"מ. `null` = לכל האותיות היה מקום.
-   *  זה מה שמצדיק את בקשת האישור: הגשר על המינימום, והאות משלמת עליו. */
-  tightCounterMm?: number | null;
+  /** הנתח (0..1) שהגשר תופס מהחלל הסגור, כשהמינימום לאות הוא שקבע אותו.
+   *  `null` = לכל האותיות בשורה היה מקום. זה מה שמצדיק את בקשת האישור. */
+  tightShare?: number | null;
   /** האותיות עצמן, בקואורדינטות הפס. גאומטריה ולא דיווח — **לא** לכתוב
    *  אותן ליומן; ראה מה שנכתב שם ב-route.ts. */
   glyphs: MultiPolygon;
@@ -70,11 +70,11 @@ export interface LetteringReference {
   /** מה שנחתך בכל שורה — נשמר ליומן כדי שאפשר יהיה להסביר תוצאה. */
   rows: LetteringRow[];
   /**
-   * הקונטור הקטן ביותר שגשר בלט לתוכו, מכל השורות שהוצעו. `null` = הכיתוב
+   * הנתח הגדול ביותר שגשר תופס מחלל סגור, מכל השורות שהוצעו. `null` = הכיתוב
    * כולו נחתך בלי לפגוע באות. הקורא אחראי להעביר את זה ללקוחה לאישור — ראה
    * `LETTERING_BRIDGE` ב-/api/generate.
    */
-  tightCounterMm: number | null;
+  tightShare: number | null;
 }
 
 export interface LetteringDims {
@@ -152,9 +152,10 @@ async function letteringPolygons(
     );
     const raw = cut.polygons;
     if (raw.length === 0 || !survivesCutting(raw, fab.minHole)) continue;
-    // הקונטור הקטן ביותר שהגשר בלט לתוכו — די באחד כדי שהכיתוב ידרוש אישור.
-    const tightCounterMm = cut.tightBridges.length
-      ? Math.min(...cut.tightBridges.map((b) => b.counterMm))
+    // הנתח הגדול ביותר שגשר תופס מחלל סגור, כשהרצפה היא שקבעה אותו. זה המספר
+    // שאומר כמה האות נפגעה — רוחב לבדו לא אומר כלום בלי החלל שהוא נכנס אליו.
+    const tightShare = cut.tightBridges.length
+      ? Math.max(...cut.tightBridges.map((b) => b.widthMm / b.counterMm))
       : null;
 
     // מירכוז נמדד ולא מחושב: הגישור חותך מהאותיות, ותיבת המידה שאחריו היא
@@ -167,7 +168,7 @@ async function letteringPolygons(
         fontId: style.fontId,
         letterHeightMm: r2(y1 - y0),
         textWidthMm: r2(x1 - x0),
-        tightCounterMm: tightCounterMm === null ? null : r2(tightCounterMm),
+        tightShare: tightShare === null ? null : Math.round(tightShare * 100) / 100,
         glyphs: mp,
       },
     };
@@ -229,11 +230,11 @@ export async function buildLetteringRenderSvg(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="0 0 ${cw} ${ch}">` +
       `<rect width="${cw}" height="${ch}" fill="#ffffff"/>${bands.join("")}</svg>`,
     rows: cuts.map((c) => c.row),
-    tightCounterMm: (() => {
+    tightShare: (() => {
       const tight = cuts
-        .map((c) => c.row.tightCounterMm)
+        .map((c) => c.row.tightShare)
         .filter((v): v is number => typeof v === "number");
-      return tight.length ? Math.min(...tight) : null;
+      return tight.length ? Math.max(...tight) : null;
     })(),
   };
 }
