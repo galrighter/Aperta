@@ -219,6 +219,8 @@ export const api = {
       userPrompt: string;
       text?: string;
       currentSvg: string | null;
+      /** הגרסה ש-`currentSvg` נלקח ממנה — נרשמת ביומן הבק־אופיס. */
+      baseVersionId?: string;
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
     },
     onStage?: (stage: string | null) => void,

@@ -133,14 +133,15 @@ export interface CreateState {
   /** כשל במעבר בין הצעות. procError מוצג רק במסך העיבוד, ולכן לא היה למי
    *  לספר שהלחיצה נכשלה — היא פשוט לא עשתה כלום. */
   chooseError: string | null;
+  /** כשל בבקשת שינוי. עד כה הוא נבלע: הכפתור חזר מ"מחיל…" ל"החלת שינוי",
+   *  שום דבר על המסך לא זז, ולא היה שום סימן שהבקשה בכלל נשלחה. */
+  editError: string | null;
   applying: boolean;
 
   // תוצאה
   resultMode: ResultMode;
   region: Region | null;
   editReq: string;
-  cutDensity: number;
-  bridgeMm: number;
 
   // סיכום ותשלום
   terms: boolean;
@@ -180,12 +181,11 @@ export const INITIAL: CreateState = {
   procError: null,
   procErrorDetail: null,
   chooseError: null,
+  editError: null,
   applying: false,
   resultMode: "render",
   region: "all",
   editReq: "",
-  cutDensity: 9,
-  bridgeMm: 2,
   terms: false,
   addr: { name: "", street: "", city: "", zip: "", phone: "", email: "" },
   sending: false,
@@ -193,6 +193,41 @@ export const INITIAL: CreateState = {
   sendMailto: null,
   orderNo: null,
 };
+
+/** תשובת מנוע, במה שנדרש כדי לבנות ממנה גרסה. טיפוס מבני ולא הטיפוס של
+ *  ה-client, כדי ששני מסלולי היצירה (גנרציה ווקטוריזציה) ייכנסו לאותה דלת. */
+type GenerationLike = {
+  version: { id: string; version_no: number; svg: string };
+  lengthMm?: number;
+  report: ValidationReport | null;
+  geometry: { material: MultiPolygon } | null;
+  candidates?: Array<{ svg: string; report: ValidationReport }>;
+};
+
+/**
+ * גרסה חדשה מתשובת המנוע.
+ *
+ * משותפת ליצירה הראשונה ולבקשת שינוי. עד כה כל אחת מהן בנתה את הרשומה בעצמה,
+ * ובעריכה השדה `candidates` פשוט לא הועתק — כך שכל שינוי הציג הצעה אחת בזמן
+ * שהמנוע החזיר את אותן שלוש-ארבע כמו ביצירה, שילם עליהן, ואף שמר אותן על
+ * הגרסה. הן הופיעו על המסך רק אחרי רענון, שטוען את הגרסה מהשרת.
+ */
+export function entryFromGeneration(
+  res: GenerationLike,
+  meta: { region: Region | null; text: string },
+): EditEntry {
+  return {
+    versionId: res.version.id,
+    versionNo: res.version.version_no,
+    lengthMm: res.lengthMm ?? null,
+    region: meta.region,
+    text: meta.text,
+    svg: res.version.svg,
+    report: res.report,
+    geometry: res.geometry,
+    candidates: res.candidates,
+  };
+}
 
 /** מה שדרוש כדי לאתר את ההצעות של גרסה — לא הטיפוס המלא, כדי שהפונקציות
  *  למטה יהיו ניתנות לבדיקה בלי לבנות שורת גרסה שלמה. */
@@ -419,10 +454,10 @@ export const MAX_LETTERING = 24;
  * פרומפט לשינוי. העיצוב הקיים נמסר למודל כתמונה (src/lib/render/baseImage.ts),
  * ולכן כאן נשארת רק הבקשה עצמה — מה לשנות, ואיפה.
  *
- * הכוונון המהיר נכנס רק אם הלקוחה באמת הזיזה מחוון. קודם הוא נשלח תמיד, עם
- * ערכי ברירת המחדל, כך שכל עריכה נשאה גם "כ-9 חיתוכים לאורך" — מספר שאין לו
- * שום קשר לעיצוב שעל המסך. זה סותר את הבקשה לשמר את מה שלא התבקש לשנות, ודוחף
- * את המודל לצפיפות אחרת בכל שינוי, קטן ככל שיהיה.
+ * מה שהיה כאן ואיננו: "כוונון מהיר" — שני מחוונים (צפיפות חיתוכים, עובי גשרים)
+ * שנספחו לכל בקשת שינוי. הם הוסרו (גל, 31.7): מספר חיתוכים שרירותי שהלקוחה
+ * גררה אינו קשור לעיצוב שעל המסך, והוא סתר את הבקשה שלה בדיוק במקום שבו היא
+ * ביקשה לשמר. עובי הגשרים ממילא נאכף בוולידציה ואינו נתון לבחירה.
  */
 export function buildEditPrompt(s: CreateState): string {
   const where =
@@ -431,9 +466,5 @@ export function buildEditPrompt(s: CreateState): string {
       // "באזור האזור ימין".
       ? `ב${d.regions[s.region]} של הפריט`
       : "בעיצוב כולו";
-  const parts = [`שינוי ${where}: ${s.editReq.trim()}`];
-  if (s.cutDensity !== INITIAL.cutDensity || s.bridgeMm !== INITIAL.bridgeMm) {
-    parts.push(`בנוסף, כוונן את הצפיפות לכ-${s.cutDensity} חיתוכים לאורך, ועובי גשרים של לפחות ${s.bridgeMm} מ"מ.`);
-  }
-  return parts.join(" ");
+  return `שינוי ${where}: ${s.editReq.trim()}`;
 }

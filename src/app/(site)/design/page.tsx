@@ -32,7 +32,7 @@ import {
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
-  candidatesOf, circumferenceMm,
+  candidatesOf, circumferenceMm, entryFromGeneration,
   countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
   stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
@@ -248,17 +248,7 @@ export default function DesignPage() {
 
       clearPendingJob();
       jobRef.current = null;
-      pushEntry(withId, {
-        versionId: res.version.id,
-        versionNo: res.version.version_no,
-        lengthMm: res.lengthMm ?? null,
-        region: null,
-        text: "",
-        svg: res.version.svg,
-        report: res.report,
-        geometry: res.geometry,
-        candidates: "candidates" in res ? res.candidates : undefined,
-      });
+      pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
       go("result");
     } catch (e) {
       const apiErr = e instanceof ClientApiError ? e : null;
@@ -397,13 +387,17 @@ export default function DesignPage() {
   const applyEdit = useCallback(async () => {
     const entry = activeEntry(s);
     if (!s.designId || !entry || !s.editReq.trim()) return;
-    set({ applying: true });
+    set({ applying: true, editError: null });
     try {
       const res = await api.generate(
         {
           designId: s.designId,
           userPrompt: buildEditPrompt(s),
           currentSvg: entry.svg,
+          // איזו גרסה נמסרה למודל כבסיס. הלקוחה יכולה לחזור לגרסה ישנה ולערוך
+          // אותה, ולכן זו לא בהכרח האחרונה — וביומן הבק־אופיס זה ההבדל בין
+          // "עריכה של הקיים" לבין הדבר שאפשר להעמיד מול הפרומפט.
+          baseVersionId: entry.versionId,
           images: [],
         },
         undefined,
@@ -416,19 +410,17 @@ export default function DesignPage() {
       );
       clearPendingJob();
       jobRef.current = null;
-      pushEntry(s, {
-        versionId: res.version.id,
-        versionNo: res.version.version_no,
-        lengthMm: res.lengthMm ?? null,
-        region: s.region,
-        text: s.editReq.trim(),
-        svg: res.version.svg,
-        report: res.report,
-        geometry: res.geometry,
-      });
+      // אותה בנייה כמו ביצירה הראשונה — כולל ההצעות. שינוי רץ באותו צינור
+      // ומחזיר את אותו מספר הצעות; כאן הן נזרקו, ולכן אחרי כל שינוי נשארה
+      // הצעה אחת על המסך והשאר הופיעו רק אחרי רענון.
+      pushEntry(s, entryFromGeneration(res, { region: s.region, text: s.editReq.trim() }));
       set({ applying: false, editReq: "" });
-    } catch {
-      set({ applying: false });
+      // התוצאה מתחלפת בראש העמוד, והלקוחה עומדת בתיבת הבקשה בתחתיתו.
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    } catch (e) {
+      // בליעה שקטה: הכפתור חזר מ"מחיל…" ל"החלת שינוי" ושום דבר אחר לא זז.
+      const apiErr = e instanceof ClientApiError ? e : null;
+      set({ applying: false, editError: apiErr?.message ?? d.editFailed });
     }
   }, [s, set, pushEntry]);
 
@@ -443,15 +435,9 @@ export default function DesignPage() {
       try {
         const res = await api.chooseCandidate(s.designId, svg, index, entry.versionId);
         const next: EditEntry = {
-          versionId: res.version.id,
-          versionNo: res.version.version_no,
-          lengthMm: res.lengthMm ?? null,
-          region: null,
-          text: "",
-          svg: res.version.svg,
-          report: res.report,
-          geometry: res.geometry,
-          // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה.
+          ...entryFromGeneration(res, { region: null, text: "" }),
+          // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה — הבחירה עצמה אינה
+          // הרצה, והתשובה שלה לא נושאת אותן.
           candidates: entry.candidates,
           chosen: index,
         };
@@ -767,8 +753,13 @@ export default function DesignPage() {
             s={s}
             set={set}
             onApply={applyEdit}
-          onChooseCandidate={chooseCandidate}
-            onRestore={(i) => set({ activeEdit: i })}
+            onChooseCandidate={chooseCandidate}
+            // גם גלילה למעלה: הגרסה מתחלפת בראש העמוד, ו"חזרה לגרסה זו" נלחץ
+            // מיומן הגרסאות שבתחתיתו — בטלפון שום דבר בשדה הראייה לא משתנה.
+            onRestore={(i) => {
+              set({ activeEdit: i });
+              window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+            }}
             onOrder={() => go("summary")}
           />
         )}

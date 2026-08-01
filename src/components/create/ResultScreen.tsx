@@ -1,11 +1,14 @@
 "use client";
 
-// handoff §6 — שני מצבי תצוגה, סימון אזורים, בקשה למודל, יומן גרסאות,
-// כוונון מהיר ומצב ייצור. מצב הייצור מוזן מדוח הוולידציה האמיתי של המנוע.
+// handoff §6 — שני מצבי תצוגה, סימון אזורים, בקשה למודל, יומן גרסאות ומצב
+// ייצור. מצב הייצור מוזן מדוח הוולידציה האמיתי של המנוע.
+//
+// מה שהיה כאן ואיננו: כרטיס "כוונון מהיר" — שני מחוונים שנספחו לפרומפט של כל
+// בקשת שינוי. הוסר (גל, 31.7); הנימוק המלא ב-buildEditPrompt.
 import { he } from "@/i18n/he";
 import { designCode } from "@/lib/designCode";
 import {
-  Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, Slider, COBALT,
+  Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT,
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
 import { RolledStage } from "./RolledStage";
@@ -29,6 +32,8 @@ export function ResultScreen({
   onChooseCandidate: (index: number, svg: string) => void;
 }) {
   const entry = activeEntry(s);
+  /** איפה אנחנו ביומן. `activeEdit` הוא ‎-1 כל עוד לא נבחרה גרסה במפורש. */
+  const activeIndex = s.activeEdit >= 0 ? s.activeEdit : s.edits.length - 1;
   const cutouts = cutoutsInner(entry?.svg);
   const L = frameLengthMm(s, entry);
   const W = frameWidthMm(s, entry);
@@ -69,6 +74,35 @@ export function ResultScreen({
         <p className="mt-2 font-display text-[12px] tracking-[0.14em] text-mist">
           {d.codeLabel} <span className="text-cobalt" dir="ltr">{designCode(s.designSerial)}</span>
         </p>
+      )}
+
+      {/* איפה אנחנו ביומן, ואיך חוזרים.
+          זה מה שחסר אחרי בקשת שינוי: התוצאה מתחלפת על המסך בלי שום דבר שאומר
+          שהיא התחלפה, בלי הבקשה שיצרה אותה, ובלי דרך לחזור — "חזרה לגרסה זו"
+          ביומן הגרסאות יושב בתחתית העמוד, ובטלפון זו גלילה של מסך שלם ומשהו.
+          מוצג רק כשיש יותר מגרסה אחת: לפני זה אין לאן לחזור ואין מה למספר. */}
+      {s.edits.length > 1 && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-graphite/10 bg-white px-5 py-4">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-graphite">
+              {d.versionCurrent(activeIndex + 1, s.edits.length)}
+            </div>
+            {entry?.text && (
+              <p className="mt-1 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+                {d.versionApplied}: {entry.text}
+              </p>
+            )}
+          </div>
+          {activeIndex > 0 && (
+            <button
+              type="button"
+              onClick={() => onRestore(0)}
+              className="flex-none whitespace-nowrap rounded-[2px] border border-graphite/25 px-4 py-2 text-[13px] text-graphite transition-colors hover:bg-porcelain"
+            >
+              {d.versionBackToOriginal}
+            </button>
+          )}
+        </div>
       )}
 
       {/* מתג מצב תצוגה */}
@@ -136,7 +170,7 @@ export function ResultScreen({
               הסבר — זו לא השמטה שנשכחה. */}
           {picks.length > 1 && (
             <div className="mt-4">
-              <CardLabel>{d.candidatesLabel}</CardLabel>
+              <CardLabel>{entry?.text ? d.candidatesLabelEdit : d.candidatesLabel}</CardLabel>
               {/* אחת בשורה, ברוחב מלא. הפס הוא ביחס של כ-5:1, ובגריד של 2–4
                   בטלפון כל הצעה נמרחת לשערה שאי אפשר להשוות בין אחת לשנייה. */}
               <div className="mt-2 flex flex-col gap-2">
@@ -229,6 +263,16 @@ export function ResultScreen({
                 {s.applying ? d.editApplying : d.editApply}
               </button>
             </div>
+            {/* השינוי לוקח כדקה וחצי. בלי המשפט הזה הכפתור אומר "מחיל…" ושום
+                דבר אחר על המסך לא מעיד שמשהו רץ. */}
+            {s.applying && (
+              <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">{d.editApplyingNote}</p>
+            )}
+            {s.editError && (
+              <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail }}>
+                {s.editError}
+              </p>
+            )}
           </div>
         </div>
 
@@ -273,29 +317,6 @@ export function ResultScreen({
             )}
           </div>
 
-          {/* כוונון מהיר — רק במצב פריסה */}
-          {flat && (
-            <div className="border border-graphite/10 bg-white p-6">
-              <CardLabel>{d.tuneTitle}</CardLabel>
-              <div className="flex flex-col gap-5">
-                <Slider
-                  label={d.tuneDensity}
-                  min={4}
-                  max={16}
-                  value={s.cutDensity}
-                  onChange={(v) => set({ cutDensity: v })}
-                />
-                <Slider
-                  label={d.tuneBridge}
-                  min={1}
-                  max={6}
-                  value={s.bridgeMm}
-                  onChange={(v) => set({ bridgeMm: v })}
-                />
-              </div>
-            </div>
-          )}
-
           {/* יומן גרסאות */}
           <div className="border border-graphite/10 bg-white p-6">
             <CardLabel>{d.versionsTitle}</CardLabel>
@@ -304,7 +325,7 @@ export function ResultScreen({
             ) : (
               <ol className="flex flex-col">
                 {s.edits.map((e, i) => {
-                  const on = (s.activeEdit < 0 ? s.edits.length - 1 : s.activeEdit) === i;
+                  const on = activeIndex === i;
                   return (
                     <li
                       key={e.versionId}
