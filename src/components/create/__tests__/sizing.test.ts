@@ -132,22 +132,43 @@ describe("מדריך המדידה מסכים עם המנוע", () => {
   });
 });
 
-describe("אורך הפריסה נשאר בטווח הייצור", () => {
-  it("קצוות טווח פרק היד והמידות", () => {
-    const [blo, bhi] = FAB.products.bracelet.lengthRangeMm;
-    for (const wrist of ["130", "165", "210"]) {
+describe("אורך הפריסה נגזר מהמידה ואינו נחתך", () => {
+  it("מידות מבוגר נופלות בתוך הרמז המוצג", () => {
+    const [blo, bhi] = FAB.products.bracelet.lengthHintMm;
+    // 140 ולא 130: הרמז 125 מתאר פרק יד 14 ס"מ ב-snug, ו-13 ס"מ נמצא מתחתיו.
+    // הבדיקה הקודמת עברה על 130 רק בזכות החיתוך שהיא הייתה אמורה לבדוק.
+    for (const wrist of ["140", "165", "210"]) {
       for (const fit of ["tight", "regular", "loose"] as const) {
         const L = stripLengthMm(cuff({ circ: wrist, fit }));
         expect(L).toBeGreaterThanOrEqual(blo);
         expect(L).toBeLessThanOrEqual(bhi);
       }
     }
-    const [rlo, rhi] = FAB.products.ring.lengthRangeMm;
+    const [rlo, rhi] = FAB.products.ring.lengthHintMm;
     for (const size of ["4", "7", "13"]) {
       const L = stripLengthMm(ring({ ringSize: size }));
       expect(L).toBeGreaterThanOrEqual(rlo);
       expect(L).toBeLessThanOrEqual(rhi);
     }
+  });
+
+  it("היקף קטן עובר כמו שהוא — RM-0065", () => {
+    // 11 ס"מ, פס 40 מ"מ. `regular` הוא comfort. עד כה חזר 125.0 בשקט.
+    const L = stripLengthMm(cuff({ circ: "110", fit: "regular", braceletWidth: 40 }));
+    expect(L).toBeCloseTo(104.4, 1);
+  });
+
+  it("שתי מידות קטנות שונות אינן מקבלות את אותו אורך", () => {
+    // זה מה שהחיתוך עשה: כל היקף מתחת ל-130 מ"מ קרס לאותו פס בדיוק, ולכן
+    // המידה שהלקוחה מדדה נעלמה בלי סימן.
+    const a = stripLengthMm(cuff({ circ: "100", fit: "regular", braceletWidth: 40 }));
+    const b = stripLengthMm(cuff({ circ: "120", fit: "regular", braceletWidth: 40 }));
+    expect(b).toBeGreaterThan(a);
+  });
+
+  it("היקף גדול מהטבלה גם הוא אינו נחתך", () => {
+    const big = stripLengthMm(cuff({ circ: "240", fit: "loose" }));
+    expect(big).toBeGreaterThan(FAB.products.bracelet.lengthHintMm[1]);
   });
 
   it("פס רחב מאריך את הפריסה", () => {
