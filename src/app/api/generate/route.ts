@@ -354,6 +354,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       model: lettering ? LETTERING_MODEL : undefined,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {
+        // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
+        reference: `runs/${runId}/reference.png`,
         conditioned: `runs/${runId}/conditioned.png`,
         overlay: `runs/${runId}/overlay.png`,
         difference: `runs/${runId}/difference.png`,

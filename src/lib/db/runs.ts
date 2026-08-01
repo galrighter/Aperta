@@ -8,6 +8,9 @@ export type RunSource = "studio" | "debug" | "upload";
 export type RunStatus = "approved" | "rejected" | "error";
 
 export interface RunStagePaths {
+  /** תמונת הייחוס שנמסרה למודל בפועל — הכיתוב שנחתך מהפונט, או העיצוב שנערך.
+   *  היא מרוסטרת בקופסה, ולכן זה המקום היחיד שבו הבייטים האלה קיימים. */
+  reference?: string;
   conditioned?: string;
   overlay?: string;
   difference?: string;
