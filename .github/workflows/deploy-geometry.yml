@@ -1,0 +1,124 @@
+name: Deploy Geometry Service to Hetzner
+
+# מנוע הגיאומטריה כשירות Node על הקופסה, ליד ה-vectorizer.
+#
+# למה: תקרת הזיכרון של Cloudflare היא 128MB לכל isolate ומשותפת לכל הבקשות
+# שרצות בו. forme-studio נמדד ב-P999 של 135.4MB (28.7) — מעל התקרה. לקופסה יש
+# זיכרון אמיתי ואין לה תקרה כזו.
+#
+# **מה שלא קורה כאן: שכפול חוקי הייצור.** ה-bundle נבנה מ-src/lib/geometry —
+# אותו קוד שהאתר מריץ — ונשלח כארטיפקט. אין עותק שני של הכללים, לא בפייתון
+# ולא בשום מקום אחר; יש מקור אחד ושני מקומות הרצה.
+#
+# ה-vhost של nginx שייך ל-deploy-vectorizer.yml, שמפנה /api/frame לפורט 8100.
+# כאן רק בונים ומריצים את הקונטיינר. אם השירות למטה — /api/frame מחזיר 502
+# והאתר נופל ל-forme-frame ואז למסגור מקומי; יצירה לא נשברת.
+#
+# Secrets: HETZNER_SSH / HETZNER_HOST / HETZNER_USER (+ HETZNER_PORT), VECTORIZER_TOKEN.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "geometry-service/**"
+      - "src/lib/geometry/**"
+      - "src/lib/fabrication.config.ts"
+      - "src/i18n/he.ts"
+      - ".github/workflows/deploy-geometry.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-geometry
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # אותה הגנה כמו בפריסת ה-vectorizer: טוקן חסר מייצר שירות פתוח שאף אחד
+      # לא מגלה עד שמישהו אחר מגלה. נכשלים כאן, כשהסיבה עוד על המסך.
+      - name: Require the runtime secret
+        env:
+          VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
+        run: |
+          [ -n "$VTOKEN" ] || { echo "::error::missing repository secret: VECTORIZER_TOKEN"; exit 1; }
+
+      # הבדיקות רצות לפני שגיאומטריה נוגעת בייצור. אותו מנוע, אותם טסטים.
+      - run: npx tsc --noEmit
+      - run: npm test
+
+      - name: Bundle the geometry service
+        run: npm run build:geometry
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH }}
+          HOST: ${{ secrets.HETZNER_HOST }}
+          PORT: ${{ secrets.HETZNER_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy the service to the server
+        env:
+          HOST: ${{ secrets.HETZNER_HOST }}
+          USER: ${{ secrets.HETZNER_USER }}
+          PORT: ${{ secrets.HETZNER_PORT }}
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${PORT:-22}" \
+            geometry-service/ "$USER@$HOST:~/forme-geometry/"
+
+      - name: Build and run the container
+        env:
+          HOST: ${{ secrets.HETZNER_HOST }}
+          USER: ${{ secrets.HETZNER_USER }}
+          PORT: ${{ secrets.HETZNER_PORT }}
+          VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${PORT:-22}" "$USER@$HOST" "VTOKEN='$VTOKEN' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd ~/forme-geometry
+          docker build -t forme-geometry .
+          docker rm -f forme-geometry 2>/dev/null || true
+          # לוקאלהוסט בלבד; nginx חושף אותו תחת /api/frame על vhost הווקטורייזר.
+          docker run -d --name forme-geometry --restart unless-stopped \
+            -e VECTORIZER_TOKEN="${VTOKEN:-}" \
+            -p 127.0.0.1:8100:8100 forme-geometry
+
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8100/api/health >/dev/null 2>&1; then echo "geometry healthy"; break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8100/api/health >/dev/null || { echo "never became healthy"; docker logs --tail 50 forme-geometry; exit 1; }
+
+          # מוכיחים שהשער חמוש במקום להניח שהטוקן הגיע לקונטיינר: בלי bearer
+          # חייב לחזור 401, לא 400 של ולידציית גוף.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8100/api/frame \
+            -H 'content-type: application/json' -d '{}')
+          [ "$code" = "401" ] || { echo "frame is reachable without a token (HTTP $code) — refusing to leave it open"; exit 1; }
+          echo "auth verified: unauthenticated frame returns 401"
+
+          # ומסגור אמיתי, לא רק health: שירות שעונה ל-health ונופל על כל מסגור
+          # הוא בדיוק הכישלון השקט שהמסלול הזה אמור למנוע.
+          SVG='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 8"><g id="cutouts" fill="black"><path d="M4 2L10 2L10 6L4 6Z"/></g></svg>'
+          out=$(curl -fsS -X POST http://127.0.0.1:8100/api/frame \
+            -H "authorization: Bearer ${VTOKEN}" -H 'content-type: application/json' \
+            -d "{\"dims\":{\"productType\":\"bracelet\",\"lengthMm\":40,\"widthMm\":8,\"thicknessMm\":1},\"cutoutsSvg\":\"$(printf '%s' "$SVG" | sed 's/"/\\"/g')\"}")
+          echo "$out" | grep -q '"framedSvg"' || { echo "frame returned no SVG: $out"; exit 1; }
+          echo "framing verified end to end"
+          echo "deployed: geometry service on 127.0.0.1:8100"
+          REMOTE
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

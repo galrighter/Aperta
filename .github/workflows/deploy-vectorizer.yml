@@ -109,6 +109,15 @@ jobs:
               listen 80;
               server_name $VDOMAIN;
               client_max_body_size 25m;
+              # מנוע הגיאומטריה (forme-geometry, פורט 8100) — נפרס בנפרד
+              # ב-deploy-geometry.yml, אבל ה-vhost נכתב כאן. אילו כל פריסה
+              # הייתה עורכת את הקובץ הזה, האחרונה הייתה מוחקת את השנייה.
+              # אם השירות למטה זה 502, והאתר נופל למסלול הבא.
+              location /api/frame {
+                  proxy_pass http://127.0.0.1:8100/api/frame;
+                  proxy_set_header Host \$host;
+                  proxy_read_timeout 60s;
+              }
               location / {
                   proxy_pass http://127.0.0.1:8000;
                   proxy_set_header Host \$host;

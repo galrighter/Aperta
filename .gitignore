@@ -10,3 +10,4 @@ next-env.d.ts
 
 # סמן reflect-before-merge — פר-ענף, נצרך בשימוש (SPEC §7)
 .claude/state/
+geometry-service/dist/

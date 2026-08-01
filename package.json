@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "build:geometry": "esbuild geometry-service/server.ts --bundle --platform=node --target=node22 --outfile=geometry-service/dist/server.js",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy": "opennextjs-cloudflare deploy",
     "cf:preview": "opennextjs-cloudflare preview"
@@ -31,6 +32,7 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.0.0",
+    "esbuild": "^0.25.4",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/earcut": "^3.0.0",
     "@types/node": "^22.10.0",

@@ -122,7 +122,7 @@ jobs:
                           p99: (map(.quantiles.memoryUsageBytesP99) | max),
                           p999: (map(.quantiles.memoryUsageBytesP999) | max)})
                    | sort_by(-.p999)[]
-                   | "\(.s)\tworst P99 \(mb(.p99))MB\tworst P999 \(mb(.p999))MB\t\((128 - mb(.p999))|tostring) MB to spare"' /tmp/r.json | column -t -s $'\t'
+                   | "\(.s)\tworst P99 \(mb(.p99))MB\tworst P999 \(mb(.p999))MB\t\(mb(134217728 - .p999)) MB to spare"' /tmp/r.json | column -t -s $'\t'
           fi
 
           echo
