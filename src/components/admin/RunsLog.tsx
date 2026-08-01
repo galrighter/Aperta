@@ -31,6 +31,8 @@ export type DebugMeta = {
 export type RunDebug = DebugMeta & { images?: Record<string, string> };
 
 export type StageUrls = {
+  /** הקובץ שהמשתמש צירף — הקלט, להבדיל מההדמיה שיצאה ממנו. */
+  input?: string | null;
   render?: string | null; conditioned?: string | null; overlay?: string | null;
   difference?: string | null; rendered?: string | null;
 };
@@ -38,7 +40,7 @@ export type StageUrls = {
 /** המאפיינים שקבעו את ההרצה — מה שצריך כדי להסביר אותה או לשחזר אותה. */
 export type RunInputs = {
   productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
-  rows?: number; calls?: number; minHoleMm?: number; colorKey?: string;
+  rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** האם ההרצה יצאה מהעיצוב הקיים (עריכה) או מאפס. */
   editedFromCurrent?: boolean;
@@ -438,7 +440,15 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
   }
   if (inputs.thicknessMm != null) chips.push(`עובי ${round(inputs.thicknessMm)}`);
   if (inputs.minHoleMm != null) chips.push(`פתח מ׳ ${round(inputs.minHoleMm)}`);
-  if (inputs.rows != null) chips.push(`${inputs.rows} שורות`);
+  // רשת ולא שורות בלבד: מספר החלופות הוא המכפלה, וכשהוא 1 זו התשובה לשאלה
+  // "למה חזרה חלופה אחת".
+  if (inputs.rows != null) {
+    chips.push(
+      inputs.cols != null && inputs.cols > 1
+        ? `${inputs.rows}×${inputs.cols} פריטים`
+        : `${inputs.rows} שורות`,
+    );
+  }
   if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
@@ -566,6 +576,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           )}
           <Diagnostics
             images={{
+              input: it.inputImageUrl ?? null,
               render: it.renderUrl,
               conditioned: it.stages.conditioned,
               overlay: it.stages.overlay,
@@ -746,6 +757,9 @@ export function Diagnostics({ images, renderModel, svg, debug, svgName = "design
 
       {/* images */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {/* הקלט לפני הפלט: בלי הכרטיס הזה אי אפשר לראות בשלבים מה המשתמש נתן,
+            רק מה חזר — וזו השאלה הראשונה כשהדמיה לא דומה למה שביקשו. */}
+        {images.input && <ImgCard title="קובץ שהמשתמש צירף (קלט)" src={images.input} />}
         {images.render && <ImgCard title={`הדמיית AI${renderModel ? ` (${renderModel})` : ""}`} src={images.render} />}
         {images.conditioned && <ImgCard title="דו־גוני (קונדישנינג)" src={images.conditioned} />}
         {images.overlay && <ImgCard title="Overlay (טרייס מול מקור)" src={images.overlay} />}

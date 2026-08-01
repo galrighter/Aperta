@@ -120,3 +120,37 @@ describe("lettering reference", () => {
     expect(p).toContain("including the small bridges");
   });
 });
+
+// משפט ה-LAYOUT הוא מה שקובע כמה פריטים חוזרים בתמונה. עמודה שנייה נוספת לפריט
+// קצר, ואז הפריט נפרס על רוחב **העמודה** — שם יושב היחס שהמודל מצייר.
+describe("buildRenderPrompt layout", () => {
+  const ring = { lengthMm: 55.5, widthMm: 12, thicknessMm: 1.2 };
+  const dims = { lengthMm: 140, widthMm: 15, thicknessMm: 1.2 };
+
+  it("says nothing about a layout for a single piece", () => {
+    const p = buildRenderPrompt("עלים", "ring", ring, 1, false, false, 1);
+    expect(p).not.toContain("LAYOUT");
+    expect(p).toContain("Show the whole piece, unclipped");
+  });
+
+  it("keeps the measured stack wording when there is one column", () => {
+    const p = buildRenderPrompt("עלים", "bracelet", dims, 3);
+    expect(p).toContain("exactly THREE separate pieces");
+    expect(p).toContain("stacked one above another");
+    expect(p).not.toContain("grid of");
+  });
+
+  it("asks for a grid, and for the piece to span its column, when there are two", () => {
+    const p = buildRenderPrompt("עלים", "ring", ring, 2, false, false, 2);
+    expect(p).toContain("exactly FOUR separate pieces");
+    expect(p).toContain("grid of TWO evenly spaced horizontal rows by TWO");
+    expect(p).toContain("spanning almost the full width of its own column");
+    expect(p).toContain("a piece never runs across the full width of the image");
+  });
+
+  it("counts the grid's pieces, not its rows, when it says how many copies to edit", () => {
+    const p = buildRenderPrompt("לדלל", "ring", ring, 2, true, false, 2);
+    expect(p).toContain("exactly FOUR copies of it");
+    expect(p).toContain("FOUR different ways of carrying out that one change");
+  });
+});

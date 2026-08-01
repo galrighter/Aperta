@@ -69,6 +69,8 @@ export interface RenderJobInput {
   prompt: string;
   calls: number;
   rows: number;
+  /** עמודות בתמונה. הקופסה חותכת רשת rows×cols; 1 = טור אחד, כמו קודם. */
+  cols: number;
   /** רוחב הפס שהוזמן — ממנו הווקטורייזר גוזר את הסקאלה. */
   heightMm: number;
   colorKey: "coverage" | "warm" | "dark" | "saturation" | "auto";
@@ -110,6 +112,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     prompt: input.prompt,
     calls: input.calls,
     rows: input.rows,
+    cols: input.cols,
     height_mm: input.heightMm,
     color_key: input.colorKey,
     min_hole_mm: input.minHoleMm,

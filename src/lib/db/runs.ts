@@ -31,8 +31,10 @@ export interface RunInputs {
   lengthMm?: number;
   widthMm?: number;
   thicknessMm?: number;
-  /** כמה פסים בהדמיה אחת, וכמה קריאות למודל — התכנון של planRender. */
+  /** כמה פסים בהדמיה אחת, באיזו רשת, וכמה קריאות למודל — התכנון של planRender.
+   *  מספר החלופות הוא rows × cols. `cols` חסר בהרצות שנשמרו לפני שהיו עמודות. */
   rows?: number;
+  cols?: number;
   calls?: number;
   minHoleMm?: number;
   colorKey?: string;

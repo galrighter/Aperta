@@ -127,6 +127,10 @@ class GenerateIn(BaseModel):
     prompt: str
     calls: int = Field(default=1, ge=1, le=8)
     rows: int = Field(default=1, ge=1, le=8)
+    # Columns in the render; the cut is a grid of rows x cols. A short piece (a
+    # ring) has room for a second column, which multiplies the alternatives
+    # without changing the shape of the cell. See src/lib/render/panels.ts.
+    cols: int = Field(default=1, ge=1, le=4)
     height_mm: float = Field(default=15.0, gt=0, le=100)
     color_key: str = "coverage"
     # forme's minimum opening (mm). It owns the fabrication rules; we only apply
@@ -166,6 +170,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         prompt=body.prompt,
         calls=body.calls,
         rows=body.rows,
+        cols=body.cols,
         height_mm=body.height_mm,
         color_key=body.color_key,
         inspiration=inspiration,

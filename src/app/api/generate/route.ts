@@ -248,8 +248,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           .then((v) => (v.design_id === design.id ? v.version_no : undefined))
           .catch(() => undefined)
       : undefined;
+    // עקיפת הכיול נוגעת בשורות בלבד; העמודות נשארות 1 כדי שהניסוי יהיה על
+    // משתנה אחד — ומספר החלופות שווה למספר השורות, כמו לפני שהיו עמודות.
     const plan = body.rowsOverride
-      ? { rows: body.rowsOverride, calls: 1 as const, candidates: body.rowsOverride }
+      ? { rows: body.rowsOverride, cols: 1, calls: 1 as const, candidates: body.rowsOverride }
       : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
@@ -281,7 +283,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       body.promptOverride?.trim() ||
       buildRenderPrompt(
         body.userPrompt, design.product_type, dims, plan.rows,
-        Boolean(editSvg), Boolean(lettering),
+        Boolean(editSvg), Boolean(lettering), plan.cols,
       );
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
@@ -295,6 +297,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         widthMm: dims.widthMm,
         thicknessMm: dims.thicknessMm,
         rows: plan.rows,
+        cols: plan.cols,
         calls: plan.calls,
         minHoleMm,
         colorKey: "dark",
@@ -337,6 +340,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       prompt,
       calls: plan.calls,
       rows: plan.rows,
+      cols: plan.cols,
       heightMm: dims.widthMm,
       colorKey: "coverage",
       // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה

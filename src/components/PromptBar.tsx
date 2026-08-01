@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { he } from "@/i18n/he";
-import { useStudio, currentVersion } from "@/lib/client/store";
-import { buildCompositePng, fileToDataUrl } from "@/lib/client/composite";
+import { useStudio } from "@/lib/client/store";
+import { fileToDataUrl } from "@/lib/client/composite";
 
 export function PromptBar() {
   const s = useStudio();
@@ -11,7 +11,6 @@ export function PromptBar() {
   const [attachment, setAttachment] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const design = s.design;
-  const version = currentVersion(s);
   const busy = s.genStatus === "generating" || s.genStatus === "validating" || s.genStatus === "repairing";
 
   if (!design) return null;
@@ -19,12 +18,9 @@ export function PromptBar() {
   const send = async (text?: string) => {
     const p = (text ?? prompt).trim();
     if (!p || busy) return;
+    // רק תמונת השראה: שכבת הסימון מוסתרת עד שתחובר באמת (ראה studio/page.tsx).
     const images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }> = [];
     if (attachment) images.push({ kind: "inspiration", dataUrl: attachment });
-    if (s.annotations.length > 0 && version) {
-      const png = await buildCompositePng(design, version, s.annotations);
-      images.push({ kind: "annotation", dataUrl: png });
-    }
     const ok = await s.generate(p, images);
     if (ok) {
       setPrompt("");
@@ -51,9 +47,6 @@ export function PromptBar() {
 
   return (
     <footer className="border-t border-graphite/10 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-      {s.annotations.length > 0 && (
-        <div className="px-1 pb-1 text-xs text-rose-600">{he.annotationsWillBeSent}</div>
-      )}
       {statusText && (
         <div className={`px-1 pb-1 text-xs ${s.genStatus === "error" ? "text-red-600" : "text-ink60"}`}>
           {busy && <span className="me-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-graphite/20 border-t-cobalt align-middle" />}

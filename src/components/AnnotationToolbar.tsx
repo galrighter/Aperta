@@ -4,6 +4,11 @@ import { he } from "@/i18n/he";
 import { useStudio } from "@/lib/client/store";
 import type { AnnotationTool } from "@/lib/client/types";
 
+// לא מרונדר כרגע. שכבת הסימון הוסתרה מהסטודיו כי הסימונים לא הגיעו למודל
+// התמונה: /api/generate קורא רק kind="inspiration", וה-annotation נבדק ונזרק.
+// הרכיב, שכבת הציור ב-FlatCanvas ו-buildCompositePng נשמרו לחיבור בהמשך —
+// להחזרה צריך גם למסור את הקומפוזיט המסומן למודל, לא רק להציג את הסרגל.
+
 const TOOLS: Array<{ id: AnnotationTool; label: string; icon: string }> = [
   { id: "pen", label: he.toolPen, icon: "✏️" },
   { id: "arrow", label: he.toolArrow, icon: "➤" },

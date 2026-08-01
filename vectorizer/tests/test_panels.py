@@ -1,4 +1,4 @@
-"""Row-splitting tests — ported alongside the code from the Worker's vitest suite."""
+"""Panel-splitting tests — ported alongside the code from the Worker's vitest suite."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from app.core.panels import find_bands, split_rows
+from app.core.panels import find_bands, split_panels, split_rows
 
 
 def striped(rows: int, shadow: bool = False) -> np.ndarray:
@@ -73,3 +73,44 @@ def test_each_panel_keeps_its_own_strip() -> None:
     for p in split_rows(_png(striped(3))):
         with Image.open(io.BytesIO(p)) as img:
             assert len(find_bands(np.array(img.convert("RGBA")))) == 1
+
+
+def gridded(rows: int, cols: int) -> np.ndarray:
+    """A white image with rows x cols dark strips — the grid a short piece gets."""
+    width, height = 300, 200
+    rgba = np.full((height, width, 4), 255, dtype=np.uint8)
+    slot_y, slot_x = height // rows, width // cols
+    bar_y, bar_x = int(slot_y * 0.5), int(slot_x * 0.7)
+    for r in range(rows):
+        for c in range(cols):
+            y0 = r * slot_y + (slot_y - bar_y) // 2
+            x0 = c * slot_x + (slot_x - bar_x) // 2
+            rgba[y0 : y0 + bar_y, x0 : x0 + bar_x, :3] = 17
+    return rgba
+
+
+def test_grid_yields_one_panel_per_piece() -> None:
+    panels = split_panels(_png(gridded(2, 2)), cols=2)
+    assert len(panels) == 4
+    for p in panels:
+        with Image.open(io.BytesIO(p)) as img:
+            # Each panel holds one piece, and it is narrower than the full image.
+            assert img.width < 300
+            assert len(find_bands(np.array(img.convert("RGBA")))) == 1
+
+
+def test_a_single_column_render_is_untouched_by_the_column_cut() -> None:
+    assert len(split_panels(_png(striped(3)), cols=1)) == 3
+
+
+def test_a_band_that_does_not_hold_the_asked_columns_is_left_whole() -> None:
+    """Refusing to cut costs an alternative; cutting a piece in half costs the run."""
+    panels = split_panels(_png(striped(2)), cols=2)
+    assert len(panels) == 2
+    for p in panels:
+        with Image.open(io.BytesIO(p)) as img:
+            assert img.width == 300
+
+
+def test_split_rows_still_cuts_rows_only() -> None:
+    assert len(split_rows(_png(gridded(3, 2)))) == 3

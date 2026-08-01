@@ -7,7 +7,6 @@ import { useStudio, currentVersion } from "@/lib/client/store";
 import { Header } from "@/components/Header";
 import { ParamsPanel } from "@/components/ParamsPanel";
 import { FlatCanvas } from "@/components/FlatCanvas";
-import { AnnotationToolbar } from "@/components/AnnotationToolbar";
 import { ValidationPanel } from "@/components/ValidationPanel";
 import { PromptBar } from "@/components/PromptBar";
 import { VersionBar } from "@/components/VersionBar";
@@ -68,12 +67,10 @@ export default function StudioPage() {
           <main className="relative min-h-0 flex-1">
             {version ? (
               s.tab === "flat" ? (
-                <>
-                  <FlatCanvas />
-                  <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
-                    <AnnotationToolbar />
-                  </div>
-                </>
+                // שכבת הסימון מוסתרת: הסימונים לא הגיעו למודל התמונה — /api/generate
+                // קורא רק kind="inspiration" — אז הסרגל הבטיח עריכה נקודתית שלא קרתה.
+                // הרכיבים נשארו בקוד לחיבור בהמשך; ראה AnnotationToolbar.tsx.
+                <FlatCanvas />
               ) : s.tab === "3d" ? (
                 <Preview3D />
               ) : (

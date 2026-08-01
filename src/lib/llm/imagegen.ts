@@ -59,7 +59,10 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** מודל התמונה מציית למילה טוב יותר מלספרה כשמדובר בכמות. */
-const WORD: Record<number, string> = { 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX" };
+const WORD: Record<number, string> = {
+  2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX",
+  7: "SEVEN", 8: "EIGHT", 9: "NINE", 10: "TEN", 11: "ELEVEN", 12: "TWELVE",
+};
 
 /**
  * פרומפט מכוון: רנדר שטוח, top-down, פליז חם על רקע לבן — קלט אידיאלי ל-vectorizer.
@@ -106,6 +109,9 @@ export function buildRenderPrompt(
    *  ברירת המחדל היא false, כי בלי תמונה כזו אין למודל "כיתוב מצורף" לשמר —
    *  והפרומפט שמדבר על תמונה שאינה שם הוא הזיה שהוא ימלא בעצמו. */
   letteringReference = false,
+  /** כמה עמודות בתמונה. נלווה ל-`rows`: מספר הפריטים הוא המכפלה, וצורת התא —
+   *  זו שקובעת את היחס המצויר — היא היחס ביניהם. ראה planRender ב-panels.ts. */
+  cols = 1,
 ): string {
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
@@ -119,21 +125,36 @@ export function buildRenderPrompt(
   // עיצוב אחר באותה רוח; בעריכה כולן אותו פריט, ומה שנבדל ביניהן הוא איך השינוי
   // המבוקש מיושם. בלי ההבחנה הזו הפרומפט סתר את עצמו: "כל שורה היא עיצוב אחר"
   // מול "שמור על הפריט המצורף בדיוק כפי שהוא".
-  const word = WORD[rows] ?? rows;
-  const rowsAre = editing
-    ? `Every row is the attached piece with the change request (below) applied — the same piece each time, ` +
+  const pieces = rows * cols;
+  const word = WORD[pieces] ?? pieces;
+  const rowWord = WORD[rows] ?? rows;
+  const colWord = WORD[cols] ?? cols;
+  const piecesAre = editing
+    ? `Every piece is the attached piece with the change request (below) applied — the same piece each time, ` +
       `${word} different ways of carrying out that one change, and nothing else about it altered.`
-    : "Each row is a different variation of the same design intent: the same spirit, a different design.";
+    : "Each piece is a different variation of the same design intent: the same spirit, a different design.";
+  // שלוש צורות, ובכוונה נפרדות: פריט יחיד; טור אחד (הניסוח שנמדד — לא נוגעים בו);
+  // ורשת, שנוספה לפריט קצר שטור לבדו מחזיר לו חלופה אחת. ברשת ההבדל היחיד
+  // שחשוב הוא שהפריט נפרס על רוחב **העמודה** ולא על רוחב התמונה — שם נמצא היחס.
   const layout =
-    rows <= 1
+    pieces <= 1
       ? " Show the whole piece, unclipped, with plain white all around it."
-      : (editing
-          ? ` LAYOUT: the attached image shows the piece once; this image contains exactly ${word} copies of it, `
-          : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
-        `stacked one above another as ${word} evenly spaced horizontal rows, with plain white space between them ` +
-        "and no line, frame, divider or caption of any kind. Each row is a complete piece on its own, taking up the " +
-        "same overall extent as above, spanning almost the full width of the image with a thin white margin at each " +
-        `end. ${rowsAre} Show every piece whole and unclipped.`;
+      : cols <= 1
+        ? (editing
+            ? ` LAYOUT: the attached image shows the piece once; this image contains exactly ${word} copies of it, `
+            : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
+          `stacked one above another as ${word} evenly spaced horizontal rows, with plain white space between them ` +
+          "and no line, frame, divider or caption of any kind. Each row is a complete piece on its own, taking up the " +
+          "same overall extent as above, spanning almost the full width of the image with a thin white margin at each " +
+          `end. ${piecesAre} Show every piece whole and unclipped.`
+        : (editing
+            ? ` LAYOUT: the attached image shows the piece once; this image contains exactly ${word} copies of it, `
+            : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
+          `laid out as a grid of ${rowWord} evenly spaced horizontal rows by ${colWord} evenly spaced vertical ` +
+          "columns, with plain white space between every piece and no line, frame, divider, grid line or caption of " +
+          "any kind. Each cell holds one complete piece on its own, taking up the same overall extent as above, " +
+          "spanning almost the full width of its own column with a thin white margin at each end — a piece never " +
+          `runs across the full width of the image. ${piecesAre} Show every piece whole and unclipped.`;
 
   const object =
     productType === "ring"
