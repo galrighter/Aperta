@@ -1,5 +1,5 @@
 import { BASE_CANVAS } from "./baseImage";
-import { textToPolygons, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
+import { textToStencil, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
 import { stylesForBrief, type LetteringStyle } from "@/lib/text/style";
 import { offset, multiPolygonArea } from "@/lib/geometry/poly";
 import { ringToPathD } from "@/lib/geometry/paths";
@@ -57,6 +57,9 @@ export interface LetteringRow {
   letterHeightMm: number;
   /** רוחב הכיתוב במ"מ. */
   textWidthMm: number;
+  /** הגשר הצר ביותר בשורה, כשהוא יצא צר מהמינימום לייצור. `null` = הכול תקין.
+   *  זה מה שמצדיק את ההתראה ללקוחה: מה שנחתך שם דק מכפי שההבטחה מכסה. */
+  narrowBridgeMm?: number | null;
   /** האותיות עצמן, בקואורדינטות הפס. גאומטריה ולא דיווח — **לא** לכתוב
    *  אותן ליומן; ראה מה שנכתב שם ב-route.ts. */
   glyphs: MultiPolygon;
@@ -66,6 +69,12 @@ export interface LetteringReference {
   svg: string;
   /** מה שנחתך בכל שורה — נשמר ליומן כדי שאפשר יהיה להסביר תוצאה. */
   rows: LetteringRow[];
+  /**
+   * הגשר הצר ביותר מכל השורות שהוצעו, כשהוא מתחת למינימום לייצור. `null` =
+   * הכיתוב כולו בתוך מה שהייצור מבטיח. הקורא אחראי להעביר את זה ללקוחה — ראה
+   * `lettering_bridge` ב-/api/generate.
+   */
+  narrowBridgeMm: number | null;
 }
 
 export interface LetteringDims {
@@ -138,8 +147,13 @@ async function letteringPolygons(
 
   for (const size of sizes) {
     if ((probe.inkHeightMm * size) / PROBE_MM < MIN_LETTER_MM) continue;
-    const raw = await textToPolygons(text, 0, 0, size, "start", fab.minBridgeCut, style);
+    const cut = await textToStencil(text, 0, 0, size, "start", fab.minBridgeCut, style);
+    const raw = cut.polygons;
     if (raw.length === 0 || !survivesCutting(raw, fab.minHole)) continue;
+    // הגשר הצר ביותר קובע: די באחד מתחת למינימום כדי שהפריט ידרוש בדיקה.
+    const narrowBridgeMm = cut.narrowBridges.length
+      ? Math.min(...cut.narrowBridges.map((b) => b.widthMm))
+      : null;
 
     // מירכוז נמדד ולא מחושב: הגישור חותך מהאותיות, ותיבת המידה שאחריו היא
     // הצורה שבאמת נחתכת. מירכוז לפי מטריקות הפונט היה מזיז את הכיתוב ממרכז הפס.
@@ -151,6 +165,7 @@ async function letteringPolygons(
         fontId: style.fontId,
         letterHeightMm: r2(y1 - y0),
         textWidthMm: r2(x1 - x0),
+        narrowBridgeMm: narrowBridgeMm === null ? null : r2(narrowBridgeMm),
         glyphs: mp,
       },
     };
@@ -212,5 +227,11 @@ export async function buildLetteringRenderSvg(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="0 0 ${cw} ${ch}">` +
       `<rect width="${cw}" height="${ch}" fill="#ffffff"/>${bands.join("")}</svg>`,
     rows: cuts.map((c) => c.row),
+    narrowBridgeMm: (() => {
+      const narrow = cuts
+        .map((c) => c.row.narrowBridgeMm)
+        .filter((v): v is number => typeof v === "number");
+      return narrow.length ? Math.min(...narrow) : null;
+    })(),
   };
 }

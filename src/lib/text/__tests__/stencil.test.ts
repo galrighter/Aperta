@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { convertTextRequests } from "../textToPath";
 import { validateDesign } from "@/lib/geometry/validate";
+import { textToStencil } from "../stencil";
+import { multiPolygonArea } from "@/lib/geometry/poly";
+import { resolveFab } from "@/lib/fabrication.config";
 
 const DIMS = { productType: "bracelet" as const, lengthMm: 160, widthMm: 15, thicknessMm: 1.5 };
 
@@ -37,5 +40,51 @@ describe("text-to-path with auto-bridging", () => {
     const raw = svgWith(`<text-request content="" x="80"/><circle cx="80" cy="7.5" r="3"/>`);
     const converted = await convertTextRequests(raw, DIMS);
     expect(converted).not.toContain("text-request");
+  });
+});
+
+// רוחב הגשר נגזר מהקונטור שהוא מחזיק. גשר ברוחב המינימום לייצור (1.5 מ"מ) על
+// קונטור של `e` בגובה 6 מ"מ (0.85 מ"מ) לא גישר אלא בלע אותו ואכל את הגזעים —
+// והאות שחזרה מהמודל הייתה שבורה, כי כך היא נמסרה לו.
+describe("bridge width against the counter it holds", () => {
+  const fab = resolveFab(1.5, "ring");
+
+  it("keeps the letter, not just the island", async () => {
+    for (const ch of ["e", "a", "o", "R", "ס"]) {
+      for (const heightMm of [6, 12]) {
+        const plain = await textToStencil(ch, 0, 0, heightMm, "start", 0);
+        const bridged = await textToStencil(ch, 0, 0, heightMm, "start", fab.minBridgeCut);
+        const kept = multiPolygonArea(bridged.polygons) / multiPolygonArea(plain.polygons);
+        expect(kept, `${ch} at ${heightMm}mm`).toBeGreaterThan(0.85);
+      }
+    }
+  });
+
+  it("never spends more of the counter on the bridge than the ratio allows", async () => {
+    const { narrowBridges } = await textToStencil("e", 0, 0, 6, "start", fab.minBridgeCut);
+    expect(narrowBridges).toHaveLength(1);
+    // הקונטור של e בגובה 6 מ"מ הוא 0.85 מ"מ; 40% ממנו הם 0.34.
+    expect(narrowBridges[0].widthMm).toBeLessThan(0.4);
+    expect(narrowBridges[0].widthMm).toBeGreaterThan(0);
+  });
+
+  it("reports every bridge it had to narrow below the manufacturing minimum", async () => {
+    const small = await textToStencil("e", 0, 0, 6, "start", fab.minBridgeCut);
+    expect(small.narrowBridges.every((b) => b.widthMm < fab.minBridgeCut)).toBe(true);
+  });
+
+  it("stays silent when the counter can hold a full-width bridge", async () => {
+    // אות גדולה: הקונטור רחב מספיק, הגשר יוצא במינימום המלא ואין מה לדווח.
+    const big = await textToStencil("o", 0, 0, 12, "start", fab.minBridgeCut);
+    expect(big.narrowBridges).toEqual([]);
+  });
+
+  it("still connects the island — a narrower bridge is still a bridge", async () => {
+    // ההצדקה לצמצום: הגשר מחזיק אי, הוא לא נושא עומס. הבדיקה היא שאין חור
+    // נפרד שנשאר בתוך האות, כלומר שהקונטור מחובר לחומר שסביבו.
+    for (const ch of ["e", "o", "ס"]) {
+      const { polygons } = await textToStencil(ch, 0, 0, 6, "start", fab.minBridgeCut);
+      for (const poly of polygons) expect(poly.length, `${ch} keeps an island`).toBe(1);
+    }
   });
 });

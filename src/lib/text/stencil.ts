@@ -146,7 +146,27 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
   return svg.replace(TEXT_REQUEST_RE, () => rendered[i++]);
 }
 
-/** טקסט → פוליגונים בקואורדינטות מ"מ, כולל גישור קונטורים פנימיים */
+/**
+ * כמה מגובה הקונטור מותר לגשר לקחת. הגשר מחזיק אי, הוא לא נושא עומס, ולכן
+ * צר מספיק כדי שהאות תישאר קריאה מחזיק אותו באותה מידה.
+ */
+const BRIDGE_COUNTER_RATIO = 0.4;
+
+/** גשר שיצא צר מהמינימום לייצור — מה שנחתך שם דק מכפי שההבטחה מכסה. */
+export interface NarrowBridge {
+  widthMm: number;
+  x: number;
+  y: number;
+}
+
+export interface StencilResult {
+  polygons: MultiPolygon;
+  /** ריק = כל הגשרים ברוחב שהייצור מבטיח. */
+  narrowBridges: NarrowBridge[];
+}
+
+/** טקסט → פוליגונים בקואורדינטות מ"מ, כולל גישור קונטורים פנימיים.
+ *  עוטף את textToStencil למי שלא צריך את דיווח הגשרים. */
 export async function textToPolygons(
   text: string,
   x: number,
@@ -156,6 +176,20 @@ export async function textToPolygons(
   bridgeWidthMm: number,
   style: TextStyle = {},
 ): Promise<MultiPolygon> {
+  return (await textToStencil(text, x, y, heightMm, align, bridgeWidthMm, style)).polygons;
+}
+
+/** אותו חיתוך, עם דיווח על גשרים שיצאו צרים מהמינימום לייצור. */
+export async function textToStencil(
+  text: string,
+  x: number,
+  y: number,
+  heightMm: number,
+  align: "start" | "middle" | "end",
+  bridgeWidthMm: number,
+  style: TextStyle = {},
+): Promise<StencilResult> {
+  const narrowBridges: NarrowBridge[] = [];
   const font = await loadFace(style.fontId ?? DEFAULT_FONT);
   const visual = visualOrder(text);
   const fontSize = sizeFor(font, heightMm);
@@ -169,13 +203,13 @@ export async function textToPolygons(
   else if (align === "end") startX = x - advance;
 
   const d = path.toPathData(3);
-  if (!d) return [];
+  if (!d) return { polygons: [], narrowBridges };
 
   const subs = samplePathToRings(d);
   // גליפים: טבעות בכיוון הדומיננטי = מילוי, הפוכות = counters
   const rings = subs.map((s) => s.ring.map(([px, py]) => [px + startX, py] as [number, number]))
     .filter((r) => r.length >= 3);
-  if (rings.length === 0) return [];
+  if (rings.length === 0) return { polygons: [], narrowBridges };
   const areas = rings.map(ringArea);
   const total = areas.reduce((s, a) => s + a, 0);
   const dominant = Math.sign(total) || 1;
@@ -188,7 +222,7 @@ export async function textToPolygons(
       solidBoxes.push(bboxOf(rings[i]));
     } else holes.push({ ring: rings[i], bbox: bboxOf(rings[i]) });
   }
-  if (solids.length === 0) return [];
+  if (solids.length === 0) return { polygons: [], narrowBridges };
   let glyphs = difference(
     union(...solids),
     holes.length ? union(...holes.map((h) => [[[...h.ring].reverse()]] as MultiPolygon)) : [],
@@ -214,6 +248,22 @@ export async function textToPolygons(
     const height = hy1 - hy0;
     const cy = (hy0 + hy1) / 2;
     const outer = enclosing(solidBoxes, h.bbox);
+    // **רוחב הגשר נגזר מהקונטור שהוא מחזיק**, ולא מהמינימום לייצור לבדו.
+    //
+    // `minBridgeCut` הוא 1.5 מ"מ, והקונטור של `e` באות בגובה 6 מ"מ הוא 0.85 מ"מ
+    // — הגשר היה 177% ממנו, כלומר לא גישר אלא בלע אותו ואכל את הגזעים משני
+    // צדיו. ספירת הטבעות: 2 לפני, 1 אחרי. גם באות 12 מ"מ הוא עדיין 89%.
+    // האותיות שנפגעו הן בדיוק אלה שיש להן קונטור קטן — e, a, ס׳ — והשאר נראו
+    // תקינות, ולכן זה נראה כמו שגיאה של מודל התמונה ולא כמו הייחוס שנמסר לו.
+    //
+    // התקרה היא שבריר מגובה הקונטור: גשר צר יותר מחזיק את האי באותה מידה
+    // (הוא מוחזק, לא נושא עומס) ומשאיר את האות קריאה. מה שהוא **כן** עולה הוא
+    // שגשר מתחת ל-minBridgeCut דק מכפי שהייצור מבטיח — וזה מדווח החוצה
+    // כ-narrowBridges במקום להיבלע כאן.
+    const width = Math.min(bridgeWidthMm, height * BRIDGE_COUNTER_RATIO);
+    if (width < bridgeWidthMm) {
+      narrowBridges.push({ widthMm: width, x: (hx0 + hx1) / 2, y: cy });
+    }
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
     const left = hx0 - outer[0] <= outer[2] - hx1;
     // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור. הקצה החיצוני חורג מהאות ולא
@@ -221,18 +271,21 @@ export async function textToPolygons(
     // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות. הגרסה הקודמת
     // הגיעה עד מרכז הקונטור, כלומר בלעה חצי ממנו — וזה מה שגרם ל-ס׳ להיראות
     // כמו כ׳ בייחוס. עומק של רוחב גשר מספיק לחפיפה ודאית.
-    const depth = Math.min(bridgeWidthMm, (hx1 - hx0) / 2);
+    const depth = Math.min(width, (hx1 - hx0) / 2);
     const [x0s, x1s] = left
-      ? [outer[0] - bridgeWidthMm, hx0 + depth]
-      : [hx1 - depth, outer[2] + bridgeWidthMm];
-    const offsets = height > bridgeWidthMm * 4 ? [cy - height / 4, cy + height / 4] : [cy];
+      ? [outer[0] - width, hx0 + depth]
+      : [hx1 - depth, outer[2] + width];
+    const offsets = height > width * 4 ? [cy - height / 4, cy + height / 4] : [cy];
     const strips: MultiPolygon = offsets.map((sy) => rectPolygon(
-      x0s, sy - bridgeWidthMm / 2, x1s, sy + bridgeWidthMm / 2,
+      x0s, sy - width / 2, x1s, sy + width / 2,
     ));
     glyphs = difference(glyphs, strips);
   }
 
-  return glyphs.filter((p) => multiPolygonArea([p]) > 0.01);
+  return {
+    polygons: glyphs.filter((p) => multiPolygonArea([p]) > 0.01),
+    narrowBridges,
+  };
 }
 
 /**
