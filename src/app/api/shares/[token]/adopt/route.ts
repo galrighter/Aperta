@@ -5,24 +5,30 @@ import { requireAccountId } from "@/lib/account";
 import { isShareToken } from "@/lib/shareToken";
 import { getShareByToken } from "@/lib/db/shares";
 import { supabaseAdmin } from "@/lib/db/supabase";
-import { insertVersion } from "@/lib/db/designs";
-import { rescaleCutoutsSvg } from "@/lib/geometry/frame";
-import { validateDesign } from "@/lib/geometry/validate";
-import { difference, rectPolygon } from "@/lib/geometry/poly";
+import { ingestCutouts } from "@/lib/vectorizer";
 import { he } from "@/i18n/he";
 
 /**
  * "להזמין כזה" — עותק של עיצוב ששותף, במידה של מי שמזמין.
  *
  * **למה זה לא `duplicate`.** שכפול מעתיק את המידות של המקור, וזה בדיוק מה
- * שאסור כאן: תכשיט נחתך לפי פרק היד של מי שעונד אותו, ולינק מסתובב בין אנשים
- * שונים. מה שמועתק הוא **הדוגמה**; אורך הפריסה נקבע מהמידה החדשה, וה-SVG נמתח
- * אליו (`rescaleCutoutsSvg`) — אותה מתיחה שהמנוע עושה לכל הצעה שהוא מחזיר.
+ * שאסור כאן: תכשיט נחתך לפי פרק היד של מי שעונד אותו, והלינק מסתובב בין
+ * אנשים. מה שמועתק הוא **הדוגמה**; המסגרת היא של המזמין.
  *
- * **הוולידציה רצה שוב, ותוצאתה נמסרת כמו שהיא.** מתיחה משנה רוחבי גשרים: מה
- * שעבר ב-160 מ"מ יכול ליפול ב-190. מסך התוצאה כבר יודע להציג מצב ייצור, כולל
- * כישלון — ולכן התשובה חוזרת עם הדוח האמיתי ולא מסתירה אותו. עיצוב שנכשל הוא
- * עדיין עיצוב שאפשר לבקש עליו שינוי, וזו התשובה הנכונה במקום 500.
+ * **והמתיחה עוברת ב-`ingestCutouts`, לא בקוד משלה.** הפיתוי היה לקרוא ל-
+ * `rescaleCutoutsSvg` ישירות — זה שלוש שורות ונראה כמו בדיוק מה שצריך. הוא
+ * מדלג על כל מה ש-`frameCutoutsDims` עושה סביב אותה מתיחה: החלוקה של הפער
+ * בין שני הצירים (עד 5% נבלעים ברוחב כהגדלה אחידה, כדי שהדוגמה לא תעוות),
+ * `dropThinCutouts` ו-`dropDetachedMaterial`. השניים האחרונים אינם קישוט:
+ * מתיחה משנה רוחבי גשרים וגדלי פתחים, כלומר היא מייצרת בדיוק את הממצאים
+ * שהם מנקים. בלעדיהם חלק גדול מההזמנות היה נוחת על "לא ניתן לייצור" שהצינור
+ * הרגיל יודע לתקן בשקט.
+ *
+ * זהו גם הכלל שנכתב במפורש ב-`frameCutouts.ts`: חוקי הייצור יושבים במקום
+ * אחד. מסלול שני שמותח גאומטריה בדרכו שלו הוא היום שבו השניים מתפצלים.
+ *
+ * הוולידציה רצה על המסגרת הסופית ותוצאתה נמסרת כמו שהיא: מסך התוצאה כבר יודע
+ * להציג מצב ייצור כולל כישלון, ומשם אפשר לבקש שינוי — תשובה טובה יותר מ-500.
  *
  * הבעלות נקבעת מהחשבון המחובר. השיתוף אינו נותן גישה לעיצוב המקורי — הוא נותן
  * את הדוגמה, ומה שנוצר כאן הוא עיצוב חדש של המזמין.
@@ -52,25 +58,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const lengthMm = round1(body.lengthMm);
     const widthMm = round1(body.widthMm);
     const gapMm = body.gapMm ?? Number(share.gap_mm);
-    const thicknessMm = Number(share.thickness_mm);
 
-    // מתיחת הדוגמה למסגרת של המזמין. `rescaleCutoutsSvg` מסרב לכל פקודת מסלול
-    // שאינה M/L/Z — גאומטריה שנחתכת במתכת אינה מקום לפרשנות.
-    let svg: string;
-    try {
-      svg = rescaleCutoutsSvg(share.svg, { lengthMm, widthMm });
-    } catch (e) {
-      throw new ApiError("rescale_failed", (e as Error).message, 422);
-    }
-
-    const { report, normalized } = validateDesign(svg, {
-      productType: share.product_type,
-      lengthMm,
-      widthMm,
-      thicknessMm,
-    });
-
-    const { data: design, error } = await supabaseAdmin()
+    // העיצוב נוצר קודם, כי `ingestCutouts` מותח אל המידות שכתובות בשורה שלו.
+    const { data: created, error } = await supabaseAdmin()
       .from("designs")
       .insert({
         profile_id: profileId,
@@ -79,34 +69,38 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
         length_mm: lengthMm,
         width_mm: widthMm,
         gap_mm: gapMm,
-        thickness_mm: thicknessMm,
+        thickness_mm: Number(share.thickness_mm),
       })
       .select("*")
       .single();
     if (error) throw new Error(error.message);
 
-    const version = await insertVersion({
-      design_id: design.id,
-      svg: normalized?.canonicalSvg ?? svg,
-      source: "generate",
-      user_prompt: null,
-      annotation_png_path: null,
-      // מאיזה שיתוף זה בא. נשמר בדוח (jsonb) ולא בעמודה, מאותה סיבה שנתיב
-      // ההדמיה נשמר שם: זה מטא-דאטה של מקור, והוא מה שיאפשר לענות בבק־אופיס
-      // על "מאיפה הגיעה ההזמנה הזו".
-      validation_report: { ...report, fromShareToken: share.token },
-      validation_status: report.status,
+    const { version, report, geometry, widthMm: framedWidth } = await ingestCutouts({
+      design: created,
+      cutoutsSvg: share.svg,
+      userPrompt: null,
+      renderPngPath: null,
     });
 
-    const geometry = normalized
-      ? {
-          material: difference([rectPolygon(0, 0, lengthMm, widthMm)], normalized.cutUnion),
-          cutUnion: normalized.cutUnion,
-        }
-      : null;
+    // מאיזה שיתוף זה בא. נשמר בדוח (jsonb) ולא בעמודה, מאותה סיבה שנתיב
+    // ההדמיה נשמר שם: זה מטא-דאטה של מקור, והוא מה שיאפשר לענות בבק־אופיס על
+    // "מאיפה הגיעה ההזמנה הזו". נכתב אחרי `ingestCutouts` כדי לא לשכפל את
+    // בניית הדוח שלו — הוא מקור האמת למה שנכנס לשדה.
+    await supabaseAdmin()
+      .from("design_versions")
+      .update({
+        validation_report: {
+          ...(version.validation_report as Record<string, unknown>),
+          fromShareToken: share.token,
+        },
+      })
+      .eq("id", version.id);
 
+    // שורת העיצוב נשארת כפי שנכתבה: `ingestCutouts` אינו נוגע ב-`designs`,
+    // והרוחב שהוא עשוי לתקן בתוך הסובלנות חי ב-viewBox של הגרסה — שם המסך
+    // קורא אותו ממילא (`frameWidthMm`). לכן אין כאן קריאה חוזרת למסד.
     return NextResponse.json(
-      { design: { ...design, current_version_id: version.id }, version, report, geometry, lengthMm, widthMm },
+      { design: { ...created, current_version_id: version.id }, version, report, geometry, lengthMm, widthMm: framedWidth },
       { status: 201 },
     );
   } catch (err) {
