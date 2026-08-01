@@ -13,7 +13,28 @@ import type { ValidationReport } from "./types";
 // מה שחשוב לא פחות: זה מודול אחד. ה-Worker הנפרד מייבא בדיוק את הקוד הזה, לא
 // עותק שלו. חוקי הייצור נשארים במקום אחד.
 
-/** כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7. */
+/**
+ * כמה מותר לרוחב לסטות מהרוחב שהוזמן כדי לבלוע עיוות. החלטת גל, 26.7.
+ *
+ * הרעיון: אם קנה מידה **אחיד** מגיע לאורך שהוזמן ומשאיר את הרוחב בטווח הזה,
+ * לוקחים אותו — אין שום עיוות בדוגמה, והרוחב זז במעט. זה עובד, וכשזה עובד
+ * הסטייה זעירה (RM-0064: 12.01 / 12.10 / 11.92 מול 12 שהוזמנו).
+ *
+ * מה שהיה שבור הוא **מה שקורה כשזה לא עובד**: הקוד נצמד לגבול הטווח. וכיוון
+ * שהמודל כמעט אף פעם לא מצייר את היחס שהוזמן, זה מה שקרה כמעט תמיד — נמדד על
+ * שמונה עיצובים רצופים, כולם נחתו על ±5% **בדיוק**:
+ *
+ *     RM-0060  29 → 30.45   RM-0065  40 → 38.00
+ *     RM-0063  24 → 22.80   RM-0067  18 → 17.10
+ *
+ * וב-RM-0062 אותה הזמנה נתנה 10.5 בגרסה אחת ו-9.5 באחרת — **10% הפרש בין שתי
+ * גרסאות של אותו עיצוב.** הרוחב הוא מידה שהלקוחה בחרה, עם תצוגה מקדימה על
+ * צילום של פרק יד, והוא זז מתחתיה בלי שנאמר לה דבר.
+ *
+ * הצמידה לגבול היא הגרוע משני העולמות: לא קנה מידה אחיד, וגם לא המידה שהוזמנה.
+ * מחוץ לטווח, הטווח כבר לא מציל מעיוות — ולכן הרוחב הוא **בדיוק מה שהוזמן**,
+ * וכל הפער נכנס למתיחה האופקית ומדווח ב-`stretch`.
+ */
 const WIDTH_TOLERANCE = 0.05;
 
 /**
@@ -52,13 +73,14 @@ export function frameCutoutsDims(dims: DesignDims, cutoutsSvg: string): FramedCu
   const drawn = svgFrame(cutoutsSvg) ?? { lengthMm, widthMm: orderedWidth };
   // הגורם שמחזיר את הדוגמה לאורך שהוזמן. 1 = המודל פגע ביחס המבוקש.
   const correction = drawn.lengthMm > 0 ? lengthMm / drawn.lengthMm : 1;
-  const widthMm =
-    Math.round(
-      Math.min(
-        Math.max(drawn.widthMm * correction, orderedWidth * (1 - WIDTH_TOLERANCE)),
-        orderedWidth * (1 + WIDTH_TOLERANCE),
-      ) * 100,
-    ) / 100;
+  // קנה מידה אחיד: מה שהרוחב היה מקבל אילו הדוגמה כולה הוגדלה אל האורך.
+  const uniformWidth = drawn.widthMm * correction;
+  const withinTolerance =
+    uniformWidth >= orderedWidth * (1 - WIDTH_TOLERANCE) &&
+    uniformWidth <= orderedWidth * (1 + WIDTH_TOLERANCE);
+  const widthMm = withinTolerance
+    ? Math.round(uniformWidth * 100) / 100
+    : orderedWidth;
   const framedDims: DesignDims = {
     productType: dims.productType,
     lengthMm,
