@@ -405,6 +405,8 @@ export default function RunsLog({
           }`}
           userPrompt={promptFor.prompt ?? detailOf(details[promptFor.id])?.prompt ?? null}
           imageUrl={promptFor.inputImageUrl ?? null}
+          referenceUrl={promptFor.stages.reference}
+          renderModel={promptFor.renderModel}
           inputs={detailOf(details[promptFor.id])?.inputs ?? promptFor.inputs ?? null}
           renderPrompt={detailOf(details[promptFor.id])?.renderPrompt ?? null}
           state={
@@ -506,6 +508,14 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
           </a>
         )}
+        {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
+            ההדמיה שחזרה ממנה: זו ההשוואה שעונה על "מה איבדנו ומי איבד". */}
+        {it.stages.reference && (
+          <a href={it.stages.reference} target="_blank" rel="noreferrer" className="shrink-0" title="התמונה שנשלחה למודל">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={it.stages.reference} alt="ייחוס" className="h-14 w-24 rounded border border-amber-400/60 bg-porcelain object-contain" />
+          </a>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
@@ -523,6 +533,13 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
               </span>
             )}
             {it.productType && <span className="text-xs text-ink60">{it.productType === "ring" ? "טבעת" : "צמיד"}</span>}
+            {/* לאיזה מודל זה נשלח. שתי הרצות שנראות זהות יכולות להיבדל רק בזה,
+                ובלי המספר הזה ההשוואה ביניהן היא ניחוש. */}
+            {it.renderModel && (
+              <span className="rounded border border-amber-400/60 bg-amber-50 px-1.5 text-xs text-amber-800" dir="ltr">
+                {it.renderModel}
+              </span>
+            )}
             {it.metrics?.iou != null && <span className="text-xs text-ink60">IoU {it.metrics.iou.toFixed(3)}</span>}
             {it.metrics?.holes != null && <span className="text-xs text-ink60">· {it.metrics.holes} חורים</span>}
             {it.durationMs != null && <span className="text-xs text-mist">· {(it.durationMs / 1000).toFixed(1)}s</span>}
@@ -626,10 +643,17 @@ function DownloadSvgButton({
  * וברשימה הוא משקל מיותר על כל שורה. כאן הוא נטען לפי דרישה, יחד עם מה
  * שהמשתמש עצמו נתן: הטקסט שלו, הקובץ שצירף, והמאפיינים שבנו את הפרומפט.
  */
-export function PromptDialog({ subtitle, userPrompt, imageUrl, inputs, renderPrompt, state, onClose }: {
+export function PromptDialog({
+  subtitle, userPrompt, imageUrl, referenceUrl = null, renderModel = null,
+  inputs, renderPrompt, state, onClose,
+}: {
   subtitle: string;
   userPrompt: string | null;
   imageUrl: string | null;
+  /** התמונה שנמסרה למודל. חלק ממה שנשלח בדיוק כמו הטקסט, ולכן באותו סעיף. */
+  referenceUrl?: string | null;
+  /** לאיזה מודל תמונה זה נשלח. */
+  renderModel?: string | null;
   inputs: RunInputs | null;
   renderPrompt: string | null;
   /** "loading"/"error" רק כשהפרומפט נטען לפי דרישה (היומן). */
@@ -679,6 +703,18 @@ export function PromptDialog({ subtitle, userPrompt, imageUrl, inputs, renderPro
             </section>
           )}
 
+          {referenceUrl && (
+            <section>
+              <div className="mb-1 text-xs font-medium text-ink60">
+                התמונה שנמסרה למודל — מה שהוא התבקש להעתיק
+              </div>
+              <a href={referenceUrl} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={referenceUrl} alt="תמונת הייחוס" className="max-h-56 rounded border border-amber-400/60 bg-porcelain object-contain" />
+              </a>
+            </section>
+          )}
+
           {inputs && (
             <section>
               <div className="mb-1 text-xs font-medium text-ink60">מאפייני ההרצה</div>
@@ -688,7 +724,14 @@ export function PromptDialog({ subtitle, userPrompt, imageUrl, inputs, renderPro
 
           <section>
             <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-ink60">מה שנשלח למודל התמונה</span>
+              <span className="text-xs font-medium text-ink60">
+                מה שנשלח למודל התמונה
+                {renderModel && (
+                  <span className="ms-1 rounded border border-amber-400/60 bg-amber-50 px-1.5 py-px text-amber-800" dir="ltr">
+                    {renderModel}
+                  </span>
+                )}
+              </span>
               {renderPrompt && (
                 <button type="button" onClick={() => void copy()} className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain">
                   {copied ? "הועתק ✓" : "העתקה"}
