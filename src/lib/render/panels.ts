@@ -152,18 +152,51 @@ export function maxCols(lengthMm: number, minHoleMm: number, canvas: Canvas = LA
 }
 
 /**
+ * שורות שאינן עולות דבר ברזולוציה.
+ *
+ * הפריט מצויר בקנה מידה אחיד `min(לאורך, לרוחב)`. כל עוד ציר האורך הוא החסם,
+ * שורה נוספת מצמצמת את גובה התא אבל **לא נוגעת בקנה המידה** — הפריט מצויר
+ * באותה רזולוציה בדיוק. רק כשרוחב הפס הופך לחסם מתחילים לשלם.
+ *
+ *     (גובה·ROW_FILL)/שורות / רוחב_הפס  ≥  (רוחב·FILL)/אורך
+ *
+ * נמדד ב-RM-0065 (104.4×40, לאורך): שורה אחת ושתיים נותנות **8.83 px/mm שתיהן**,
+ * ורק השלישית יורדת ל-6.40.
+ */
+function freeRows(lengthMm: number, widthMm: number, canvas: Canvas): number {
+  const alongLength = (canvas.widthPx * COL_FILL) / lengthMm;
+  return Math.max(1, Math.floor((canvas.heightPx * ROW_FILL) / (widthMm * alongLength)));
+}
+
+/**
  * מתכנן הרצה: כמה פריטים בתמונה, בקריאה אחת.
  *
  * היחס קובע את **צורת התא** ולא את מספר השורות: שורות לעמודה הן `rowsPerColumn`,
  * וכל עמודה נוספת מכפילה איתן את השורות כדי לשמור על אותה צורה. פריט ארוך מגיע
  * לחלופות דרך שורות ונשאר בעמודה אחת; פריט קצר, שהשורות לבדן מחזירות לו חלופה
  * אחת, מקבל עמודה שנייה — אותה קריאה, אותו יחס, ארבע חלופות במקום אחת.
+ *
+ * **מתחת למחובר (יחס < 5.3) אין תשובה נכונה, ולכן לוקחים את מה שבחינם.**
+ * `rowsPerColumn` מחזיר שם מספר שלילי — לא "שורה אחת" אלא "פחות משורה אחת",
+ * כלומר בקשה שאי אפשר לנסח. עד כה ה-`max(1, …)` הפך את זה ל-1, וזה היה שומר
+ * מפני מספר לא חוקי ולא הכרעה: פריט רחב קיבל חלופה אחת בזמן שתקציב הפיקסלים
+ * הרשה יותר **באותה רזולוציה בדיוק**. עכשיו הוא מקבל את השורות שאינן עולות
+ * דבר. השורה שכן תעלה — לא נלקחת.
  */
 export function planRender({ ratio, widthMm, minHoleMm, canvas = LANDSCAPE }: PlanInput): RenderPlan {
   const lengthMm = ratio * widthMm;
   const rowCap = maxRows(widthMm, minHoleMm, canvas);
   const colCap = maxCols(lengthMm, minHoleMm, canvas);
-  const perColumn = Math.min(Math.max(1, rowsPerColumn(ratio, canvas)), rowCap);
+  const wanted = rowsPerColumn(ratio, canvas);
+  const perColumn = Math.min(
+    wanted >= 1 ? wanted : freeRows(lengthMm, widthMm, canvas),
+    rowCap,
+    // התקרה חלה גם על שורות. עד כה היא נאכפה **רק** בלולאת העמודות, ולכן פס
+    // צר וארוך פרץ אותה דרך השורות בלבד: 125×10 נתן 6 לרוחב (במקרה בדיוק על
+    // הגבול) ו-12 לאורך. שתים־עשרה רצועות מלאות־רוחב אחת מתחת לשנייה אינן
+    // בחירה אלא רשימה, וזו בדיוק הסיבה שהתקרה נכתבה.
+    MAX_CANDIDATES,
+  );
 
   let cols = 1;
   while (
