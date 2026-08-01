@@ -1,5 +1,11 @@
 import { ApiError } from "@/lib/api";
-import { type DesignRow, type VersionRow, type VersionCandidate, insertVersion } from "@/lib/db/designs";
+import {
+  type DesignRow,
+  type VersionRow,
+  type VersionCandidate,
+  insertVersion,
+  replaceVersion,
+} from "@/lib/db/designs";
 import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
@@ -170,24 +176,43 @@ export async function ingestCutouts(opts: {
   candidates?: VersionCandidate[] | null;
   generationId?: string | null;
   pickedIndex?: number | null;
+  /**
+   * דריסת שורה קיימת במקום הוספה. משמש **רק** מעבר בין ההצעות של אותה הרצה,
+   * שהוא ניווט ולא שינוי — ראו `lib/versionRole`. כל שאר המסלולים מוסיפים.
+   */
+  replaceVersionId?: string | null;
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
   const framed = frameCutouts(design, cutoutsSvg);
   const { lengthMm, widthMm, framedSvg, report, normalized } = framed;
 
-  const version = await insertVersion({
-    design_id: design.id,
-    svg: normalized?.canonicalSvg ?? framedSvg,
-    source: "generate",
-    user_prompt: opts.userPrompt,
-    annotation_png_path: null,
-    // שומרים נתיב הדמיה + מדדי vectorizer בתוך הדוח (jsonb) — בלי מיגרציה. משמש ליומן הבק־אופיס.
-    validation_report: { ...report, renderPngPath: opts.renderPngPath, vectorizer: opts.metrics ?? null },
-    validation_status: report.status,
-    ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
-    ...(opts.generationId !== undefined ? { generation_id: opts.generationId } : {}),
-    ...(opts.pickedIndex !== undefined ? { picked_index: opts.pickedIndex } : {}),
-  });
+  const svg = normalized?.canonicalSvg ?? framedSvg;
+  // שומרים נתיב הדמיה + מדדי vectorizer בתוך הדוח (jsonb) — בלי מיגרציה. משמש ליומן הבק־אופיס.
+  const validation_report = {
+    ...report,
+    renderPngPath: opts.renderPngPath,
+    vectorizer: opts.metrics ?? null,
+  };
+
+  const version = opts.replaceVersionId
+    ? await replaceVersion(opts.replaceVersionId, {
+        svg,
+        validation_report,
+        validation_status: report.status,
+        ...(opts.pickedIndex !== undefined ? { picked_index: opts.pickedIndex } : {}),
+      })
+    : await insertVersion({
+        design_id: design.id,
+        svg,
+        source: "generate",
+        user_prompt: opts.userPrompt,
+        annotation_png_path: null,
+        validation_report,
+        validation_status: report.status,
+        ...(opts.candidates !== undefined ? { candidates: opts.candidates } : {}),
+        ...(opts.generationId !== undefined ? { generation_id: opts.generationId } : {}),
+        ...(opts.pickedIndex !== undefined ? { picked_index: opts.pickedIndex } : {}),
+      });
 
   const geometry = normalized
     ? {
