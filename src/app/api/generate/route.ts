@@ -206,16 +206,17 @@ function toJobError(err: unknown) {
  * אזהרה ולא כשל: הפריט ניתן לייצור, השאלה היא באיזו רזרבה — וזו שאלה שנפתרת
  * בבדיקה, לא בסירוב.
  */
-function letteringBridgeCheck(narrowBridgeMm: number | null, minBridgeMm: number): CheckResult[] {
-  if (narrowBridgeMm === null) return [];
+function letteringBridgeCheck(tightCounterMm: number | null): CheckResult[] {
+  if (tightCounterMm === null) return [];
+  const min = FAB.minLetterBridgeMm;
   return [{
     check: "LETTERING_BRIDGE",
     status: "warn",
-    message: `${he.checks.LETTERING_BRIDGE} (${narrowBridgeMm} מ״מ מול ${minBridgeMm} מ״מ)`,
+    message: `${he.checks.LETTERING_BRIDGE} (גשר ${min} מ״מ בחלל של ${tightCounterMm} מ״מ)`,
     details:
-      `Lettering bridge narrowed to ${narrowBridgeMm}mm, below the ${minBridgeMm}mm minimum, ` +
-      "because the letter counter is too small to hold a full-width bridge. " +
-      "Manufacturable, but the reserve is reduced — needs an engineering check.",
+      `A letter counter of ${tightCounterMm}mm cannot hold even the ${min}mm letter-bridge ` +
+      "minimum, so the bridge stays at the minimum and eats into the letter. Manufacturable; " +
+      "what needs confirming is whether the lettering still looks right.",
     locations: [],
   }];
 }
@@ -468,7 +469,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הגשרים של הכיתוב נחתכים מהפונט אצלנו, לפני שהמודל צייר משהו, ולכן הם
       // אינם נגזרים מה-SVG שהוולידציה בודקת. בלי זה הלקוחה מקבלת פריט שדורש
       // בדיקה בלי לדעת על כך.
-      extraChecks: letteringBridgeCheck(lettering?.narrowBridgeMm ?? null, fab.minBridgeCut),
+      extraChecks: letteringBridgeCheck(lettering?.tightCounterMm ?? null),
       // candidates ממוין כך שהזוכה ראשון, ו-offered שומר על הסדר — הגרסה
       // שנשמרת כאן היא ההצעה הראשונה, אלא אם היא נפלה בוולידציה ואינה מוצעת.
       pickedIndex: offeredRows.length > 0 && offered[0] === candidates[0] ? 0 : null,

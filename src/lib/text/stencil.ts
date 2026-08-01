@@ -152,17 +152,23 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
  */
 const BRIDGE_COUNTER_RATIO = 0.4;
 
-/** גשר שיצא צר מהמינימום לייצור — מה שנחתך שם דק מכפי שההבטחה מכסה. */
-export interface NarrowBridge {
+/**
+ * גשר שהקונטור שלו קטן מכדי להכיל אפילו את המינימום לאות: הוא נשאר על
+ * המינימום ובולט לתוך האות. זה מה שהלקוחה מתבקשת לאשר ויזואלית.
+ */
+export interface TightBridge {
+  /** הרוחב שנחתך בפועל — המינימום לאות. */
   widthMm: number;
+  /** גובה הקונטור שהוא נכנס אליו. היחס ביניהם הוא גודל הפגיעה. */
+  counterMm: number;
   x: number;
   y: number;
 }
 
 export interface StencilResult {
   polygons: MultiPolygon;
-  /** ריק = כל הגשרים ברוחב שהייצור מבטיח. */
-  narrowBridges: NarrowBridge[];
+  /** ריק = לכל קונטור היה מקום לגשר בלי לבלוט לתוך האות. */
+  tightBridges: TightBridge[];
 }
 
 /** טקסט → פוליגונים בקואורדינטות מ"מ, כולל גישור קונטורים פנימיים.
@@ -175,8 +181,9 @@ export async function textToPolygons(
   align: "start" | "middle" | "end",
   bridgeWidthMm: number,
   style: TextStyle = {},
+  minWidthMm = 0,
 ): Promise<MultiPolygon> {
-  return (await textToStencil(text, x, y, heightMm, align, bridgeWidthMm, style)).polygons;
+  return (await textToStencil(text, x, y, heightMm, align, bridgeWidthMm, style, minWidthMm)).polygons;
 }
 
 /** אותו חיתוך, עם דיווח על גשרים שיצאו צרים מהמינימום לייצור. */
@@ -188,8 +195,10 @@ export async function textToStencil(
   align: "start" | "middle" | "end",
   bridgeWidthMm: number,
   style: TextStyle = {},
+  /** הרצפה לגשר של אות (FAB.minLetterBridgeMm). 0 = בלי רצפה. */
+  minWidthMm = 0,
 ): Promise<StencilResult> {
-  const narrowBridges: NarrowBridge[] = [];
+  const tightBridges: TightBridge[] = [];
   const font = await loadFace(style.fontId ?? DEFAULT_FONT);
   const visual = visualOrder(text);
   const fontSize = sizeFor(font, heightMm);
@@ -203,13 +212,13 @@ export async function textToStencil(
   else if (align === "end") startX = x - advance;
 
   const d = path.toPathData(3);
-  if (!d) return { polygons: [], narrowBridges };
+  if (!d) return { polygons: [], tightBridges };
 
   const subs = samplePathToRings(d);
   // גליפים: טבעות בכיוון הדומיננטי = מילוי, הפוכות = counters
   const rings = subs.map((s) => s.ring.map(([px, py]) => [px + startX, py] as [number, number]))
     .filter((r) => r.length >= 3);
-  if (rings.length === 0) return { polygons: [], narrowBridges };
+  if (rings.length === 0) return { polygons: [], tightBridges };
   const areas = rings.map(ringArea);
   const total = areas.reduce((s, a) => s + a, 0);
   const dominant = Math.sign(total) || 1;
@@ -222,7 +231,7 @@ export async function textToStencil(
       solidBoxes.push(bboxOf(rings[i]));
     } else holes.push({ ring: rings[i], bbox: bboxOf(rings[i]) });
   }
-  if (solids.length === 0) return { polygons: [], narrowBridges };
+  if (solids.length === 0) return { polygons: [], tightBridges };
   let glyphs = difference(
     union(...solids),
     holes.length ? union(...holes.map((h) => [[[...h.ring].reverse()]] as MultiPolygon)) : [],
@@ -260,9 +269,13 @@ export async function textToStencil(
     // (הוא מוחזק, לא נושא עומס) ומשאיר את האות קריאה. מה שהוא **כן** עולה הוא
     // שגשר מתחת ל-minBridgeCut דק מכפי שהייצור מבטיח — וזה מדווח החוצה
     // כ-narrowBridges במקום להיבלע כאן.
-    const width = Math.min(bridgeWidthMm, height * BRIDGE_COUNTER_RATIO);
-    if (width < bridgeWidthMm) {
-      narrowBridges.push({ widthMm: width, x: (hx0 + hx1) / 2, y: cy });
+    const ideal = height * BRIDGE_COUNTER_RATIO;
+    const width = Math.min(bridgeWidthMm, Math.max(ideal, minWidthMm));
+    // הרצפה נגעה: הקונטור קטן מכדי להכיל גשר גם במינימום לאות, ולכן הגשר
+    // בולט לתוכו. זה לא עניין של ייצור אלא של איך האות נראית — ולכן זה מדווח
+    // ללקוחה לאישור ולא נבלע כאן.
+    if (ideal < minWidthMm && width > ideal) {
+      tightBridges.push({ widthMm: width, counterMm: height, x: (hx0 + hx1) / 2, y: cy });
     }
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
     const left = hx0 - outer[0] <= outer[2] - hx1;
@@ -284,7 +297,7 @@ export async function textToStencil(
 
   return {
     polygons: glyphs.filter((p) => multiPolygonArea([p]) > 0.01),
-    narrowBridges,
+    tightBridges,
   };
 }
 
