@@ -33,6 +33,8 @@ export type RunDebug = DebugMeta & { images?: Record<string, string> };
 export type StageUrls = {
   /** הקובץ שהמשתמש צירף — הקלט, להבדיל מההדמיה שיצאה ממנו. */
   input?: string | null;
+  /** תמונת הייחוס שנמסרה למודל: הכיתוב שנחתך מהפונט, או העיצוב שנערך. */
+  reference?: string | null;
   render?: string | null; conditioned?: string | null; overlay?: string | null;
   difference?: string | null; rendered?: string | null;
 };
@@ -62,7 +64,10 @@ export type LogItem = {
   designId?: string | null;
   /** `RM-0047` — המספר הסידורי של העיצוב, הרפרנס שתלונה מגיעה איתו. */
   ref?: string | null;
-  stages: { conditioned: string | null; overlay: string | null; difference: string | null; rendered: string | null };
+  stages: {
+    reference: string | null; conditioned: string | null;
+    overlay: string | null; difference: string | null; rendered: string | null;
+  };
   /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
   hasSvg: boolean;
   metrics: { iou?: number; holes?: number; meanDeviationMm?: number; maxDeviationMm?: number } | null;
@@ -577,6 +582,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           <Diagnostics
             images={{
               input: it.inputImageUrl ?? null,
+              reference: it.stages.reference,
               render: it.renderUrl,
               conditioned: it.stages.conditioned,
               overlay: it.stages.overlay,

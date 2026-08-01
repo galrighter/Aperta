@@ -115,6 +115,8 @@ export async function GET(req: Request) {
         /** `RM-0047` — הרפרנס שתלונה מגיעה איתו. ה-uuid אינו רפרנס אנושי. */
         ref: (r.design_id && designCode(serials.get(r.design_id) ?? null)) || null,
         stages: {
+          /** תמונת הייחוס כפי שנמסרה למודל — לא שחזור שלה. */
+          reference: stages.reference ? image("reference") : null,
           conditioned: stages.conditioned ? image("conditioned") : null,
           overlay: stages.overlay ? image("overlay") : null,
           difference: stages.difference ? image("difference") : null,

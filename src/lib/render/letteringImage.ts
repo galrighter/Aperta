@@ -1,9 +1,9 @@
 import { BASE_CANVAS } from "./baseImage";
-import { textToPolygons, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
+import { textToStencil, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
 import { stylesForBrief, type LetteringStyle } from "@/lib/text/style";
 import { offset, multiPolygonArea } from "@/lib/geometry/poly";
 import { ringToPathD } from "@/lib/geometry/paths";
-import { resolveFab } from "@/lib/fabrication.config";
+import { FAB, resolveFab } from "@/lib/fabrication.config";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 // תמונת הייחוס של הכיתוב.
@@ -57,6 +57,9 @@ export interface LetteringRow {
   letterHeightMm: number;
   /** רוחב הכיתוב במ"מ. */
   textWidthMm: number;
+  /** הנתח (0..1) שהגשר תופס מהחלל הסגור, כשהמינימום לאות הוא שקבע אותו.
+   *  `null` = לכל האותיות בשורה היה מקום. זה מה שמצדיק את בקשת האישור. */
+  tightShare?: number | null;
   /** האותיות עצמן, בקואורדינטות הפס. גאומטריה ולא דיווח — **לא** לכתוב
    *  אותן ליומן; ראה מה שנכתב שם ב-route.ts. */
   glyphs: MultiPolygon;
@@ -66,6 +69,12 @@ export interface LetteringReference {
   svg: string;
   /** מה שנחתך בכל שורה — נשמר ליומן כדי שאפשר יהיה להסביר תוצאה. */
   rows: LetteringRow[];
+  /**
+   * הנתח הגדול ביותר שגשר תופס מחלל סגור, מכל השורות שהוצעו. `null` = הכיתוב
+   * כולו נחתך בלי לפגוע באות. הקורא אחראי להעביר את זה ללקוחה לאישור — ראה
+   * `LETTERING_BRIDGE` ב-/api/generate.
+   */
+  tightShare: number | null;
 }
 
 export interface LetteringDims {
@@ -138,8 +147,16 @@ async function letteringPolygons(
 
   for (const size of sizes) {
     if ((probe.inkHeightMm * size) / PROBE_MM < MIN_LETTER_MM) continue;
-    const raw = await textToPolygons(text, 0, 0, size, "start", fab.minBridgeCut, style);
+    const cut = await textToStencil(
+      text, 0, 0, size, "start", fab.minBridgeCut, style, FAB.minLetterBridgeMm,
+    );
+    const raw = cut.polygons;
     if (raw.length === 0 || !survivesCutting(raw, fab.minHole)) continue;
+    // הנתח הגדול ביותר שגשר תופס מחלל סגור, כשהרצפה היא שקבעה אותו. זה המספר
+    // שאומר כמה האות נפגעה — רוחב לבדו לא אומר כלום בלי החלל שהוא נכנס אליו.
+    const tightShare = cut.tightBridges.length
+      ? Math.max(...cut.tightBridges.map((b) => b.widthMm / b.counterMm))
+      : null;
 
     // מירכוז נמדד ולא מחושב: הגישור חותך מהאותיות, ותיבת המידה שאחריו היא
     // הצורה שבאמת נחתכת. מירכוז לפי מטריקות הפונט היה מזיז את הכיתוב ממרכז הפס.
@@ -151,6 +168,7 @@ async function letteringPolygons(
         fontId: style.fontId,
         letterHeightMm: r2(y1 - y0),
         textWidthMm: r2(x1 - x0),
+        tightShare: tightShare === null ? null : Math.round(tightShare * 100) / 100,
         glyphs: mp,
       },
     };
@@ -159,9 +177,16 @@ async function letteringPolygons(
 }
 
 /**
- * תמונת הייחוס: `rows` פסים שחורים על קנבס לבן, בכל אחד אותו כיתוב בפנים
- * אחרות. הקופסה חותכת את התמונה לאותן שורות (render/panels.ts), ולכן כל שורה
- * חוזרת ללקוחה כחלופה נפרדת — מגוון טיפוגרפי בקריאה אחת למודל.
+ * תמונת הייחוס: פס שחור לכל תא ברשת שהתכנון ביקש, בכל אחד אותו כיתוב בפנים
+ * אחרות. הקופסה חותכת את התמונה לאותם תאים (render/panels.ts), ולכן כל תא
+ * חוזר ללקוחה כחלופה נפרדת — מגוון טיפוגרפי בקריאה אחת למודל.
+ *
+ * הרשת כאן היא **אותה רשת** שהפרומפט מבקש מהמודל. כשהיא לא הייתה — הייחוס
+ * הראה שתי שורות בזמן שהפרומפט ביקש ארבעה פריטים — הפריסה שנמסרה סתרה את
+ * ההוראה, ולשני פריטים לא היה מה להעתיק.
+ *
+ * מספר הפנים מוגבל בפועל בכמה מהן נכנסות לפס הזה: אם נכנסות פחות מכפי שיש
+ * תאים, הן חוזרות במחזוריות — תא בלי כיתוב הוא פריט שהמודל ימציא לו אותיות.
  *
  * `null` = הטקסט לא נכנס לפס בשום פנים. הקורא אחראי להגיד את זה ללקוחה.
  */
@@ -171,30 +196,35 @@ export async function buildLetteringRenderSvg(
   productType: "bracelet" | "ring",
   rows: number,
   brief: string,
+  cols = 1,
 ): Promise<LetteringReference | null> {
   const content = text.trim();
   if (!content) return null;
 
   // הסדר הוא סדר ההעדפה: מה שהבריף ביקש, ואחריו משלימים מרוחקים ממנו באופי.
-  // כולן נבדקות ולא רק ה-`rows` הראשונות, כי פנים עשויות ליפול על הפס הזה —
-  // כיתוב ארוך על טבעת, למשל, נכנס בפנים צרות ולא ברחבות. עדיף לתת ללקוחה
-  // טיפוגרפיה שנייה בבחירה מאשר להגיד לה שהטקסט לא נכנס כשהוא כן.
+  // כולן נבדקות ולא רק הראשונות, כי פנים עשויות ליפול על הפס הזה — כיתוב ארוך
+  // על טבעת, למשל, נכנס בפנים צרות ולא ברחבות. עדיף לתת ללקוחה טיפוגרפיה
+  // שנייה בבחירה מאשר להגיד לה שהטקסט לא נכנס כשהוא כן.
+  const cells = Math.max(1, rows * cols);
   const ordered = stylesForBrief(brief);
   const drawnAll = await Promise.all(
     ordered.map((style) => letteringPolygons(content, dims, productType, style)),
   );
-  const cuts = drawnAll.filter((d): d is NonNullable<typeof d> => d !== null).slice(0, rows);
-  if (cuts.length === 0) return null;
+  const fitting = drawnAll.filter((d): d is NonNullable<typeof d> => d !== null);
+  if (fitting.length === 0) return null;
+  // תא לכל פריט שהמודל יצייר. פחות פנים מתאימות מתאים — חוזרים עליהן.
+  const cuts = Array.from({ length: cells }, (_, i) => fitting[i % fitting.length]);
 
   const { widthPx: cw, heightPx: ch } = BASE_CANVAS;
-  const bandH = ch / cuts.length;
-  const scale = Math.min((cw * FILL) / dims.lengthMm, (bandH * ROW_FILL) / dims.widthMm);
+  const cellW = cw / cols;
+  const cellH = ch / rows;
+  const scale = Math.min((cellW * FILL) / dims.lengthMm, (cellH * ROW_FILL) / dims.widthMm);
   const l = r2(dims.lengthMm);
   const w = r2(dims.widthMm);
-  const x = (cw - dims.lengthMm * scale) / 2;
 
   const bands = cuts.map((cut, i) => {
-    const y = i * bandH + (bandH - dims.widthMm * scale) / 2;
+    const x = (i % cols) * cellW + (cellW - dims.lengthMm * scale) / 2;
+    const y = Math.floor(i / cols) * cellH + (cellH - dims.widthMm * scale) / 2;
     const paths = cut.mp
       .map((poly) => `<path d="${poly.map((r) => ringToPathD(r)).join("")}" fill="#000000"/>`)
       .join("");
@@ -212,5 +242,11 @@ export async function buildLetteringRenderSvg(
       `<svg xmlns="http://www.w3.org/2000/svg" width="${cw}" height="${ch}" viewBox="0 0 ${cw} ${ch}">` +
       `<rect width="${cw}" height="${ch}" fill="#ffffff"/>${bands.join("")}</svg>`,
     rows: cuts.map((c) => c.row),
+    tightShare: (() => {
+      const tight = cuts
+        .map((c) => c.row.tightShare)
+        .filter((v): v is number => typeof v === "number");
+      return tight.length ? Math.max(...tight) : null;
+    })(),
   };
 }

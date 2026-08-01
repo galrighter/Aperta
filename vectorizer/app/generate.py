@@ -106,7 +106,12 @@ def _reference(job: GenerateJob) -> Optional[tuple[bytes, str]]:
 
 async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurrency: int = 4) -> dict:
     model = imagegen.resolve_model(job.model)
-    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, _reference(job), model)
+    # Held so it can be stored: this is the picture the model was actually shown
+    # — the lettering cut from the font, or the design being edited — and it is
+    # rasterised here, so nothing upstream has the bytes. Rebuilding it from the
+    # same inputs is not the same claim as keeping what was sent.
+    reference = _reference(job)
+    renders = await imagegen.render_many(openai_key, job.prompt, job.calls, reference, model)
 
     # One panel per piece of every render. A render holding a single piece
     # passes through untouched, so the common case costs nothing.
@@ -160,6 +165,8 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     labelled: list[tuple[str, str, bytes]] = [
         (f"render:{i}", url, data) for i, (url, data) in enumerate(zip(artifacts.renders, renders))
     ]
+    if reference is not None and "reference" in artifacts.stages:
+        labelled.append(("stage:reference", artifacts.stages["reference"], reference[0]))
     if selected is not None:
         images = _stage_images(selected)
         labelled += [

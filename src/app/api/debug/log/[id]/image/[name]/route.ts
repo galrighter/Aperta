@@ -14,7 +14,7 @@ import { signedUrl } from "@/lib/db/storage";
 
 export const maxDuration = 30;
 
-const NAMES = ["render", "input", "conditioned", "overlay", "difference", "rendered"] as const;
+const NAMES = ["render", "input", "reference", "conditioned", "overlay", "difference", "rendered"] as const;
 type ImageName = (typeof NAMES)[number];
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string; name: string }> }) {

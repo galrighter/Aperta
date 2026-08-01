@@ -378,3 +378,32 @@ def test_a_model_the_box_does_not_know_is_refused():
 
     resp = TestClient(main.app).post("/api/generate", json={"prompt": "p", "model": "gpt-9"})
     assert resp.status_code == 400
+
+
+def test_the_reference_the_model_saw_is_stored(wired, monkeypatch):
+    """Rebuilding it later from the same inputs is not the same claim as keeping it."""
+    monkeypatch.setattr(generate.renderer, "render_svg_to_png", lambda *a: b"\x89PNG-current-piece")
+    artifacts = generate.Artifacts(stages={"reference": "https://x/reference"})
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1, base_svg=BASE_SVG), artifacts)
+
+    assert "https://x/reference" in wired["uploads"]
+    assert out["uploaded_stages"] == ["reference"]
+    # the bytes stored are the bytes handed to the model, not a second rendering
+    i = wired["uploads"].index("https://x/reference")
+    assert wired["upload_bytes"][i] == len(b"\x89PNG-current-piece")
+
+
+def test_an_inspiration_image_is_stored_as_the_reference_too(wired):
+    artifacts = generate.Artifacts(stages={"reference": "https://x/reference"})
+    out = run(
+        generate.GenerateJob(prompt="p", calls=1, rows=1, inspiration=(b"moodboard", "image/png")),
+        artifacts,
+    )
+    assert out["uploaded_stages"] == ["reference"]
+
+
+def test_a_run_without_a_reference_stores_nothing_for_it(wired):
+    artifacts = generate.Artifacts(stages={"reference": "https://x/reference"})
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1), artifacts)
+    assert wired["uploads"] == []
+    assert out["uploaded_stages"] == []

@@ -23,6 +23,8 @@ import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
 import { designReadyMail } from "@/lib/mailTemplates";
 import { SITE } from "@/lib/site.config";
 import type { DesignRow } from "@/lib/db/designs";
+import type { CheckResult } from "@/lib/geometry/types";
+import { he } from "@/i18n/he";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
 // קונדישנינג + vectorizer → cutouts SVG → צינור הוולידציה הקיים → גרסה.
@@ -193,6 +195,33 @@ function toJobError(err: unknown) {
   return { code: "internal", message: err instanceof Error ? err.message : String(err) };
 }
 
+/**
+ * ההתראה על גשר צר.
+ *
+ * הגשר שמחזיק את החלל הסגור של אות נגזר מגובה החלל (lib/text/stencil.ts), כי
+ * גשר ברוחב המינימום לייצור בולע חלל של `e` בגובה 6 מ"מ במקום לגשר אותו. מה
+ * שנחתך שם דק מכפי שהמינימום מבטיח, ולכן זו לא החלטה שאפשר לקבל בשקט בשם
+ * הלקוחה: היא רואה שהפריט דורש בדיקה הנדסית, עם המספרים.
+ *
+ * אזהרה ולא כשל: הפריט ניתן לייצור, השאלה היא באיזו רזרבה — וזו שאלה שנפתרת
+ * בבדיקה, לא בסירוב.
+ */
+function letteringBridgeCheck(tightShare: number | null): CheckResult[] {
+  if (tightShare === null) return [];
+  const pct = Math.round(tightShare * 100);
+  const min = FAB.minLetterBridgeMm;
+  return [{
+    check: "LETTERING_BRIDGE",
+    status: "warn",
+    message: `${he.checks.LETTERING_BRIDGE} (${pct}% מהחלל)`,
+    details:
+      `A letter counter is too small to hold a proportional bridge, so the bridge stays at the ` +
+      `${min}mm letter minimum and takes ${pct}% of the counter. Manufacturable; what needs ` +
+      "confirming is whether the lettering still looks right.",
+    locations: [],
+  }];
+}
+
 type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
 
 /** העבודה עצמה. זורק ApiError/LlmError; הקורא כותב את התוצאה ל-job. */
@@ -239,7 +268,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // רפרנס ושורות דוחפים לאותו יחס, לא זה נגד זה, ואין סיבה לוותר על אחד מהם.
     // עד 30.7 עריכה קיבלה שורה אחת בארבע קריאות — נימוק שלא נמדד מעולם, ופי
     // ארבעה בעלות מול הצינור החדש (~$0.006 להרצה).
-    const minHoleMm = resolveFab(dims.thicknessMm, design.product_type).minHole;
+    const fab = resolveFab(dims.thicknessMm, design.product_type);
+    const minHoleMm = fab.minHole;
     const editSvg = buildBaseRenderSvg(body.currentSvg);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
@@ -260,7 +290,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const lettering = editSvg || !body.text?.trim()
       ? null
       : await buildLetteringRenderSvg(
-          body.text, dims, design.product_type, plan.rows, body.userPrompt,
+          body.text, dims, design.product_type, plan.rows, body.userPrompt, plan.cols,
         );
     if (!editSvg && body.text?.trim() && !lettering) {
       throw new ApiError(
@@ -354,6 +384,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       model: lettering ? LETTERING_MODEL : undefined,
       renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
       stagePaths: {
+        // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
+        reference: `runs/${runId}/reference.png`,
         conditioned: `runs/${runId}/conditioned.png`,
         overlay: `runs/${runId}/overlay.png`,
         difference: `runs/${runId}/difference.png`,
@@ -435,6 +467,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       metrics,
       candidates: offeredRows,
       generationId: runId,
+      // הגשרים של הכיתוב נחתכים מהפונט אצלנו, לפני שהמודל צייר משהו, ולכן הם
+      // אינם נגזרים מה-SVG שהוולידציה בודקת. בלי זה הלקוחה מקבלת פריט שדורש
+      // בדיקה בלי לדעת על כך.
+      extraChecks: letteringBridgeCheck(lettering?.tightShare ?? null),
       // candidates ממוין כך שהזוכה ראשון, ו-offered שומר על הסדר — הגרסה
       // שנשמרת כאן היא ההצעה הראשונה, אלא אם היא נפלה בוולידציה ואינה מוצעת.
       pickedIndex: offeredRows.length > 0 && offered[0] === candidates[0] ? 0 : null,

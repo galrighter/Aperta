@@ -93,7 +93,7 @@ export interface RenderJobInput {
   stagePaths: RunStagePaths;
 }
 
-const STAGE_KEYS = ["conditioned", "overlay", "difference", "rendered"] as const;
+const STAGE_KEYS = ["reference", "conditioned", "overlay", "difference", "rendered"] as const;
 
 export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   // כתובת חתומה לכל נתיב. שמונה חתימות בסך הכול — הרבה מתחת לתקרת ה-subrequests,

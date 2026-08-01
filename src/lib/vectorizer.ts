@@ -9,7 +9,24 @@ import {
 import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
-import type { ValidationReport } from "@/lib/geometry/types";
+import type { CheckResult, CheckStatus, ValidationReport } from "@/lib/geometry/types";
+
+/** דירוג החומרה, כדי שממצא שנוסף לא יוכל להוריד את סטטוס הדוח. */
+const RANK: Record<CheckStatus, number> = { pass: 0, warn: 1, fail: 2 };
+
+/**
+ * מיזוג ממצאים שלא נגזרו מה-SVG לתוך הדוח שלו.
+ *
+ * הסטטוס הכולל נלקח מהחמור מבין השניים: אזהרה על הכיתוב לא הופכת דוח שנכשל
+ * לעובר, ודוח עובר עם אזהרה כזו הוא "עובר עם הערה" — וזה מה שהלקוחה רואה.
+ */
+function withExtraChecks(report: ValidationReport, extra?: CheckResult[] | null): ValidationReport {
+  if (!extra?.length) return report;
+  const status = [report.status, ...extra.map((c) => c.status)].reduce((a, b) =>
+    RANK[a] >= RANK[b] ? a : b,
+  );
+  return { ...report, status, checks: [...report.checks, ...extra] };
+}
 
 // לקוח לשירות ה-vectorizer (רץ על Hetzner). מקבל תמונת רנדר ומחזיר cutouts SVG
 // נקי ומוחלק. משותף ל-/api/vectorize (העלאה ידנית) ול-/api/generate (מסלול ה-AI).
@@ -177,6 +194,12 @@ export async function ingestCutouts(opts: {
   generationId?: string | null;
   pickedIndex?: number | null;
   /**
+   * ממצאים שנקבעו לפני שהגאומטריה חזרה — כרגע הגשרים של הכיתוב, שנחתכים
+   * מהפונט אצלנו ולכן אינם נגזרים מה-SVG שהוולידציה בודקת. הם נכנסים לאותו
+   * דוח כדי שהלקוחה תראה אותם באותו מקום שבה היא רואה כל ממצא אחר.
+   */
+  extraChecks?: CheckResult[] | null;
+  /**
    * דריסת שורה קיימת במקום הוספה. משמש **רק** מעבר בין ההצעות של אותה הרצה,
    * שהוא ניווט ולא שינוי — ראו `lib/versionRole`. כל שאר המסלולים מוסיפים.
    */
@@ -184,7 +207,8 @@ export async function ingestCutouts(opts: {
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
   const framed = frameCutouts(design, cutoutsSvg);
-  const { lengthMm, widthMm, framedSvg, report, normalized } = framed;
+  const { lengthMm, widthMm, framedSvg, normalized } = framed;
+  const report = withExtraChecks(framed.report, opts.extraChecks);
 
   const svg = normalized?.canonicalSvg ?? framedSvg;
   // שומרים נתיב הדמיה + מדדי vectorizer בתוך הדוח (jsonb) — בלי מיגרציה. משמש ליומן הבק־אופיס.
