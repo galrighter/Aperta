@@ -80,3 +80,38 @@ describe("orphan jobs in the log", () => {
     expect(orphanJobs([recent], [], { now: NOW, before: at(60_000) })).toEqual([]);
   });
 });
+
+// היומן הציג "היצירה הסתיימה אבל כתיבת ההרצה ליומן נכשלה" על ארבע יצירות
+// שהצליחו ונרשמו כשורה. הסיבה לא הייתה בנתונים אלא בהצלבה: היא נעשתה מול
+// העמוד שנטען, ותחת סינון "נכשלו" העמוד לא מכיל את ההרצות שהצליחו.
+describe("existence is asked of the table, not of the page", () => {
+  const job = (id: string, runId: string, at: string): JobListRow => ({
+    id,
+    created_at: at,
+    updated_at: at,
+    design_id: "d1",
+    run_id: runId,
+    status: "done",
+    stage: null,
+    error: null,
+  });
+
+  it("does not invent a failure for a run the filtered page left out", () => {
+    const jobs = [job("j1", "r1", "2026-08-01T10:00:00Z"), job("j2", "r2", "2026-08-01T09:00:00Z")];
+    // העמוד מסונן ל"נכשלו" ולכן ריק לגמרי — שתי ההרצות אושרו.
+    const orphans = orphanJobs(jobs, [], { known: new Set(["r1", "r2"]) });
+    expect(orphans).toEqual([]);
+  });
+
+  it("still reports a job whose run really is missing", () => {
+    const jobs = [job("j1", "r1", "2026-08-01T10:00:00Z"), job("j2", "r2", "2026-08-01T09:00:00Z")];
+    const orphans = orphanJobs(jobs, [], { known: new Set(["r1"]) });
+    expect(orphans.map((o) => o.id)).toEqual(["j2"]);
+    expect(orphans[0].error).toContain("כתיבת ההרצה ליומן נכשלה");
+  });
+
+  it("falls back to the page when the caller has no list of its own", () => {
+    const jobs = [job("j1", "r1", "2026-08-01T10:00:00Z")];
+    expect(orphanJobs(jobs, [])).toHaveLength(1);
+  });
+});

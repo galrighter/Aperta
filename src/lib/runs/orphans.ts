@@ -72,6 +72,14 @@ export interface OrphanWindow {
   before?: string | null;
   /** זה העמוד האחרון: מתחת להרצה הישנה ביותר אין עוד עמוד שיציג את הבקשה. */
   toEnd?: boolean;
+  /**
+   * מזהי ההרצות שקיימות **בטבלה**, ולא רק בעמוד שנטען.
+   *
+   * בלי זה ההצלבה נעשית מול `runs`, וזה נכון רק ביומן לא מסונן: תחת "נכשלו"
+   * העמוד מכיל אך ורק הרצות שלא אושרו, ולכן כל הרצה שהצליחה נראית משם כלא
+   * קיימת — והבקשה שלה מוצגת כ"כתיבת ההרצה ליומן נכשלה" על יצירה שהצליחה.
+   */
+  known?: Set<string>;
 }
 
 /**
@@ -85,11 +93,11 @@ export interface OrphanWindow {
 export function orphanJobs(
   jobs: JobListRow[],
   runs: RunListRow[],
-  { now = Date.now(), before = null, toEnd = true }: OrphanWindow = {},
+  { now = Date.now(), before = null, toEnd = true, known }: OrphanWindow = {},
 ): OrphanItem[] {
   const since = toEnd || !runs.length ? 0 : new Date(runs[runs.length - 1].created_at).getTime();
   const until = before ? new Date(before).getTime() : Infinity;
-  const seen = new Set(runs.map((r) => r.id));
+  const seen = known ?? new Set(runs.map((r) => r.id));
   return jobs
     .filter((j) => !j.run_id || !seen.has(j.run_id))
     .filter((j) => {
