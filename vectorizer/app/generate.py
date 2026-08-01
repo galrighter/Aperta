@@ -25,7 +25,7 @@ import anyio
 
 from . import imagegen, pipeline, uploads
 from .core import renderer
-from .core.panels import split_rows
+from .core.panels import split_panels
 
 STAGE_NAMES = ("conditioned", "overlay", "difference", "rendered")
 
@@ -37,6 +37,9 @@ class GenerateJob:
     prompt: str
     calls: int = 1
     rows: int = 1
+    # Columns in the render. The cut is a grid of rows x cols; 1 is a single
+    # stack, which is what a long piece asks for.
+    cols: int = 1
     height_mm: float = 15.0
     color_key: str = "dark"
     inspiration: Optional[tuple[bytes, str]] = None
@@ -105,11 +108,11 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     model = imagegen.resolve_model(job.model)
     renders = await imagegen.render_many(openai_key, job.prompt, job.calls, _reference(job), model)
 
-    # One panel per row of every render. A single-row render passes through
-    # untouched, so the common case costs nothing.
+    # One panel per piece of every render. A render holding a single piece
+    # passes through untouched, so the common case costs nothing.
     panels: list[bytes] = []
     for data in renders:
-        panels.extend(split_rows(data))
+        panels.extend(split_panels(data, job.cols))
 
     # The trace is CPU-bound; run it off the event loop, a few at a time, so the
     # box stays responsive and its memory stays bounded no matter what forme asks
@@ -168,6 +171,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     payload: dict = {
         "model": model,
         "rows": job.rows,
+        "cols": job.cols,
         "calls": job.calls,
         "panels": len(panels),
         "renders": len(renders),

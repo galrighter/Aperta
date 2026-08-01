@@ -40,7 +40,7 @@ export type StageUrls = {
 /** המאפיינים שקבעו את ההרצה — מה שצריך כדי להסביר אותה או לשחזר אותה. */
 export type RunInputs = {
   productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
-  rows?: number; calls?: number; minHoleMm?: number; colorKey?: string;
+  rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** האם ההרצה יצאה מהעיצוב הקיים (עריכה) או מאפס. */
   editedFromCurrent?: boolean;
@@ -440,7 +440,15 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
   }
   if (inputs.thicknessMm != null) chips.push(`עובי ${round(inputs.thicknessMm)}`);
   if (inputs.minHoleMm != null) chips.push(`פתח מ׳ ${round(inputs.minHoleMm)}`);
-  if (inputs.rows != null) chips.push(`${inputs.rows} שורות`);
+  // רשת ולא שורות בלבד: מספר החלופות הוא המכפלה, וכשהוא 1 זו התשובה לשאלה
+  // "למה חזרה חלופה אחת".
+  if (inputs.rows != null) {
+    chips.push(
+      inputs.cols != null && inputs.cols > 1
+        ? `${inputs.rows}×${inputs.cols} פריטים`
+        : `${inputs.rows} שורות`,
+    );
+  }
   if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
