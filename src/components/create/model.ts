@@ -317,8 +317,11 @@ export function stripLengthMm(s: CreateState): number {
     product === "ring"
       ? computeSizing({ ...common, idMm: circ / Math.PI }).blankLengthMm
       : computeSizing({ ...common, wristMm: circ, fit: FIT_TO_STYLE[s.fit] }).blankLengthMm;
-  const [lo, hi] = FAB.products[product].lengthRangeMm;
-  return Math.round(Math.min(hi, Math.max(lo, raw)) * 10) / 10;
+  // בלי חיתוך לטווח. מה שהיה כאן קודם דחף כל תוצאה לתוך
+  // `lengthRangeMm = [125, 215]`, ובשקט: היקף 11 ס"מ חושב נכון ל-104.4 מ"מ
+  // ונשמר 125.0 — תכשיט לפרק יד של 13 ס"מ, בלי הודעה ובלי דרך לדעת. מידה
+  // היא מדידה של הלקוחה, לא הצעה שאנחנו מתקנים.
+  return Math.round(raw * 10) / 10;
 }
 
 /** האם הוזנה מידה מדויקת (ולכן הכפתור הסטנדרטי מבוטל). */

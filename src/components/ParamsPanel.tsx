@@ -29,12 +29,14 @@ export function ParamsPanel() {
     product: design.product_type,
   } as const;
 
-  const applyDim = (key: "lengthMm" | "widthMm" | "gapMm", value: number, range: readonly [number, number]) => {
-    const clamped = Math.min(range[1], Math.max(range[0], value));
-    if (Number.isNaN(clamped)) return;
+  /** `range` אופציונלי: בלעדיו הערך נכנס כמו שהוא. האורך נמסר בלעדיו — הוא
+   *  נגזר מהמידה, וחיתוך שלו לטווח שינה את המידה בשקט (ראו FAB.lengthHintMm). */
+  const applyDim = (key: "lengthMm" | "widthMm" | "gapMm", value: number, range?: readonly [number, number]) => {
+    const next = range ? Math.min(range[1], Math.max(range[0], value)) : value;
+    if (Number.isNaN(next)) return;
     const current = { lengthMm: Number(design.length_mm), widthMm: Number(design.width_mm), gapMm: Number(design.gap_mm) };
-    if (current[key] === clamped) return;
-    const patch = { [key]: clamped };
+    if (current[key] === next) return;
+    const patch = { [key]: next };
     if (hasVersion) setPending(patch);
     else void s.updateDims(patch);
   };
@@ -42,7 +44,7 @@ export function ParamsPanel() {
   // מידה → אורך פריסה. כל המתמטיקה ב-lib/sizing.ts; כאן רק חיווט.
   const applySize = (opts: { idMm?: number; wristMm?: number; fit?: FitStyle }) => {
     const r = computeSizing({ ...dims, ...opts, fit: opts.fit ?? fit });
-    applyDim("lengthMm", r1(r.blankLengthMm), p.lengthRangeMm);
+    applyDim("lengthMm", r1(r.blankLengthMm));
   };
 
   const derived = sizeFromBlank(Number(design.length_mm), { ...dims, fit });
@@ -144,12 +146,14 @@ export function ParamsPanel() {
               <option value="ring">{he.ring}</option>
             </select>
           </label>
+          {/* האורך מקבל `hintRange` ולא `range`: המספרים מוצגים מתחת לשדה כדי
+              שיהיה לעין עוגן, אבל אינם חוסמים — לא בהקלדה ולא בגזירה ממידה. */}
           <NumField
             label={he.lengthMm}
             hint={he.lengthIsDerived}
             value={Number(design.length_mm)}
-            range={p.lengthRangeMm}
-            onCommit={(v) => applyDim("lengthMm", v, p.lengthRangeMm)}
+            hintRange={p.lengthHintMm}
+            onCommit={(v) => applyDim("lengthMm", v)}
           />
           <NumField
             label={he.widthMm}
@@ -180,15 +184,18 @@ export function ParamsPanel() {
   );
 }
 
+/** `range` חוסם (min/max על השדה); `hintRange` רק מוצג. בדיוק אחד מהם. */
 function NumField(props: {
   label: string;
   value: number;
-  range: readonly [number, number];
+  range?: readonly [number, number];
+  hintRange?: readonly [number, number];
   step?: number;
   hint?: string;
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const shown = props.range ?? props.hintRange;
   return (
     <label className="text-xs text-ink60" title={props.hint}>
       {props.label}
@@ -196,8 +203,8 @@ function NumField(props: {
         type="number"
         inputMode="decimal"
         step={props.step}
-        min={props.range[0]}
-        max={props.range[1]}
+        min={props.range?.[0]}
+        max={props.range?.[1]}
         className="mt-1 w-full rounded-[2px] border border-graphite/20 px-2 py-1.5 text-sm"
         value={draft ?? String(props.value)}
         onChange={(e) => setDraft(e.target.value)}
@@ -210,7 +217,7 @@ function NumField(props: {
         }}
       />
       <span className="text-[10px] text-mist">
-        {props.range[0]}–{props.range[1]}
+        {shown ? `${shown[0]}–${shown[1]}` : ""}
       </span>
     </label>
   );

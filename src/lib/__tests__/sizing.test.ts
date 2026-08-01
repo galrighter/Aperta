@@ -76,8 +76,10 @@ describe("cuff blank length", () => {
     expect(derived.wristMm!).toBeCloseTo(167, 0);
   });
 
-  it("כל טווח פרקי היד נכנס ל-lengthRangeMm", () => {
-    const [lo, hi] = FAB.products.bracelet.lengthRangeMm;
+  it("טווח פרקי היד של מבוגר נופל בתוך lengthHintMm", () => {
+    // `lengthHintMm` הוא תצוגה בלבד ואינו חוסם. הבדיקה כאן היא שהמספרים
+    // שמוצגים בסטודיו עדיין מתארים את הטווח שהם אמורים לתאר — 14–21 ס"מ.
+    const [lo, hi] = FAB.products.bracelet.lengthHintMm;
     for (const wrist of [140, 175, 210]) {
       for (const fit of ["snug", "comfort", "loose"] as const) {
         const L = computeSizing({
@@ -86,6 +88,26 @@ describe("cuff blank length", () => {
         expect(L).toBeGreaterThanOrEqual(lo);
         expect(L).toBeLessThanOrEqual(hi);
       }
+    }
+  });
+
+  it("פרק יד קטן מהטבלה מחזיר את האורך שלו, לא את תחתית הרמז", () => {
+    // RM-0065: היקף 11 ס"מ, פס 40 מ"מ, comfort. עד כה זה נחתך ל-125.
+    const L = computeSizing({
+      product: "bracelet", thicknessMm: T, widthMm: 40,
+      gapChordMm: 25.4, wristMm: 110, fit: "comfort",
+    }).blankLengthMm;
+    expect(L).toBeCloseTo(104.4, 1);
+    expect(L).toBeLessThan(FAB.products.bracelet.lengthHintMm[0]);
+  });
+
+  it("החישוב הפיך גם מתחת לטווח המבוגרים", () => {
+    // בלי החיתוך, מידה→אורך→מידה חייב לחזור לעצמו. עם החיתוך זה נשבר בשקט:
+    // כל היקף מתחת ל-130 מ"מ חזר כ-130.
+    const common = { product: "bracelet" as const, thicknessMm: T, widthMm: 40, gapChordMm: 25.4 };
+    for (const wrist of [90, 110, 125]) {
+      const L = computeSizing({ ...common, wristMm: wrist, fit: "comfort" }).blankLengthMm;
+      expect(sizeFromBlank(L, { ...common, fit: "comfort" }).wristMm!).toBeCloseTo(wrist, 4);
     }
   });
 });
