@@ -35,7 +35,7 @@ import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
-  countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
+  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
   stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
@@ -248,6 +248,17 @@ export default function DesignPage() {
       pendingAction.current = "generate";
       setGateError(null);
       setGateOpen(true);
+      return;
+    }
+
+    // אין ממה לייצר. הכפתור חוסם את זה, אבל לכאן מגיעים גם אחרי כניסה לחשבון
+    // (`startAfterSignIn`) — מסלול שלא עבר בכפתור מעולם. ב-RM-0074 הבקשה הגיעה
+    // לשרת בלי תיאור ובלי תמונה, עם ברירות המחדל בלבד (`imageCount: 0`,
+    // והפרומפט היה שורת המאפיינים לבדה), והלקוחה קיבלה אחרי המתנה עיצוב שלא
+    // ביקשה — והוא נספר במכסה היומית שלה. חזרה למסך הבריף היא התשובה הנכונה:
+    // מה שמילאה אבד, ולפחות היא רואה זאת מיד ולא אחרי דקה.
+    if (!canGenerate(s)) {
+      go("brief");
       return;
     }
 

@@ -7,7 +7,7 @@ import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, PrimaryBtn,
 } from "./ui";
-import { MAX_LETTERING } from "./model";
+import { canGenerate, MAX_LETTERING } from "./model";
 import type {
   CreateState, Density, Feel, ImageRole, Symmetry,
 } from "./model";
@@ -33,7 +33,8 @@ export function BriefScreen({
   const locked = s.imageRole === "ready";
   /** המאפיינים כבויים כשהקובץ מוכן לחיתוך, וגם כשהמודל מחליט לבד. */
   const attrsOff = locked || s.attrsAuto;
-  const canSubmit = Boolean(s.brief.trim() || s.lettering.trim() || s.image || locked);
+  // אותה בדיקה בדיוק שהיצירה עצמה מריצה — ראה `canGenerate`.
+  const canSubmit = canGenerate(s);
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
