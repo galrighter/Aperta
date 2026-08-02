@@ -1,6 +1,5 @@
 import { createServer } from "node:http";
-import { framePreview } from "@/lib/geometry/frameCutouts";
-import type { DesignDims } from "@/lib/geometry/validate";
+import { handleFrame, type FrameRequest } from "./handler";
 
 // מנוע הגיאומטריה כשירות, על הקופסה — לצד ה-vectorizer.
 //
@@ -16,6 +15,9 @@ import type { DesignDims } from "@/lib/geometry/validate";
 //
 // אין לו סודות משלו, אין לו DB, והוא מאזין רק על לוקאלהוסט: nginx חושף אותו
 // תחת /api/frame על אותו vhost של ה-vectorizer, מאחורי אותו bearer token.
+//
+// המסגור עצמו יושב ב-handler.ts, כדי שיהיה אפשר לבדוק אותו בלי לפתוח פורט.
+// הקובץ הזה הוא רק HTTP: קריאת גוף, שער, ותרגום לתשובה.
 
 const PORT = Number(process.env.PORT || 8100);
 const TOKEN = process.env.VECTORIZER_TOKEN || "";
@@ -23,11 +25,6 @@ const TOKEN = process.env.VECTORIZER_TOKEN || "";
 /** הגבול על גוף הבקשה. SVG של מועמד הוא עשרות KB; 8MB הוא תקרה נדיבה שמונעת
  *  מבקשה פגומה לצרוך את הזיכרון שבגללו עברנו לכאן מלכתחילה. */
 const MAX_BODY = 8 * 1024 * 1024;
-
-interface FrameRequest {
-  dims: DesignDims;
-  cutoutsSvg: string;
-}
 
 function readBody(req: import("node:http").IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -70,11 +67,8 @@ const server = createServer(async (req, res) => {
     } catch (e) {
       return send(400, { error: `bad request: ${(e as Error).message}` });
     }
-    if (!body?.cutoutsSvg || typeof body.cutoutsSvg !== "string") return send(400, { error: "cutoutsSvg is required" });
-    if (!body?.dims || typeof body.dims.lengthMm !== "number") return send(400, { error: "dims is required" });
-
-    // גרף הפוליגונים נשאר בתהליך הזה ומת עם הבקשה. חוזר רק מה שהמסך צריך.
-    return send(200, framePreview(body.dims, body.cutoutsSvg));
+    const answer = handleFrame(body);
+    return send(answer.status, answer.body);
   } catch (e) {
     // מסגור שנכשל הוא לא קריסה של השירות: הקורא נופל למסלול הבא.
     return send(500, { error: `frame failed: ${(e as Error).message}` });
