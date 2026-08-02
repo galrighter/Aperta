@@ -29,8 +29,9 @@ import type { MultiPolygon, Polygon, Pt } from "./types";
 /** מה שהוחלט על אי אחד. נשמר ליומן — זו הדרך היחידה לבחון את הכלל לאורך זמן. */
 export interface BridgeRecord {
   /** `letter` = הוחזר גשר שאנחנו חתכנו · `ornament` = חובר לנקודה הקרובה ·
-   *  `dropped` = נמחק, כי אין נקודה קרובה מספיק. */
-  kind: "letter" | "ornament" | "dropped";
+   *  `dropped` = נמחק, כי אין נקודה קרובה מספיק ·
+   *  `thickened` = גשר שהמודל צייר בעצמו, דק מהמינימום, והורחב אליו. */
+  kind: "letter" | "ornament" | "dropped" | "thickened";
   /** מרכז האי, במ"מ. */
   x: number;
   y: number;
@@ -39,6 +40,8 @@ export interface BridgeRecord {
   heightMm: number;
   /** רוחב הגשר שנוצר. חסר במחיקה. */
   bridgeMm?: number;
+  /** הרוחב שהיה **לפני** — רק בעיבוי, שם יש "לפני" למדוד. */
+  fromMm?: number;
   /** אורך הגשר — המרחק שהוא גישר. חסר בחלל של אות (הגשר מוחזר, לא נמדד). */
   spanMm?: number;
   /** האות שהחלל שויך לה, וכמה רחוק הוא נפל ממנה. */
@@ -131,7 +134,7 @@ function onSegment(p: Pt, a: Pt, b: Pt): Pt {
  * ומדידה מקודקוד לקודקוד מחזירה מרחק גדול בהרבה — כלומר אי שאפשר לגשר היה
  * נראה רחוק מדי ונמחק.
  */
-function shortestLink(from: Polygon, to: Polygon): { a: Pt; b: Pt; distMm: number } {
+export function shortestLink(from: Polygon, to: Polygon): { a: Pt; b: Pt; distMm: number } {
   let best = { a: from[0][0], b: to[0][0], distMm: Infinity };
   const consider = (p: Pt, q: Pt, flip: boolean) => {
     const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
@@ -154,7 +157,7 @@ function shortestLink(from: Polygon, to: Polygon): { a: Pt; b: Pt; distMm: numbe
 }
 
 /** מלבן ברוחב `w` סביב הקטע a→b, מוארך מעט לשני הצדדים כדי לוודא חפיפה. */
-function linkRect(a: Pt, b: Pt, w: number): Polygon {
+export function linkRect(a: Pt, b: Pt, w: number): Polygon {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len, uy = dy / len;
@@ -171,7 +174,7 @@ function linkRect(a: Pt, b: Pt, w: number): Polygon {
   ]];
 }
 
-const rebuild = (n: NormalizedDesign, cutUnion: MultiPolygon): NormalizedDesign => ({
+export const rebuildDesign = (n: NormalizedDesign, cutUnion: MultiPolygon): NormalizedDesign => ({
   canonicalSvg:
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n.lengthMm} ${n.widthMm}">` +
     `<g id="cutouts">${cutUnion.map((p) => `<path d="${polygonToPathD(p)}" fill="black"/>`).join("")}</g></svg>`,
@@ -257,5 +260,5 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
     cutUnion = difference(strip, [after[big]]);
   }
 
-  return { design: rebuild(n, cutUnion), records };
+  return { design: rebuildDesign(n, cutUnion), records };
 }

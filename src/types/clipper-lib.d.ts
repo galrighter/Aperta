@@ -35,10 +35,19 @@ declare module "clipper-lib" {
     pftNegative = 3,
   }
 
+  export class PolyNode {
+    Contour(): Path;
+    Childs(): PolyNode[];
+    IsHole(): boolean;
+  }
+  export class PolyTree extends PolyNode {
+    Clear(): void;
+  }
+
   export class ClipperOffset {
     constructor(miterLimit?: number, arcTolerance?: number);
     AddPaths(paths: Paths, joinType: JoinType, endType: EndType): void;
-    Execute(solution: Paths, delta: number): void;
+    Execute(solution: Paths | PolyTree, delta: number): void;
     Clear(): void;
   }
 
