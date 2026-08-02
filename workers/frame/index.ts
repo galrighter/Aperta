@@ -1,4 +1,4 @@
-import { framePreview } from "@/lib/geometry/frameCutouts";
+import { framePreview, type BridgePlan } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 
 // Worker נפרד שכל תפקידו למסגר מועמד אחד.
@@ -21,6 +21,9 @@ import type { DesignDims } from "@/lib/geometry/validate";
 interface FrameRequest {
   dims: DesignDims;
   cutoutsSvg: string;
+  /** הגשרים שנחתכו בכיתוב, כדי שאי שחזר מנותק ייגשר ולא יימחק. אופציונלי:
+   *  הרצה בלי כיתוב לא שולחת אותו, וכל אי מטופל כאי בעיטור. */
+  plan?: BridgePlan;
 }
 
 function bad(message: string, status = 400): Response {
@@ -42,7 +45,7 @@ export default {
 
     try {
       // גרף הפוליגונים נשאר כאן ומת עם הבקשה. מה שחוזר הוא רק מה שהמסך צריך.
-      return Response.json(framePreview(body.dims, body.cutoutsSvg));
+      return Response.json(framePreview(body.dims, body.cutoutsSvg, body.plan ?? {}));
     } catch (e) {
       // מסגור שנכשל הוא לא קריסה של השירות: הקורא נופל חזרה למסגור מקומי.
       return bad(`frame failed: ${(e as Error).message}`, 500);

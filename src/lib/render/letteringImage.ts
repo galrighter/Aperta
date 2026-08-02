@@ -1,6 +1,9 @@
 import { BASE_CANVAS } from "./baseImage";
 import type { Canvas } from "./canvas";
-import { textToStencil, measureText, polygonsBBox, translatePolygons } from "@/lib/text/stencil";
+import {
+  textToStencil, measureText, polygonsBBox, translatePolygons,
+  type Box, type CutBridge,
+} from "@/lib/text/stencil";
 import { stylesForBrief, type LetteringStyle } from "@/lib/text/style";
 import { offset, multiPolygonArea } from "@/lib/geometry/poly";
 import { ringToPathD } from "@/lib/geometry/paths";
@@ -61,6 +64,9 @@ export interface LetteringRow {
   /** הנתח (0..1) שהגשר תופס מהחלל הסגור, כשהמינימום לאות הוא שקבע אותו.
    *  `null` = לכל האותיות בשורה היה מקום. זה מה שמצדיק את בקשת האישור. */
   tightShare?: number | null;
+  /** הגשרים שנחתכו, בקואורדינטות הפס. אם המודל לא יצייר אותם — מכאן הם
+   *  מוחזרים אחרי המעקב (lib/geometry/restoreBridges). */
+  bridges: CutBridge[];
   /** האותיות עצמן, בקואורדינטות הפס. גאומטריה ולא דיווח — **לא** לכתוב
    *  אותן ליומן; ראה מה שנכתב שם ב-route.ts. */
   glyphs: MultiPolygon;
@@ -162,7 +168,11 @@ async function letteringPolygons(
     // מירכוז נמדד ולא מחושב: הגישור חותך מהאותיות, ותיבת המידה שאחריו היא
     // הצורה שבאמת נחתכת. מירכוז לפי מטריקות הפונט היה מזיז את הכיתוב ממרכז הפס.
     const [x0, y0, x1, y1] = polygonsBBox(raw);
-    const mp = translatePolygons(raw, dims.lengthMm / 2 - (x0 + x1) / 2, dims.widthMm / 2 - (y0 + y1) / 2);
+    const dx = dims.lengthMm / 2 - (x0 + x1) / 2;
+    const dy = dims.widthMm / 2 - (y0 + y1) / 2;
+    const mp = translatePolygons(raw, dx, dy);
+    /** אותה הזזה על הגשרים — הם חייבים להישאר על האותיות. */
+    const shift = (b: Box): Box => [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
     return {
       mp,
       row: {
@@ -170,6 +180,11 @@ async function letteringPolygons(
         letterHeightMm: r2(y1 - y0),
         textWidthMm: r2(x1 - x0),
         tightShare: tightShare === null ? null : Math.round(tightShare * 100) / 100,
+        bridges: cut.bridges.map((b) => ({
+          ...b,
+          counter: shift(b.counter),
+          rects: b.rects.map(shift),
+        })),
         glyphs: mp,
       },
     };

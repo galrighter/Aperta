@@ -447,7 +447,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // רואה הוא זה שנחתך — בלי שכבה שמדביקה אותיות על גביו. המחיר מוצג לה
     // במפורש בשדה הכיתוב (`textVerify`): לוודא את האיות לפני הזמנה.
     // המדידות ששני הכיוונים נשענים עליהן: docs/research/HEBREW_TEXT_LETTERING_FIELD.md §6.8.
-    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!)))
+    const bridgePlan = { letterBridges: lettering?.rows.flatMap((r) => r.bridges) };
+    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!), bridgePlan))
       .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
     if (candidates.length === 0) {
@@ -487,6 +488,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // אינם נגזרים מה-SVG שהוולידציה בודקת. בלי זה הלקוחה מקבלת פריט שדורש
       // בדיקה בלי לדעת על כך.
       extraChecks: letteringBridgeCheck(lettering?.tightShare ?? null),
+      // הגשרים שחתכנו בכיתוב. אם המודל לא צייר אותם, המסגור מחזיר אותם
+      // למקומם במקום למחוק את החלל — ראה geometry/restoreBridges.
+      bridgePlan,
       // candidates ממוין כך שהזוכה ראשון, ו-offered שומר על הסדר — הגרסה
       // שנשמרת כאן היא ההצעה הראשונה, אלא אם היא נפלה בוולידציה ואינה מוצעת.
       pickedIndex: offeredRows.length > 0 && offered[0] === candidates[0] ? 0 : null,

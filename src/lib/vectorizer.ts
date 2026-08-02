@@ -6,7 +6,10 @@ import {
   insertVersion,
   replaceVersion,
 } from "@/lib/db/designs";
-import { frameCutoutsDims, type FramedCutouts, type FramedPreview } from "@/lib/geometry/frameCutouts";
+import {
+  frameCutoutsDims, type BridgePlan, type FramedCutouts, type FramedPreview,
+} from "@/lib/geometry/frameCutouts";
+import type { BridgeRecord } from "@/lib/geometry/restoreBridges";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import type { CheckResult, CheckStatus, ValidationReport } from "@/lib/geometry/types";
@@ -149,6 +152,8 @@ export interface IngestResult {
   geometry: { material: ReturnType<typeof difference>; cutUnion: unknown } | null;
   lengthMm: number;
   widthMm: number;
+  /** מה שנעשה לכל אי מתכת — ליומן. */
+  bridges: BridgeRecord[];
 }
 
 
@@ -165,8 +170,12 @@ export function designDims(design: DesignRow): DesignDims {
 }
 
 /** מסגור מועמד מול שורת עיצוב. החישוב עצמו ב-geometry/frameCutouts. */
-export function frameCutouts(design: DesignRow, cutoutsSvg: string): FramedCutouts {
-  return frameCutoutsDims(designDims(design), cutoutsSvg);
+export function frameCutouts(
+  design: DesignRow,
+  cutoutsSvg: string,
+  plan: BridgePlan = {},
+): FramedCutouts {
+  return frameCutoutsDims(designDims(design), cutoutsSvg, plan);
 }
 
 /**
@@ -199,6 +208,8 @@ export async function ingestCutouts(opts: {
    * דוח כדי שהלקוחה תראה אותם באותו מקום שבה היא רואה כל ממצא אחר.
    */
   extraChecks?: CheckResult[] | null;
+  /** הגשרים שנחתכו בכיתוב — כדי שאפשר יהיה להחזיר אותם אם המודל לא צייר אותם. */
+  bridgePlan?: BridgePlan;
   /**
    * דריסת שורה קיימת במקום הוספה. משמש **רק** מעבר בין ההצעות של אותה הרצה,
    * שהוא ניווט ולא שינוי — ראו `lib/versionRole`. כל שאר המסלולים מוסיפים.
@@ -206,7 +217,7 @@ export async function ingestCutouts(opts: {
   replaceVersionId?: string | null;
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
-  const framed = frameCutouts(design, cutoutsSvg);
+  const framed = frameCutouts(design, cutoutsSvg, opts.bridgePlan ?? {});
   const { lengthMm, widthMm, framedSvg, normalized } = framed;
   const report = withExtraChecks(framed.report, opts.extraChecks);
 
@@ -216,6 +227,9 @@ export async function ingestCutouts(opts: {
     ...report,
     renderPngPath: opts.renderPngPath,
     vectorizer: opts.metrics ?? null,
+    // מה שנוסף לגאומטריה **אחרי** שהמודל צייר אותה. נשמר על הגרסה כי הוא
+    // שייך לה ולא להרצה — שתי הצעות מאותה הרצה מגושרות אחרת.
+    bridges: framed.bridges,
   };
 
   const version = opts.replaceVersionId
@@ -245,5 +259,5 @@ export async function ingestCutouts(opts: {
       }
     : null;
 
-  return { version, report, geometry, lengthMm, widthMm };
+  return { version, report, geometry, lengthMm, widthMm, bridges: framed.bridges };
 }

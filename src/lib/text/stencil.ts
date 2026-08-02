@@ -158,6 +158,22 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
 const BRIDGE_COUNTER_RATIO = 0.4;
 
 /**
+ * כמה הגשר חורג אל **מחוץ** לאות, כדי להבטיח חפיפה עם המתכת שסביבה.
+ *
+ * היה `width` — כלומר החריגה הייתה ברוחב הגשר עצמו, כ-0.75 מ"מ. זה מיותר
+ * (החפיפה נקבעת מהמגע, לא מהאורך) ובעברית זה מזיק ממש: המרווח בין אותיות קטן
+ * מזה, והגשר של ם׳ נוגע באות השכנה. חפיפה של עשירית מילימטר מספיקה לניתוח
+ * הפוליגונים ואינה נראית.
+ */
+const BRIDGE_OVERSHOOT_MM = 0.1;
+
+/**
+ * כמה הגשר נכנס **לתוך** החלל. די בנגיעה כדי לחבר את האי, וכל מ"מ נוסף הוא
+ * מתכת שאוכלת את החלל של האות. חצי רוחב הוא מרווח בטחון מול רעש המעקב.
+ */
+const BRIDGE_DEPTH_RATIO = 0.5;
+
+/**
  * גשר שהקונטור שלו קטן מכדי להכיל אפילו את המינימום לאות: הוא נשאר על
  * המינימום ובולט לתוך האות. זה מה שהלקוחה מתבקשת לאשר ויזואלית.
  */
@@ -170,10 +186,34 @@ export interface TightBridge {
   y: number;
 }
 
+/** תיבה `[x0, y0, x1, y1]` במ"מ. */
+export type Box = [number, number, number, number];
+
+/**
+ * גשר שנחתך בכיתוב — היכן הוא, מה הוא מחזיק, ובאיזה כיוון.
+ *
+ * זה מה שמאפשר **להחזיר** אותו אם המודל לא צייר אותו: החלל שחוזר מהמעקב
+ * מזוהה מול `counter`, והגשר משוחזר בדיוק ל-`rects` — כלומר מלמעלה בלטינית
+ * ומהצד בעברית, בלי לנחש מחדש. ראה lib/geometry/restoreBridges.
+ */
+export interface CutBridge {
+  /** האות שהחלל שייך לה, כשידועה. */
+  char: string | null;
+  /** תיבת החלל הסגור — המפתח לזיהוי אחרי המעקב. */
+  counter: Box;
+  /** הרצועות שהוסרו מהחיתוך. אחת או שתיים, לפי גודל החלל. */
+  rects: Box[];
+  widthMm: number;
+  /** אופקי (עברית) או אנכי (לטינית) — הציר שהגשר חוצה. */
+  sideways: boolean;
+}
+
 export interface StencilResult {
   polygons: MultiPolygon;
   /** ריק = לכל קונטור היה מקום לגשר בלי לבלוט לתוך האות. */
   tightBridges: TightBridge[];
+  /** כל גשר שנחתך, גם כשהוא במידה מלאה. */
+  bridges: CutBridge[];
 }
 
 /** טקסט → פוליגונים בקואורדינטות מ"מ, כולל גישור קונטורים פנימיים.
@@ -204,6 +244,7 @@ export async function textToStencil(
   minWidthMm = 0,
 ): Promise<StencilResult> {
   const tightBridges: TightBridge[] = [];
+  const bridges: CutBridge[] = [];
   const font = await loadFace(style.fontId ?? DEFAULT_FONT);
   const visual = visualOrder(text);
   const fontSize = sizeFor(font, heightMm);
@@ -220,13 +261,13 @@ export async function textToStencil(
     spans.find((sp) => cx >= sp.x0 + startX && cx <= sp.x1 + startX)?.char ?? null;
 
   const d = path.toPathData(3);
-  if (!d) return { polygons: [], tightBridges };
+  if (!d) return { polygons: [], tightBridges, bridges };
 
   const subs = samplePathToRings(d);
   // גליפים: טבעות בכיוון הדומיננטי = מילוי, הפוכות = counters
   const rings = subs.map((s) => s.ring.map(([px, py]) => [px + startX, py] as [number, number]))
     .filter((r) => r.length >= 3);
-  if (rings.length === 0) return { polygons: [], tightBridges };
+  if (rings.length === 0) return { polygons: [], tightBridges, bridges };
   const areas = rings.map(ringArea);
   const total = areas.reduce((s, a) => s + a, 0);
   const dominant = Math.sign(total) || 1;
@@ -239,7 +280,7 @@ export async function textToStencil(
       solidBoxes.push(bboxOf(rings[i]));
     } else holes.push({ ring: rings[i], bbox: bboxOf(rings[i]) });
   }
-  if (solids.length === 0) return { polygons: [], tightBridges };
+  if (solids.length === 0) return { polygons: [], tightBridges, bridges };
   let glyphs = difference(
     union(...solids),
     holes.length ? union(...holes.map((h) => [[[...h.ring].reverse()]] as MultiPolygon)) : [],
@@ -269,7 +310,8 @@ export async function textToStencil(
     const cy = (hy0 + hy1) / 2;
     const outer = enclosing(solidBoxes, h.bbox);
     // אנכי בעברית, אופקי בלטינית — הציר שהגשר **חוצה**.
-    const sideways = HEBREW_RE.test(charAt(cx) ?? "");
+    const char = charAt(cx);
+    const sideways = HEBREW_RE.test(char ?? "");
     /** המידה של הקונטור לאורך הציר שהגשר צר בו. */
     const across = sideways ? hy1 - hy0 : hx1 - hx0;
     /** ...ולאורך הציר שהוא נכנס בו. */
@@ -292,25 +334,34 @@ export async function textToStencil(
 
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
     const near = sideways ? hx0 - outer[0] <= outer[2] - hx1 : hy0 - outer[1] <= outer[3] - hy1;
-    // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור. הקצה החיצוני חורג מהאות ולא
-    // מוריד שם כלום (אין חיתוך מחוץ לאות); הקצה הפנימי הוא מה שמבטיח חיבור,
-    // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות.
-    const depth = Math.min(width, along / 2);
+    // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור, ושני הקצוות קצרים ככל שאפשר:
+    // מה שמחבר הוא המגע, לא האורך. גשר ארוך אינו מחזיק טוב יותר — הוא רק בולט
+    // החוצה אל האות השכנה ופנימה אל תוך החלל.
+    const depth = Math.min(width * BRIDGE_DEPTH_RATIO, along / 2);
+    const out = BRIDGE_OVERSHOOT_MM;
     const [a0, a1] = sideways
-      ? (near ? [outer[0] - width, hx0 + depth] : [hx1 - depth, outer[2] + width])
-      : (near ? [outer[1] - width, hy0 + depth] : [hy1 - depth, outer[3] + width]);
+      ? (near ? [outer[0] - out, hx0 + depth] : [hx1 - depth, outer[2] + out])
+      : (near ? [outer[1] - out, hy0 + depth] : [hy1 - depth, outer[3] + out]);
     // קונטור ארוך מחזיק שני גשרים בלי להיסגר; קצר מקבל אחד באמצע.
     const center = sideways ? cy : cx;
     const offsets = across > width * 4 ? [center - across / 4, center + across / 4] : [center];
     const strips: MultiPolygon = offsets.map((s) => sideways
       ? rectPolygon(a0, s - width / 2, a1, s + width / 2)
       : rectPolygon(s - width / 2, a0, s + width / 2, a1));
+    bridges.push({
+      char,
+      counter: [hx0, hy0, hx1, hy1],
+      rects: strips.map((poly) => bboxOf(poly[0]) as Box),
+      widthMm: width,
+      sideways,
+    });
     glyphs = difference(glyphs, strips);
   }
 
   return {
     polygons: glyphs.filter((p) => multiPolygonArea([p]) > 0.01),
     tightBridges,
+    bridges,
   };
 }
 
