@@ -88,10 +88,16 @@ jobs:
             fi
           fi
 
+          # השאילתה היא ברמת החשבון, ולכן היא מחזירה גם scripts שאינם שלנו —
+          # `willit-web` הוא אתר אחר באותו חשבון Cloudflare ואין לו שום קשר
+          # לצינור כאן. הוא מסונן מכל שורה שמישהו קורא כמספר: `totals by status`
+          # הדפיס פעם `exceededResources 90` כשרק 12 מהם היו שלנו, וזה מספר
+          # שמוביל למסקנה שגויה מהר יותר מששום מספר לא היה מוביל.
           echo
           echo "hour script status requests errors cpuP50us cpuP99us memP50mb memP99mb memP999mb" | tr ' ' '\t'
           jq -r 'def mb(x): if x == null then "-" else ((x/1048576*10|round)/10|tostring) end;
                  .data.viewer.accounts[0].workersInvocationsAdaptive[]
+                 | select(.dimensions.scriptName | startswith("forme"))
                  | [.dimensions.datetimeHour, .dimensions.scriptName, .dimensions.status,
                     (.sum.requests|tostring), (.sum.errors|tostring),
                     (.quantiles.cpuTimeP50|tostring), (.quantiles.cpuTimeP99|tostring),
@@ -106,6 +112,7 @@ jobs:
           echo "the kills, and what they had burned:"
           jq -r 'def mb(x): if x == null then "?" else ((x/1048576*10|round)/10|tostring) end;
                  .data.viewer.accounts[0].workersInvocationsAdaptive[]
+                 | select(.dimensions.scriptName | startswith("forme"))
                  | select(.dimensions.status != "success")
                  | "\(.dimensions.datetimeHour)  \(.dimensions.scriptName)  \(.dimensions.status)  reqs=\(.sum.requests)  cpuP50=\(.quantiles.cpuTimeP50)us  cpuP99=\(.quantiles.cpuTimeP99)us  memP99=\(mb(.quantiles.memoryUsageBytesP99))MB"' /tmp/r.json
 
@@ -116,6 +123,7 @@ jobs:
             echo "isolate memory headroom (ceiling 128MB):"
             jq -r 'def mb(x): (x/1048576*10|round)/10;
                    [.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                    | select(.dimensions.scriptName | startswith("forme"))
                     | select(.quantiles.memoryUsageBytesP999 != null)]
                    | group_by(.dimensions.scriptName)
                    | map({s: .[0].dimensions.scriptName,
@@ -127,7 +135,8 @@ jobs:
 
           echo
           echo "totals by status:"
-          jq -r '[.data.viewer.accounts[0].workersInvocationsAdaptive[]]
+          jq -r '[.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                  | select(.dimensions.scriptName | startswith("forme"))]
                  | group_by(.dimensions.status)
                  | map({status: .[0].dimensions.status, requests: (map(.sum.requests)|add)})
                  | sort_by(-.requests)[] | "\(.status)\t\(.requests)"' /tmp/r.json | column -t
@@ -136,13 +145,48 @@ jobs:
           #
           # סופרים רק את ה-scripts שלנו ורק הרוגי-משאבים: clientDisconnected הוא
           # לקוח שסגר טאב, וזה לא תקלה. willit-web הוא לא שלנו.
-          KILLS=$(jq -r '[.data.viewer.accounts[0].workersInvocationsAdaptive[]
-                          | select(.dimensions.scriptName | startswith("forme"))
-                          | select(.dimensions.status | test("exceeded"))
-                          | .sum.requests] | add // 0' /tmp/r.json)
+          #
+          # **למה זה מסווג ולא סופר.** `exceededResources` הוא דלי אחד לשלושה
+          # דברים שונים לגמרי, ו-"N נהרגו" לא אומר לאיזה מהם להיערך:
+          #
+          #   ceiling — memP99 ≥ 100MB. זיכרון ה-isolate חזר לגעת בתקרה. זו
+          #             הרגרסיה שהעברת הגיאומטריה לקופסה נועדה למנוע.
+          #   cpu     — cpuP99 ≥ 20s, קרוב לתקרת 30 השניות. זה timeout אמיתי.
+          #   quiet   — memP99 < 80MB **וגם** cpuP99 < 1s. הרוג בלי שום משאב
+          #             שנגמר. זה הדפוס של 31.7 (35.1MB, 13ms) ו-1.8 (70.8MB,
+          #             17ms), שקדם להעברה לקופסה ולכן לא נסגר על ידה. ההחלטה
+          #             הייתה להמתין ולראות אם הוא חוזר — והשורה הזו היא ההמתנה.
+          #   other   — מה שנופל בין הסיווגים. מודפס ולא מאדים: ספירה בלי
+          #             סיווג היא בדיוק מה שמאלף להתעלם מהאזעקה.
+          CLASSED=$(jq -c 'def mb(x): if x == null then 0 else (x/1048576) end;
+                           [.data.viewer.accounts[0].workersInvocationsAdaptive[]
+                            | select(.dimensions.scriptName | startswith("forme"))
+                            | select(.dimensions.status | test("exceeded"))
+                            | {n: .sum.requests,
+                               cls: (if mb(.quantiles.memoryUsageBytesP99) >= 100 then "ceiling"
+                                     elif (.quantiles.cpuTimeP99 // 0) >= 20000000 then "cpu"
+                                     elif mb(.quantiles.memoryUsageBytesP99) < 80
+                                          and (.quantiles.cpuTimeP99 // 0) < 1000000 then "quiet"
+                                     else "other" end)}]
+                           | group_by(.cls) | map({cls: .[0].cls, n: (map(.n) | add)})' /tmp/r.json)
+          count() { echo "$CLASSED" | jq -r --arg c "$1" '(map(select(.cls == $c) | .n) | add) // 0'; }
+          CEILING=$(count ceiling); CPU=$(count cpu); QUIET=$(count quiet); OTHER=$(count other)
+
           echo
-          echo "resource kills on forme-* in this window: $KILLS"
-          if [ "${{ github.event_name }}" = schedule ] && [ "$KILLS" -gt 0 ]; then
-            echo "::error::$KILLS invocation(s) were killed on resource limits — see the rows above"
-            exit 1
+          echo "resource kills on forme-*: ceiling=$CEILING cpu=$CPU quiet=$QUIET other=$OTHER"
+          if [ "$OTHER" -gt 0 ]; then
+            echo "note: $OTHER kill(s) matched no signature — printed, not alerted"
+          fi
+
+          if [ "${{ github.event_name }}" = schedule ]; then
+            if [ "$CEILING" -gt 0 ]; then
+              echo "::error::$CEILING invocation(s) died with the isolate at or above 100MB — memory pressure is back"
+            fi
+            if [ "$CPU" -gt 0 ]; then
+              echo "::error::$CPU invocation(s) burned 20s+ of CPU — this is the 30s ceiling, not memory"
+            fi
+            if [ "$QUIET" -gt 0 ]; then
+              echo "::error::$QUIET invocation(s) died with neither memory nor CPU spent — the open case from 31.7 recurred (docs/worker-memory-diagnosis.md §8)"
+            fi
+            if [ "$CEILING" -gt 0 ] || [ "$CPU" -gt 0 ] || [ "$QUIET" -gt 0 ]; then exit 1; fi
           fi
