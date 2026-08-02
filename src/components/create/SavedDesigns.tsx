@@ -4,7 +4,7 @@
 // מקופל כברירת מחדל: הרשימה הפתוחה תפסה שליש מסך ודחפה את בחירת הצמיד/הטבעת
 // מתחת לקיפול, כך שמסך הכניסה של המשפך היה "העיצובים שלי" ולא "מה בונים".
 // עכשיו זו שורה אחת בולטת שנפתחת בלחיצה.
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { he } from "@/i18n/he";
 import { designCode } from "@/lib/designCode";
 import { COBALT } from "./ui";
@@ -13,11 +13,13 @@ import type { SavedDesign } from "@/lib/client/myDesigns";
 const d = he.design;
 
 export function SavedDesigns({
-  items, onResume, onRemove, loadingId, error, defaultOpen = false,
+  items, onResume, onRemove, onOpen, loadingId, error, defaultOpen = false,
 }: {
   items: SavedDesign[];
   onResume: (item: SavedDesign) => void;
   onRemove: (id: string) => void;
+  /** הרשימה נפתחה — עכשיו יש למי לצייר, וכדאי להשלים ציורים חסרים מהשרת. */
+  onOpen?: () => void;
   loadingId: string | null;
   error: string | null;
   /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
@@ -25,6 +27,10 @@ export function SavedDesigns({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const listId = useId();
+
+  useEffect(() => {
+    if (open) onOpen?.();
+  }, [open, onOpen]);
 
   if (items.length === 0) return null;
 
@@ -91,7 +97,9 @@ export function SavedDesigns({
                       />
                     </svg>
                   ) : (
-                    <span className="font-mono text-[11px] text-mist">{d.savedTitle}</span>
+                    <span className="font-mono text-[11px] text-mist">
+                      {it.pending ? d.savedPending : d.savedNoPreview}
+                    </span>
                   )}
                 </div>
 

@@ -9,6 +9,7 @@ import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError } from "@/lib/client/api";
 import {
   clearMyDesigns, listMyDesigns, mergeMyDesign, removeMyDesign, saveMyDesign,
+  setMyDesignPreview,
   type SavedDesign,
 } from "@/lib/client/myDesigns";
 import { designCode } from "@/lib/designCode";
@@ -73,18 +74,59 @@ export default function DesignPage() {
   /** נדלק כשהשער נפתח מתוך ניסיון ליצור — כדי להמשיך אוטומטית אחרי הכניסה. */
   const startAfterSignIn = useRef(false);
   /**
-   * *מה* להמשיך אחרי הכניסה. שני מסלולים מגיעים לשער: יצירה מהתיאור, והעתקת
-   * עיצוב ששותף ("להזמין כזה"). נשמר בנפרד מ-`startAfterSignIn` ונוסע גם
-   * ב-stash של ה-OAuth — אחרת מי שנדרש להזדהות באמצע הזמנת עיצוב משותף היה
-   * חוזר מגוגל היישר לתוך יצירה חדשה מאפס.
+   * *מה* להמשיך אחרי הכניסה. שלושה מסלולים מגיעים לשער: יצירה מהתיאור, העתקת
+   * עיצוב ששותף ("להזמין כזה"), ופתיחת עיצוב קיים. נשמר בנפרד מ-`startAfterSignIn`
+   * ונוסע גם ב-stash של ה-OAuth — אחרת מי שנדרש להזדהות באמצע הזמנת עיצוב
+   * משותף היה חוזר מגוגל היישר לתוך יצירה חדשה מאפס.
    */
-  const pendingAction = useRef<"generate" | "adopt">("generate");
+  const pendingAction = useRef<"generate" | "adopt" | "resume">("generate");
+  /** איזה עיצוב לפתוח אחרי הכניסה. המזהה בלבד — השאר נקרא מהאחסון המקומי,
+   *  וכך זה שורד גם טעינת עמוד מחדש בדרך חזרה מגוגל. */
+  const resumeTarget = useRef<string | null>(null);
 
   const set = useCallback((patch: Partial<CreateState>) => {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   useEffect(() => setSaved(listMyDesigns()), []);
+
+  /* ===== הציור של כרטיס שהמכשיר הזה לא יצר =====
+     ה-path נשמר מקומית רק אחרי גרסה שחזרה כאן. עיצוב שנמשך מהשרת (כניסה
+     ממכשיר אחר, אחסון שנוקה, יצירה שהלקוחה יצאה ממנה באמצע) הגיע בלי ציור
+     ובלי מספר חיתוכים — כלומר ריבוע ריק עם "0 חיתוכים". משלימים מהשרת, פעם
+     אחת לעיצוב, ושומרים מקומית כדי שהחישוב לא יחזור בכל פתיחה. */
+  const [previewsWanted, setPreviewsWanted] = useState(false);
+  const previewTried = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!previewsWanted) return;
+    // pending = עוד אין גרסה, ולכן אין מה לצייר.
+    const missing = saved.filter((x) => !x.path && !x.pending && !previewTried.current.has(x.id));
+    if (missing.length === 0) return;
+    // מסמנים הכול מראש: הריצה מעדכנת את `saved`, ובלי זה כל תשובה הייתה
+    // מפעילה את האפקט מחדש על מה שכבר בדרך.
+    for (const item of missing) previewTried.current.add(item.id);
+
+    let alive = true;
+    void (async () => {
+      // בזה אחר זה: זו השלמה שקטה של תצוגה, ולא סיבה לפתוח שבע-עשרה בקשות
+      // במקביל מטלפון.
+      for (const item of missing) {
+        if (!alive) return;
+        try {
+          const { preview } = await api.designPreview(item.id);
+          if (!preview) continue;
+          setMyDesignPreview(item.id, preview);
+          if (!alive) return;
+          setSaved(listMyDesigns());
+        } catch {
+          // כרטיס בלי ציור עדיין פותח את העיצוב. אין מה להציג על זה שגיאה.
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [previewsWanted, saved]);
 
   useEffect(() => {
     api
@@ -343,6 +385,118 @@ export default function DesignPage() {
     return () => clearInterval(t);
   }, [waiting]);
 
+  /* ===== המשך עיצוב שמור =====
+     `item` יכול להגיע גם מכתובת (`?resume=<id>`) ולא רק מהרשימה המקומית, ולכן
+     כל מה שנדרש הוא המזהה: השאר משמש להשלמת מה שרק הדפדפן מכיר. */
+  const resume = useCallback(
+    async (item: Pick<SavedDesign, "id"> & Partial<SavedDesign>) => {
+      const id = item.id;
+      setResumingId(id);
+      setResumeError(null);
+      try {
+        const { design, versions } = await api.getDesign(id);
+        const last = versions[versions.length - 1];
+        const ringP = design.product_type === "ring";
+        const circP = Number(design.length_mm) + Number(design.gap_mm);
+        const sizes = ringP
+          ? { ringSize: String(Math.round(circP)), ringWidth: Number(design.width_mm) }
+          : { circ: String(Math.round(circP)), braceletWidth: Number(design.width_mm) };
+
+        // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
+        // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס.
+        if (!last) {
+          setState({
+            ...INITIAL,
+            screen: "brief",
+            product: design.product_type,
+            designId: design.id,
+            designSerial: design.serial ?? null,
+            ...sizes,
+            brief: item.brief ?? "",
+            lettering: item.lettering ?? "",
+            symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
+            density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
+            feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
+            fit: pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit),
+            attrsAuto: item.attrsAuto ?? INITIAL.attrsAuto,
+          });
+          setMaxReached(2);
+          setResumingId(null);
+          if (typeof window !== "undefined") window.scrollTo(0, 0);
+          return;
+        }
+
+        const val = await api.validate({
+          svg: last.svg,
+          productType: design.product_type,
+          lengthMm: Number(design.length_mm),
+          widthMm: Number(design.width_mm),
+          thicknessMm: Number(design.thickness_mm),
+        });
+        const byRun = candidatesByGeneration(versions);
+        setState({
+          ...INITIAL,
+          screen: "result",
+          product: design.product_type,
+          designId: design.id,
+          designSerial: design.serial ?? null,
+          ...sizes,
+          brief: item.brief ?? "",
+          // ההצעות שמורות פעם אחת, על הגרסה שההרצה יצרה. גרסה שנוצרה מבחירה
+          // נושאת רק את מזהה ההרצה, ומאתרת דרכו את אותן הצעות.
+          edits: versions.map((v, i) => ({
+            versionId: v.id,
+            versionNo: v.version_no,
+            lengthMm: Number(design.length_mm),
+            region: null,
+            text: i === 0 ? "" : (v.user_prompt ?? ""),
+            svg: v.svg,
+            report: v.validation_report,
+            geometry: i === versions.length - 1 ? val.geometry : null,
+            // ההצעות חוזרות מהשרת (0012). קודם הן לא נשלפו כלל, ולכן כל פתיחה
+            // של עיצוב שמור — וכל רענון — מחקה את רצועת החלופות.
+            candidates: candidatesOf(v, byRun),
+            chosen: v.picked_index ?? undefined,
+          })),
+          activeEdit: versions.length - 1,
+        });
+        setMaxReached(3);
+        setResumingId(null);
+        if (typeof window !== "undefined") window.scrollTo(0, 0);
+      } catch (e) {
+        setResumingId(null);
+        const apiErr = e instanceof ClientApiError ? e : null;
+
+        // הסשן פג, או שהקישור מהמייל נפתח בדפדפן שלא נכנס בו איש. זה **לא**
+        // "טעינת העיצוב נכשלה": העיצוב שם ומחכה, וכל מה שדרוש הוא להזדהות.
+        // עד כה שתי המצוקות קיבלו את אותו משפט אדום ואת אותו מסך מת — בלי שער,
+        // בלי ניסיון חוזר, ובלי לרמוז שהכניסה היא הפתרון.
+        if (apiErr?.code === "account_required") {
+          resumeTarget.current = item.id;
+          startAfterSignIn.current = true;
+          pendingAction.current = "resume";
+          setGateError(null);
+          setGateOpen(true);
+          // נכתב גם מתחת לרשימה: מי שסוגר את השער נשאר אחרת בלי שום הסבר למה
+          // הלחיצה שלו לא עשתה כלום.
+          setResumeError(d.savedNeedsSignIn);
+          return;
+        }
+
+        setResumeError(
+          apiErr?.code === "forbidden"
+            ? d.savedOtherAccount
+            : apiErr?.code === "not_found"
+              ? d.savedGone
+              : apiErr && ["network", "truncated"].includes(apiErr.code)
+                ? he.errNetwork
+                : d.savedLoadError,
+        );
+      }
+    },
+    [],
+  );
+
   /* ===== כניסה / החלפת משתמש ===== */
 
   /** נקרא אחרי שהזהות כבר אומתה — קוד שאושר, או חזרה מגוגל דרך /auth/callback.
@@ -382,14 +536,20 @@ export default function DesignPage() {
           startAfterSignIn.current = false;
           // לאן חוזרים — למסלול שממנו נפתח השער, ולא תמיד ליצירה.
           if (pendingAction.current === "adopt") void adoptShared(a);
-          else void startGeneration(a);
+          else if (pendingAction.current === "resume") {
+            const id = resumeTarget.current;
+            resumeTarget.current = null;
+            // הפרטים שרק הדפדפן מכיר (תיאור, כיתוב) נקראים מחדש מהאחסון: אחרי
+            // חזרה מגוגל העמוד נטען מאפס, ואין ריפרנס ששרד.
+            if (id) void resume(listMyDesigns().find((x) => x.id === id) ?? { id });
+          } else void startGeneration(a);
         }
       } catch (e) {
         setGateBusy(false);
         setGateError(e instanceof ClientApiError ? e.message : d.acctError);
       }
     },
-    [startGeneration, adoptShared],
+    [startGeneration, adoptShared, resume],
   );
 
   /* ===== חזרה מגוגל =====
@@ -405,13 +565,15 @@ export default function DesignPage() {
       state: CreateState;
       maxReached: number;
       resume: boolean;
-      action?: "generate" | "adopt";
+      action?: "generate" | "adopt" | "resume";
+      resumeId?: string | null;
     }>();
     if (!stash) return;
     setState(stash.state);
     setMaxReached(stash.maxReached);
     // המסלול נוסע עם המצב: הרפרנס עצמו לא שורד טעינת עמוד מחדש.
     pendingAction.current = stash.action ?? "generate";
+    resumeTarget.current = stash.resumeId ?? null;
 
     const url = new URL(window.location.href);
     const failed = url.searchParams.get("auth") === "failed";
@@ -523,92 +685,6 @@ export default function DesignPage() {
       }
     },
     [s, set, pushEntry, replaceEntry],
-  );
-
-  /* ===== המשך עיצוב שמור =====
-     `item` יכול להגיע גם מכתובת (`?resume=<id>`) ולא רק מהרשימה המקומית, ולכן
-     כל מה שנדרש הוא המזהה: השאר משמש להשלמת מה שרק הדפדפן מכיר. */
-  const resume = useCallback(
-    async (item: Pick<SavedDesign, "id"> & Partial<SavedDesign>) => {
-      const id = item.id;
-      setResumingId(id);
-      setResumeError(null);
-      try {
-        const { design, versions } = await api.getDesign(id);
-        const last = versions[versions.length - 1];
-        const ringP = design.product_type === "ring";
-        const circP = Number(design.length_mm) + Number(design.gap_mm);
-        const sizes = ringP
-          ? { ringSize: String(Math.round(circP)), ringWidth: Number(design.width_mm) }
-          : { circ: String(Math.round(circP)), braceletWidth: Number(design.width_mm) };
-
-        // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
-        // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס.
-        if (!last) {
-          setState({
-            ...INITIAL,
-            screen: "brief",
-            product: design.product_type,
-            designId: design.id,
-            designSerial: design.serial ?? null,
-            ...sizes,
-            brief: item.brief ?? "",
-            lettering: item.lettering ?? "",
-            symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
-            density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
-            feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
-            fit: pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit),
-            attrsAuto: item.attrsAuto ?? INITIAL.attrsAuto,
-          });
-          setMaxReached(2);
-          setResumingId(null);
-          if (typeof window !== "undefined") window.scrollTo(0, 0);
-          return;
-        }
-
-        const val = await api.validate({
-          svg: last.svg,
-          productType: design.product_type,
-          lengthMm: Number(design.length_mm),
-          widthMm: Number(design.width_mm),
-          thicknessMm: Number(design.thickness_mm),
-        });
-        const byRun = candidatesByGeneration(versions);
-        setState({
-          ...INITIAL,
-          screen: "result",
-          product: design.product_type,
-          designId: design.id,
-          designSerial: design.serial ?? null,
-          ...sizes,
-          brief: item.brief ?? "",
-          // ההצעות שמורות פעם אחת, על הגרסה שההרצה יצרה. גרסה שנוצרה מבחירה
-          // נושאת רק את מזהה ההרצה, ומאתרת דרכו את אותן הצעות.
-          edits: versions.map((v, i) => ({
-            versionId: v.id,
-            versionNo: v.version_no,
-            lengthMm: Number(design.length_mm),
-            region: null,
-            text: i === 0 ? "" : (v.user_prompt ?? ""),
-            svg: v.svg,
-            report: v.validation_report,
-            geometry: i === versions.length - 1 ? val.geometry : null,
-            // ההצעות חוזרות מהשרת (0012). קודם הן לא נשלפו כלל, ולכן כל פתיחה
-            // של עיצוב שמור — וכל רענון — מחקה את רצועת החלופות.
-            candidates: candidatesOf(v, byRun),
-            chosen: v.picked_index ?? undefined,
-          })),
-          activeEdit: versions.length - 1,
-        });
-        setMaxReached(3);
-        setResumingId(null);
-        if (typeof window !== "undefined") window.scrollTo(0, 0);
-      } catch {
-        setResumingId(null);
-        setResumeError(d.savedLoadError);
-      }
-    },
-    [],
   );
 
   /* ===== כניסה עם כתובת =====
@@ -829,6 +905,7 @@ export default function DesignPage() {
                   removeMyDesign(id);
                   setSaved(listMyDesigns());
                 }}
+                onOpen={() => setPreviewsWanted(true)}
                 loadingId={resumingId}
                 error={resumeError}
                 defaultOpen={savedOpen}
@@ -937,6 +1014,7 @@ export default function DesignPage() {
             maxReached,
             resume: startAfterSignIn.current,
             action: pendingAction.current,
+            resumeId: resumeTarget.current,
           })
         }
         onCancel={() => {

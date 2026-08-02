@@ -1,5 +1,5 @@
 import { ApiError } from "./api";
-import { authClientFor, authConfigured } from "./supabase/authClient";
+import { authClientFor, authConfigured, persistAuthCookies } from "./supabase/authClient";
 import { linkAuthUser } from "./db/accounts";
 
 /**
@@ -36,12 +36,19 @@ export function clearLegacyCookieHeader(): string {
  *
  * `getUser()` ולא `getSession()`: הראשונה מאמתת את הטוקן מול שרת האימות,
  * והשנייה סומכת על תוכן העוגייה — כלומר על מה שהדפדפן שלח.
+ *
+ * **כל מסלול שקורא לכאן מחזיר את העוגייה המחודשת.** אסימון שפג מתרענן בתוך
+ * `getUser()`, והרענון מסובב את ה-refresh token; מסלול שלא מחזיר את החדש משאיר
+ * בדפדפן אסימון מת ומפיל את הסשן כולו בשימוש הבא בו. ראו `persistAuthCookies`.
  */
 export async function readAccountId(req: Request): Promise<string | null> {
   if (!authConfigured()) return null;
 
-  const { client } = authClientFor(req);
+  const { client, pending } = authClientFor(req);
   const { data, error } = await client.auth.getUser();
+  // לפני הבדיקה, ובלי תלות בתוצאה: גם רענון שנכשל מבקש לנקות את העוגייה, וגם
+  // הניקוי הזה חייב להגיע לדפדפן — אחרת הוא נשאר עם סשן שכבר אינו קיים.
+  await persistAuthCookies(pending);
   if (error || !data.user?.email) return null;
 
   const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>;

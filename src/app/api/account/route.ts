@@ -19,10 +19,10 @@ export async function GET(req: Request) {
     const account = await getAccount(id);
     if (!account) return NextResponse.json({ account: null });
 
-    // Supabase מרענן טוקן שפג בזמן הקריאה. בלי להחזיר את העוגייה החדשה,
-    // המשתמש נזרק החוצה בשקט אחרי שהטוקן פג — וזה נראה כמו "הכניסה לא נשמרת".
-    const { pending } = authClientFor(req);
-    return applyCookies(NextResponse.json({ account: toPublic(account) }), pending);
+    // העוגייה המחודשת נכתבת בתוך `readAccountId`, על אותו לקוח שביצע את הרענון.
+    // כאן ישבה קריאה שנייה ל-`authClientFor` שה-pending שלה תמיד היה ריק — היא
+    // נראתה כמו הגנה, ולא החזירה מעולם שום עוגייה.
+    return NextResponse.json({ account: toPublic(account) });
   } catch (err) {
     return handleRouteError(err);
   }

@@ -1,5 +1,6 @@
 import { he } from "@/i18n/he";
 import type { Account, Design, Geometry, Profile, Version } from "./types";
+import type { DesignPreview } from "@/lib/designPreview";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // שכבת הקריאות לשרת. כל השגיאות מתורגמות ל-Error עם הודעה בעברית + code.
@@ -204,6 +205,10 @@ export const api = {
 
   getDesign: (id: string) =>
     call<{ design: Design; currentVersion: Version | null; versions: Version[] }>(`/api/designs/${id}`),
+
+  /** הציור לכרטיס ב"העיצובים שלי" — כמה מאות בתים, בלי הגרסאות עצמן. */
+  designPreview: (id: string) =>
+    call<{ preview: DesignPreview | null }>(`/api/designs/${id}/preview`),
 
   patchDesign: (id: string, patch: Record<string, unknown>) =>
     call<{ design: Design }>(`/api/designs/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
