@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { handleFrame, type FrameRequest } from "./handler";
+import { handleFrame, type FrameRequest } from "@/lib/render/frameRequest";
 
 // מנוע הגיאומטריה כשירות, על הקופסה — לצד ה-vectorizer.
 //
@@ -16,8 +16,10 @@ import { handleFrame, type FrameRequest } from "./handler";
 // אין לו סודות משלו, אין לו DB, והוא מאזין רק על לוקאלהוסט: nginx חושף אותו
 // תחת /api/frame על אותו vhost של ה-vectorizer, מאחורי אותו bearer token.
 //
-// המסגור עצמו יושב ב-handler.ts, כדי שיהיה אפשר לבדוק אותו בלי לפתוח פורט.
-// הקובץ הזה הוא רק HTTP: קריאת גוף, שער, ותרגום לתשובה.
+// המסגור עצמו יושב ב-`src/lib/render/frameRequest.ts` — אותו קובץ בדיוק
+// ש-`workers/frame` מריץ. כשהיו כאן שני עותקים, `plan` נוסף לחתימה, ה-Worker
+// עודכן והשירות הזה לא, וכל גשרי האותיות נזרקו בשקט בייצור. הקובץ הזה הוא רק
+// HTTP: קריאת גוף, שער, ותרגום לתשובה.
 
 const PORT = Number(process.env.PORT || 8100);
 const TOKEN = process.env.VECTORIZER_TOKEN || "";

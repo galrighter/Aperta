@@ -15,7 +15,7 @@ import { frameCandidates } from "../frameClient";
 import { framePreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import worker from "../../../../workers/frame/index";
-import { handleFrame, type FrameRequest } from "../../../../geometry-service/handler";
+import { handleFrame, type FrameRequest } from "../frameRequest";
 import type { LetterBridge } from "@/lib/geometry/restoreBridges";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 
@@ -96,8 +96,8 @@ describe("the framing worker", () => {
 });
 
 describe("the box comes first", () => {
-  // ה-fetch מחובר ל-handler האמיתי של השירות, בדיוק כמו ש-binding מחובר
-  // ל-Worker האמיתי למטה. מוק שממסגר בעצמו בודק את המוק: כשהחתימה קיבלה
+  // ה-fetch מחובר ל-handler האמיתי — זה שהקופסה מריצה — בדיוק כמו ש-binding
+  // מחובר ל-Worker האמיתי למטה. מוק שממסגר בעצמו בודק את המוק: כשהחתימה קיבלה
   // `plan`, מוק כזה עבר בירוק בזמן שהשירות בייצור זרק את הגשרים.
   const boxOk = () =>
     vi.fn(async (_url: string, init?: RequestInit) => {
