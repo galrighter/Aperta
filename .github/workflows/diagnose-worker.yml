@@ -74,7 +74,11 @@ jobs:
             jq -e '.data.viewer.accounts[0].workersInvocationsAdaptive' /tmp/r.json >/dev/null 2>&1
           }
 
-          Q='query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:200,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99 MEM}dimensions{datetimeHour scriptName status}}}}}'
+          # ‎limit הוא **ברמת החשבון** ונחתך בשרת, לפני שהסינון ל-forme-* רץ כאן.
+          # כלומר scripts שאינם שלנו אוכלים מהמכסה, ומה שנחתך נחתך בשקט — הפלט
+          # ייראה תקין בדיוק כמו חלון מלא. 200 הספיקו ליממה של ~60–70 שורות, אבל
+          # זו לא מכסה שרוצים לגלות שנגמרה מתוך מסקנה שגויה.
+          Q='query($acct:String!,$since:Time!,$until:Time!){viewer{accounts(filter:{accountTag:$acct}){workersInvocationsAdaptive(limit:1000,filter:{datetime_geq:$since,datetime_leq:$until},orderBy:[datetimeHour_ASC]){sum{requests errors}quantiles{cpuTimeP50 cpuTimeP99 MEM}dimensions{datetimeHour scriptName status}}}}}'
 
           MEMORY=yes
           if ! ask "${Q/MEM/memoryUsageBytesP50 memoryUsageBytesP99 memoryUsageBytesP999}"; then
