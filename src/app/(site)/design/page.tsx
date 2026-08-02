@@ -99,8 +99,12 @@ export default function DesignPage() {
   const previewTried = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!previewsWanted) return;
-    // pending = עוד אין גרסה, ולכן אין מה לצייר.
-    const missing = saved.filter((x) => !x.path && !x.pending && !previewTried.current.has(x.id));
+    // pending = עוד אין גרסה, ולכן אין מה לצייר. רשומה שיש לה ציור אבל אין לה
+    // עדיין רשימת תוצאות נמשכת גם היא: היא נשמרה לפני שהכרטיס ידע להציג את כל
+    // מה שהעיצוב הזה ייצר, ובלעדיה הוא ממשיך להראות תוצאה אחת מתוך שלוש.
+    const missing = saved.filter(
+      (x) => (!x.path || !x.results) && !x.pending && !previewTried.current.has(x.id),
+    );
     if (missing.length === 0) return;
     // מסמנים הכול מראש: הריצה מעדכנת את `saved`, ובלי זה כל תשובה הייתה
     // מפעילה את האפקט מחדש על מה שכבר בדרך.
@@ -113,9 +117,18 @@ export default function DesignPage() {
       for (const item of missing) {
         if (!alive) return;
         try {
-          const { preview } = await api.designPreview(item.id);
+          const { preview, results } = await api.designPreview(item.id);
           if (!preview) continue;
-          setMyDesignPreview(item.id, preview);
+          setMyDesignPreview(
+            item.id,
+            preview,
+            results?.map((r) => ({
+              versionId: r.versionId,
+              versionNo: r.versionNo,
+              path: r.path,
+              cuts: r.cuts,
+            })),
+          );
           if (!alive) return;
           setSaved(listMyDesigns());
         } catch {

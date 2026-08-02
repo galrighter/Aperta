@@ -103,6 +103,36 @@ export function SavedDesigns({
                   )}
                 </div>
 
+                {/* כל מה שהעיצוב הזה ייצר, ולא רק הגרסה שמוצגת גדול.
+                    שלוש יצירות על אותו פריט הן שלוש גרסאות שלו — פריט אחד,
+                    מספר סידורי אחד — אבל בלי השורה הזאת מי שיצר שלוש פעמים
+                    ראה כרטיס אחד ולא שום שביל לשתיים האחרות. */}
+                {it.results && it.results.length > 1 && it.lengthMm && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto border-b border-graphite/10 bg-white px-3 py-2">
+                    {it.results.map((r) => (
+                      <svg
+                        key={r.versionId}
+                        viewBox={`-1 -1 ${it.lengthMm! + 2} ${it.widthMm + 2}`}
+                        className="h-5 w-auto flex-none"
+                        role="img"
+                        aria-label={`${d.savedResultNo} ${r.versionNo}`}
+                      >
+                        <rect
+                          x="0" y="0" width={it.lengthMm} height={it.widthMm}
+                          fill="none" stroke="rgba(32,35,38,0.25)" strokeWidth={Math.max(0.2, it.widthMm / 90)}
+                        />
+                        <path
+                          d={r.path} fillRule="evenodd" fill="none"
+                          stroke={COBALT} strokeWidth={Math.max(0.3, it.widthMm / 70)}
+                        />
+                      </svg>
+                    ))}
+                    <span className="flex-none ps-1 text-[11px] text-mist">
+                      {it.results.length} {d.savedResults}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-1 flex-col p-3.5">
                   {/* המספר הסידורי קודם לשם: הוא מה שאומרים כשמדברים על העיצוב */}
                   {designCode(it.serial) && (
