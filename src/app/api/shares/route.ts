@@ -5,7 +5,7 @@ import { requireDesignAccess } from "@/lib/designAccess";
 import { getVersion } from "@/lib/db/designs";
 import { attachSharePreview, createShare, findActiveShare } from "@/lib/db/shares";
 import { buildShareSnapshot } from "@/lib/shareSnapshot";
-import { decodeDataUrl, uploadFile } from "@/lib/db/storage";
+import { decodeDataUrl, removeFile, uploadFile } from "@/lib/db/storage";
 import { SITE } from "@/lib/site.config";
 
 // יצירת לינק שיתוף לעיצוב. הדף שהוא פותח: `/d/<token>`.
@@ -51,9 +51,15 @@ export async function POST(req: Request) {
     const share = existing ?? (await createShare(buildShareSnapshot(design, version)));
 
     /**
-     * צילום ההדמיה, אם הדפדפן שלח אחד. גם על שיתוף חוזר: הלינק זהה, אבל
-     * הצילום עשוי להיות טוב יותר מהקודם (זווית אחרת, או שבפעם הראשונה בכלל
-     * לא היה קנבס). דריסה של תמונה בנתיב קבוע מרעננת את מה שהעמוד מגיש.
+     * תמונת השיתוף, אם הדפדפן שלח אחת. גם על שיתוף חוזר: הלינק זהה, אבל
+     * התמונה עשויה להיות טובה יותר מהקודמת (זווית אחרת, או שבפעם הראשונה בכלל
+     * לא היה קנבס).
+     *
+     * **נתיב חדש בכל העלאה, לא דריסה של נתיב קבוע.** דריסה נראתה כמו הדרך
+     * הפשוטה, ובפועל היא לא הגיעה לאיש: הכתובת `/d/<token>/render` מוגשת
+     * `immutable`, ולכן הדפדפן, וואטסאפ, וגם ה-CDN של ה-storage המשיכו להגיש
+     * את הבייטים הישנים אחרי שהקובץ כבר הוחלף. נתיב חדש משנה את `?v=`
+     * שב-`og:image` (ראו `lib/shareImageUrl`) ומוציא מהמשחק את שלושתם.
      *
      * best-effort במפורש: הלינק כבר קיים ותקין, וכשל בהעלאה נופל חזרה
      * להדמיה של מודל התמונה במקום להיכשל על משהו שכבר הצליח.
@@ -65,9 +71,13 @@ export async function POST(req: Request) {
           throw new Error(`unsupported preview type ${mediaType}`);
         }
         const ext = mediaType === "image/png" ? "png" : "jpg";
-        const path = `shares/${share.id}.${ext}`;
+        const previous = share.preview_path;
+        const path = `shares/${share.id}-${Date.now()}.${ext}`;
         await uploadFile(path, bytes, mediaType);
         await attachSharePreview(share.id, path);
+        // רק אחרי שהחדשה נכתבה והשורה מצביעה עליה: מחיקה לפני כן הייתה
+        // משאירה את הלינק בלי תמונה אם ההעלאה נכשלת.
+        if (previous && previous !== path) await removeFile(previous);
       } catch (e) {
         console.warn(`[shares] preview upload failed for ${share.id}:`, (e as Error).message);
       }

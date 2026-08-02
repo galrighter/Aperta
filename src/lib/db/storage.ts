@@ -16,6 +16,15 @@ export async function uploadFile(
   return path;
 }
 
+/**
+ * מחיקה best-effort. משמשת להסרת קובץ שהוחלף (למשל תמונת שיתוף קודמת) — כשל
+ * כאן משאיר קובץ יתום של עשרות KB, וזה מחיר נמוך מלהפיל בגללו פעולה שהצליחה.
+ */
+export async function removeFile(path: string): Promise<void> {
+  const { error } = await supabaseAdmin().storage.from(STORAGE_BUCKET).remove([path]);
+  if (error) console.warn(`[storage] remove failed (${path}): ${error.message}`);
+}
+
 export async function signedUrl(path: string, expiresInSec = 3600): Promise<string> {
   const { data, error } = await supabaseAdmin()
     .storage.from(STORAGE_BUCKET)
