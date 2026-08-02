@@ -70,11 +70,25 @@ export function ResultScreen({
       <Eyebrow>{d.resultEyebrow}</Eyebrow>
       <ScreenTitle>{s.imageRole === "ready" ? d.resultTitleReady : d.resultTitle}</ScreenTitle>
 
-      {/* המספר הסידורי, ליד העיצוב עצמו — זה מה שמוסרים כשמדברים עליו */}
-      {designCode(s.designSerial) && (
-        <p className="mt-2 font-display text-[12px] tracking-[0.14em] text-mist">
-          {d.codeLabel} <span className="text-cobalt" dir="ltr">{designCode(s.designSerial)}</span>
-        </p>
+      {/* המספר הסידורי, ליד העיצוב עצמו — זה מה שמוסרים כשמדברים עליו.
+          לצידו השיתוף: שתי הדרכים למסור את העיצוב הזה למישהו אחר, באותה שורה,
+          במקום שנראה בלי גלילה. הכפתור ישב קודם בתחתית העמודה הצדדית ובטלפון
+          פשוט לא נמצא — ראו ההערה ב-ShareButton. */}
+      {(designCode(s.designSerial) || (s.designId && entry)) && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {designCode(s.designSerial) && (
+            <p className="font-display text-[12px] tracking-[0.14em] text-mist">
+              {d.codeLabel} <span className="text-cobalt" dir="ltr">{designCode(s.designSerial)}</span>
+            </p>
+          )}
+          {s.designId && entry && (
+            <ShareButton
+              designId={s.designId}
+              versionId={entry.versionId}
+              serial={s.designSerial}
+            />
+          )}
+        </div>
       )}
 
       {/* איפה אנחנו ביומן, ואיך חוזרים.
@@ -363,16 +377,6 @@ export function ResultScreen({
               </ol>
             )}
           </div>
-
-          {/* שיתוף. מתחת ליומן ומעל ההזמנה: זו פעולה על העיצוב שכבר קיים,
-              ולא צריכה להתחרות עם הכפתור הראשי. מוצג רק כשיש מה לשתף. */}
-          {s.designId && entry && (
-            <ShareButton
-              designId={s.designId}
-              versionId={entry.versionId}
-              serial={s.designSerial}
-            />
-          )}
 
           <PrimaryBtn onClick={onOrder} full>
             {d.resultOrder}
