@@ -150,6 +150,7 @@ export function frameCutoutsDims(
     const restored = restoreBridges(normalized, {
       letterBridges: plan.letterBridges,
       ornamentBridgeMm: fab.minBridgeCut,
+      minBridgeMm: FAB.minLetterBridgeMm,
       maxSpanMm: MAX_BRIDGE_SPAN_MM,
       maxDroppedFraction: MAX_DROPPED_MATERIAL,
     });

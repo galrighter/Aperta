@@ -35,7 +35,7 @@ import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
-  countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
+  countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
   stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
@@ -148,7 +148,7 @@ export default function DesignPage() {
    *  מנתקת את הלקוחה מעיצוב שכבר קיים בשרת — וזה בדיוק מה שקרה. */
   const remember = useCallback((st: CreateState, entry: EditEntry | null) => {
     if (!st.designId) return;
-    const path = entry ? mpToPath(entry.geometry?.material) : "";
+    const path = entry ? mpToPreviewPath(entry.geometry?.material) : "";
     saveMyDesign({
       id: st.designId,
       serial: st.designSerial ?? undefined,

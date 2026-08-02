@@ -198,8 +198,12 @@ export function BriefScreen({
                   {d.textVerify}
                 </p>
               )}
+              {/* לא ב-`text-mist` בשוליים: זו לא הערת אגב אלא ההודעה שהתמונה
+                  שהלקוחה בחרה, ושהיא רואה מעליה, לא תגיע למנוע. */}
               {s.lettering.trim() && s.image && s.imageRole !== "ready" && (
-                <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.textOverridesImage}</p>
+                <p className="mt-2 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                  {d.textOverridesImage}
+                </p>
               )}
             </div>
           </div>

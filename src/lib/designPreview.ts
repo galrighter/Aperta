@@ -1,6 +1,6 @@
 import { normalizeSvg } from "@/lib/geometry/normalize";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
-import { countCuts, mpToPath } from "@/components/create/model";
+import { countCuts, mpToPreviewPath } from "@/components/create/model";
 
 /**
  * התצוגה המקדימה של עיצוב — אותו ציור שהכרטיס ב"העיצובים שלי" מצייר.
@@ -35,7 +35,7 @@ export function previewOf(
   try {
     const n = normalizeSvg(svg, lengthMm, widthMm);
     const material = difference([rectPolygon(0, 0, lengthMm, widthMm)], n.cutUnion);
-    const path = mpToPath(material);
+    const path = mpToPreviewPath(material);
     if (!path) return null;
     return { path, lengthMm, widthMm, cuts: countCuts(svg) };
   } catch {

@@ -30,8 +30,9 @@ import type { MultiPolygon, Polygon, Pt } from "./types";
 export interface BridgeRecord {
   /** `letter` = הוחזר גשר שאנחנו חתכנו · `ornament` = חובר לנקודה הקרובה ·
    *  `dropped` = נמחק, כי אין נקודה קרובה מספיק ·
+   *  `kept` = לא גושר ולא נמחק, כי הוא גדול מכדי להיות אי (ראה `maxDroppedFraction`) ·
    *  `thickened` = גשר שהמודל צייר בעצמו, דק מהמינימום, והורחב אליו. */
-  kind: "letter" | "ornament" | "dropped" | "thickened";
+  kind: "letter" | "ornament" | "dropped" | "kept" | "thickened";
   /** מרכז האי, במ"מ. */
   x: number;
   y: number;
@@ -60,11 +61,14 @@ export interface BridgeRecord {
 export interface RestoreOptions {
   /** הגשרים שנחתכו בכיתוב, בקואורדינטות הפס. ריק/חסר = אין כיתוב בהרצה. */
   letterBridges?: readonly LetterBridge[];
-  /** רוחב הגשר לאי בעיטור — מינימום מבני, לא מינימום של אות. */
+  /** התקרה לגשר של אי בעיטור — המינימום המבני. הגשר בפועל צר ממנו כשהאי
+   *  שהוא מחזיק קטן; ראה `ornamentBridgeWidth`. */
   ornamentBridgeMm: number;
+  /** הרצפה לרוחב גשר (FAB.minLetterBridgeMm). אי צר ממנה אינו ניתן להחזקה. */
+  minBridgeMm: number;
   /** מעל זה עדיף למחוק אי מאשר לגשר אותו. */
   maxSpanMm: number;
-  /** כמה מהמתכת מותר למחוק בסך הכול. מעל זה לא נוגעים בכלום. */
+  /** מעל הנתח הזה מהמתכת, רכיב מנותק אינו "אי" אלא עיצוב שנשבר — ולא נוגעים בו. */
   maxDroppedFraction: number;
 }
 
@@ -115,6 +119,32 @@ function matchLetter(
     if (d <= tol && (!best || d < best.distMm)) best = { bridge, distMm: d };
   }
   return best;
+}
+
+/**
+ * כמה מהאי מותר לגשר לקחת — אותו יחס שהסטנסיל לוקח מחלל של אות
+ * (`BRIDGE_COUNTER_RATIO`). זה לא במקרה אותו מספר: אותה שאלה, אותה תשובה.
+ */
+const ORNAMENT_COUNTER_RATIO = 0.4;
+
+/**
+ * רוחב הגשר לאי בעיטור — **נגזר מהאי שהוא מחזיק**, לא קבוע.
+ *
+ * עד כאן הוא היה `minBridgeCut` בדיוק, כלומר 1.5 מ"מ בפריט 1.5 מ"מ, לכל אי
+ * ובלי קשר לגודלו. על נקודה בקוטר 0.8 מ"מ זה גשר כמעט כפול מהדבר שהוא מחזיק:
+ * מה שנראה בעין הוא לא נקודה מגושרת אלא כתם שיוצא ממנו זנב. `minBridgeCut` הוא
+ * המינימום למתכת **שנושאת** את הפריט; אי בעיטור, כמו חלל של אות, רק מוחזק
+ * במקומו — ולכן הוא נמדד באותה אמת מידה (FAB.minLetterBridgeMm).
+ *
+ * `null` = האי צר מהרצפה, ולכן אין רוחב שגם מחזיק אותו וגם אינו רחב ממנו.
+ */
+export function ornamentBridgeWidth(
+  islandAcrossMm: number,
+  opts: Pick<RestoreOptions, "ornamentBridgeMm" | "minBridgeMm">,
+): number | null {
+  if (islandAcrossMm < opts.minBridgeMm) return null;
+  const ideal = islandAcrossMm * ORNAMENT_COUNTER_RATIO;
+  return Math.min(opts.ornamentBridgeMm, Math.max(ideal, opts.minBridgeMm));
 }
 
 /** הנקודה הקרובה ביותר ל-`p` על הקטע a→b. */
@@ -200,20 +230,29 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
   if (total <= 0) return { design: n, records: [] };
   let keep = 0;
   for (let i = 1; i < areas.length; i++) if (areas[i] > areas[keep]) keep = i;
-  // אותה בלימה שהייתה: אם מה שמנותק הוא נתח גדול מהפריט, זה לא "אי" אלא עיצוב
-  // שנשבר, ולא נכון לא לגשר אותו ולא למחוק אותו.
-  if ((total - areas[keep]) / total > opts.maxDroppedFraction) return { design: n, records: [] };
 
   const main = material[keep];
-  const islands = material.filter((_, i) => i !== keep);
+  const islands = material.map((poly, i) => ({ poly, area: areas[i] })).filter((_, i) => i !== keep);
   const records: BridgeRecord[] = [];
   const bridges: MultiPolygon = [];
   const dropped: Polygon[] = [];
 
-  for (const island of islands) {
+  for (const { poly: island, area } of islands) {
     const box = boxOf(island);
     const [x, y] = centre(box);
     const base = { x, y, widthMm: box[2] - box[0], heightMm: box[3] - box[1] };
+
+    // אותה בלימה שהייתה, אבל **לכל רכיב בנפרד** ולא על סכום הרכיבים.
+    //
+    // רכיב שהוא נתח גדול מהפריט אינו אי אלא עיצוב שנשבר לשניים, ואין טעם לא
+    // לגשר אותו ולא למחוק אותו. אבל הסכום הוא לא אותה שאלה: שתים־עשרה אותיות
+    // שכל אחת מהן אחוז מהמתכת עוברות יחד את הסף, וההרצה שנמדדה כאן קיבלה
+    // **אפס** גשרים — עיצוב שהאותיות בו מרחפות באוויר, בלי שורה אחת ביומן
+    // שמסבירה למה. הבלימה נועדה לרכיב חריג, לא לכיתוב ארוך.
+    if (area / total > opts.maxDroppedFraction) {
+      records.push({ kind: "kept", ...base });
+      continue;
+    }
 
     const hit = matchLetter(box, opts.letterBridges ?? []);
     if (hit) {
@@ -230,14 +269,16 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
       continue;
     }
 
+    // הצלע הצרה של האי היא זו שקובעת: גשר רחב ממנה בולע אותו משני צדדיו.
+    const width = ornamentBridgeWidth(Math.min(base.widthMm, base.heightMm), opts);
     const link = shortestLink(island, main);
-    if (link.distMm <= opts.maxSpanMm) {
-      const drawn = linkRect(link.a, link.b, opts.ornamentBridgeMm);
+    if (width !== null && link.distMm <= opts.maxSpanMm) {
+      const drawn = linkRect(link.a, link.b, width);
       bridges.push(drawn);
       records.push({
         kind: "ornament",
         ...base,
-        bridgeMm: opts.ornamentBridgeMm,
+        bridgeMm: Math.round(width * 100) / 100,
         spanMm: Math.round(link.distMm * 100) / 100,
         pathD: polygonToPathD(drawn),
       });
@@ -246,6 +287,11 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
       records.push({ kind: "dropped", ...base, spanMm: Math.round(link.distMm * 100) / 100 });
     }
   }
+
+  // שום אי לא נגשר ושום אי לא נמחק — אין מה לבנות מחדש. מוחזר האובייקט עצמו,
+  // כדי ש-`frameCutouts` יזהה "לא השתנה" וידלג על ולידציה נוספת. הרשומות כן
+  // חוזרות: "לא נגענו, וזו הסיבה" הוא בדיוק מה שהיומן היה חסר.
+  if (bridges.length === 0 && dropped.length === 0) return { design: n, records };
 
   // גישור = החזרת מתכת, כלומר גריעה מהחיתוכים.
   let cutUnion = bridges.length ? difference(n.cutUnion, bridges) : n.cutUnion;

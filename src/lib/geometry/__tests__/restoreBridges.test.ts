@@ -8,7 +8,7 @@ import type { MultiPolygon } from "../types";
 // גשר שאנחנו חתכנו, מתי מחברים לנקודה הקרובה, ומתי בכל זאת מוחקים.
 
 const L = 40, W = 10;
-const OPTS = { ornamentBridgeMm: 1.5, maxSpanMm: 2, maxDroppedFraction: 0.1 };
+const OPTS = { ornamentBridgeMm: 1.5, minBridgeMm: 0.75, maxSpanMm: 2, maxDroppedFraction: 0.1 };
 
 /** פס עם חיתוך מלבני שבתוכו אי מתכת — הצורה של חלל אות אחרי המעקב. */
 function withIsland(cut: [number, number, number, number], island: [number, number, number, number]) {
@@ -62,7 +62,48 @@ describe("restoreBridges", () => {
     expect(components(fixed)).toBe(1);
     expect(records[0].kind).toBe("ornament");
     expect(records[0].spanMm).toBeCloseTo(1.5, 1);
-    expect(records[0].bridgeMm).toBe(1.5);
+    // האי הוא 2x1 מ"מ, ולכן הגשר נגזר ממנו ולא מ-`ornamentBridgeMm`: 1.5 מ"מ
+    // על צלע של מילימטר הוא לא גשר אלא בליעה.
+    expect(records[0].bridgeMm).toBe(0.75);
+  });
+
+  it("never draws an ornament bridge wider than the island it holds", () => {
+    // נקודה קטנה — בדיוק המקרה שהתלונה הגיעה עליו. גשר `ornamentBridgeMm`
+    // עליה היה רחב ממנה פי כמעט שניים.
+    const design = withIsland([10, 3, 20, 7], [14.6, 4.5, 15.4, 5.3]);
+    const { records } = restoreBridges(design, OPTS);
+    expect(records[0].kind).toBe("ornament");
+    expect(records[0].bridgeMm!).toBeLessThanOrEqual(Math.min(records[0].widthMm, records[0].heightMm));
+  });
+
+  it("drops an island too narrow for even the minimum bridge", () => {
+    // 0.4 מ"מ: כל גשר שיחזיק אותו רחב ממנו. אין מה לגשר — מוחקים.
+    const design = withIsland([10, 3, 20, 7], [14.8, 4.8, 15.2, 5.2]);
+    const { records } = restoreBridges(design, OPTS);
+    expect(records[0].kind).toBe("dropped");
+  });
+
+  it("bridges every letter island even when together they pass the drop budget", () => {
+    // שנים־עשר חללים קטנים, שיחד הם יותר מ-10% מהמתכת. הבלימה נועדה לרכיב
+    // חריג יחיד; כאן היא הותירה עיצוב שכל אותיותיו מרחפות ובלי אף גשר.
+    const cuts: MultiPolygon = [];
+    for (let i = 0; i < 12; i++) {
+      const x = 2 + i * 3;
+      cuts.push(...difference(
+        [rectPolygon(x, 1, x + 2.6, 9)],
+        [rectPolygon(x + 0.6, 3, x + 2, 7)],
+      ));
+    }
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${L} ${W}"><g id="cutouts">` +
+      cuts.map((p) => `<path d="${p.map((r) => `M${r.map((q) => q.join(" ")).join("L")}Z`).join("")}" fill="black"/>`).join("") +
+      "</g></svg>";
+    const design = normalizeSvg(svg, L, W);
+    expect(components(design)).toBe(13);
+    const { design: fixed, records } = restoreBridges(design, OPTS);
+    expect(records).toHaveLength(12);
+    expect(records.every((r) => r.kind === "ornament")).toBe(true);
+    expect(components(fixed)).toBe(1);
   });
 
   it("drops an island whose nearest metal is too far to bridge", () => {
@@ -92,6 +133,7 @@ describe("restoreBridges", () => {
     const design = withIsland([1, 1, 39, 9], [2, 2, 38, 8]);
     const { design: same, records } = restoreBridges(design, OPTS);
     expect(same).toBe(design);
-    expect(records).toEqual([]);
+    // אבל כן מדווחים: "לא נגענו" בלי שורה ביומן נראה בדיוק כמו "לא רץ".
+    expect(records).toEqual([expect.objectContaining({ kind: "kept" })]);
   });
 });

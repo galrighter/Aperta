@@ -56,6 +56,12 @@ export interface RunInputs {
   colorKey?: string;
   /** כמה קבצים המשתמש צירף (השראה/סימון). */
   imageCount?: number;
+  /**
+   * הקובץ צורף ולא נשלח למודל, וזו הסיבה: `lettering` = הכיתוב תפס את מקום
+   * תמונת הייחוס, `edit` = העיצוב הקיים תפס אותו. בלי השדה הזה שורה עם
+   * `imageCount: 1` ובלי תמונת קלט נראית כמו כשל בהעלאה.
+   */
+  imageDropped?: "lettering" | "edit";
   /** עריכה: העיצוב הקיים נמסר למודל התמונה כרפרנס, וההרצה לא יצאה מאפס. */
   editedFromCurrent?: boolean;
   /**
@@ -76,7 +82,29 @@ export interface RunInputs {
    */
   lettering?: {
     text?: string;
-    rows: Array<{ fontId: string; letterHeightMm: number; textWidthMm: number }>;
+    rows: Array<{
+      fontId: string;
+      letterHeightMm: number;
+      textWidthMm: number;
+      /**
+       * הגשרים שנחתכו בשורה הזו — **התכנון**, לא התיקון.
+       *
+       * `validation_report.bridges` של הגרסה מתעד רק את מה שנוסף *אחרי*
+       * שהמודל צייר. הגשרים שנחתכו מהפונט לפני כן — אלה שהמודל מעתיק, ולכן
+       * אלה שנראים ברוב העיצובים — לא נרשמו בשום מקום. תלונה על גשר שבולע
+       * אות לא הייתה ניתנת לאבחון: לא היה מספר להעמיד מולה.
+       */
+      bridges?: Array<{
+        /** האות שהחלל שייך לה. */
+        char: string | null;
+        /** רוחב הגשר שנחתך. */
+        widthMm: number;
+        /** המידה של החלל לאורך הציר שהגשר צר בו — היחס ביניהם הוא הפגיעה. */
+        counterMm: number;
+        /** אופקי (עברית) או אנכי (לטינית). */
+        sideways: boolean;
+      }>;
+    }>;
   } | null;
 }
 
