@@ -81,3 +81,46 @@ export function applyCookies(res: Response, pending: CookieWrite[]): Response {
   for (const c of pending) res.headers.append("Set-Cookie", cookieHeader(c));
   return res;
 }
+
+/**
+ * כותב לדפדפן עוגיות סשן שהתחדשו באמצע בקשה — **בלי** שלמסלול תהיה תשובה ביד.
+ *
+ * זה מה שהיה חסר. `applyCookies` דורש את אובייקט התשובה, ולכן רק שני מסלולים
+ * השתמשו בו; כל שאר המסלולים קוראים ל-`requireAccountId` ומחזירים תשובה משלהם,
+ * ובה הרענון נזרק. ולזרוק אותו זה לא "להישאר עם הישן": הרענון **מסובב** את
+ * ה-refresh token בשרת האימות (`refresh_token_rotation_enabled`), כך שהאסימון
+ * שנשאר בדפדפן מת תוך `security_refresh_token_reuse_interval` שניות. השימוש הבא
+ * בו נחשב שימוש חוזר, ו-GoTrue מבטל את **כל** הסשן — הלקוחה מוצאת את עצמה
+ * מנותקת בלי לגעת בכלום, ו"המשך עיצוב" מחזיר 401.
+ *
+ * `cookies()` מ-next/headers ולא כותרת על התשובה: זו הדרך היחידה שעובדת מכל
+ * מסלול בלי לשנות את החתימה שלו. ייבוא דינמי כדי שהמודול ימשיך להיטען גם מחוץ
+ * להקשר בקשה (טסטים), ו-try/catch כי `set` זמין רק ב-Route Handler — במקום
+ * שבו הוא לא זמין, ההתנהגות היא בדיוק זו שהייתה עד היום.
+ */
+export async function persistAuthCookies(pending: CookieWrite[]): Promise<void> {
+  if (!pending.length) return;
+  try {
+    const { cookies } = await import("next/headers");
+    const jar = await cookies();
+    for (const c of pending) {
+      const o = c.options as {
+        maxAge?: number;
+        path?: string;
+        sameSite?: "lax" | "strict" | "none";
+        domain?: string;
+      };
+      jar.set(c.name, c.value, {
+        path: o.path ?? "/",
+        // כמו ב-cookieHeader: העוגייה נכתבת מהשרת ואין לה קורא בדפדפן.
+        httpOnly: true,
+        secure: true,
+        sameSite: o.sameSite ?? "lax",
+        ...(typeof o.maxAge === "number" ? { maxAge: o.maxAge } : {}),
+        ...(o.domain ? { domain: o.domain } : {}),
+      });
+    }
+  } catch {
+    /* אין חנות עוגיות ניתנת לכתיבה בהקשר הזה — לא סיבה להפיל את הבקשה */
+  }
+}
