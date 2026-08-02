@@ -23,16 +23,19 @@ import { useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import { api, ClientApiError } from "@/lib/client/api";
 import { capturePreview } from "@/lib/client/previewCapture";
+import { composeShareImage, type FlatSource } from "@/lib/client/shareImage";
 import { designCode } from "@/lib/designCode";
 
 const t = he.share;
 
 export function ShareButton({
-  designId, versionId, serial, className = "", compact,
+  designId, versionId, serial, flat, className = "", compact,
 }: {
   designId: string;
   versionId: string;
   serial: number | null;
+  /** הפריסה של הגרסה המוצגת — נכנסת לתמונת השיתוף מתחת להדמיה. */
+  flat?: FlatSource | null;
   /** סגנון הכפתור עצמו, כדי שיתלבש גם על כותרת הסטודיו וגם על מסך התוצאה. */
   className?: string;
   /** במסך צר נשאר האייקון בלבד. כותרת הסטודיו כבר צפופה בטלפון, ומילה
@@ -94,10 +97,11 @@ export function ShareButton({
     setError(null);
     setCopied(false);
     try {
-      // צילום ההדמיה שעל המסך, אם יש כזו. זו תמונת השיתוף — ראו
-      // `lib/client/previewCapture`. null כשאין קנבס מוצג, ואז השרת נופל
-      // להדמיה של מודל התמונה.
-      const res = await api.createShare(designId, versionId, capturePreview());
+      // תמונת השיתוף: צילום ההדמיה שעל המסך (ראו `lib/client/previewCapture`)
+      // והפריסה מתחתיו, בתמונה אחת. בלי קנבס מוצג נשארת הפריסה לבדה, ובלי
+      // שתיהן נשלח null — ואז השרת נופל להדמיה של מודל התמונה.
+      const image = await composeShareImage(capturePreview(), flat ?? null);
+      const res = await api.createShare(designId, versionId, image);
       setUrl(res.url);
     } catch (e) {
       setError(e instanceof ClientApiError ? e.message : t.shareFailed);

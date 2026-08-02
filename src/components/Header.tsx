@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { he } from "@/i18n/he";
 import { currentVersion, useStudio } from "@/lib/client/store";
+import { svgFrame } from "@/lib/geometry/frame";
+import { cutoutsInner } from "./create/model";
 import { DesignsDrawer } from "./DesignsDrawer";
 import { ShareButton } from "./create/ShareButton";
 
@@ -10,6 +12,16 @@ export function Header() {
   const s = useStudio();
   const { profiles, profile, selectProfile, design, renameDesign, newDesign, setDrawerOpen } = s;
   const version = currentVersion(s);
+  /** הפריסה לתמונת השיתוף. המסגרת מה-viewBox של הגרסה ולא משורת העיצוב — זו
+   *  שנחתכת בפועל, מאותה סיבה שמופיעה ב-`shareSnapshot`. */
+  const frame = version ? svgFrame(version.svg) : null;
+  const flat = version
+    ? {
+        cutouts: cutoutsInner(version.svg),
+        lengthMm: frame?.lengthMm ?? Number(design?.length_mm ?? 0),
+        widthMm: frame?.widthMm ?? Number(design?.width_mm ?? 0),
+      }
+    : null;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -76,6 +88,7 @@ export function Header() {
           designId={design.id}
           versionId={version.id}
           serial={design.serial ?? null}
+          flat={flat}
           compact
           className="inline-flex items-center gap-1.5 rounded-[2px] border border-graphite/10 px-3 py-1.5 text-sm hover:bg-porcelain disabled:cursor-not-allowed disabled:opacity-50"
         />

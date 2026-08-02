@@ -86,6 +86,10 @@ export function ResultScreen({
               designId={s.designId}
               versionId={entry.versionId}
               serial={s.designSerial}
+              // הפריסה נכנסת לתמונת השיתוף מתחת להדמיה: על מתכת מעוגלת ומבריקה
+              // הגרפיקה לא תמיד נקראית, ומי שרואה את הלינק בוואטסאפ רואה רק
+              // את התמונה.
+              flat={{ cutouts, lengthMm: L, widthMm: W }}
             />
           )}
         </div>
