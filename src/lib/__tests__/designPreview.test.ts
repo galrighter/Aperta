@@ -40,6 +40,22 @@ describe("previewOf", () => {
     expect(previewOf("not an svg at all", DIMS)).toBeNull();
   });
 
+  it("stays small enough to store, on the traced geometry that made it too big", () => {
+    // מתאר של מעקב אמיתי: נקודה כל 0.02–0.05 מ"מ. ב-`mpToPath` זה עשרות אלפי
+    // תווים לחיתוך אחד, ומעל 40,000 שני הצדדים זורקים את הציור — כלומר דווקא
+    // עיצוב עשיר בחיתוכים הופיע ברשימה בלי תמונה.
+    const pts: string[] = [];
+    for (let i = 0; i < 900; i++) {
+      const t = (i / 900) * Math.PI * 2;
+      pts.push(`${(30 + 2.5 * Math.cos(t)).toFixed(4)},${(5 + 2.5 * Math.sin(t)).toFixed(4)}`);
+    }
+    const p = previewOf(svg(`<path d="M${pts.join("L")}Z"/>`), DIMS);
+    expect(p).not.toBeNull();
+    expect(p!.path.length).toBeLessThan(40_000);
+    // ועדיין צורה: המסגרת והחור, שניהם.
+    expect(p!.path.match(/M/g)).toHaveLength(2);
+  });
+
   it("returns null without a version, and without dimensions", () => {
     expect(previewOf(null, DIMS)).toBeNull();
     expect(previewOf(svg(""), { lengthMm: 0, widthMm: 10 })).toBeNull();

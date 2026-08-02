@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { INITIAL, buildPrompt, densityForPrice, priceOf, type CreateState } from "../model";
+import { INITIAL, buildPrompt, canGenerate, densityForPrice, priceOf, type CreateState } from "../model";
 
 // "שהמודל יחליט" — האפשרות לא לבחור מאפיינים. הבדיקה כאן היא על מה שיוצא
 // לפרומפט ועל מה שקורה לתמחור, כי אלה שני המקומות שהדגל נוגע בהם.
@@ -46,5 +46,24 @@ describe("תמחור כשלא נבחרה צפיפות", () => {
     const auto = priceOf(state({ attrsAuto: true, density: "high" }));
     const medium = priceOf(state({ attrsAuto: false, density: "medium" }));
     expect(auto.total).toBe(medium.total);
+  });
+});
+
+describe("מתי בכלל יש ממה לייצר", () => {
+  // RM-0074: הבקשה הגיעה לשרת בלי תיאור ובלי תמונה, עם ברירות המחדל בלבד,
+  // והלקוחה קיבלה אחרי המתנה עיצוב שלא ביקשה — והוא נספר במכסה שלה. הכפתור
+  // חסם את זה תמיד; ההרצה שממשיכה אחרי כניסה לחשבון לא עברה בכפתור מעולם.
+  it("טופס ריק אינו נשלח", () => {
+    expect(canGenerate(state({}))).toBe(false);
+  });
+
+  it("תיאור, כיתוב או תמונה — כל אחד מהם מספיק", () => {
+    expect(canGenerate(state({ brief: "קווים דקים" }))).toBe(true);
+    expect(canGenerate(state({ lettering: "ענבל" }))).toBe(true);
+    expect(canGenerate(state({ image: { dataUrl: "data:image/png;base64,AA", name: "a.png" } }))).toBe(true);
+  });
+
+  it("קובץ מוכן לחיתוך אינו דורש תיאור", () => {
+    expect(canGenerate(state({ imageRole: "ready" }))).toBe(true);
   });
 });

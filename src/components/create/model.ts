@@ -398,6 +398,44 @@ export function mpToPath(mp: MultiPolygon | null | undefined): string {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * דיוק הציור בכרטיס "העיצובים שלי", במ"מ. הכרטיס גבוה 60 פיקסל ורחב פס של
+ * 180 מ"מ — כלומר פיקסל אחד הוא כשליש מ"מ, ועשירית מ"מ היא כבר מתחת לרזולוציה.
+ */
+const PREVIEW_STEP_MM = 0.1;
+
+/**
+ * אותו ציור, בגודל שנכנס לאחסון.
+ *
+ * המתאר שחוזר מהמעקב נושא נקודה כל 0.02–0.1 מ"מ. ב-`mpToPath`, שנועד
+ * לגאומטריה, זה נכון — וכ-path זה עשרות אלפי תווים לעיצוב אחד. גם המקומי וגם
+ * השרת זורקים ציור מעל 40,000 תווים (מכסת localStorage היא לכל האתר), ולכן
+ * דווקא עיצוב עשיר בחיתוכים — זה שהכי כדאי לזהות בעין — הופיע ברשימה בלי
+ * תמונה. עיגול לרשת של עשירית מ"מ מאחד כל 3–5 נקודות רצופות לאחת ומקצר גם כל
+ * מספר; הצורה זהה בעין, והציור נכנס.
+ */
+export function mpToPreviewPath(mp: MultiPolygon | null | undefined): string {
+  if (!mp?.length) return "";
+  const snap = (n: number) => Math.round(n / PREVIEW_STEP_MM) * PREVIEW_STEP_MM;
+  const parts: string[] = [];
+  for (const poly of mp) {
+    for (const ring of poly) {
+      if (ring.length < 3) continue;
+      const pts: string[] = [];
+      let prev = "";
+      for (const [x, y] of ring) {
+        const p = `${round(snap(x))},${round(snap(y))}`;
+        if (p === prev) continue;
+        pts.push(p);
+        prev = p;
+      }
+      // טבעת שהתכווצה לקו אינה צורה — היא הייתה מציירת שערה על הכרטיס.
+      if (pts.length >= 3) parts.push(`M${pts.join("L")}Z`);
+    }
+  }
+  return parts.join(" ");
+}
+
 /** תוכן שכבת ה-cutouts מתוך ה-SVG הקנוני — מקור האמת לציור.
  *  ה-SVG תמיד קיים על הגרסה; geometry עשוי לחזור ריק. */
 export function cutoutsInner(svg: string | null | undefined): string {
@@ -481,6 +519,19 @@ export function buildPrompt(s: CreateState): string {
     }
   }
   return parts.join(" ");
+}
+
+/**
+ * האם יש בכלל ממה לייצר — תיאור, כיתוב, או תמונה.
+ *
+ * ההגדרה יושבת כאן ולא במסך כי **שני** מקומות שולחים ליצירה: הכפתור, וההרצה
+ * שממשיכה מעצמה אחרי כניסה לחשבון (`startAfterSignIn`). לכפתור הייתה בדיקה
+ * ולמסלול השני לא, ולכן הרצה יכלה לצאת עם טופס ריק — וזה בדיוק מה שקרה
+ * ב-RM-0074: הבקשה הגיעה לשרת בלי תיאור ובלי תמונה, עם ברירות המחדל בלבד,
+ * והלקוחה קיבלה אחרי המתנה עיצוב שלא ביקשה. מוטב לא לשלוח מאשר לשלוח כלום.
+ */
+export function canGenerate(s: CreateState): boolean {
+  return Boolean(s.brief.trim() || s.lettering.trim() || s.image || s.imageRole === "ready");
 }
 
 /** אורך הכיתוב המרבי בממשק. הגבול האמיתי הוא הפס עצמו והוא נבדק בשרת — כאן

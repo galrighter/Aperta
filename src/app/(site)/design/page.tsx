@@ -35,7 +35,7 @@ import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
-  countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPath, priceOf,
+  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
   stripLengthMm, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
@@ -99,8 +99,12 @@ export default function DesignPage() {
   const previewTried = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!previewsWanted) return;
-    // pending = עוד אין גרסה, ולכן אין מה לצייר.
-    const missing = saved.filter((x) => !x.path && !x.pending && !previewTried.current.has(x.id));
+    // pending = עוד אין גרסה, ולכן אין מה לצייר. רשומה שיש לה ציור אבל אין לה
+    // עדיין רשימת תוצאות נמשכת גם היא: היא נשמרה לפני שהכרטיס ידע להציג את כל
+    // מה שהעיצוב הזה ייצר, ובלעדיה הוא ממשיך להראות תוצאה אחת מתוך שלוש.
+    const missing = saved.filter(
+      (x) => (!x.path || !x.results) && !x.pending && !previewTried.current.has(x.id),
+    );
     if (missing.length === 0) return;
     // מסמנים הכול מראש: הריצה מעדכנת את `saved`, ובלי זה כל תשובה הייתה
     // מפעילה את האפקט מחדש על מה שכבר בדרך.
@@ -113,9 +117,18 @@ export default function DesignPage() {
       for (const item of missing) {
         if (!alive) return;
         try {
-          const { preview } = await api.designPreview(item.id);
+          const { preview, results } = await api.designPreview(item.id);
           if (!preview) continue;
-          setMyDesignPreview(item.id, preview);
+          setMyDesignPreview(
+            item.id,
+            preview,
+            results?.map((r) => ({
+              versionId: r.versionId,
+              versionNo: r.versionNo,
+              path: r.path,
+              cuts: r.cuts,
+            })),
+          );
           if (!alive) return;
           setSaved(listMyDesigns());
         } catch {
@@ -148,7 +161,7 @@ export default function DesignPage() {
    *  מנתקת את הלקוחה מעיצוב שכבר קיים בשרת — וזה בדיוק מה שקרה. */
   const remember = useCallback((st: CreateState, entry: EditEntry | null) => {
     if (!st.designId) return;
-    const path = entry ? mpToPath(entry.geometry?.material) : "";
+    const path = entry ? mpToPreviewPath(entry.geometry?.material) : "";
     saveMyDesign({
       id: st.designId,
       serial: st.designSerial ?? undefined,
@@ -235,6 +248,17 @@ export default function DesignPage() {
       pendingAction.current = "generate";
       setGateError(null);
       setGateOpen(true);
+      return;
+    }
+
+    // אין ממה לייצר. הכפתור חוסם את זה, אבל לכאן מגיעים גם אחרי כניסה לחשבון
+    // (`startAfterSignIn`) — מסלול שלא עבר בכפתור מעולם. ב-RM-0074 הבקשה הגיעה
+    // לשרת בלי תיאור ובלי תמונה, עם ברירות המחדל בלבד (`imageCount: 0`,
+    // והפרומפט היה שורת המאפיינים לבדה), והלקוחה קיבלה אחרי המתנה עיצוב שלא
+    // ביקשה — והוא נספר במכסה היומית שלה. חזרה למסך הבריף היא התשובה הנכונה:
+    // מה שמילאה אבד, ולפחות היא רואה זאת מיד ולא אחרי דקה.
+    if (!canGenerate(s)) {
+      go("brief");
       return;
     }
 

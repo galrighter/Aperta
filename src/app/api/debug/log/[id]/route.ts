@@ -18,15 +18,24 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // ריק הוא התשובה הנכונה: הפתיחה תציג "אין נתונים" במקום "טעינת הפירוט נכשלה".
     if (!row) {
       return NextResponse.json({
-        id, svg: null, debug: null, renderPrompt: null, inputs: null, bridges: null, offered: null,
+        id, svg: null, rawSvg: null, versionNo: null,
+        debug: null, renderPrompt: null, inputs: null, bridges: null, offered: null,
       });
     }
     // הפירוט הוא המקום שבו ה-SVG של כל מועמד באמת נחוץ, ולכן הוא נקרא מ-
     // debug_full. שורות שנכתבו לפני הפיצול מוחזרות ל-debug (ההגירה מעבירה
     // אותן, אבל הנפילה לאחור עולה שורה אחת ומכסה גם שורה שנכתבה בחלון).
+    // הגאומטריה שנשמרה לגרסה — זו שהלקוחה מקבלת. ראה `bridgesForRun`.
+    const version = await bridgesForRun(row.id);
+
     return NextResponse.json({
       id: row.id,
-      svg: row.svg,
+      // מה שנשמר, ובהיעדרו (הרצה שלא הגיעה לגרסה) מה שהווקטורייזר החזיר.
+      svg: version.svg ?? row.svg,
+      versionNo: version.versionNo,
+      /** הפלט הגולמי — לפני מתיחה, גישור ועיבוי. ההפרש בינו לבין `svg` הוא
+       *  בדיוק מה שהצינור עשה אחרי שהמודל צייר. */
+      rawSvg: version.svg ? row.svg : null,
       debug: row.debug_full ?? row.debug,
       // הפרומפט המלא נשלח רק כאן: ברשימה הוא 3KB לשורה שאף אחד לא קורא, וכאן
       // הוא בדיוק מה שביקשו לראות.
@@ -34,8 +43,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       prompt: row.prompt ?? null,
       inputs: row.inputs ?? null,
       // הגשרים שנוספו אחרי המעקב — של הגרסה שההרצה שמרה, ושל כל הצעה לצידה.
-      // שאילתה אחת וקטנה, ורק בפתיחת הרצה.
-      ...(await bridgesForRun(row.id).then((r) => ({ bridges: r.bridges, offered: r.candidates }))),
+      bridges: version.bridges,
+      offered: version.candidates,
     });
   } catch (err) {
     return handleRouteError(err);

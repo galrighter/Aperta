@@ -53,6 +53,15 @@ const MAX_ISLANDS = 24;
 const WINDOW_MM = 2;
 
 /**
+ * כמה מתחת לרצפה צוואר צריך להיות כדי שנגע בו. ראה הנימוק בלולאה.
+ *
+ * הפתיחה היא סף חד, והתיקון הוא פס ברוחב מלא — ולכן צוואר שחסרות לו מאיות
+ * מילימטר מקבל את אותו טיפול כמו צוואר שחסר לו חצי. ה-kerf (0.12 מ"מ) גדול
+ * מההפרש הזה, כלומר הוא לא קיים בחיתוך; הוא קיים רק על המסך, כפס על האות.
+ */
+const NECK_TOLERANCE_MM = 0.05;
+
+/**
  * תקציב קודקודים לפתיחה, אחרי ניקוי. מעליו מוותרים — ראה למטה.
  *
  * 10,000 (החלטת גל). שני נימוקים, ושניהם לכיוון אחד: המשתמש ממתין ליצירה מעל
@@ -196,6 +205,23 @@ export function thickenBridges(n: NormalizedDesign, opts: ThickenOptions): Thick
     }
     // אי שאין לו שכן בחלון הוא לא אי שתלוי בגשר דק אלא משהו אחר; מדלגים.
     if (!link) continue;
+
+    // **כמה דק הצוואר באמת** — נמדד לפני שמחליטים, ולא רק כדי לדווח.
+    //
+    // הפתיחה היא בדיקת סף חדה: צוואר של 0.74 מ"מ אינו מכיל דיסק של 0.75, ולכן
+    // הוא מפריד גופים בדיוק כמו צוואר של 0.36. אבל התיקון אינו "להוסיף את
+    // ההפרש": `linkRect` מותח מלבן ברוחב מלא בין שני הגופים **הפתוחים**, וכל
+    // אחד מהם נשחק ברדיוס הדיסק — כלומר על צוואר שכבר עומד כמעט בדיוק בכלל
+    // נמרח פס מתכת שלם. זה מה שראו על ה-G ב-RM-0075: חמישה מתוך שישה עיבויים
+    // באותה הרצה נמדדו 0.74 מול רצפה של 0.75, וכל אחד מהם צייר פס על אות.
+    //
+    // 0.05 מ"מ הוא הסף (החלטת גל, 2.8): ה-kerf הוא 0.12 מ"מ, סדר גודל מעל
+    // ההפרש שנרדף כאן, והמתאר שחוזר מהמעקב נושא נקודה כל 0.02–0.1 מ"מ. מתחת
+    // לסף הזה ההבדל אינו קיים בחיתוך — הוא קיים רק בעין, כפס על האות.
+    const midpoint: Pt = [(link.a[0] + link.b[0]) / 2, (link.a[1] + link.b[1]) / 2];
+    const neck = neckWidthMm(material, midpoint, opts.minBridgeMm);
+    if (neck !== undefined && neck >= opts.minBridgeMm - NECK_TOLERANCE_MM) continue;
+
     const rect = linkRect(link.a, link.b, opts.minBridgeMm);
     rects.push(rect);
     // רוב המלבן יושב על מתכת קיימת. מה שנוסף בפועל הוא רק החלק שנופל על חיתוך,
@@ -210,7 +236,7 @@ export function thickenBridges(n: NormalizedDesign, opts: ThickenOptions): Thick
       y: Math.round(y * 100) / 100,
       widthMm: box[0],
       heightMm: box[1],
-      fromMm: neckWidthMm(material, [(link.a[0] + link.b[0]) / 2, (link.a[1] + link.b[1]) / 2], opts.minBridgeMm),
+      fromMm: neck,
       bridgeMm: opts.minBridgeMm,
       pathD: added.map((p) => polygonToPathD(p)).join(""),
     });

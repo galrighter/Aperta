@@ -7,7 +7,7 @@ import { he } from "@/i18n/he";
 import {
   Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, PrimaryBtn,
 } from "./ui";
-import { MAX_LETTERING } from "./model";
+import { canGenerate, MAX_LETTERING } from "./model";
 import type {
   CreateState, Density, Feel, ImageRole, Symmetry,
 } from "./model";
@@ -33,7 +33,8 @@ export function BriefScreen({
   const locked = s.imageRole === "ready";
   /** המאפיינים כבויים כשהקובץ מוכן לחיתוך, וגם כשהמודל מחליט לבד. */
   const attrsOff = locked || s.attrsAuto;
-  const canSubmit = Boolean(s.brief.trim() || s.lettering.trim() || s.image || locked);
+  // אותה בדיקה בדיוק שהיצירה עצמה מריצה — ראה `canGenerate`.
+  const canSubmit = canGenerate(s);
 
   const pickFile = (f: File | undefined) => {
     if (!f) return;
@@ -198,8 +199,12 @@ export function BriefScreen({
                   {d.textVerify}
                 </p>
               )}
+              {/* לא ב-`text-mist` בשוליים: זו לא הערת אגב אלא ההודעה שהתמונה
+                  שהלקוחה בחרה, ושהיא רואה מעליה, לא תגיע למנוע. */}
               {s.lettering.trim() && s.image && s.imageRole !== "ready" && (
-                <p className="mt-2 text-[13px] leading-relaxed text-mist">{d.textOverridesImage}</p>
+                <p className="mt-2 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                  {d.textOverridesImage}
+                </p>
               )}
             </div>
           </div>

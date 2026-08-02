@@ -208,7 +208,11 @@ export const api = {
 
   /** הציור לכרטיס ב"העיצובים שלי" — כמה מאות בתים, בלי הגרסאות עצמן. */
   designPreview: (id: string) =>
-    call<{ preview: DesignPreview | null }>(`/api/designs/${id}/preview`),
+    call<{
+      preview: DesignPreview | null;
+      /** כל התוצאות של העיצוב, החדשה ראשונה. חסר בשרת שעוד לא נפרס. */
+      results?: Array<DesignPreview & { versionId: string; versionNo: number }>;
+    }>(`/api/designs/${id}/preview`),
 
   patchDesign: (id: string, patch: Record<string, unknown>) =>
     call<{ design: Design }>(`/api/designs/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),

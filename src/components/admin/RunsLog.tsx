@@ -44,10 +44,26 @@ export type RunInputs = {
   productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
   rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
+  /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
+  imageDropped?: "lettering" | "edit";
   /** האם ההרצה יצאה מהעיצוב הקיים (עריכה) או מאפס. */
   editedFromCurrent?: boolean;
   /** מספר הגרסה שנמסרה למודל כבסיס לעריכה. חסר בהרצות שנשמרו לפני שהוא נרשם. */
   editedFromVersion?: number;
+  /**
+   * הכיתוב שנחתך מהפונט ונמסר למודל כתמונת ייחוס — כולל הגשרים שנחתכו בו.
+   * אלה **התכנון**: מה שהמודל התבקש להעתיק, להבדיל מ-`bridges` שבפירוט,
+   * שהוא מה שתוקן אחרי שהוא צייר. `bridges` חסר בהרצות מלפני התיעוד הזה.
+   */
+  lettering?: {
+    text?: string;
+    rows: Array<{
+      fontId: string;
+      letterHeightMm: number;
+      textWidthMm: number;
+      bridges?: Array<{ char: string | null; widthMm: number; counterMm: number; sideways: boolean }>;
+    }>;
+  } | null;
 };
 
 /** הבעלים של ההרצה, לקיבוץ היומן לפי משתמש. */
@@ -76,9 +92,10 @@ export type LogItem = {
 
 /** מה שנעשה לאי מתכת שחזר מהמעקב. `letter` = הוחזר גשר שאנחנו חתכנו,
  *  `ornament` = חובר לנקודה הקרובה, `dropped` = נמחק כי לא היה לאן,
+ *  `kept` = גדול מכדי להיות אי, ולכן לא גושר ולא נמחק,
  *  `thickened` = גשר של המודל שהיה דק מהמינימום והורחב אליו. */
 export type BridgeRecord = {
-  kind: "letter" | "ornament" | "dropped" | "thickened";
+  kind: "letter" | "ornament" | "dropped" | "kept" | "thickened";
   x: number; y: number; widthMm: number; heightMm: number;
   bridgeMm?: number; fromMm?: number; spanMm?: number; char?: string | null; matchMm?: number;
   /** הגשר עצמו, לציור מעל העיצוב. חסר במחיקה. */
@@ -87,7 +104,19 @@ export type BridgeRecord = {
 
 /** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
 export type LogDetail = {
+  /** הגאומטריה **שנשמרה** — מה שהלקוחה מקבלת ומה שייחתך. */
   svg: string | null;
+  /**
+   * הפלט הגולמי של הווקטורייזר, לפני מתיחה, גישור ועיבוי.
+   *
+   * זה מה שהוצג כאן עד היום ככותרת "SVG סופי" — ולכן כל גשר שהצינור מוסיף היה
+   * בלתי נראה בבק־אופיס. ב-RM-0075 הלקוחה ראתה פס על ה-G והיומן הראה אות
+   * נקייה, ואי אפשר היה להעמיד תלונה מול שום דבר. `null` בהרצה שלא נשמרה
+   * ממנה גרסה — שם אין "אחרי", והגולמי הוא כל מה שיש.
+   */
+  rawSvg?: string | null;
+  /** מספר הגרסה שנשמרה מההרצה הזו. */
+  versionNo?: number | null;
   debug: DebugMeta | null;
   /** הפרומפט המלא שיצא למודל התמונה. null בהרצות שנשמרו לפני 0009. */
   renderPrompt?: string | null;
@@ -125,6 +154,7 @@ const BRIDGE_KIND: Record<string, string> = {
   letter: "חלל של אות — הוחזר",
   ornament: "עיטור — חובר",
   dropped: "נמחק",
+  kept: "גדול מכדי להיות אי — לא נגענו",
   thickened: "גשר של המודל — הורחב",
 };
 
@@ -142,12 +172,52 @@ function bridgeSummary(bridges: BridgeRecord[]): string {
   // עיבוי אינו גישור: שם היה גשר, הוא רק היה דק מדי. ספירה אחת לשניהם הייתה
   // מציגה אי שניצל ואי שנגע בו כאותו דבר.
   const thickened = count("thickened");
+  const kept = count("kept");
   const parts = [];
-  const bridged = bridges.length - dropped - thickened;
+  const bridged = bridges.length - dropped - thickened - kept;
   if (bridged) parts.push(`${bridged} גושרו`);
   if (thickened) parts.push(`${thickened} הורחבו`);
   if (dropped) parts.push(`${dropped} נמחקו`);
+  // מה שנשאר מנותק הוא הדבר היחיד כאן שמשאיר פריט שאי אפשר לייצר.
+  if (kept) parts.push(`${kept} נשארו מנותקים`);
   return parts.join(", ");
+}
+
+/**
+ * הגשרים שנחתכו בכיתוב — **התכנון**, לפני שהמודל צייר משהו.
+ *
+ * `BridgeTable` מציגה את מה שנוסף אחרי המעקב. הגשרים שנחתכו מהפונט הם אלה
+ * שהמודל מעתיק, כלומר אלה שנראים ברוב העיצובים — והם לא הופיעו כאן בכלל.
+ * תלונה על גשר שבולע אות נבחנת מול העמודה האחרונה: היחס בין הגשר לחלל.
+ */
+function PlannedBridgeTable({ rows }: { rows: NonNullable<RunInputs["lettering"]>["rows"] }) {
+  const all = rows.flatMap((r, i) => (r.bridges ?? []).map((b) => ({ ...b, row: i + 1, fontId: r.fontId })));
+  if (all.length === 0) return null;
+  return (
+    <table className="w-full text-right text-xs">
+      <thead className="text-ink60">
+        <tr>
+          <th className="p-1">שורה</th><th className="p-1">אות</th><th className="p-1">כיוון</th>
+          <th className="p-1">רוחב הגשר</th><th className="p-1">החלל</th><th className="p-1">נתח מהחלל</th>
+        </tr>
+      </thead>
+      <tbody>
+        {all.map((b, i) => {
+          const share = b.counterMm > 0 ? b.widthMm / b.counterMm : 0;
+          return (
+            <tr key={i} className={`border-t border-graphite/10 ${share >= 0.5 ? "text-amber-700" : ""}`}>
+              <td className="p-1">{b.row} · {b.fontId}</td>
+              <td className="p-1" dir="ltr">{b.char ?? "—"}</td>
+              <td className="p-1">{b.sideways ? "מהצד" : "מלמעלה"}</td>
+              <td className="p-1">{b.widthMm.toFixed(2)} מ״מ</td>
+              <td className="p-1">{b.counterMm.toFixed(2)} מ״מ</td>
+              <td className="p-1">{Math.round(share * 100)}%</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 }
 
 /** טבלת הגישור. אותה טבלה לזוכה ולכל חלופה — אחרת שתיים מהן מספרות אחרת. */
@@ -340,6 +410,8 @@ export default function RunsLog({
         ...d,
         [id]: {
           svg: data.svg ?? null,
+          rawSvg: data.rawSvg ?? null,
+          versionNo: data.versionNo ?? null,
           debug: data.debug ?? null,
           renderPrompt: data.renderPrompt ?? null,
           prompt: data.prompt ?? null,
@@ -552,6 +624,24 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
   if (inputs.imageUpload) chips.push("תמונה שהועלתה");
   if (inputs.promptOverride) chips.push("פרומפט ידני");
   if (inputs.imageCount) chips.push(`${inputs.imageCount} קבצים`);
+  // ההבחנה בין "לא צורפה תמונה" ל"צורפה ולא נשלחה". השנייה היא תלונה.
+  if (inputs.imageDropped) {
+    chips.push(
+      inputs.imageDropped === "lettering"
+        ? "⚠ התמונה לא נשלחה — הכיתוב תפס את הייחוס"
+        : "⚠ התמונה לא נשלחה — העיצוב הקיים תפס את הייחוס",
+    );
+  }
+  // הכיתוב והגשרים שנחתכו בו. הרוחב המרבי הוא מה שמחפשים בעין כשמגיעה תלונה
+  // על אות שנבלעה — הפירוט המלא בטבלה שבחלון הפרומפט.
+  if (inputs.lettering) {
+    chips.push(`כיתוב "${inputs.lettering.text ?? ""}"`);
+    const planned = inputs.lettering.rows.flatMap((r) => r.bridges ?? []);
+    if (planned.length) {
+      const worst = Math.max(...planned.map((b) => (b.counterMm > 0 ? b.widthMm / b.counterMm : 0)));
+      chips.push(`${planned.length} גשרי כיתוב · עד ${Math.round(worst * 100)}% מהחלל`);
+    }
+  }
   if (chips.length === 0) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
@@ -694,6 +784,8 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             }}
             renderModel={it.renderModel}
             svg={svg}
+            rawSvg={detailOf(detail)?.rawSvg ?? null}
+            versionNo={detailOf(detail)?.versionNo ?? null}
             bridges={detailOf(detail)?.bridges ?? null}
             offered={detailOf(detail)?.offered ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
@@ -810,6 +902,24 @@ export function PromptDialog({
             </section>
           )}
 
+          {/* הגשרים שנחתכו בכיתוב — יושבים כאן ולא בשלבים, כי הם חלק ממה
+              שנמסר למודל ולא ממה שתוקן אחריו. זו הטבלה שעונה על "למה נוצר
+              גשר על האות הזאת" ועל "למה הוא רחב ממה שהוא מחזיק". */}
+          {inputs?.lettering && (
+            <section>
+              <div className="mb-1 text-xs font-medium text-ink60">הגשרים שנחתכו בכיתוב (התכנון)</div>
+              {inputs.lettering.rows.some((r) => r.bridges?.length) ? (
+                <div className="overflow-x-auto rounded-[2px] border border-graphite/10 p-1">
+                  <PlannedBridgeTable rows={inputs.lettering.rows} />
+                </div>
+              ) : (
+                <div className="text-xs text-mist">
+                  לא נחתך אף גשר בכיתוב — כל גשר שנראה בעיצוב הוא של המודל, או נוסף אחרי המעקב.
+                </div>
+              )}
+            </section>
+          )}
+
           <section>
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-ink60">
@@ -849,8 +959,12 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, debug, bridges = null, offered = null, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges = null, offered = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
+  /** הפלט הגולמי, לפני מסגור. מוצג לצד `svg` — ההפרש ביניהם הוא מה שהצינור
+   *  עשה אחרי שהמודל צייר, וזה מה שלא היה נראה כאן. */
+  rawSvg?: string | null;
+  versionNo?: number | null;
   /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
   bridges?: BridgeRecord[] | null;
   /** ההצעות שהוצעו בהרצה. הראשונה היא הזוכה ומוצגת למעלה. */
@@ -908,7 +1022,20 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, o
         {images.overlay && <ImgCard title="Overlay (טרייס מול מקור)" src={images.overlay} />}
         {images.difference && <ImgCard title="Difference" src={images.difference} />}
         {images.rendered && <ImgCard title="רינדור חוזר של ה-SVG" src={images.rendered} />}
-        {svg && <SvgCard title="SVG סופי" svg={svg} filename={svgName} />}
+        {/* מה שנשמר, ולא מה שהמעקב החזיר. `generation_runs.svg` הוא הגולמי —
+            לפני מתיחה למידה שהוזמנה, לפני גישור ולפני עיבוי — והוא הוצג כאן
+            ככותרת "SVG סופי". לכן כל גשר שהצינור מוסיף היה בלתי נראה: הלקוחה
+            ראתה פס על האות, והיומן הראה אות נקייה. */}
+        {svg && (
+          <SvgCard
+            title={versionNo != null ? `SVG שנשמר · גרסה ${versionNo}` : "SVG סופי"}
+            svg={svg}
+            filename={svgName}
+          />
+        )}
+        {rawSvg && (
+          <SvgCard title="גולמי — לפני מסגור וגישור" svg={rawSvg} filename={`${svgName}-raw`} />
+        )}
       </div>
 
       {/* גשרים שנוצרו אחרי המעקב */}
@@ -928,6 +1055,15 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, o
             עמודת הרוחב מראה מכמה למה.
           </div>
           <BridgeTable bridges={bridges} />
+        </div>
+      )}
+      {/* אפס גשרים ולא "אין מה להציג": בלי השורה הזאת, הרצה שהגישור לא רץ בה
+          נראית בדיוק כמו הרצה שלא היה בה מה לגשר — וזו בדיוק ההבחנה שנדרשה
+          כשחזר עיצוב שכל אותיותיו מרחפות. */}
+      {bridges !== null && bridges.length === 0 && (
+        <div className="rounded-[2px] border border-graphite/10 bg-white p-3 text-xs text-ink60">
+          לא נוסף אף גשר אחרי המעקב — כלומר לא חזר מהמעקב אף אי מנותק. אם בכל זאת
+          יש בעיצוב מתכת מרחפת, היא לא זוהתה כאי.
         </div>
       )}
 

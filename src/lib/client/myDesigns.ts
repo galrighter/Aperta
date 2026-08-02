@@ -20,6 +20,14 @@ export interface SavedDesign {
   /** תצוגה מקדימה: path של החומר במ"מ + מידות התיבה */
   path?: string;
   lengthMm?: number;
+  /**
+   * כל התוצאות של העיצוב, החדשה ראשונה — לא רק זו שמוצגת גדול.
+   *
+   * שלוש יצירות על אותו עיצוב הן שלוש גרסאות שלו, וזה המודל הנכון: פריט אחד,
+   * מספר סידורי אחד. אבל הכרטיס הראה גרסה אחת, ולכן "יצרתי שלוש פעמים ורואה
+   * עיצוב אחד" היה תיאור מדויק של מה שקרה על המסך.
+   */
+  results?: Array<{ versionId: string; versionNo: number; path: string; cuts: number }>;
   /** עוד אין גרסה — היצירה לא הושלמה. הרשומה נכתבת כבר עם יצירת העיצוב,
    *  כדי שהפרעה באמצע לא תנתק את הלקוחה מעיצוב שכבר קיים בשרת. */
   pending?: boolean;
@@ -104,15 +112,25 @@ export function mergeMyDesign(incoming: SavedDesign) {
 export function setMyDesignPreview(
   id: string,
   preview: { path: string; lengthMm: number; widthMm: number; cuts: number },
+  results?: Array<{ versionId: string; versionNo: number; path: string; cuts: number }>,
 ) {
   const list = read();
   const prev = list.find((x) => x.id === id);
   if (!prev) return;
   // אותה תקרה כמו בשמירה המקומית: ציור ענק ממלא את המכסה ומפיל את שמירת
   // **כל** הרשימה, וזה מחיר גבוה מדי עבור ריבוע בגובה 60 פיקסל.
-  const path = preview.path.length < 40_000 ? preview.path : undefined;
+  const fits = (p: string) => p.length < 40_000;
+  const path = fits(preview.path) ? preview.path : undefined;
   write([
-    { ...prev, path, lengthMm: preview.lengthMm, cuts: preview.cuts },
+    {
+      ...prev,
+      path,
+      lengthMm: preview.lengthMm,
+      cuts: preview.cuts,
+      // אותה תקרה לכל תוצאה בנפרד: תוצאה כבדה אחת לא אמורה למחוק את שאר
+      // השורה, והכרטיס יודע להציג גם רשימה חלקית.
+      results: results?.filter((r) => fits(r.path)),
+    },
     ...list.filter((x) => x.id !== id),
   ]);
 }

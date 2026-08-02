@@ -320,7 +320,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // base_svg על פני ההשראה). כשיש כיתוב הוא זה שנוסע — הוא ההבטחה הקשיחה
     // ללקוחה, וההשראה היא רוח שאפשר לתאר במילים. נאפס אותה כאן ולא נשאיר
     // ליומן דיווח על תמונה שלא נשלחה.
-    if (lettering) inspiration = null;
+    /** התמונה שהמשתמשת צירפה ונזרקה, ולמה. ריק = לא נזרקה. */
+    let imageDropped: "lettering" | "edit" | null = null;
+    if (inspiration && (lettering || editSvg)) {
+      imageDropped = lettering ? "lettering" : "edit";
+      inspiration = null;
+    }
     // הפרומפט מהבק־אופיס נשלח **כמו שהוא**. שים לב שמשפט ה-LAYOUT יושב בתוכו,
     // ומספר השורות שחותך בפועל הוא `plan.rows` — אם הם סותרים, הקופסה תחתוך
     // לפי plan.rows. זה מכוון (אפשר לנסות ניסוח מול חיתוך אחר), והמסך מציג את
@@ -351,6 +356,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         minHoleMm,
         colorKey: "dark",
         imageCount: body.images.length,
+        /**
+         * התמונה צורפה ולא נשלחה, וזו הסיבה.
+         *
+         * למודל התמונה יש מקום לתמונת ייחוס אחת, וכיתוב או עריכה תופסים אותה.
+         * עד כאן זה קרה בשקט: `imageCount: 1` בלי תמונת קלט ובלי ייחוס — מצב
+         * שנראה ביומן בדיוק כמו כשל בהעלאה. "צירפתי תמונה והמודל התעלם ממנה"
+         * לא היה ניתן לאבחון, וזו הייתה תלונה אמיתית.
+         */
+        imageDropped: imageDropped ?? undefined,
         // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
         editedFromCurrent: Boolean(editSvg),
@@ -368,6 +382,16 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
                 fontId: r.fontId,
                 letterHeightMm: r.letterHeightMm,
                 textWidthMm: r.textWidthMm,
+                /** הגשרים שנחתכו — ראה RunInputs. תיבת החלל מצטמצמת למספר
+                 *  אחד (המידה לרוחב הגשר), כי זה מה שמעמידים מול הרוחב. */
+                bridges: r.bridges.map((b) => ({
+                  char: b.char,
+                  widthMm: Math.round(b.widthMm * 100) / 100,
+                  counterMm: Math.round(
+                    (b.sideways ? b.counter[3] - b.counter[1] : b.counter[2] - b.counter[0]) * 100,
+                  ) / 100,
+                  sideways: b.sideways,
+                })),
               })),
             }
           : null,
