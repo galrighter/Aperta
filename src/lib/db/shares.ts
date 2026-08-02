@@ -21,6 +21,8 @@ export interface ShareRow {
   svg: string;
   material: MultiPolygon | null;
   render_path: string | null;
+  /** צילום ההדמיה התלת־ממדית (0014). קודם ל-render_path כתמונת השיתוף. */
+  preview_path: string | null;
   serial: number | null;
   created_at: string;
   revoked_at: string | null;
@@ -30,7 +32,7 @@ export interface ShareRow {
 
 export type NewShare = Omit<
   ShareRow,
-  "id" | "token" | "created_at" | "revoked_at" | "views" | "featured"
+  "id" | "token" | "created_at" | "revoked_at" | "views" | "featured" | "preview_path"
 >;
 
 /**
@@ -113,6 +115,20 @@ export async function getShareByToken(token: string): Promise<ShareRow | null> {
 export async function bumpShareViews(id: string): Promise<void> {
   const { error } = await supabaseAdmin().rpc("increment_share_views", { share_id: id });
   if (error) console.warn(`[shares] view count failed for ${id}: ${error.message}`);
+}
+
+/**
+ * הצמדת צילום ההדמיה לשיתוף.
+ *
+ * נפרד מ-`createShare` כי הנתיב נגזר ממזהה השורה, שקיים רק אחריה. כשל כאן
+ * אינו מבטל שיתוף: הלינק כבר תקין, ותמונת השיתוף נופלת ל-`render_path`.
+ */
+export async function attachSharePreview(id: string, path: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("design_shares")
+    .update({ preview_path: path })
+    .eq("id", id);
+  if (error) console.warn(`[shares] preview attach failed for ${id}: ${error.message}`);
 }
 
 /** ביטול שיתוף. הלינק מפסיק לעבוד; השורה נשארת. */

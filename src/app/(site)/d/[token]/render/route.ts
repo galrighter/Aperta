@@ -26,9 +26,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     if (!isShareToken(token)) throw new ApiError("not_found", "No such share", 404);
 
     const share = await getShareByToken(token);
-    if (!share?.render_path) throw new ApiError("not_found", "This share has no image", 404);
+    // צילום ההדמיה קודם: זה מה שהמשתף ראה על המסך, וזה גם קובץ בסדר גודל
+    // שזחלני התצוגה המקדימה מוכנים להוריד. `render_path` הוא הקלט של הצינור
+    // ולא הפלט שלו, והוא נשאר כנפילה לשיתוף שנוצר בלי קנבס פעיל.
+    const path = share?.preview_path ?? share?.render_path;
+    if (!path) throw new ApiError("not_found", "This share has no image", 404);
 
-    const upstream = await fetch(await signedUrl(share.render_path, 120));
+    const upstream = await fetch(await signedUrl(path, 120));
     if (!upstream.ok || !upstream.body) {
       throw new ApiError("upstream_failed", "Could not read the share image", 502);
     }

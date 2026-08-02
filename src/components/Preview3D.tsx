@@ -7,6 +7,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import earcut from "earcut";
 import { he } from "@/i18n/he";
 import { useStudio } from "@/lib/client/store";
+import { registerPreviewCapture } from "@/lib/client/previewCapture";
 import { resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { neutralRadiusFromBlank } from "@/lib/sizing";
 import type { MultiPolygon } from "@/lib/geometry/types";
@@ -35,11 +36,14 @@ export interface Rolled3DProps {
   enabled?: boolean;
   /** הדפדפן לא נותן WebGL (או שההקשר אבד). מי שמעל מציג חלופה משלו. */
   onUnavailable?: () => void;
+  /** נקרא פעם אחת, אחרי הפריים הראשון שצויר בפועל. מי שמעל מחזיק חלופה
+   *  סטטית עד לרגע הזה, כדי שהצביעה הראשונה לא תהיה קנבס ריק. */
+  onReady?: () => void;
 }
 
 export function Rolled3D({
   material, lengthMm, widthMm, gapMm, thicknessMm, productType = "bracelet",
-  background = 0xf4f1eb, enabled = true, onUnavailable,
+  background = 0xf4f1eb, enabled = true, onUnavailable, onReady,
 }: Rolled3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   /**
@@ -54,6 +58,8 @@ export function Rolled3D({
   /** ברפ כדי שהאפקט יישאר חד-פעמי גם כשהקורא מעביר פונקציה חדשה בכל רנדר. */
   const unavailableCb = useRef(onUnavailable);
   unavailableCb.current = onUnavailable;
+  const readyCb = useRef(onReady);
+  readyCb.current = onReady;
 
   const giveUp = useCallback(() => {
     setUnavailable(true);
@@ -156,6 +162,10 @@ export function Rolled3D({
     ro.observe(mount);
 
     let raf = 0;
+    // מדווח פעם אחת, אחרי שפריים אמיתי צויר. מי שמעל מחליף בזה חלופה סטטית,
+    // ולכן הדיווח חייב לבוא אחרי הציור ולא אחרי בניית הסצנה: קנבס ריק
+    // במקום התכשיט הוא בדיוק מה שההחלפה נועדה למנוע.
+    let announced = false;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       // זריקה מתוך requestAnimationFrame היא חריגה גלובלית לא מטופלת, ולכן גם
@@ -163,6 +173,10 @@ export function Rolled3D({
       try {
         controls.update();
         renderer.render(scene, camera);
+        if (!announced) {
+          announced = true;
+          readyCb.current?.();
+        }
       } catch {
         cancelAnimationFrame(raf);
         giveUp();
@@ -171,7 +185,34 @@ export function Rolled3D({
     loop();
 
     sceneRef.current = { renderer, scene, camera, controls, mesh: null, fit: null };
+
+    /**
+     * צילום הקנבס — זו תמונת השיתוף (`docs/SHARING.md`).
+     *
+     * ה-render המפורש לפני `toDataURL` אינו מיותר: בלי `preserveDrawingBuffer`
+     * הדפדפן מרשה לעצמו לנקות את ה-drawing buffer מיד אחרי ההרכבה, ואז הקריאה
+     * מחזירה תמונה שחורה. ציור באותה משימה ממש לפני הקריאה הוא הדרך לקבל פריים
+     * תקין בלי לשלם את המחיר הקבוע של preserveDrawingBuffer על כל פריים.
+     *
+     * JPEG ולא PNG: היעד הוא תצוגה מקדימה בוואטסאפ, שמוותרת עליה כשהקובץ כבד.
+     * צילום מסך של מתכת על רקע חלק נדחס היטב — עשרות KB במקום מגה־בייטים.
+     */
+    const unregister = registerPreviewCapture(() => {
+      // רקע אטום לרגע הצילום. הסצנה מוצגת שקופה (`background={null}`) כדי
+      // שהגרדיאנט של המיכל יעבור מבעד, ול-JPEG אין ערוץ אלפא — כלומר שקוף
+      // נצרב **שחור**. נמדד: התכשיט על ריבוע שחור. הגוון הוא הפורצלן של
+      // המותג, אותו רקע שההדמיה יושבת עליו במסך.
+      const previous = scene.background;
+      scene.background = new THREE.Color(0xf4f1eb);
+      renderer.render(scene, camera);
+      const shot = renderer.domElement.toDataURL("image/jpeg", 0.85);
+      scene.background = previous;
+      renderer.render(scene, camera);
+      return shot;
+    });
+
     return () => {
+      unregister();
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer.domElement.removeEventListener("webglcontextlost", onContextLost);

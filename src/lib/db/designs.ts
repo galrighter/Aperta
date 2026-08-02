@@ -85,6 +85,19 @@ export async function getVersion(id: string): Promise<VersionRow> {
   return data as VersionRow;
 }
 
+/**
+ * נתיב ההדמיה של גרסה, מתוך `validation_report` (jsonb).
+ *
+ * הוא יושב שם ולא בעמודה — ראו ההערה ב-`ingestCutouts`. נקרא בהגנה: הדוח מגיע
+ * מכל גרסה שאי פעם נשמרה, כולל כאלה שנכתבו לפני שהשדה הזה נוסף, ולפני שהיה
+ * לו טיפוס.
+ */
+export function renderPathOf(version: Pick<VersionRow, "validation_report">): string | null {
+  const report = version.validation_report as { renderPngPath?: unknown } | null;
+  const path = report?.renderPngPath;
+  return typeof path === "string" && path.length > 0 ? path : null;
+}
+
 export async function listVersions(designId: string): Promise<VersionRow[]> {
   // `*` ולא רשימה מפורשת: העמודות של 0012 חסרות במסד שעוד לא קיבל את המיגרציה,
   // ורשימה מפורשת הייתה מפילה את הקריאה כולה במקום להחזיר אותן כ-undefined.

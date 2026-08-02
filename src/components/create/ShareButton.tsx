@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import { api, ClientApiError } from "@/lib/client/api";
+import { capturePreview } from "@/lib/client/previewCapture";
 import { designCode } from "@/lib/designCode";
 
 const t = he.share;
@@ -72,7 +73,10 @@ export function ShareButton({
     setError(null);
     setCopied(false);
     try {
-      const res = await api.createShare(designId, versionId);
+      // צילום ההדמיה שעל המסך, אם יש כזו. זו תמונת השיתוף — ראו
+      // `lib/client/previewCapture`. null כשאין קנבס מוצג, ואז השרת נופל
+      // להדמיה של מודל התמונה.
+      const res = await api.createShare(designId, versionId, capturePreview());
       setUrl(res.url);
 
       const code = designCode(serial);
