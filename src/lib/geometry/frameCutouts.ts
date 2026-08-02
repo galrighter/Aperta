@@ -1,7 +1,8 @@
-import { resolveFab } from "@/lib/fabrication.config";
+import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { rescaleCutoutsSvg, svgFrame } from "./frame";
 import { dropThinCutouts } from "./normalize";
 import { restoreBridges, type BridgeRecord, type LetterBridge } from "./restoreBridges";
+import { thickenBridges } from "./thickenBridges";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
 
@@ -53,6 +54,13 @@ const MAX_DROPPED_MATERIAL = 0.1;
  * נתן. חלל של אות אינו מושפע מהסף: שם הגשר מוחזר למקומו ולא נמתח לשום מקום.
  */
 const MAX_BRIDGE_SPAN_MM = 2;
+
+/**
+ * מעל כמה מהמתכת עיבוי גשרים מפסיק להיות תיקון. הוא אמור לגעת בצווארים בודדים
+ * ולהוסיף שברירי מ"מ² — ב-RM-0068 זה 0.03% מהמתכת. סף של 2% הוא שתי סדרי גודל
+ * מעל, ולכן חצייתו אומרת שהזיהוי טעה ולא שיש הרבה מה לתקן.
+ */
+const MAX_THICKENED_MATERIAL = 0.02;
 
 /** מה שהמסך צריך ממועמד — בלי גרף הפוליגונים. זה מה שעובר על החוט. */
 export interface FramedPreview {
@@ -150,6 +158,20 @@ export function frameCutoutsDims(
       normalized = restored.design;
       framedSvg = restored.design.canonicalSvg;
       report = validateNormalized(restored.design, framedDims);
+    }
+
+    // ואחרי הגישור — הגשרים שהמודל צייר בעצמו. הם לא ניתקו כלום ולכן
+    // `restoreBridges` לא רואה אותם, אבל צוואר של 0.37 מ"מ הוא מה שיישבר
+    // בחיתוך. רץ שני כדי שמה ששוחזר, שכבר יושב על הרצפה, לא ייספר שוב.
+    const thickened = thickenBridges(normalized, {
+      minBridgeMm: FAB.minLetterBridgeMm,
+      maxAddedFraction: MAX_THICKENED_MATERIAL,
+    });
+    if (thickened.design !== normalized) {
+      normalized = thickened.design;
+      framedSvg = thickened.design.canonicalSvg;
+      report = validateNormalized(thickened.design, framedDims);
+      bridges = [...bridges, ...thickened.records];
     }
   }
 

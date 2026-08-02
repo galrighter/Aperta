@@ -88,19 +88,40 @@ function toClipper(mp: MultiPolygon): ClipperLib.Paths {
   return paths;
 }
 
-function fromClipper(paths: ClipperLib.Paths): MultiPolygon {
-  // clipper מחזיר טבעות שטוחות עם כיווניות (שטח חיובי=חיצוני, שלילי=חור).
-  // משחזרים מבנה MultiPolygon תקין ע"י difference(איחוד חיצוניים, איחוד חורים).
-  const outers: MultiPolygon[] = [];
-  const holes: MultiPolygon[] = [];
-  for (const path of paths) {
-    if (path.length < 3) continue;
-    const ring: Ring = path.map(({ X, Y }) => [X / CLIPPER_SCALE, Y / CLIPPER_SCALE] as Pt);
-    if (ClipperLib.Clipper.Area(path) >= 0) outers.push([[ring]]);
-    else holes.push([[[...ring].reverse()]]);
+const toRing = (path: ClipperLib.Path): Ring =>
+  path.map(({ X, Y }) => [X / CLIPPER_SCALE, Y / CLIPPER_SCALE] as Pt);
+
+/**
+ * שחזור MultiPolygon מעץ הקינון של clipper.
+ *
+ * למה עץ ולא רשימת טבעות שטוחה: הרשימה השטוחה מאבדת קינון של יותר משתי רמות.
+ * הבנייה הקודמת הייתה `difference(איחוד החיצוניים, איחוד החורים)`, וזה מוחק
+ * **אי בתוך חור** — האי הוא חיצוני שיושב בתוך חור, וההפרש בולע אותו. בדיוק
+ * המקרה שחשוב כאן: הקונטור של אות הוא אי בתוך החיתוך של האות. נמדד: פס עם
+ * חלל של אות איבד את הקונטור בכל erosion, ולכן הפתיחה החזירה גוף אחד במקום
+ * שניים ושום גשר לא זוהה.
+ *
+ * בעץ, כל צומת שאינו חור הוא פוליגון; ילדיו הישירים הם חוריו; והנכדים הם
+ * פוליגונים בפני עצמם.
+ */
+function fromPolyTree(node: ClipperLib.PolyNode, out: MultiPolygon): MultiPolygon {
+  for (const child of node.Childs()) {
+    if (child.IsHole()) {
+      // חור מטופל ע"י ההורה; כאן רק ממשיכים אל האיים שבתוכו.
+      fromPolyTree(child, out);
+      continue;
+    }
+    const contour = child.Contour();
+    if (contour.length >= 3) {
+      const poly: Polygon = [toRing(contour)];
+      for (const hole of child.Childs()) {
+        if (hole.IsHole() && hole.Contour().length >= 3) poly.push(toRing(hole.Contour()));
+      }
+      out.push(poly);
+    }
+    fromPolyTree(child, out);
   }
-  if (outers.length === 0) return [];
-  return difference(union(...outers), holes.length ? union(...holes) : []);
+  return out;
 }
 
 /**
@@ -111,9 +132,36 @@ export function offset(mp: MultiPolygon, deltaMm: number): MultiPolygon {
   if (mp.length === 0) return [];
   const co = new ClipperLib.ClipperOffset(2, 0.05 * CLIPPER_SCALE);
   co.AddPaths(toClipper(mp), ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
-  const solution: ClipperLib.Paths = [];
-  co.Execute(solution, deltaMm * CLIPPER_SCALE);
-  return fromClipper(solution);
+  const tree = new ClipperLib.PolyTree();
+  co.Execute(tree, deltaMm * CLIPPER_SCALE);
+  return fromPolyTree(tree, []);
+}
+
+/**
+ * מוריד נקודות שקרובות מדי זו לזו. מתאר שחוזר מהמעקב נושא נקודה כל שברי מ"מ,
+ * וזה מה שמייקר כל פעולת היסט עליו. המתאר זז בפחות מ-`distanceMm`.
+ */
+export function simplify(mp: MultiPolygon, distanceMm: number): MultiPolygon {
+  // טבעת־טבעת, ולא דרך רשימה שטוחה: הניקוי לא משנה טופולוגיה, ולכן אין מה
+  // לשחזר — ושחזור הוא בדיוק מה שמאבד אי שיושב בתוך חור.
+  const out: MultiPolygon = [];
+  for (const poly of mp) {
+    const rings: Ring[] = [];
+    for (const ring of poly) {
+      const [cleaned] = ClipperLib.Clipper.CleanPolygons(
+        [ring.map(([x, y]) => ({ X: Math.round(x * CLIPPER_SCALE), Y: Math.round(y * CLIPPER_SCALE) }))],
+        distanceMm * CLIPPER_SCALE,
+      );
+      if (!cleaned || cleaned.length < 3) {
+        // טבעת שהתרוקנה: אם זו החיצונית הפוליגון נעלם, אם זה חור הוא נסגר.
+        if (rings.length === 0) break;
+        continue;
+      }
+      rings.push(cleaned.map(({ X, Y }) => [X / CLIPPER_SCALE, Y / CLIPPER_SCALE] as Pt));
+    }
+    if (rings.length) out.push(rings);
+  }
+  return out;
 }
 
 /** פתיחה מורפולוגית: erosion ואז dilation באותו רדיוס. אזורים צרים מ-2r נעלמים. */

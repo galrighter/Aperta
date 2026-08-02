@@ -75,11 +75,12 @@ export type LogItem = {
 };
 
 /** מה שנעשה לאי מתכת שחזר מהמעקב. `letter` = הוחזר גשר שאנחנו חתכנו,
- *  `ornament` = חובר לנקודה הקרובה, `dropped` = נמחק כי לא היה לאן. */
+ *  `ornament` = חובר לנקודה הקרובה, `dropped` = נמחק כי לא היה לאן,
+ *  `thickened` = גשר של המודל שהיה דק מהמינימום והורחב אליו. */
 export type BridgeRecord = {
-  kind: "letter" | "ornament" | "dropped";
+  kind: "letter" | "ornament" | "dropped" | "thickened";
   x: number; y: number; widthMm: number; heightMm: number;
-  bridgeMm?: number; spanMm?: number; char?: string | null; matchMm?: number;
+  bridgeMm?: number; fromMm?: number; spanMm?: number; char?: string | null; matchMm?: number;
   /** הגשר עצמו, לציור מעל העיצוב. חסר במחיקה. */
   pathD?: string;
 };
@@ -114,6 +115,14 @@ const BRIDGE_KIND: Record<string, string> = {
   letter: "חלל של אות — הוחזר",
   ornament: "עיטור — חובר",
   dropped: "נמחק",
+  thickened: "גשר של המודל — הורחב",
+};
+
+/** צבע לכל סוג בשכבת הגשרים. הצבע הוא איך מבדילים גשר ששוחזר מגשר שהורחב. */
+const BRIDGE_COLOR: Record<string, string> = {
+  letter: "#e11d48",
+  ornament: "#0ea5e9",
+  thickened: "#10b981",
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -851,6 +860,8 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, s
           <div className="mb-2 text-xs text-ink60">
             אי מתכת שחזר מהמעקב מנותק — נגשר כאן, אחרי שהמודל סיים. חלל של אות מקבל
             בחזרה את הגשר שאנחנו חתכנו; אי בעיטור מחובר לנקודה הקרובה; ומה שרחוק מדי נמחק.
+            בנוסף, גשר שהמודל צייר בעצמו וייצא דק מהמינימום לייצור מורחב אליו — שם
+            עמודת הרוחב מראה מכמה למה.
           </div>
           <table className="w-full text-right text-xs">
             <thead className="text-ink60">
@@ -866,7 +877,13 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, s
                   <td className="p-1">{BRIDGE_KIND[b.kind]}</td>
                   <td className="p-1" dir="ltr">{b.char ?? "—"}</td>
                   <td className="p-1">{b.widthMm.toFixed(2)}×{b.heightMm.toFixed(2)}</td>
-                  <td className="p-1">{b.bridgeMm != null ? `${b.bridgeMm.toFixed(2)} מ״מ` : "—"}</td>
+                  <td className="p-1" dir={b.fromMm != null ? "ltr" : undefined}>
+                    {b.bridgeMm == null
+                      ? "—"
+                      : b.fromMm != null
+                        ? `${b.fromMm.toFixed(2)} → ${b.bridgeMm.toFixed(2)}`
+                        : `${b.bridgeMm.toFixed(2)} מ״מ`}
+                  </td>
                   <td className="p-1">{b.spanMm != null ? `${b.spanMm.toFixed(2)} מ״מ` : "—"}</td>
                   <td className="p-1">{b.matchMm != null ? `${b.matchMm.toFixed(2)} מ״מ` : "—"}</td>
                   <td className="p-1" dir="ltr">{b.x.toFixed(1)}, {b.y.toFixed(1)}</td>
@@ -1029,7 +1046,7 @@ export function BridgeOverlayCard({ svg, bridges }: { svg: string; bridges: Brid
   const overlay =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}">` +
     drawn
-      .map((b) => `<path d="${b.pathD}" fill="${b.kind === "letter" ? "#e11d48" : "#0ea5e9"}"/>`)
+      .map((b) => `<path d="${b.pathD}" fill="${BRIDGE_COLOR[b.kind] ?? "#0ea5e9"}"/>`)
       .join("") +
     "</svg>";
   return (
@@ -1038,6 +1055,7 @@ export function BridgeOverlayCard({ svg, bridges }: { svg: string; bridges: Brid
         העיצוב עם הגשרים שנוספו אחרי המעקב
         <span className="ms-2 text-rose-600">■ חלל של אות</span>
         <span className="ms-2 text-sky-500">■ עיטור</span>
+        <span className="ms-2 text-emerald-500">■ גשר של המודל שהורחב</span>
       </div>
       <div className="relative w-full rounded bg-[#101114] p-2">
         <div
