@@ -576,32 +576,39 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
   const svg = detailOf(detail)?.svg ?? null;
   return (
     <div className="overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
-      {/* שורת סיכום */}
-      <div className="flex items-start gap-3 p-2">
-        {it.renderUrl ? (
-          <a href={it.renderUrl} target="_blank" rel="noreferrer" className="shrink-0" title="ההדמיה שנוצרה">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.renderUrl} alt="" className="h-14 w-24 rounded bg-porcelain object-contain" />
-          </a>
-        ) : (
-          <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-porcelain text-[10px] text-mist">אין הדמיה</div>
-        )}
-        {/* מה שהמשתמש צירף, ליד ההדמיה שיצאה ממנו — ההשוואה היחידה שאפשר
-            לעשות בעין על תלונה מסוג "זה לא מה ששלחתי". */}
-        {it.inputImageUrl && (
-          <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
-          </a>
-        )}
-        {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
-            ההדמיה שחזרה ממנה: זו ההשוואה שעונה על "מה איבדנו ומי איבד". */}
-        {it.stages.reference && (
-          <a href={it.stages.reference} target="_blank" rel="noreferrer" className="shrink-0" title="התמונה שנשלחה למודל">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.stages.reference} alt="ייחוס" className="h-14 w-24 rounded border border-amber-400/60 bg-porcelain object-contain" />
-          </a>
-        )}
+      {/* שורת סיכום.
+          נערמת במסך צר: התמונות והכפתורים הם ברוחב קבוע, ובטלפון הם לא
+          משאירים לטור האמצעי רוחב אמיתי — הטקסט נדחס לאות בשורה והמסך נשבר.
+          מ-`sm` ומעלה חוזרת השורה האחת, שבה ההדמיה עומדת מול הטקסט שלה. */}
+      <div className="flex flex-col gap-2 p-2 sm:flex-row sm:items-start sm:gap-3">
+        {/* התמונות נשארות זו לצד זו גם כשהשורה נערמת — ההשוואה ביניהן היא
+            כל הטעם שלהן. */}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {it.renderUrl ? (
+            <a href={it.renderUrl} target="_blank" rel="noreferrer" className="shrink-0" title="ההדמיה שנוצרה">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.renderUrl} alt="" className="h-14 w-24 rounded bg-porcelain object-contain" />
+            </a>
+          ) : (
+            <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-porcelain text-[10px] text-mist">אין הדמיה</div>
+          )}
+          {/* מה שהמשתמש צירף, ליד ההדמיה שיצאה ממנו — ההשוואה היחידה שאפשר
+              לעשות בעין על תלונה מסוג "זה לא מה ששלחתי". */}
+          {it.inputImageUrl && (
+            <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
+            </a>
+          )}
+          {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
+              ההדמיה שחזרה ממנה: זו ההשוואה שעונה על "מה איבדנו ומי איבד". */}
+          {it.stages.reference && (
+            <a href={it.stages.reference} target="_blank" rel="noreferrer" className="shrink-0" title="התמונה שנשלחה למודל">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.stages.reference} alt="ייחוס" className="h-14 w-24 rounded border border-amber-400/60 bg-porcelain object-contain" />
+            </a>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
@@ -638,7 +645,9 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             {it.colorKey ? ` · צבע ${it.colorKey}` : ""}
           </div>
         </div>
-        <div className="flex shrink-0 flex-col gap-1">
+        {/* טור הפעולות. במסך צר הוא שורה שנשברת מתחת לשורה: טור צר בן מילה
+            אחת היה מה שדחס את שאר השורה לאות בשורה. */}
+        <div className="flex flex-wrap gap-1 sm:shrink-0 sm:flex-col sm:flex-nowrap">
           <button className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
             onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
           <button className="rounded-[2px] border border-cobalt px-2 py-1 text-xs text-cobalt hover:bg-cobalt/5"
