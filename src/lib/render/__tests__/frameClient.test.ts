@@ -15,6 +15,9 @@ import { frameCandidates } from "../frameClient";
 import { framePreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import worker from "../../../../workers/frame/index";
+import { handleFrame, type FrameRequest } from "../../../../geometry-service/handler";
+import type { LetterBridge } from "@/lib/geometry/restoreBridges";
+import { difference, rectPolygon } from "@/lib/geometry/poly";
 
 const dims: DesignDims = { productType: "bracelet", lengthMm: 40, widthMm: 8, thicknessMm: 1 };
 
@@ -22,6 +25,20 @@ const dims: DesignDims = { productType: "bracelet", lengthMm: 40, widthMm: 8, th
 const svg = (vb: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}"><g id="cutouts" fill="black">` +
   `<path d="M4 2L10 2L10 6L4 6Z"/><path d="M14 2L20 2L20 6L14 6Z"/></g></svg>`;
+
+// פס עם חיתוך מלבני שבתוכו אי מתכת, והגשר שנחתך כדי ליצור אותו — הזוג שבלעדיו
+// אי אפשר להבדיל בין "הגשר עבר" ל"הגשר נזרק בדרך".
+const islandDims: DesignDims = { productType: "bracelet", lengthMm: 40, widthMm: 10, thicknessMm: 1 };
+const islandSvg = (() => {
+  const rings = difference([rectPolygon(10, 3, 20, 7)], [rectPolygon(13, 4.5, 15, 5.5)]);
+  const paths = rings
+    .map((p) => `<path d="${p.map((r) => `M${r.map((q) => q.join(" ")).join("L")}Z`).join("")}" fill="black"/>`)
+    .join("");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 10"><g id="cutouts">${paths}</g></svg>`;
+})();
+const plan = {
+  letterBridges: [{ char: "e", counter: [13, 4.5, 15, 5.5], rects: [[13.6, 2.5, 14.4, 5]], widthMm: 0.8 }] as LetterBridge[],
+};
 
 afterEach(() => {
   cf.env = null;
@@ -79,10 +96,13 @@ describe("the framing worker", () => {
 });
 
 describe("the box comes first", () => {
+  // ה-fetch מחובר ל-handler האמיתי של השירות, בדיוק כמו ש-binding מחובר
+  // ל-Worker האמיתי למטה. מוק שממסגר בעצמו בודק את המוק: כשהחתימה קיבלה
+  // `plan`, מוק כזה עבר בירוק בזמן שהשירות בייצור זרק את הגשרים.
   const boxOk = () =>
     vi.fn(async (_url: string, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { dims: DesignDims; cutoutsSvg: string };
-      return Response.json(framePreview(body.dims, body.cutoutsSvg));
+      const answer = handleFrame(JSON.parse(String(init?.body)) as FrameRequest);
+      return Response.json(answer.body, { status: answer.status });
     });
 
   it("uses the geometry service and never touches the worker", async () => {
@@ -95,6 +115,27 @@ describe("the box comes first", () => {
     expect(out[0]).toEqual(JSON.parse(JSON.stringify(framePreview(dims, svg("0 0 44 8")))));
     expect(fetchSpy.mock.calls[0][0]).toBe("https://vec.example.com/api/frame");
     expect(workerCall).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("carries the bridge plan across the hop, so a counter is bridged and not deleted", async () => {
+    // חלל אות עם אי מתכת בתוכו — הצורה שאחריה מחליטים לגשר או למחוק. עם
+    // ה-plan האי מגושר איפה שחתכנו אותו; בלעדיו הוא אי בעיטור, ומטופל אחרת.
+    // הבדיקה הראשונה היא ש-plan בכלל משנה כאן, אחרת השאר לא בודק כלום.
+    const withPlan = framePreview(islandDims, islandSvg, plan);
+    const withoutPlan = framePreview(islandDims, islandSvg, {});
+    expect(withPlan).not.toEqual(withoutPlan);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(boxOk() as typeof fetch);
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+
+    const out = await frameCandidates(islandDims, [islandSvg], plan);
+    expect(out[0]).toEqual(JSON.parse(JSON.stringify(withPlan)));
+    // ומה שנשלח בגוף, לא רק מה שחזר: השירות לא יכול לגשר לפי מה שלא קיבל.
+    expect(JSON.parse(String((fetchSpy.mock.calls[0][1] as RequestInit).body))).toMatchObject({
+      plan: { letterBridges: [{ char: "e" }] },
+    });
 
     fetchSpy.mockRestore();
   });
