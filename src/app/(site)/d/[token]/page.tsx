@@ -7,6 +7,7 @@ import { he } from "@/i18n/he";
 import { SITE } from "@/lib/site.config";
 import { designCode } from "@/lib/designCode";
 import { isShareToken } from "@/lib/shareToken";
+import { shareImageUrl } from "@/lib/shareImageUrl";
 import { bumpShareViews, getShareByToken, type ShareRow } from "@/lib/db/shares";
 import { countCuts, cutoutsInner, mmLabel } from "@/components/create/model";
 import SharedPiece from "@/components/share/SharedPiece";
@@ -51,15 +52,17 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const name = share.product_type === "ring" ? t.titleRing : t.titleBracelet;
   const title = `${name}${code ? ` ${code}` : ""} — ${he.site.brand}`;
   const url = `${SITE.url}/d/${share.token}`;
-  // ההדמיה של המודל אם יש; אחרת תמונת ברירת המחדל של האתר (app/opengraph-image).
-  // כתובת מוחלטת: זחלני התצוגה המקדימה של וואטסאפ/טלגרם אינם פותרים נתיב יחסי.
+  // תמונת השיתוף — הצילום אם יש, אחרת ההדמיה של המודל, אחרת תמונת ברירת המחדל
+  // של האתר (app/opengraph-image). כתובת מוחלטת: זחלני התצוגה המקדימה של
+  // וואטסאפ/טלגרם אינם פותרים נתיב יחסי. ה-`?v=` הוא מה שמאפשר לשיתוף חוזר
+  // להחליף תמונה בכתובת שמוגשת `immutable` — ראו `lib/shareImageUrl`.
   //
   // **בלי `width`/`height`.** הקנבס של מודל התמונה הוא 1536x1024 או 1024x1536
   // לפי צורת הפריט (ראו docs/OPS_PORTRAIT_CANVAS.md), ואיזה מהם — לא כתוב
   // בשורה. מידות מוצהרות שגויות גרועות ממידות חסרות: חלק מהזחלנים פורסים
   // לפיהן לפני שהתמונה ירדה, וריבוע מוצהר על תמונה רחבה נחתך. בלעדיהן הם
   // מודדים את מה שהורידו.
-  const image = share.render_path ? `${url}/render` : undefined;
+  const image = shareImageUrl(SITE.url, share.token, share) ?? undefined;
 
   return {
     title,
