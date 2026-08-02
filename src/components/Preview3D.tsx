@@ -7,6 +7,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import earcut from "earcut";
 import { he } from "@/i18n/he";
 import { useStudio } from "@/lib/client/store";
+import { registerPreviewCapture } from "@/lib/client/previewCapture";
 import { resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { neutralRadiusFromBlank } from "@/lib/sizing";
 import type { MultiPolygon } from "@/lib/geometry/types";
@@ -20,6 +21,15 @@ import type { MultiPolygon } from "@/lib/geometry/types";
 // הרדיוס מגיע מ-neutralRadiusFromBlank (אורך הפריסה הוא אורך הציר הניטרלי,
 // והפער הוא מיתר) ולא מ-(L+gap)/2π. הנוסחה הישנה זיהתה את אורך הפריסה עם
 // ההיקף הפנימי והציגה ID גדול ב-2·K·t — 1.5 מידות טבעת. ראו sizing-fit-review §3.
+
+/**
+ * כיוון המצלמה בצילום תמונת השיתוף, יחסית למרכז הפריט.
+ *
+ * ‎−Z כי הפתח יושב ב-‎+Z (ראו ההערה על θ ב-buildBentGeometry): בתמונה הוא צריך
+ * להיות מאחור. ‎0.34 בגובה הוא אותו יחס של המסגור הראשון — מבט מעט מלמעלה,
+ * שמראה גם את רוחב הפס וגם את הקשת.
+ */
+const CAPTURE_DIR = new THREE.Vector3(0, 0.34, -1).normalize();
 
 export interface Rolled3DProps {
   material: MultiPolygon;
@@ -35,11 +45,14 @@ export interface Rolled3DProps {
   enabled?: boolean;
   /** הדפדפן לא נותן WebGL (או שההקשר אבד). מי שמעל מציג חלופה משלו. */
   onUnavailable?: () => void;
+  /** נקרא פעם אחת, אחרי הפריים הראשון שצויר בפועל. מי שמעל מחזיק חלופה
+   *  סטטית עד לרגע הזה, כדי שהצביעה הראשונה לא תהיה קנבס ריק. */
+  onReady?: () => void;
 }
 
 export function Rolled3D({
   material, lengthMm, widthMm, gapMm, thicknessMm, productType = "bracelet",
-  background = 0xf4f1eb, enabled = true, onUnavailable,
+  background = 0xf4f1eb, enabled = true, onUnavailable, onReady,
 }: Rolled3DProps) {
   const mountRef = useRef<HTMLDivElement>(null);
   /**
@@ -54,6 +67,8 @@ export function Rolled3D({
   /** ברפ כדי שהאפקט יישאר חד-פעמי גם כשהקורא מעביר פונקציה חדשה בכל רנדר. */
   const unavailableCb = useRef(onUnavailable);
   unavailableCb.current = onUnavailable;
+  const readyCb = useRef(onReady);
+  readyCb.current = onReady;
 
   const giveUp = useCallback(() => {
     setUnavailable(true);
@@ -156,6 +171,10 @@ export function Rolled3D({
     ro.observe(mount);
 
     let raf = 0;
+    // מדווח פעם אחת, אחרי שפריים אמיתי צויר. מי שמעל מחליף בזה חלופה סטטית,
+    // ולכן הדיווח חייב לבוא אחרי הציור ולא אחרי בניית הסצנה: קנבס ריק
+    // במקום התכשיט הוא בדיוק מה שההחלפה נועדה למנוע.
+    let announced = false;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       // זריקה מתוך requestAnimationFrame היא חריגה גלובלית לא מטופלת, ולכן גם
@@ -163,6 +182,10 @@ export function Rolled3D({
       try {
         controls.update();
         renderer.render(scene, camera);
+        if (!announced) {
+          announced = true;
+          readyCb.current?.();
+        }
       } catch {
         cancelAnimationFrame(raf);
         giveUp();
@@ -171,7 +194,54 @@ export function Rolled3D({
     loop();
 
     sceneRef.current = { renderer, scene, camera, controls, mesh: null, fit: null };
+
+    /**
+     * צילום הקנבס — זו תמונת השיתוף (`docs/SHARING.md`).
+     *
+     * ה-render המפורש לפני `toDataURL` אינו מיותר: בלי `preserveDrawingBuffer`
+     * הדפדפן מרשה לעצמו לנקות את ה-drawing buffer מיד אחרי ההרכבה, ואז הקריאה
+     * מחזירה תמונה שחורה. ציור באותה משימה ממש לפני הקריאה הוא הדרך לקבל פריים
+     * תקין בלי לשלם את המחיר הקבוע של preserveDrawingBuffer על כל פריים.
+     *
+     * JPEG ולא PNG: היעד הוא תצוגה מקדימה בוואטסאפ, שמוותרת עליה כשהקובץ כבד.
+     * צילום מסך של מתכת על רקע חלק נדחס היטב — עשרות KB במקום מגה־בייטים.
+     *
+     * **הזווית מקובעת ואינה זו שעל המסך.** ההדמיה מסתובבת מעצמה, ולכן צילום
+     * של "מה שרואים עכשיו" הוא זווית אקראית לפי מתי נלחץ הכפתור — לפעמים
+     * הפתח מלפנים, לפעמים הפריט בצד. תמונת השיתוף היא תמונת המוצר, וצריכה
+     * להיראות אותו דבר בכל פעם.
+     *
+     * הפתח מאחור: `buildBentGeometry` מוסיף π ל-θ, כך שהפתח יושב ב-‎+Z והמסגור
+     * הראשון מציב את המצלמה שם — טוב לעריכה (רואים את הפתח), לא לתמונה שמוכרת
+     * את הפריט. הצילום מציב אותה ב-‎−Z, באותה הגבהה של המסגור הראשון.
+     */
+    const unregister = registerPreviewCapture(() => {
+      // רקע אטום לרגע הצילום. הסצנה מוצגת שקופה (`background={null}`) כדי
+      // שהגרדיאנט של המיכל יעבור מבעד, ול-JPEG אין ערוץ אלפא — כלומר שקוף
+      // נצרב **שחור**. נמדד: התכשיט על ריבוע שחור. הגוון הוא הפורצלן של
+      // המותג, אותו רקע שההדמיה יושבת עליו במסך.
+      const previousBg = scene.background;
+      const previousPos = camera.position.clone();
+      const target = controls.target;
+      // המרחק נשמר כפי שהוא — הוא נקבע ב-fit לפי הצורה והקנבס, ואין סיבה
+      // לחשב אותו כאן מחדש.
+      const distance = camera.position.distanceTo(target) || 1;
+
+      scene.background = new THREE.Color(0xf4f1eb);
+      camera.position.copy(target).add(CAPTURE_DIR.clone().multiplyScalar(distance));
+      camera.lookAt(target);
+      renderer.render(scene, camera);
+      const shot = renderer.domElement.toDataURL("image/jpeg", 0.85);
+
+      scene.background = previousBg;
+      camera.position.copy(previousPos);
+      controls.update();
+      renderer.render(scene, camera);
+      return shot;
+    });
+
     return () => {
+      unregister();
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer.domElement.removeEventListener("webglcontextlost", onContextLost);

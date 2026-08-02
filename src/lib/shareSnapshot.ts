@@ -2,7 +2,7 @@ import { svgFrame } from "@/lib/geometry/frame";
 import { validateDesign } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import { FAB } from "@/lib/fabrication.config";
-import type { DesignRow, VersionRow } from "@/lib/db/designs";
+import { renderPathOf, type DesignRow, type VersionRow } from "@/lib/db/designs";
 import type { NewShare } from "@/lib/db/shares";
 
 /**
@@ -49,17 +49,4 @@ export function buildShareSnapshot(design: DesignRow, version: VersionRow): NewS
     render_path: renderPathOf(version),
     serial: design.serial ?? null,
   };
-}
-
-/**
- * נתיב ההדמיה שמודל התמונה ייצר.
- *
- * הוא נשמר בתוך `validation_report` (jsonb) ולא בעמודה משלו — ראו ההערה
- * ב-`ingestCutouts`. נקרא בהגנה: הדוח מגיע מכל גרסה שאי פעם נשמרה, כולל
- * כאלה שנכתבו לפני שהשדה הזה נוסף.
- */
-function renderPathOf(version: VersionRow): string | null {
-  const report = version.validation_report as { renderPngPath?: unknown } | null;
-  const path = report?.renderPngPath;
-  return typeof path === "string" && path.length > 0 ? path : null;
 }

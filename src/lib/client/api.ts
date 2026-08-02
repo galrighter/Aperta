@@ -1,5 +1,6 @@
 import { he } from "@/i18n/he";
 import type { Account, Design, Geometry, Profile, Version } from "./types";
+import type { DesignPreview } from "@/lib/designPreview";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // שכבת הקריאות לשרת. כל השגיאות מתורגמות ל-Error עם הודעה בעברית + code.
@@ -205,6 +206,10 @@ export const api = {
   getDesign: (id: string) =>
     call<{ design: Design; currentVersion: Version | null; versions: Version[] }>(`/api/designs/${id}`),
 
+  /** הציור לכרטיס ב"העיצובים שלי" — כמה מאות בתים, בלי הגרסאות עצמן. */
+  designPreview: (id: string) =>
+    call<{ preview: DesignPreview | null }>(`/api/designs/${id}/preview`),
+
   patchDesign: (id: string, patch: Record<string, unknown>) =>
     call<{ design: Design }>(`/api/designs/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
@@ -284,11 +289,14 @@ export const api = {
       body: JSON.stringify({ versionId, forced }),
     }),
 
-  /** לינק שיתוף לגרסה. קריאה חוזרת על אותה גרסה מחזירה את אותו לינק. */
-  createShare: (designId: string, versionId: string) =>
+  /**
+   * לינק שיתוף לגרסה. קריאה חוזרת על אותה גרסה מחזירה את אותו לינק.
+   * `previewDataUrl` — צילום ההדמיה מהקנבס, שהופך לתמונת השיתוף.
+   */
+  createShare: (designId: string, versionId: string, previewDataUrl?: string | null) =>
     call<{ token: string; url: string; reused: boolean }>("/api/shares", {
       method: "POST",
-      body: JSON.stringify({ designId, versionId }),
+      body: JSON.stringify({ designId, versionId, previewDataUrl: previewDataUrl ?? undefined }),
     }),
 
   /** "להזמין כזה": עותק של עיצוב ששותף, במידות של המזמין. */

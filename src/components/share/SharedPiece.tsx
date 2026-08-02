@@ -19,11 +19,10 @@ import type { MultiPolygon } from "@/lib/geometry/types";
 
 const t = he.share;
 
+// בלי `loading`: החלופה כאן היא הפריסה עצמה, שמוצגת מתחת לקנבס עד שהוא מצייר.
+// טקסט "טוען…" במקומה היה מחליף תכשיט בספינר בדיוק בשנייה הראשונה.
 const Rolled3D = dynamic(() => import("@/components/Preview3D").then((m) => m.Rolled3D), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full items-center justify-center text-sm text-mist">{he.loading}</div>
-  ),
 });
 
 export interface SharedPieceProps {
@@ -37,12 +36,22 @@ export interface SharedPieceProps {
 
 export default function SharedPiece(p: SharedPieceProps) {
   const has3d = Boolean(p.material && p.material.length > 0);
-  const [rolled, setRolled] = useState(false);
+  /**
+   * ההדמיה פתוחה מיד (גל, 2.8). הפריסה הייתה ברירת המחדל כדי שהצביעה
+   * הראשונה תהיה ה-SVG שכבר ב-HTML ולא ספינר בזמן ש-three נטען — אבל מי
+   * שנכנס מלינק בא לראות את התכשיט, והפריסה השטוחה אינה התכשיט. המחיר
+   * משולם למטה: `RolledPreview` הוא מה שמוצג עד שהקנבס חי, כך שהצביעה
+   * הראשונה נשארת מיידית וההחלפה קורית מתחת ליד.
+   */
+  const [rolled, setRolled] = useState(true);
   const [coarse, setCoarse] = useState(false);
   /** הדפדפן לא נתן WebGL (קורה בכרום באנדרואיד בלי האצת חומרה). נופלים
    *  לפריסה במקום להשאיר מלבן ריק במקום התכשיט. */
   const [no3d, setNo3d] = useState(false);
   const on3dUnavailable = useCallback(() => setNo3d(true), []);
+  /** הקנבס צייר פריים. עד אז הפריסה מכסה אותו — ראו ההערה על `rolled`. */
+  const [live3d, setLive3d] = useState(false);
+  const on3dReady = useCallback(() => setLive3d(true), []);
 
   useEffect(() => {
     setCoarse(window.matchMedia("(pointer: coarse)").matches);
@@ -84,7 +93,18 @@ export default function SharedPiece(p: SharedPieceProps) {
                 thicknessMm={p.thicknessMm}
                 background={null}
                 onUnavailable={on3dUnavailable}
+                onReady={on3dReady}
               />
+              {/* הפריסה מכסה את הקנבס עד לפריים הראשון. אותו רקע, אותו גובה —
+                  מה שמתחלף הוא התוכן, בלי קפיצה בפריסת העמוד ובלי ספינר. */}
+              {!live3d && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ background: "linear-gradient(180deg,#efeae1,#e0d9cd)" }}
+                >
+                  <RolledPreview cutouts={p.cutouts} lengthMm={p.lengthMm} widthMm={p.widthMm} />
+                </div>
+              )}
               <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center px-4">
                 <span className="bg-porcelain/70 px-3 py-1.5 text-center text-[12px] text-ink60">
                   {coarse ? t.dragHintTouch : t.dragHint}

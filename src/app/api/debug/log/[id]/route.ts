@@ -17,7 +17,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // ליומן יש עכשיו גם שורות של ניסיון שנקטע — לאלה אין הרצה, ולכן אין פירוט.
     // ריק הוא התשובה הנכונה: הפתיחה תציג "אין נתונים" במקום "טעינת הפירוט נכשלה".
     if (!row) {
-      return NextResponse.json({ id, svg: null, debug: null, renderPrompt: null, inputs: null, bridges: null });
+      return NextResponse.json({
+        id, svg: null, debug: null, renderPrompt: null, inputs: null, bridges: null, offered: null,
+      });
     }
     // הפירוט הוא המקום שבו ה-SVG של כל מועמד באמת נחוץ, ולכן הוא נקרא מ-
     // debug_full. שורות שנכתבו לפני הפיצול מוחזרות ל-debug (ההגירה מעבירה
@@ -31,9 +33,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       renderPrompt: row.render_prompt ?? null,
       prompt: row.prompt ?? null,
       inputs: row.inputs ?? null,
-      // הגשרים שנוספו אחרי המעקב — מהגרסה שההרצה שמרה. שאילתה נפרדת וקטנה,
-      // ורק בפתיחת הרצה.
-      bridges: await bridgesForRun(row.id),
+      // הגשרים שנוספו אחרי המעקב — של הגרסה שההרצה שמרה, ושל כל הצעה לצידה.
+      // שאילתה אחת וקטנה, ורק בפתיחת הרצה.
+      ...(await bridgesForRun(row.id).then((r) => ({ bridges: r.bridges, offered: r.candidates }))),
     });
   } catch (err) {
     return handleRouteError(err);

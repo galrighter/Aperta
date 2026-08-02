@@ -40,11 +40,23 @@ export default function SiteError({
           {he.errBoundaryHome}
         </Link>
       </div>
-      {/* מזהה השגיאה של Next — מה שמאפשר למצוא אותה ביומן כשמדווחים עליה. */}
-      {error.digest && (
-        <p className="mt-8 font-mono text-[11px] text-mist" dir="ltr">
-          {error.digest}
-        </p>
+      {/* מה שנשבר, בשביל מי שמדווח.
+          `console.error` למעלה מספיק כשיש גישה לכלי מפתחים — ובטלפון אין.
+          קריסה שדווחה מהשדה ב-2.8 ("קיבלתי הודעת שגיאה") לא ניתנת היתה
+          לאבחון משום שהמסך לא אמר דבר מלבד "משהו נשבר", והשחזור מנתונים
+          סינתטיים לא הצליח. מקופל, כדי שזה יישאר טקסט למי שמחפש אותו. */}
+      {(error.message || error.digest) && (
+        <details className="mt-8 text-start">
+          <summary className="cursor-pointer text-center text-[12px] text-mist">
+            {he.errBoundaryDetails}
+          </summary>
+          <pre
+            dir="ltr"
+            className="mt-3 overflow-x-auto whitespace-pre-wrap break-words bg-white p-3 font-mono text-[11px] leading-relaxed text-ink60"
+          >
+            {[error.message, error.digest && `digest: ${error.digest}`].filter(Boolean).join("\n")}
+          </pre>
+        </details>
       )}
     </section>
   );

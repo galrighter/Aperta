@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody } from "@/lib/api";
 import { requireDesignAccess } from "@/lib/designAccess";
-import { getVersion } from "@/lib/db/designs";
+import { getVersion, renderPathOf } from "@/lib/db/designs";
 import { isReplaceablePick } from "@/lib/versionRole";
 import { ingestCutouts } from "@/lib/vectorizer";
 
@@ -55,7 +55,22 @@ export async function POST(req: Request, { params }: Params) {
       design,
       cutoutsSvg: body.svg,
       userPrompt: null,
-      renderPngPath: null,
+      /**
+       * ההדמיה נרשמת **להרצה**, לא להצעה: `/api/generate` מייצר תמונה אחת (או
+       * רשת פאנלים) לכל קריאת רנדר ורושם את הראשונה על הגרסה שנשמרה. בחירת
+       * הצעה אחרת אינה הרצה חדשה ולכן אין לה הדמיה משלה — ומכיוון שכאן נשלח
+       * `null`, היא איבדה גם את זו של ההרצה שממנה באה.
+       *
+       * מה שזה שבר בפועל (נמדד ב-2.8 על RM-0069): הגרסה שנבחרה נשמרה בלי נתיב
+       * הדמיה, ולכן בשיתוף שלה `render_path` היה ריק ו-`og:image` לא נפלט
+       * בכלל — הלינק בוואטסאפ הגיע בלי תמונה. אותו חסר מרוקן גם את ההדמיה
+       * ביומן הבק־אופיס לכל גרסה שנבחרה, וזה המסלול הרגיל במשפך.
+       *
+       * ירושה ולא חיפוש: שתי הגרסאות חולקות `generation_id`, וההדמיה של אותה
+       * הרצה היא בדיוק מה שצריך להופיע. אין מיפוי הצעה→תמונה שאפשר לחפש —
+       * הסדר משתנה במיון, ותמונה אחת מכילה כמה פאנלים.
+       */
+      renderPngPath: source ? renderPathOf(source) : null,
       generationId,
       pickedIndex: body.index ?? null,
       // כבר יש שורת בחירה להרצה הזו — מעדכנים אותה במקום להוסיף עוד אחת.

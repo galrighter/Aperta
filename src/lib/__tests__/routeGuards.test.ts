@@ -94,6 +94,7 @@ describe("order routes", () => {
  *  לבדוק בעלות. מזהה עיצוב אינו סוד — הוא עובר בכתובות, ביומנים ובקישורים. */
 const OWNERSHIP_ROUTES = [
   "designs/[id]/route.ts",
+  "designs/[id]/preview/route.ts",
   "designs/[id]/choose/route.ts",
   "designs/[id]/duplicate/route.ts",
   "generate/route.ts",

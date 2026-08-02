@@ -3,8 +3,9 @@ import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { getVersion } from "@/lib/db/designs";
-import { createShare, findActiveShare } from "@/lib/db/shares";
+import { attachSharePreview, createShare, findActiveShare } from "@/lib/db/shares";
 import { buildShareSnapshot } from "@/lib/shareSnapshot";
+import { decodeDataUrl, uploadFile } from "@/lib/db/storage";
 import { SITE } from "@/lib/site.config";
 
 // יצירת לינק שיתוף לעיצוב. הדף שהוא פותח: `/d/<token>`.
@@ -17,7 +18,17 @@ const schema = z.object({
   designId: z.string().uuid(),
   /** הגרסה ששותפה. ברירת המחדל היא הנוכחית — מה שעל המסך ברגע הלחיצה. */
   versionId: z.string().uuid().nullable().optional(),
+  /**
+   * צילום ההדמיה מהקנבס, כ-data URL. זו תמונת השיתוף (ראו 0014). אופציונלי:
+   * שיתוף מהסטודיו בטאב הפריסה נוצר בלי קנבס פעיל, ואז נופלים להדמיה של
+   * מודל התמונה. התקרה נדיבה ביחס ל-JPEG של קנבס (עשרות KB) ומספיק הדוקה
+   * כדי שגוף הבקשה לא ייהפך לערוץ העלאה.
+   */
+  previewDataUrl: z.string().max(4_000_000).optional(),
 });
+
+/** מה שמותר להעלות כצילום. הקנבס פולט JPEG; PNG מתקבל למקרה שדפדפן יסרב לו. */
+const PREVIEW_MEDIA = new Set(["image/jpeg", "image/png"]);
 
 export async function POST(req: Request) {
   try {
@@ -37,6 +48,29 @@ export async function POST(req: Request) {
     // שיתוף חוזר של אותה גרסה מחזיר את אותו לינק (ראו findActiveShare).
     const existing = await findActiveShare(design.id, version.id);
     const share = existing ?? (await createShare(buildShareSnapshot(design, version)));
+
+    /**
+     * צילום ההדמיה, אם הדפדפן שלח אחד. גם על שיתוף חוזר: הלינק זהה, אבל
+     * הצילום עשוי להיות טוב יותר מהקודם (זווית אחרת, או שבפעם הראשונה בכלל
+     * לא היה קנבס). דריסה של תמונה בנתיב קבוע מרעננת את מה שהעמוד מגיש.
+     *
+     * best-effort במפורש: הלינק כבר קיים ותקין, וכשל בהעלאה נופל חזרה
+     * להדמיה של מודל התמונה במקום להיכשל על משהו שכבר הצליח.
+     */
+    if (body.previewDataUrl) {
+      try {
+        const { bytes, mediaType } = decodeDataUrl(body.previewDataUrl);
+        if (!PREVIEW_MEDIA.has(mediaType)) {
+          throw new Error(`unsupported preview type ${mediaType}`);
+        }
+        const ext = mediaType === "image/png" ? "png" : "jpg";
+        const path = `shares/${share.id}.${ext}`;
+        await uploadFile(path, bytes, mediaType);
+        await attachSharePreview(share.id, path);
+      } catch (e) {
+        console.warn(`[shares] preview upload failed for ${share.id}:`, (e as Error).message);
+      }
+    }
 
     return NextResponse.json(
       { token: share.token, url: `${SITE.url}/d/${share.token}`, reused: Boolean(existing) },
