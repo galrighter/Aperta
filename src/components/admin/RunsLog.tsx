@@ -94,6 +94,16 @@ export type LogDetail = {
   inputs?: RunInputs | null;
   /** הגשרים שנוצרו אחרי המעקב, מהגרסה שנשמרה. */
   bridges?: BridgeRecord[] | null;
+  /** ההצעות שהוצעו לצד הגרסה — כל אחת עם הגישור שלה. הזוכה הוא הראשונה, ולכן
+   *  `bridges` למעלה חוזר גם כאן; מה שנוסף הן החלופות. */
+  offered?: OfferedCandidate[] | null;
+};
+
+/** הצעה מההרצה כפי שהיומן צריך אותה. */
+export type OfferedCandidate = {
+  svg: string;
+  bridges?: BridgeRecord[] | null;
+  report?: { status?: string } | null;
 };
 
 const detailOf = (d: LogDetail | "loading" | "error" | undefined): LogDetail | null =>
@@ -115,6 +125,44 @@ const BRIDGE_KIND: Record<string, string> = {
   ornament: "עיטור — חובר",
   dropped: "נמחק",
 };
+
+/** שורת הסיכום של חלופה. מה שחשוב לראות בלי לפתוח הוא כמה **נמחקו**. */
+function bridgeSummary(bridges: BridgeRecord[]): string {
+  const dropped = bridges.filter((b) => b.kind === "dropped").length;
+  const bridged = bridges.length - dropped;
+  const parts = [];
+  if (bridged) parts.push(`${bridged} גושרו`);
+  if (dropped) parts.push(`${dropped} נמחקו`);
+  return parts.join(", ");
+}
+
+/** טבלת הגישור. אותה טבלה לזוכה ולכל חלופה — אחרת שתיים מהן מספרות אחרת. */
+function BridgeTable({ bridges }: { bridges: BridgeRecord[] }) {
+  return (
+    <table className="w-full text-right text-xs">
+      <thead className="text-ink60">
+        <tr>
+          <th className="p-1">סוג</th><th className="p-1">אות</th><th className="p-1">גודל האי</th>
+          <th className="p-1">רוחב הגשר</th><th className="p-1">אורך</th>
+          <th className="p-1">התאמה</th><th className="p-1">מיקום</th>
+        </tr>
+      </thead>
+      <tbody>
+        {bridges.map((b, i) => (
+          <tr key={i} className={`border-t border-graphite/10 ${b.kind === "dropped" ? "text-red-700" : ""}`}>
+            <td className="p-1">{BRIDGE_KIND[b.kind]}</td>
+            <td className="p-1" dir="ltr">{b.char ?? "—"}</td>
+            <td className="p-1">{b.widthMm.toFixed(2)}×{b.heightMm.toFixed(2)}</td>
+            <td className="p-1">{b.bridgeMm != null ? `${b.bridgeMm.toFixed(2)} מ״מ` : "—"}</td>
+            <td className="p-1">{b.spanMm != null ? `${b.spanMm.toFixed(2)} מ״מ` : "—"}</td>
+            <td className="p-1">{b.matchMm != null ? `${b.matchMm.toFixed(2)} מ״מ` : "—"}</td>
+            <td className="p-1" dir="ltr">{b.x.toFixed(1)}, {b.y.toFixed(1)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 const SOURCE_LABEL: Record<string, string> = {
   studio: "אתר", debug: "מעבדה", upload: "העלאה",
@@ -627,6 +675,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             renderModel={it.renderModel}
             svg={svg}
             bridges={detailOf(detail)?.bridges ?? null}
+            offered={detailOf(detail)?.offered ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
             debug={detailOf(detail)?.debug ?? it.debug}
             svgName={`run-${it.id.slice(0, 8)}`}
@@ -780,15 +829,19 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, debug, bridges = null, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, debug, bridges = null, offered = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
   /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
   bridges?: BridgeRecord[] | null;
+  /** ההצעות שהוצעו בהרצה. הראשונה היא הזוכה ומוצגת למעלה. */
+  offered?: OfferedCandidate[] | null;
   /** בסיס שם הקובץ להורדות מהמסך הזה. */
   svgName?: string;
 }) {
   const stages = debug?.stages ?? [];
   const candidates = debug?.candidates ?? [];
+  // הראשונה היא הגרסה שנשמרה, וכבר יש לה אוברליי וטבלה למעלה.
+  const alternatives = (offered ?? []).slice(1);
   const gates = debug?.gates ?? {};
   const warnings = debug?.warnings ?? [];
   // הגאומטריה של מועמד נבחר — מה שיצא בפועל מהמעקב, לבדיקה בעין.
@@ -852,28 +905,37 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, s
             אי מתכת שחזר מהמעקב מנותק — נגשר כאן, אחרי שהמודל סיים. חלל של אות מקבל
             בחזרה את הגשר שאנחנו חתכנו; אי בעיטור מחובר לנקודה הקרובה; ומה שרחוק מדי נמחק.
           </div>
-          <table className="w-full text-right text-xs">
-            <thead className="text-ink60">
-              <tr>
-                <th className="p-1">סוג</th><th className="p-1">אות</th><th className="p-1">גודל האי</th>
-                <th className="p-1">רוחב הגשר</th><th className="p-1">אורך</th>
-                <th className="p-1">התאמה</th><th className="p-1">מיקום</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bridges.map((b, i) => (
-                <tr key={i} className={`border-t border-graphite/10 ${b.kind === "dropped" ? "text-red-700" : ""}`}>
-                  <td className="p-1">{BRIDGE_KIND[b.kind]}</td>
-                  <td className="p-1" dir="ltr">{b.char ?? "—"}</td>
-                  <td className="p-1">{b.widthMm.toFixed(2)}×{b.heightMm.toFixed(2)}</td>
-                  <td className="p-1">{b.bridgeMm != null ? `${b.bridgeMm.toFixed(2)} מ״מ` : "—"}</td>
-                  <td className="p-1">{b.spanMm != null ? `${b.spanMm.toFixed(2)} מ״מ` : "—"}</td>
-                  <td className="p-1">{b.matchMm != null ? `${b.matchMm.toFixed(2)} מ״מ` : "—"}</td>
-                  <td className="p-1" dir="ltr">{b.x.toFixed(1)}, {b.y.toFixed(1)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <BridgeTable bridges={bridges} />
+        </div>
+      )}
+
+      {/* הגישור של החלופות. הזוכה כבר למעלה — כאן מה שנעשה בשאר, שעד עכשיו
+          נראו ביומן כאילו לא נגעו בהן. */}
+      {alternatives.length > 0 && (
+        <div className="rounded-[2px] border border-graphite/10 bg-white p-3">
+          <div className="mb-2 font-semibold">החלופות ({alternatives.length})</div>
+          <div className="grid gap-2">
+            {alternatives.map((c, i) => {
+              const list = c.bridges ?? [];
+              return (
+                <details key={i} className="rounded-[2px] border border-graphite/10">
+                  <summary className="cursor-pointer p-2 text-xs">
+                    חלופה {i + 2}
+                    {c.report?.status && <span className="text-ink60"> · {c.report.status}</span>}
+                    {" · "}
+                    {list.length > 0 ? bridgeSummary(list) : "בלי גישור"}
+                  </summary>
+                  <div className="grid gap-2 p-2">
+                    {list.length > 0 && <BridgeOverlayCard svg={c.svg} bridges={list} />}
+                    {list.length === 0 && <SvgCard title={`חלופה ${i + 2}`} svg={c.svg} filename={`${svgName}-alt${i + 2}`} />}
+                    {list.length > 0 && (
+                      <div className="overflow-x-auto"><BridgeTable bridges={list} /></div>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
         </div>
       )}
 

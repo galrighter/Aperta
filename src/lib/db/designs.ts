@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "./supabase";
 import { ApiError } from "@/lib/api";
 import type { ProductType } from "@/lib/fabrication.config";
+import type { BridgeRecord } from "@/lib/geometry/restoreBridges";
 
 export interface DesignRow {
   id: string;
@@ -25,6 +26,10 @@ export interface VersionCandidate {
   report: unknown;
   drawnRatio?: number;
   stretch?: number;
+  /** מה שהמסגור עשה לכל אי מתכת אצל **המועמד הזה**. נשמר לכל אחד ולא רק לזוכה:
+   *  הגישור הוא החלטה שמשנה את הצורה, וגרסה שמראה אותה רק למי שנבחר לא נותנת
+   *  לענות על "למה האות הזו נראית ככה" באף אחת מהחלופות. */
+  bridges?: BridgeRecord[];
 }
 
 export interface VersionRow {
@@ -56,22 +61,26 @@ export async function getDesign(id: string): Promise<DesignRow> {
 }
 
 /**
- * הגשרים שנוצרו אחרי המעקב בגרסה שההרצה הזו שמרה.
+ * הגישור של ההרצה: של הגרסה שנשמרה, ושל כל הצעה שהוצעה לצידה.
  *
- * נקרא מהגרסה ולא מההרצה כי שם הם נכתבו: הם תכונה של הגאומטריה שנשמרה, ושתי
- * הצעות מאותה הרצה מגושרות אחרת. `null` = הרצה בלי גרסה, או גרסה מלפני השדה.
+ * נקרא מהגרסה ולא מההרצה כי שם זה נכתב — הגישור הוא תכונה של הגאומטריה
+ * שנשמרה, **ושתי הצעות מאותה הרצה מגושרות אחרת.** בדיוק בגלל זה מוחזרות גם
+ * ההצעות: הזוכה לבדו ענה על "מה תוקן" רק ברבע מהמקרים, ושלוש החלופות נראו
+ * ביומן כאילו לא נגעו בהן. `null` = הרצה בלי גרסה, או גרסה מלפני השדה.
  */
-export async function bridgesForRun(generationId: string): Promise<unknown[] | null> {
+export async function bridgesForRun(
+  generationId: string,
+): Promise<{ bridges: unknown[] | null; candidates: VersionCandidate[] | null }> {
   const { data, error } = await supabaseAdmin()
     .from("design_versions")
-    .select("validation_report")
+    .select("validation_report, candidates")
     .eq("generation_id", generationId)
     .order("version_no", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return null;
-  const report = (data as { validation_report?: { bridges?: unknown[] } }).validation_report;
-  return report?.bridges ?? null;
+  if (error || !data) return { bridges: null, candidates: null };
+  const row = data as { validation_report?: { bridges?: unknown[] }; candidates?: VersionCandidate[] | null };
+  return { bridges: row.validation_report?.bridges ?? null, candidates: row.candidates ?? null };
 }
 
 export async function getVersion(id: string): Promise<VersionRow> {

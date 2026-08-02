@@ -475,6 +475,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       report: c.report,
       drawnRatio: Math.round(c.drawnRatio * 100) / 100,
       stretch: Math.round(c.stretch * 1000) / 1000,
+      // הגישור הוא החלטה שמשנה את הצורה, והיא מתקבלת לכל מועמד בנפרד. עד כאן
+      // היא שרדה רק אצל הזוכה (`validation_report.bridges` של הגרסה השמורה),
+      // ולכן שלוש החלופות האחרות הוצגו ביומן בלי שום דרך לדעת מה תוקן בהן.
+      bridges: c.bridges,
     }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design,

@@ -140,6 +140,22 @@ describe("the box comes first", () => {
     fetchSpy.mockRestore();
   });
 
+  it("brings back what was bridged for every candidate, not only the first", async () => {
+    // היומן מציג את הגישור של כל חלופה, והוא קורא אותו מכאן. `plan` כבר אבד
+    // פעם אחת בדיוק בקפיצה הזו — `bridges` הוא אותו סוג נזק בכיוון ההפוך:
+    // שקט, ונראה בדיוק כמו "לא היה מה לגשר".
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(boxOk() as typeof fetch);
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+
+    const out = await frameCandidates(islandDims, [islandSvg, islandSvg], plan);
+    expect(out).toHaveLength(2);
+    for (const c of out) {
+      expect(c.bridges.some((b) => b.kind === "letter" && b.char === "e")).toBe(true);
+    }
+
+    fetchSpy.mockRestore();
+  });
+
   it("carries the bearer the rest of the box expects", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(boxOk() as typeof fetch);
     process.env.VECTORIZER_URL = "https://vec.example.com";
