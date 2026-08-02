@@ -33,6 +33,17 @@ export function BriefScreen({
   const locked = s.imageRole === "ready";
   /** המאפיינים כבויים כשהקובץ מוכן לחיתוך, וגם כשהמודל מחליט לבד. */
   const attrsOff = locked || s.attrsAuto;
+
+  // כיתוב ותמונה נועלים זה את זה. למודל התמונה יש מקום לתמונת ייחוס אחת,
+  // והכיתוב תופס אותה — כלומר תמונה שנבחרה לצד כיתוב פשוט לא נשלחת. עד כאן זו
+  // הייתה אזהרה שמופיעה אחרי הבחירה, ומי שסימן "סקיצה" קיבל עיצוב שאינו דומה
+  // לה בלי להבין למה. שדה שלא נפתח אומר את זה לפני, ולא אחרי.
+  //
+  // היציאה תמיד קיימת: כפתור "הסרת התמונה" אינו ננעל לעולם, ותיבת הכיתוב
+  // ננעלת רק בגלל תמונה — כך שמצב ששני השדות מלאים בו (מצב ישן שנשמר בדפדפן)
+  // עדיין ניתן לפירוק.
+  const letteringLocked = Boolean(s.image);
+  const imageLocked = s.lettering.trim().length > 0;
   // אותה בדיקה בדיוק שהיצירה עצמה מריצה — ראה `canGenerate`.
   const canSubmit = canGenerate(s);
 
@@ -62,10 +73,79 @@ export function BriefScreen({
       <p className="mb-10 max-w-[560px] text-[17px] text-ink60">{d.briefSubtitle}</p>
 
       <div className="grid items-start gap-9 md:grid-cols-[1.15fr_1fr]">
-        {/* ===== תמונה + תיאור ===== */}
+        {/* ===== תיאור, כיתוב, תמונה — בסדר הזה =====
+            התיאור הוא מה שהמנוע באמת מקבל כמילים, ולכן הוא ראשון. הכיתוב
+            והתמונה הם שני ערוצי הייחוס, והם נועלים זה את זה. */}
         <div>
+          {/* תיאור חופשי */}
+          <div
+            className="transition-opacity"
+            style={{ opacity: locked ? 0.35 : 1 }}
+            aria-hidden={locked}
+            {...(locked ? { inert: "" as unknown as boolean } : {})}
+          >
+            <div className="border border-graphite/10 bg-white p-6">
+              <CardLabel>{d.briefLabel}</CardLabel>
+              <textarea
+                value={s.brief}
+                onChange={(e) => set({ brief: e.target.value })}
+                placeholder={d.briefPlaceholder}
+                disabled={locked}
+                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-white p-4 text-base leading-relaxed transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
+                style={{ minHeight: 150 }}
+              />
+              <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.briefHint}</p>
+            </div>
+          </div>
+
+          {/* טקסט על התכשיט — שדה נפרד, ומכוון.
+              הכיתוב אינו חלק מהתיאור: הוא לא מגיע למודל התמונה כמילים אלא
+              נחתך מהפונט ונמסר לו כתמונה (lib/render/letteringImage.ts), כך
+              שיש לו מה להעתיק במקום מה לנחש. לקוחה שתכתוב "צמיד עם השם
+              ענבל" בתיאור החופשי תקבל את מה שהמודל יאיית מכלום — הפרש
+              מדוד של פי כמה בדיוק.
+              מה שזה **לא** נותן: ערובה. המודל מדייק ברוב החלופות ולא בכולן,
+              ולכן הבחירה של הלקוחה היא האישור — וזה מה ש-textVerify אומר. */}
+          <div className="mt-4 border border-graphite/10 bg-white p-6">
+            {/* העמעום עוטף את השדה בלבד. הודעת הנעילה היא הדבר היחיד שיש
+                לקרוא כשהשדה סגור, ועמומה היא בדיוק מה שלא רוצים. */}
+            <div
+              className="transition-opacity"
+              style={{ opacity: locked || letteringLocked ? 0.45 : 1 }}
+            >
+              <div className="mb-4 flex items-baseline justify-between gap-4">
+                <CardLabel>{d.textLabel}</CardLabel>
+                <span className="text-[12px] text-mist">{d.textTooLong(MAX_LETTERING)}</span>
+              </div>
+              <input
+                type="text"
+                value={s.lettering}
+                onChange={(e) => set({ lettering: e.target.value.slice(0, MAX_LETTERING) })}
+                placeholder={d.textPlaceholder}
+                maxLength={MAX_LETTERING}
+                disabled={locked || letteringLocked}
+                dir="auto"
+                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed disabled:bg-porcelain"
+              />
+            </div>
+            {letteringLocked ? (
+              <p className="mt-3 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                {d.mixBlocked}
+              </p>
+            ) : (
+              <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.textHint}</p>
+            )}
+            {/* האזהרה מופיעה רק כשיש כיתוב — היא מיותרת עד שיש מה לבדוק,
+                ואזהרה שמוצגת תמיד מפסיקה להיקרא. */}
+            {s.lettering.trim() && (
+              <p className="mt-3 border-s-2 border-cobalt bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                {d.textVerify}
+              </p>
+            )}
+          </div>
+
           {/* תמונה */}
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-white p-6">
             <CardLabel>{d.imageTitle}</CardLabel>
             <input
               ref={fileRef}
@@ -76,16 +156,24 @@ export function BriefScreen({
             />
 
             {!s.image ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="rounded-[2px] border border-dashed border-graphite/35 bg-white px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt"
-                >
-                  {d.imageUpload}
-                </button>
-                <span className="text-[13px] text-mist">{d.imageFormats}</span>
-              </div>
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={imageLocked}
+                    className="rounded-[2px] border border-dashed border-graphite/35 bg-white px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt disabled:cursor-not-allowed disabled:border-graphite/20 disabled:bg-porcelain disabled:text-mist disabled:hover:border-graphite/20 disabled:hover:text-mist"
+                  >
+                    {d.imageUpload}
+                  </button>
+                  {!imageLocked && <span className="text-[13px] text-mist">{d.imageFormats}</span>}
+                </div>
+                {imageLocked && (
+                  <p className="mt-3 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                    {d.mixBlocked}
+                  </p>
+                )}
+              </>
             ) : (
               <>
                 <div className="flex items-center gap-4">
@@ -95,6 +183,7 @@ export function BriefScreen({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-graphite">{s.image.name}</div>
+                    {/* לעולם לא ננעל: זו הדרך היחידה לחזור לכיתוב. */}
                     <button
                       type="button"
                       onClick={() => set({ image: null, imageRole: null })}
@@ -141,73 +230,13 @@ export function BriefScreen({
             )}
           </div>
 
-          {/* הערת נעילה */}
+          {/* הערת נעילה של "קובץ מוכן לחיתוך" — יושבת מתחת לתמונה, כי היא
+              מסבירה מה התפקיד שנבחר שם עשה לשדות שמעליה. */}
           {locked && (
             <p className="mt-4 border-s-2 border-cobalt bg-white p-4 text-sm leading-relaxed text-ink80">
               {d.readyLockNote}
             </p>
           )}
-
-          {/* תיאור חופשי */}
-          <div
-            className="mt-4 transition-opacity"
-            style={{ opacity: locked ? 0.35 : 1 }}
-            aria-hidden={locked}
-            {...(locked ? { inert: "" as unknown as boolean } : {})}
-          >
-            <div className="border border-graphite/10 bg-white p-6">
-              <CardLabel>{d.briefLabel}</CardLabel>
-              <textarea
-                value={s.brief}
-                onChange={(e) => set({ brief: e.target.value })}
-                placeholder={d.briefPlaceholder}
-                disabled={locked}
-                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-white p-4 text-base leading-relaxed transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
-                style={{ minHeight: 150 }}
-              />
-              <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.briefHint}</p>
-            </div>
-
-            {/* טקסט על התכשיט — שדה נפרד, ומכוון.
-                הכיתוב אינו חלק מהתיאור: הוא לא מגיע למודל התמונה כמילים אלא
-                נחתך מהפונט ונמסר לו כתמונה (lib/render/letteringImage.ts), כך
-                שיש לו מה להעתיק במקום מה לנחש. לקוחה שתכתוב "צמיד עם השם
-                ענבל" בתיאור החופשי תקבל את מה שהמודל יאיית מכלום — הפרש
-                מדוד של פי כמה בדיוק.
-                מה שזה **לא** נותן: ערובה. המודל מדייק ברוב החלופות ולא בכולן,
-                ולכן הבחירה של הלקוחה היא האישור — וזה מה ש-textVerify אומר. */}
-            <div className="mt-4 border border-graphite/10 bg-white p-6">
-              <div className="mb-4 flex items-baseline justify-between gap-4">
-                <CardLabel>{d.textLabel}</CardLabel>
-                <span className="text-[12px] text-mist">{d.textTooLong(MAX_LETTERING)}</span>
-              </div>
-              <input
-                type="text"
-                value={s.lettering}
-                onChange={(e) => set({ lettering: e.target.value.slice(0, MAX_LETTERING) })}
-                placeholder={d.textPlaceholder}
-                maxLength={MAX_LETTERING}
-                disabled={locked}
-                dir="auto"
-                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
-              />
-              <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.textHint}</p>
-              {/* האזהרה מופיעה רק כשיש כיתוב — היא מיותרת עד שיש מה לבדוק,
-                  ואזהרה שמוצגת תמיד מפסיקה להיקרא. */}
-              {s.lettering.trim() && (
-                <p className="mt-3 border-s-2 border-cobalt bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
-                  {d.textVerify}
-                </p>
-              )}
-              {/* לא ב-`text-mist` בשוליים: זו לא הערת אגב אלא ההודעה שהתמונה
-                  שהלקוחה בחרה, ושהיא רואה מעליה, לא תגיע למנוע. */}
-              {s.lettering.trim() && s.image && s.imageRole !== "ready" && (
-                <p className="mt-2 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
-                  {d.textOverridesImage}
-                </p>
-              )}
-            </div>
-          </div>
         </div>
 
         {/* ===== מאפיינים ===== */}
