@@ -44,6 +44,14 @@ export interface BridgeRecord {
   /** האות שהחלל שויך לה, וכמה רחוק הוא נפל ממנה. */
   char?: string | null;
   matchMm?: number;
+  /**
+   * הגשר עצמו כנתיב SVG, בקואורדינטות הפס.
+   *
+   * טבלה אומרת שנוסף גשר; היא לא אומרת אם הוא יושב **נכון**. עם הנתיב אפשר
+   * לצייר אותו בצבע אחר מעל העיצוב ולראות את זה בעין — וזו השאלה האמיתית
+   * כשבוחנים את המנגנון. חסר במחיקה: שם לא נוסף כלום.
+   */
+  pathD?: string;
 }
 
 export interface RestoreOptions {
@@ -206,25 +214,29 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
 
     const hit = matchLetter(box, opts.letterBridges ?? []);
     if (hit) {
-      for (const r of hit.bridge.rects) bridges.push(rectPolygon(r[0], r[1], r[2], r[3]));
+      const drawn = hit.bridge.rects.map((r) => rectPolygon(r[0], r[1], r[2], r[3]));
+      bridges.push(...drawn);
       records.push({
         kind: "letter",
         ...base,
         bridgeMm: hit.bridge.widthMm,
         char: hit.bridge.char,
         matchMm: Math.round(hit.distMm * 100) / 100,
+        pathD: drawn.map((p) => polygonToPathD(p)).join(""),
       });
       continue;
     }
 
     const link = shortestLink(island, main);
     if (link.distMm <= opts.maxSpanMm) {
-      bridges.push(linkRect(link.a, link.b, opts.ornamentBridgeMm));
+      const drawn = linkRect(link.a, link.b, opts.ornamentBridgeMm);
+      bridges.push(drawn);
       records.push({
         kind: "ornament",
         ...base,
         bridgeMm: opts.ornamentBridgeMm,
         spanMm: Math.round(link.distMm * 100) / 100,
+        pathD: polygonToPathD(drawn),
       });
     } else {
       dropped.push(island);

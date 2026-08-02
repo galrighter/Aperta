@@ -80,6 +80,8 @@ export type BridgeRecord = {
   kind: "letter" | "ornament" | "dropped";
   x: number; y: number; widthMm: number; heightMm: number;
   bridgeMm?: number; spanMm?: number; char?: string | null; matchMm?: number;
+  /** הגשר עצמו, לציור מעל העיצוב. חסר במחיקה. */
+  pathD?: string;
 };
 
 /** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
@@ -837,6 +839,9 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, s
       </div>
 
       {/* גשרים שנוצרו אחרי המעקב */}
+      {bridges && bridges.length > 0 && svg && (
+        <BridgeOverlayCard svg={svg} bridges={bridges} />
+      )}
       {bridges && bridges.length > 0 && (
         <div className="overflow-x-auto rounded-[2px] border border-graphite/10 bg-white p-3">
           <div className="mb-1 font-semibold">
@@ -1010,6 +1015,46 @@ function ImgCard({ title, src }: { title: string; src: string }) {
  * שני מצבים ולא אחד: מתכת בהירה על רקע כמעט-שחור מראה את הצורה, ושחור על לבן
  * מראה קווים דקים שנבלעים בזוהר. אותה גאומטריה, שתי שאלות שונות.
  */
+/**
+ * העיצוב הסופי, והגשרים שנוספו אחריו צבועים מעליו.
+ *
+ * טבלה אומרת שנוסף גשר; היא לא אומרת אם הוא יושב נכון. זו השאלה היחידה
+ * שנשאלת כשבוחנים את המנגנון, ואי אפשר לענות עליה במספרים.
+ */
+export function BridgeOverlayCard({ svg, bridges }: { svg: string; bridges: BridgeRecord[] }) {
+  const drawn = bridges.filter((b) => b.pathD);
+  const vb = /viewBox="([^"]+)"/.exec(svg)?.[1];
+  if (!drawn.length || !vb) return null;
+  // אותו viewBox, ולכן הגשרים נופלים בדיוק על מקומם בעיצוב.
+  const overlay =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}">` +
+    drawn
+      .map((b) => `<path d="${b.pathD}" fill="${b.kind === "letter" ? "#e11d48" : "#0ea5e9"}"/>`)
+      .join("") +
+    "</svg>";
+  return (
+    <div className="rounded-[2px] border border-graphite/10 bg-white p-2">
+      <div className="mb-1 text-xs font-medium text-ink60">
+        העיצוב עם הגשרים שנוספו אחרי המעקב
+        <span className="ms-2 text-rose-600">■ חלל של אות</span>
+        <span className="ms-2 text-sky-500">■ עיטור</span>
+      </div>
+      <div className="relative w-full rounded bg-[#101114] p-2">
+        <div
+          className="w-full [&_svg]:w-full [&_svg]:fill-[#ffd43b] [&_svg_*]:fill-[#ffd43b]"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+        {/* שכבה שנייה, באותן קואורדינטות — הצבע הוא כל ההבדל בין "נוסף גשר"
+            לבין "הגשר יושב במקום הנכון". */}
+        <div
+          className="absolute inset-0 p-2 [&_svg]:w-full"
+          dangerouslySetInnerHTML={{ __html: overlay }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function SvgCard({ title, svg, filename }: { title: string; svg: string; filename?: string }) {
   const [light, setLight] = useState(false);
   return (
