@@ -22,6 +22,26 @@ describe("lettering bridges", () => {
     expect(ref!.tightShare).toBe(Math.max(...perRow));
   });
 
+  // הסף להתראה הוא 50% מהחלל (`LETTERING_BRIDGE_SHARE` ב-/api/generate). מה
+  // שקובע אם הוא יושב נכון הוא גאומטריית הפונט, לא המספר, ולכן נמדד מהצינור
+  // עצמו ולא מחישוב נפרד: פס 15 מ"מ נותן 46% — הרצפה נגעה, אבל התוצאה היא
+  // בערך היחס המתוכנן ואין על מה להתריע. פס 12 מ"מ נותן 59% ו-8 מ"מ נותן 92%,
+  // ושם הגשר באמת בולע את החלל.
+  //
+  // המרווח בין 46% ל-50% צר. אם הפונט או `BRIDGE_COUNTER_RATIO` יזוזו, זה מה
+  // שייפול — וזו בדיוק ההתראה שצריך לקבל לפני שהלקוחה מקבלת אותה.
+  it("keeps lettering that got roughly the bridge it wanted under the warning line", async () => {
+    const wide = { lengthMm: 61.4, widthMm: 15, thicknessMm: 1.5 };
+    const ref = await buildLetteringRenderSvg("RMJewel", wide, "ring", 2, BRIEF);
+    expect(ref!.tightShare!).toBeLessThan(0.5);
+  });
+
+  it("crosses it when the counter is small enough that the bridge eats it", async () => {
+    const narrow = { lengthMm: 61.4, widthMm: 8, thicknessMm: 1.5 };
+    const ref = await buildLetteringRenderSvg("RMJewel", narrow, "ring", 2, BRIEF);
+    expect(ref!.tightShare!).toBeGreaterThanOrEqual(0.5);
+  });
+
   it("stays silent for lettering whose counters hold a proportional bridge", async () => {
     // צמיד רחב: אותה מילה נחתכת גדולה בהרבה, ולכל חלל יש מקום לגשר.
     const cuff = { lengthMm: 160, widthMm: 40, thicknessMm: 1.5 };

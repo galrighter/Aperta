@@ -197,6 +197,17 @@ function toJobError(err: unknown) {
 }
 
 /**
+ * מאיזה נתח מהחלל הגשר מצדיק התראה. 50% (החלטת גל).
+ *
+ * עד כאן ההתראה נדלקה על **כל** גשר שנגע ברצפה, וזה כמעט כל כיתוב: נמדד על
+ * "Jewel שלום" — אות 6 מ"מ נותנת 43%, וזה בערך `BRIDGE_COUNTER_RATIO` עצמו,
+ * כלומר המקרה המתוכנן. התראה שנדלקת על הנורמלי היא לא התראה, היא רעש שמאמן
+ * להתעלם. מ-50% ומעלה זה 5 מ"מ (53%) ו-4 מ"מ (67%) — שם הגשר באמת אוכל את
+ * החלל ויש מה לאשר.
+ */
+const LETTERING_BRIDGE_SHARE = 0.5;
+
+/**
  * ההתראה על גשר צר.
  *
  * הגשר שמחזיק את החלל הסגור של אות נגזר מגובה החלל (lib/text/stencil.ts), כי
@@ -208,7 +219,7 @@ function toJobError(err: unknown) {
  * בבדיקה, לא בסירוב.
  */
 function letteringBridgeCheck(tightShare: number | null): CheckResult[] {
-  if (tightShare === null) return [];
+  if (tightShare === null || tightShare < LETTERING_BRIDGE_SHARE) return [];
   const pct = Math.round(tightShare * 100);
   const min = FAB.minLetterBridgeMm;
   return [{
