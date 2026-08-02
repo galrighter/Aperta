@@ -25,6 +25,8 @@ const svg = (vb: string) =>
 
 afterEach(() => {
   cf.env = null;
+  delete process.env.VECTORIZER_URL;
+  delete process.env.VECTORIZER_TOKEN;
 });
 
 const post = (body: unknown) =>
@@ -73,6 +75,57 @@ describe("the framing worker", () => {
     const resp = await post({ dims, cutoutsSvg: arc });
     expect(resp.status).toBe(500);
     expect((await resp.json() as { error: string }).error).toMatch(/frame failed/);
+  });
+});
+
+describe("the box comes first", () => {
+  const boxOk = () =>
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { dims: DesignDims; cutoutsSvg: string };
+      return Response.json(framePreview(body.dims, body.cutoutsSvg));
+    });
+
+  it("uses the geometry service and never touches the worker", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(boxOk() as typeof fetch);
+    const workerCall = vi.fn();
+    cf.env = { FRAME: { fetch: workerCall } };
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+
+    const out = await frameCandidates(dims, [svg("0 0 44 8")]);
+    expect(out[0]).toEqual(JSON.parse(JSON.stringify(framePreview(dims, svg("0 0 44 8")))));
+    expect(fetchSpy.mock.calls[0][0]).toBe("https://vec.example.com/api/frame");
+    expect(workerCall).not.toHaveBeenCalled();
+
+    fetchSpy.mockRestore();
+  });
+
+  it("carries the bearer the rest of the box expects", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(boxOk() as typeof fetch);
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+    process.env.VECTORIZER_TOKEN = "s3cret";
+
+    await frameCandidates(dims, [svg("0 0 44 8")]);
+    const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer s3cret");
+
+    fetchSpy.mockRestore();
+  });
+
+  it("falls through box → worker → local, saying so each time", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("down", { status: 502 }));
+    cf.env = { FRAME: { fetch: async () => new Response("boom", { status: 500 }) } };
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const out = await frameCandidates(dims, [svg("0 0 44 8")]);
+    expect(out[0]).toEqual(framePreview(dims, svg("0 0 44 8")));
+    // שתי הנפילות חייבות להישמע, לא רק האחרונה.
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("geometry service failed"), expect.any(String));
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("frame worker failed"), expect.any(String));
+
+    fetchSpy.mockRestore();
+    err.mockRestore();
   });
 });
 

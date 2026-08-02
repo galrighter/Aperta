@@ -11,11 +11,15 @@ import { WIDTH, hasExactSize, type CreateState, type Fit } from "./model";
 const d = he.design;
 
 export function SizesScreen({
-  s, set, onNext,
+  s, set, onNext, busy, nextLabel,
 }: {
   s: CreateState;
   set: (patch: Partial<CreateState>) => void;
   onNext: () => void;
+  /** ההמשך רץ עכשיו — בהזמנת עיצוב ששותף הוא עובר בשרת ולוקח רגע. */
+  busy?: boolean;
+  /** נוסח אחר לכפתור. במסלול "להזמין כזה" אחריו אין מסך תיאור. */
+  nextLabel?: string;
 }) {
   const ring = s.product === "ring";
   const exact = hasExactSize(s);
@@ -113,7 +117,9 @@ export function SizesScreen({
           )}
 
           <div className="mt-9">
-            <PrimaryBtn onClick={onNext}>{d.sizesContinue}</PrimaryBtn>
+            <PrimaryBtn onClick={onNext} disabled={busy}>
+              {nextLabel ?? d.sizesContinue}
+            </PrimaryBtn>
           </div>
         </div>
 

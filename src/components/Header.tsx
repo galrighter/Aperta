@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { he } from "@/i18n/he";
-import { useStudio } from "@/lib/client/store";
+import { currentVersion, useStudio } from "@/lib/client/store";
 import { DesignsDrawer } from "./DesignsDrawer";
+import { ShareButton } from "./create/ShareButton";
 
 export function Header() {
-  const { profiles, profile, selectProfile, design, renameDesign, newDesign, setDrawerOpen } = useStudio();
+  const s = useStudio();
+  const { profiles, profile, selectProfile, design, renameDesign, newDesign, setDrawerOpen } = s;
+  const version = currentVersion(s);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -65,6 +68,18 @@ export function Header() {
         )}
       </div>
 
+      {/* שיתוף הגרסה המוצגת. הסטודיו הוא הכלי הפנימי, ומכאן יוצא הלינק
+          שנשלח לחברים לפני שיש עליו הזמנה. מוצג רק כשיש גרסה — לעיצוב ריק
+          אין מה לשתף. */}
+      {design && version && (
+        <ShareButton
+          designId={design.id}
+          versionId={version.id}
+          serial={design.serial ?? null}
+          compact
+          className="inline-flex items-center gap-1.5 rounded-[2px] border border-graphite/10 px-3 py-1.5 text-sm hover:bg-porcelain disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      )}
       <button
         className="rounded-[2px] border border-graphite/10 px-3 py-1.5 text-sm hover:bg-porcelain"
         onClick={() => setDrawerOpen(true)}

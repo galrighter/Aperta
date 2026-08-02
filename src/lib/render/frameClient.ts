@@ -2,23 +2,35 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { framePreview, type BridgePlan, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 
-// מסגור מועמדים דרך ה-Worker הנפרד (binding בשם FRAME).
+// מסגור מועמדים — מחוץ ל-isolate של האתר.
 //
-// למה: תקרת הזיכרון של Cloudflare היא 128MB **לכל isolate** — משותפת לכל
-// הבקשות שרצות בו, לא ארוחה פרטית של בקשה אחת. מסגור הוא המקצה הגדול ביותר
-// בבקשת יצירה, וכשהוא רץ כאן הוא מתחרה בכל השאר. script אחר = isolate אחר =
-// תקרה משלו, ולכן המסגור עובר לשם. ההרצה שנהרגה ב-28.7 הייתה בקשה יחידה
-// (reqs=1) — כלומר זו לא מקביליות אלא גובה המקצה עצמו.
+// למה בכלל: תקרת הזיכרון של Cloudflare היא 128MB **לכל isolate**, משותפת לכל
+// הבקשות שרצות בו. נמדד ב-28.7: forme-studio הגיע ל-P999 של 135.4MB — מעל
+// התקרה — בעוד ששכן באותו חשבון יושב על 65MB. מסגור הוא המקצה הגדול ביותר
+// בבקשת יצירה, ולכן הוא זה שיוצא.
 //
-// שלוש החלטות שקל לפספס:
+// **סדר הניסיונות, והנימוק לכל שלב:**
 //
-// 1. **סדרתי, לא במקביל.** ארבע קריאות במקביל היו נוחתות באותו isolate של
-//    forme-frame ומחזירות בדיוק את הבעיה שהעברנו. סדרתי = מועמד אחד חי בכל רגע.
-// 2. **נפילה חזרה למקומי, לא כישלון.** binding חסר (dev, preview, פריסה לא
-//    מסונכרנת) או שגיאה בשירות לא מפילים יצירה. זה מחזיר את הסיכון הישן, ולכן
-//    זה נרשם ל-console — נפילה שקטה למסלול הישן תיראה בדיוק כמו תיקון שעובד.
-// 3. **`normalized` לא חוצה את הגבול.** גרף הפוליגונים נשאר ומת ב-Worker
-//    השני; חוזר רק מה שהמסך צריך. זה כל העניין.
+// 1. **הקופסה** (`VECTORIZER_URL/api/frame`) — Node שמריץ את אותו
+//    `src/lib/geometry/frameCutouts.ts`, ליד ה-vectorizer. שם יש זיכרון אמיתי
+//    ואין תקרת 128MB בכלל. זה המסלול הנכון, וזה לא מוסיף תלות: הקופסה כבר
+//    תלות קשיחה של יצירה — בלעדיה אין רנדר ואין ווקטור מלכתחילה.
+// 2. **forme-frame** (binding בשם FRAME) — Worker נפרד. isolate אחר, אבל אותה
+//    תקרת 128MB. פחות טוב מהקופסה, עדיין טוב מלרוץ כאן.
+// 3. **מקומי** — dev, טסטים, ומקרה שבו שני הראשונים נפלו. זה בדיוק המצב שממנו
+//    ברחנו, ולכן כל נפילה למטה נרשמת ל-console: מסלול ישן שקט נראה בדיוק כמו
+//    תיקון שעובד.
+//
+// שתי החלטות שקל לפספס:
+//
+// - **סדרתי, לא במקביל.** ארבע קריאות במקביל על forme-frame היו נוחתות באותו
+//   isolate ומשחזרות שם בדיוק את הבעיה. סדרתי = מועמד אחד חי בכל רגע.
+// - **`normalized` לא חוצה את הגבול.** גרף הפוליגונים נשאר ומת בצד השני; חוזר
+//   רק מה שהמסך צריך. זה כל העניין.
+
+/** מסגור מועמד בודד הוא עשיריות שנייה (56–544ms נמדד). שלושים שניות הן תקרה
+ *  שמבדילה בין "אטי" לבין "לא יענה", כדי שקופסה תקועה לא תתלה יצירה. */
+const FRAME_TIMEOUT_MS = 30_000;
 
 /** מה שצריך מ-service binding. הטיפוס המלא חי ב-@cloudflare/workers-types,
  *  שמביא איתו גלובלים שמתנגשים בטיפוסי ה-DOM של Next — זה מספיק ומדויק. */
@@ -54,6 +66,28 @@ async function frameOne(
   return (await resp.json()) as FramedPreview;
 }
 
+/** קריאה לשירות הגיאומטריה על הקופסה. אותו token כמו שאר הקופסה. */
+async function frameOnBox(
+  url: string,
+  dims: DesignDims,
+  cutoutsSvg: string,
+  plan: BridgePlan,
+): Promise<FramedPreview> {
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.VECTORIZER_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_TOKEN}`;
+  const resp = await fetch(`${url}/api/frame`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ dims, cutoutsSvg, plan }),
+    signal: AbortSignal.timeout(FRAME_TIMEOUT_MS),
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`geometry service ${resp.status}: ${detail.slice(0, 200)}`);
+  }
+  return (await resp.json()) as FramedPreview;
+}
+
 /**
  * ממסגר את כל המועמדים. מחזיר בדיוק את מה שהמסגור המקומי היה מחזיר, פחות
  * `normalized` — הזוכה עובר בהמשך ב-ingestCutouts שגוזר את הגאומטריה ממילא.
@@ -65,18 +99,37 @@ export async function frameCandidates(
    *  ההצעה שהלקוחה רואה מגושרת אחרת מהגרסה שנשמרת ממנה. */
   plan: BridgePlan = {},
 ): Promise<FramedPreview[]> {
+  const box = process.env.VECTORIZER_URL || null;
   const svc = frameService();
   const out: FramedPreview[] = [];
+  const via: string[] = [];
+
   for (const svg of svgs) {
+    if (box) {
+      try {
+        out.push(await frameOnBox(box, dims, svg, plan));
+        via.push("box");
+        continue;
+      } catch (e) {
+        console.error("geometry service failed, trying the frame worker:", (e as Error).message);
+      }
+    }
     if (svc) {
       try {
         out.push(await frameOne(svc, dims, svg, plan));
+        via.push("worker");
         continue;
       } catch (e) {
         console.error("frame worker failed, framing locally:", (e as Error).message);
       }
     }
     out.push(framePreview(dims, svg, plan));
+    via.push("local");
   }
+
+  // שורה אחת ליצירה, לא למועמד. בלעדיה יש רק אזהרות בכישלון — ושתיקה נראית
+  // בדיוק כמו "הכול רץ על הקופסה", גם כשהכול רץ מקומית. זו השאלה שרוצים לענות
+  // עליה מהלוג בלי לנחש.
+  if (via.length) console.log(`framed ${via.length} candidate(s) via ${[...new Set(via)].join("+")}`);
   return out;
 }
