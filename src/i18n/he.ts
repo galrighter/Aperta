@@ -991,6 +991,10 @@ export const he = {
     shareCopied: "הלינק הועתק",
     shareFailed: "לא הצלחנו להכין לינק. נסו שוב.",
     shareHint: "לינק לדף עם ההדמיה — אפשר לשלוח לכל אחד.",
+    shareWhatsApp: "שליחה בוואטסאפ",
+    shareCopy: "העתקת הלינק",
+    /** גיליון השיתוף של המערכת — מוצג רק במכשירים שיש בהם אחד. */
+    shareMore: "עוד אפשרויות",
     shareTitle: (code: string) => `עיצוב ${code} · RM JEWEL`,
     shareText: "עיצבתי את זה. מה דעתך?",
 
