@@ -22,6 +22,15 @@ import type { MultiPolygon } from "@/lib/geometry/types";
 // והפער הוא מיתר) ולא מ-(L+gap)/2π. הנוסחה הישנה זיהתה את אורך הפריסה עם
 // ההיקף הפנימי והציגה ID גדול ב-2·K·t — 1.5 מידות טבעת. ראו sizing-fit-review §3.
 
+/**
+ * כיוון המצלמה בצילום תמונת השיתוף, יחסית למרכז הפריט.
+ *
+ * ‎−Z כי הפתח יושב ב-‎+Z (ראו ההערה על θ ב-buildBentGeometry): בתמונה הוא צריך
+ * להיות מאחור. ‎0.34 בגובה הוא אותו יחס של המסגור הראשון — מבט מעט מלמעלה,
+ * שמראה גם את רוחב הפס וגם את הקשת.
+ */
+const CAPTURE_DIR = new THREE.Vector3(0, 0.34, -1).normalize();
+
 export interface Rolled3DProps {
   material: MultiPolygon;
   lengthMm: number;
@@ -196,17 +205,37 @@ export function Rolled3D({
      *
      * JPEG ולא PNG: היעד הוא תצוגה מקדימה בוואטסאפ, שמוותרת עליה כשהקובץ כבד.
      * צילום מסך של מתכת על רקע חלק נדחס היטב — עשרות KB במקום מגה־בייטים.
+     *
+     * **הזווית מקובעת ואינה זו שעל המסך.** ההדמיה מסתובבת מעצמה, ולכן צילום
+     * של "מה שרואים עכשיו" הוא זווית אקראית לפי מתי נלחץ הכפתור — לפעמים
+     * הפתח מלפנים, לפעמים הפריט בצד. תמונת השיתוף היא תמונת המוצר, וצריכה
+     * להיראות אותו דבר בכל פעם.
+     *
+     * הפתח מאחור: `buildBentGeometry` מוסיף π ל-θ, כך שהפתח יושב ב-‎+Z והמסגור
+     * הראשון מציב את המצלמה שם — טוב לעריכה (רואים את הפתח), לא לתמונה שמוכרת
+     * את הפריט. הצילום מציב אותה ב-‎−Z, באותה הגבהה של המסגור הראשון.
      */
     const unregister = registerPreviewCapture(() => {
       // רקע אטום לרגע הצילום. הסצנה מוצגת שקופה (`background={null}`) כדי
       // שהגרדיאנט של המיכל יעבור מבעד, ול-JPEG אין ערוץ אלפא — כלומר שקוף
       // נצרב **שחור**. נמדד: התכשיט על ריבוע שחור. הגוון הוא הפורצלן של
       // המותג, אותו רקע שההדמיה יושבת עליו במסך.
-      const previous = scene.background;
+      const previousBg = scene.background;
+      const previousPos = camera.position.clone();
+      const target = controls.target;
+      // המרחק נשמר כפי שהוא — הוא נקבע ב-fit לפי הצורה והקנבס, ואין סיבה
+      // לחשב אותו כאן מחדש.
+      const distance = camera.position.distanceTo(target) || 1;
+
       scene.background = new THREE.Color(0xf4f1eb);
+      camera.position.copy(target).add(CAPTURE_DIR.clone().multiplyScalar(distance));
+      camera.lookAt(target);
       renderer.render(scene, camera);
       const shot = renderer.domElement.toDataURL("image/jpeg", 0.85);
-      scene.background = previous;
+
+      scene.background = previousBg;
+      camera.position.copy(previousPos);
+      controls.update();
       renderer.render(scene, camera);
       return shot;
     });
