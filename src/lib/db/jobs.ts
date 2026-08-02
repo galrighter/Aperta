@@ -33,6 +33,14 @@ export interface GenerationJobRow {
  */
 export const JOB_STALE_MS = 6 * 60_000;
 
+/**
+ * ה-jobId מגיע מהלקוחה. שני לקוחות שונים לעולם לא שולחים אותו מזהה — כל קריאה
+ * מגרילה UUID טרי, וההתאוששות היא GET ולא POST חוזר. לכן התנגשות על מפתח קיים
+ * אינה חידוש לגיטימי אלא ניסיון לדרוס job של מישהו אחר: הזורק הזה מבדיל אותה
+ * משגיאה חולפת (טבלה חסרה בחלון מיגרציה), שאותה עדיין מותר לבלוע ולהמשיך.
+ */
+export class JobConflictError extends Error {}
+
 export async function createJob(input: { id: string; designId: string; runId: string }): Promise<void> {
   const sb = supabaseAdmin();
   const { error } = await sb.from("generation_jobs").insert({
@@ -42,22 +50,30 @@ export async function createJob(input: { id: string; designId: string; runId: st
     status: "running",
     stage: "rendering",
   });
-  if (error) throw new Error(`create job failed: ${error.message}`);
+  if (error) {
+    if (error.code === "23505") throw new JobConflictError(`job ${input.id} already exists`);
+    throw new Error(`create job failed: ${error.message}`);
+  }
 }
 
-async function patch(id: string, fields: Record<string, unknown>): Promise<void> {
+async function patch(id: string, runId: string, fields: Record<string, unknown>): Promise<void> {
   const sb = supabaseAdmin();
+  // ההצמדה ל-run_id היא הגנה שנייה: גם אם התנגשות ה-insert נבלעה איפשהו, כתיבת
+  // מצב לא תיגע בשורה שנוצרה בהרצה אחרת — רק ההרצה שבבעלותה מעדכנת אותה.
   const { error } = await sb
     .from("generation_jobs")
     .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("run_id", runId);
   // כתיבת מצב היא best-effort: היא לא צריכה להפיל את העבודה עצמה.
   if (error) console.error(`update job ${id} failed:`, error.message);
 }
 
-export const setJobStage = (id: string, stage: JobStage) => patch(id, { stage });
-export const finishJob = (id: string, result: unknown) => patch(id, { status: "done", stage: null, result });
-export const failJob = (id: string, error: JobError) => patch(id, { status: "error", stage: null, error });
+export const setJobStage = (id: string, runId: string, stage: JobStage) => patch(id, runId, { stage });
+export const finishJob = (id: string, runId: string, result: unknown) =>
+  patch(id, runId, { status: "done", stage: null, result });
+export const failJob = (id: string, runId: string, error: JobError) =>
+  patch(id, runId, { status: "error", stage: null, error });
 
 /** בקשת יצירה כפי שהיומן צריך אותה — בלי `result`, שנושא את ה-SVG של כל מועמד. */
 export type JobListRow = Omit<GenerationJobRow, "result">;

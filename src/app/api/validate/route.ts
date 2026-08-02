@@ -7,7 +7,9 @@ import { validateDesign } from "@/lib/geometry/validate";
 // (material/cutUnion) של גרסה קיימת עבור התלת-ממד וההדגשות.
 
 const schema = z.object({
-  svg: z.string().min(1),
+  // תקרה כמו ב-currentSvg של היצירה: SVG קנוני של עיצוב קטן בהרבה, והמסלול
+  // לא-מאומת ומריץ boolean ops כבדים — קלט בלתי מוגבל הוא וקטור DoS על ה-CPU.
+  svg: z.string().min(1).max(500_000),
   productType: z.enum(["bracelet", "ring"]),
   lengthMm: z.number().positive(),
   widthMm: z.number().positive(),
