@@ -104,7 +104,19 @@ export type BridgeRecord = {
 
 /** הפירוט הכבד של הרצה אחת, נטען לפי דרישה מ-/api/debug/log/<id>. */
 export type LogDetail = {
+  /** הגאומטריה **שנשמרה** — מה שהלקוחה מקבלת ומה שייחתך. */
   svg: string | null;
+  /**
+   * הפלט הגולמי של הווקטורייזר, לפני מתיחה, גישור ועיבוי.
+   *
+   * זה מה שהוצג כאן עד היום ככותרת "SVG סופי" — ולכן כל גשר שהצינור מוסיף היה
+   * בלתי נראה בבק־אופיס. ב-RM-0075 הלקוחה ראתה פס על ה-G והיומן הראה אות
+   * נקייה, ואי אפשר היה להעמיד תלונה מול שום דבר. `null` בהרצה שלא נשמרה
+   * ממנה גרסה — שם אין "אחרי", והגולמי הוא כל מה שיש.
+   */
+  rawSvg?: string | null;
+  /** מספר הגרסה שנשמרה מההרצה הזו. */
+  versionNo?: number | null;
   debug: DebugMeta | null;
   /** הפרומפט המלא שיצא למודל התמונה. null בהרצות שנשמרו לפני 0009. */
   renderPrompt?: string | null;
@@ -398,6 +410,8 @@ export default function RunsLog({
         ...d,
         [id]: {
           svg: data.svg ?? null,
+          rawSvg: data.rawSvg ?? null,
+          versionNo: data.versionNo ?? null,
           debug: data.debug ?? null,
           renderPrompt: data.renderPrompt ?? null,
           prompt: data.prompt ?? null,
@@ -770,6 +784,8 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             }}
             renderModel={it.renderModel}
             svg={svg}
+            rawSvg={detailOf(detail)?.rawSvg ?? null}
+            versionNo={detailOf(detail)?.versionNo ?? null}
             bridges={detailOf(detail)?.bridges ?? null}
             offered={detailOf(detail)?.offered ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
@@ -943,8 +959,12 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, debug, bridges = null, offered = null, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges = null, offered = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
+  /** הפלט הגולמי, לפני מסגור. מוצג לצד `svg` — ההפרש ביניהם הוא מה שהצינור
+   *  עשה אחרי שהמודל צייר, וזה מה שלא היה נראה כאן. */
+  rawSvg?: string | null;
+  versionNo?: number | null;
   /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
   bridges?: BridgeRecord[] | null;
   /** ההצעות שהוצעו בהרצה. הראשונה היא הזוכה ומוצגת למעלה. */
@@ -1002,7 +1022,20 @@ export function Diagnostics({ images, renderModel, svg, debug, bridges = null, o
         {images.overlay && <ImgCard title="Overlay (טרייס מול מקור)" src={images.overlay} />}
         {images.difference && <ImgCard title="Difference" src={images.difference} />}
         {images.rendered && <ImgCard title="רינדור חוזר של ה-SVG" src={images.rendered} />}
-        {svg && <SvgCard title="SVG סופי" svg={svg} filename={svgName} />}
+        {/* מה שנשמר, ולא מה שהמעקב החזיר. `generation_runs.svg` הוא הגולמי —
+            לפני מתיחה למידה שהוזמנה, לפני גישור ולפני עיבוי — והוא הוצג כאן
+            ככותרת "SVG סופי". לכן כל גשר שהצינור מוסיף היה בלתי נראה: הלקוחה
+            ראתה פס על האות, והיומן הראה אות נקייה. */}
+        {svg && (
+          <SvgCard
+            title={versionNo != null ? `SVG שנשמר · גרסה ${versionNo}` : "SVG סופי"}
+            svg={svg}
+            filename={svgName}
+          />
+        )}
+        {rawSvg && (
+          <SvgCard title="גולמי — לפני מסגור וגישור" svg={rawSvg} filename={`${svgName}-raw`} />
+        )}
       </div>
 
       {/* גשרים שנוצרו אחרי המעקב */}

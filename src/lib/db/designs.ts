@@ -70,17 +70,42 @@ export async function getDesign(id: string): Promise<DesignRow> {
  */
 export async function bridgesForRun(
   generationId: string,
-): Promise<{ bridges: unknown[] | null; candidates: VersionCandidate[] | null }> {
+): Promise<{
+  bridges: unknown[] | null;
+  candidates: VersionCandidate[] | null;
+  /**
+   * הגאומטריה **שנשמרה** — זו שהלקוחה מקבלת ושתיחתך.
+   *
+   * `generation_runs.svg` הוא הפלט הגולמי של הווקטורייזר, לפני המסגור: לפני
+   * המתיחה למידה שהוזמנה, לפני הגישור ולפני העיבוי. הבק־אופיס הציג אותו
+   * בכותרת "SVG סופי", ולכן כל גשר שאנחנו מוסיפים היה בלתי נראה שם — נמדד
+   * ב-RM-0075, שבו הלקוחה ראתה פס על ה-G והיומן הראה אות נקייה. גם השכבה
+   * שמציירת את הגשרים מעל העיצוב נשענה עליו, כלומר צוירה על קואורדינטות
+   * ממסגרת אחרת.
+   */
+  svg: string | null;
+  versionNo: number | null;
+}> {
   const { data, error } = await supabaseAdmin()
     .from("design_versions")
-    .select("validation_report, candidates")
+    .select("validation_report, candidates, svg, version_no")
     .eq("generation_id", generationId)
     .order("version_no", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return { bridges: null, candidates: null };
-  const row = data as { validation_report?: { bridges?: unknown[] }; candidates?: VersionCandidate[] | null };
-  return { bridges: row.validation_report?.bridges ?? null, candidates: row.candidates ?? null };
+  if (error || !data) return { bridges: null, candidates: null, svg: null, versionNo: null };
+  const row = data as {
+    validation_report?: { bridges?: unknown[] };
+    candidates?: VersionCandidate[] | null;
+    svg?: string | null;
+    version_no?: number | null;
+  };
+  return {
+    bridges: row.validation_report?.bridges ?? null,
+    candidates: row.candidates ?? null,
+    svg: row.svg ?? null,
+    versionNo: row.version_no ?? null,
+  };
 }
 
 export async function getVersion(id: string): Promise<VersionRow> {

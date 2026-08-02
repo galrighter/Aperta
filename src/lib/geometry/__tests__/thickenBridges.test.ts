@@ -41,6 +41,18 @@ const metalOf = (n: { lengthMm: number; widthMm: number; cutUnion: MultiPolygon 
   difference([rectPolygon(0, 0, n.lengthMm, n.widthMm)], n.cutUnion);
 
 describe("thickenBridges", () => {
+  it("leaves a neck that is already at the floor within measurement noise", () => {
+    // 0.72 מול רצפה של 0.75. הפתיחה היא סף חד ולכן היא מפרידה גם כאן, אבל
+    // התיקון אינו "להוסיף את ההפרש": `linkRect` מותח פס ברוחב מלא בין הגופים
+    // הפתוחים, כלומר מורח מתכת על האות בשביל שלוש מאיות מ"מ. ה-kerf הוא 0.12,
+    // סדר גודל מעל ההפרש. נמדד ב-RM-0075: חמישה מתוך שישה עיבויים באותה הרצה
+    // היו כאלה, וכל אחד מהם צייר פס על אות — הפס שנראה על ה-G.
+    const before = withNeck(0.72);
+    const { design: after, records } = thickenBridges(before, OPTS);
+    expect(records).toEqual([]);
+    expect(after).toBe(before);
+  });
+
   it("raises a bridge the model drew too thin up to the floor", () => {
     const before = withNeck(0.3);
     // לפני: הגשר לא מכיל דיסק ברוחב הרצפה.
