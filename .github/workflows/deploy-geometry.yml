@@ -22,6 +22,11 @@ on:
     paths:
       - "geometry-service/**"
       - "src/lib/geometry/**"
+      # ההחלטה עצמה — מה מתקבל, מה מוחזר, ומה נעשה עם `plan`. השירות כאן מריץ
+      # אותה, ולכן שינוי בה חייב לפרוס אותו. בלי השורה הזו הקובץ הזה היה
+      # מתעדכן ב-Worker בלבד, והקופסה — שנוסה ראשונה — הייתה ממשיכה לענות לפי
+      # הישן. זה בדיוק הפיצול שהאיחוד לקובץ אחד נועד למנוע.
+      - "src/lib/render/frameRequest.ts"
       - "src/lib/fabrication.config.ts"
       - "src/i18n/he.ts"
       - ".github/workflows/deploy-geometry.yml"
