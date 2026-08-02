@@ -49,6 +49,27 @@ const CLEAN_MM = 0.02;
 /** מעל זה משהו השתבש בזיהוי — עדיף לא לגעת מאשר לשנות עיצוב. */
 const MAX_ISLANDS = 24;
 
+/** כמה רחוק מהאי מחפשים את הצד השני. גשר ארוך מזה אינו גשר. */
+const WINDOW_MM = 2;
+
+/** תקציב קודקודים לפתיחה, אחרי ניקוי. מעליו מוותרים — ראה למטה. */
+const MAX_VERTICES = 3000;
+
+type BBox = [number, number, number, number];
+
+const bboxOf = (poly: Polygon): BBox => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of poly[0]) {
+    if (x < x0) x0 = x;
+    if (y < y0) y0 = y;
+    if (x > x1) x1 = x;
+    if (y > y1) y1 = y;
+  }
+  return [x0, y0, x1, y1];
+};
+
+const overlaps = (a: BBox, b: BBox) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+
 const centroidOf = (poly: Polygon): [number, number] => {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of poly[0]) {
@@ -124,7 +145,19 @@ export function thickenBridges(n: NormalizedDesign, opts: ThickenOptions): Thick
   // המתאר בפחות מ-0.02 מ"מ — סדר גודל מתחת לרצפה שנמדדת — ומוריד את המסגור
   // מ-240 ל-140 מ"ש על RM-0068. המלבן עצמו נגרע בסוף מה-cutUnion המקורי, ולכן
   // הניקוי לא נכנס לגאומטריה שנשמרת.
-  const bodies = morphologicalOpen(simplify(material, CLEAN_MM), radius);
+  //
+  // וגם עם הניקוי, המחיר גדל עם מספר הקודקודים מהר יותר מלינארית: 3,400
+  // קודקודים הם 236 מ"ש, 7,200 הם 712. עיצוב אמיתי נמדד ב-720 (RM-0068) וב-787
+  // (RM-0069), כלומר פי ארבעה מתחת לתקרה כאן. מעליה מוותרים ומודיעים: עדיף
+  // עיצוב שלא עבר עיבוי ושכתוב עליו בלוג, מאשר מסגור שנתקע על כל מועמד.
+  const simplified = simplify(material, CLEAN_MM);
+  const vertices = simplified.reduce((s, p) => s + p.reduce((t, r) => t + r.length, 0), 0);
+  if (vertices > MAX_VERTICES) {
+    console.warn(`thickenBridges skipped: ${vertices} vertices over the ${MAX_VERTICES} budget`);
+    return { design: n, records: [] };
+  }
+
+  const bodies = morphologicalOpen(simplified, radius);
   if (bodies.length < 2 || bodies.length > MAX_ISLANDS + 1) return { design: n, records: [] };
 
   let mainIdx = 0;
@@ -134,16 +167,26 @@ export function thickenBridges(n: NormalizedDesign, opts: ThickenOptions): Thick
   const records: BridgeRecord[] = [];
   const rects: MultiPolygon = [];
   let addedArea = 0;
+  const boxes = bodies.map(bboxOf);
   for (let i = 0; i < bodies.length; i++) {
     if (i === mainIdx || areas[i] < DUST_MM2) continue;
-    // אל השכן הקרוב ביותר, לא בהכרח אל הראשי: שני איים סמוכים בתוך אותה אות
-    // מחוברים זה לזה, והגשר הקצר הוא זה שמוסיף הכי מעט מתכת.
-    let link = shortestLink(bodies[i], bodies[mainIdx]);
+    // `shortestLink` הוא כל קודקוד מול כל צלע. הגוף הראשי הוא כל שאר הפריט,
+    // ולהריץ אותו במלואו מול אי בגודל מילימטר הוא מכפלה של אלפי נקודות באלפי
+    // צלעות — נמדד: מסגור של עיצוב עם 10,000 קודקודים קפץ מ-186 ל-1281 מ"ש.
+    // הגשר ממילא קצר, ולכן החיפוש נחתך לחלון סביב האי.
+    const [bx0, by0, bx1, by1] = boxes[i];
+    const win: MultiPolygon = [rectPolygon(bx0 - WINDOW_MM, by0 - WINDOW_MM, bx1 + WINDOW_MM, by1 + WINDOW_MM)];
+    let link: ReturnType<typeof shortestLink> | null = null;
     for (let j = 0; j < bodies.length; j++) {
-      if (j === i || j === mainIdx || areas[j] < DUST_MM2) continue;
-      const alt = shortestLink(bodies[i], bodies[j]);
-      if (alt.distMm < link.distMm) link = alt;
+      if (j === i || areas[j] < DUST_MM2) continue;
+      if (!overlaps(boxes[j], [bx0 - WINDOW_MM, by0 - WINDOW_MM, bx1 + WINDOW_MM, by1 + WINDOW_MM])) continue;
+      for (const near of intersection([bodies[j]], win)) {
+        const alt = shortestLink(bodies[i], near);
+        if (!link || alt.distMm < link.distMm) link = alt;
+      }
     }
+    // אי שאין לו שכן בחלון הוא לא אי שתלוי בגשר דק אלא משהו אחר; מדלגים.
+    if (!link) continue;
     const rect = linkRect(link.a, link.b, opts.minBridgeMm);
     rects.push(rect);
     // רוב המלבן יושב על מתכת קיימת. מה שנוסף בפועל הוא רק החלק שנופל על חיתוך,
