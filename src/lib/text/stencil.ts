@@ -158,6 +158,22 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
 const BRIDGE_COUNTER_RATIO = 0.4;
 
 /**
+ * כמה הגשר חורג אל **מחוץ** לאות, כדי להבטיח חפיפה עם המתכת שסביבה.
+ *
+ * היה `width` — כלומר החריגה הייתה ברוחב הגשר עצמו, כ-0.75 מ"מ. זה מיותר
+ * (החפיפה נקבעת מהמגע, לא מהאורך) ובעברית זה מזיק ממש: המרווח בין אותיות קטן
+ * מזה, והגשר של ם׳ נוגע באות השכנה. חפיפה של עשירית מילימטר מספיקה לניתוח
+ * הפוליגונים ואינה נראית.
+ */
+const BRIDGE_OVERSHOOT_MM = 0.1;
+
+/**
+ * כמה הגשר נכנס **לתוך** החלל. די בנגיעה כדי לחבר את האי, וכל מ"מ נוסף הוא
+ * מתכת שאוכלת את החלל של האות. חצי רוחב הוא מרווח בטחון מול רעש המעקב.
+ */
+const BRIDGE_DEPTH_RATIO = 0.5;
+
+/**
  * גשר שהקונטור שלו קטן מכדי להכיל אפילו את המינימום לאות: הוא נשאר על
  * המינימום ובולט לתוך האות. זה מה שהלקוחה מתבקשת לאשר ויזואלית.
  */
@@ -318,13 +334,14 @@ export async function textToStencil(
 
     // הגזע הדק מבין השניים — שם הגשר קצר יותר ולכן פחות נראה.
     const near = sideways ? hx0 - outer[0] <= outer[2] - hx1 : hy0 - outer[1] <= outer[3] - hy1;
-    // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור. הקצה החיצוני חורג מהאות ולא
-    // מוריד שם כלום (אין חיתוך מחוץ לאות); הקצה הפנימי הוא מה שמבטיח חיבור,
-    // וכל מ"מ נוסף מעבר לו הוא רק מתכת שאוכלת את החלל של האות.
-    const depth = Math.min(width, along / 2);
+    // מהחומר שמחוץ לאות עד **קצת** לתוך הקונטור, ושני הקצוות קצרים ככל שאפשר:
+    // מה שמחבר הוא המגע, לא האורך. גשר ארוך אינו מחזיק טוב יותר — הוא רק בולט
+    // החוצה אל האות השכנה ופנימה אל תוך החלל.
+    const depth = Math.min(width * BRIDGE_DEPTH_RATIO, along / 2);
+    const out = BRIDGE_OVERSHOOT_MM;
     const [a0, a1] = sideways
-      ? (near ? [outer[0] - width, hx0 + depth] : [hx1 - depth, outer[2] + width])
-      : (near ? [outer[1] - width, hy0 + depth] : [hy1 - depth, outer[3] + width]);
+      ? (near ? [outer[0] - out, hx0 + depth] : [hx1 - depth, outer[2] + out])
+      : (near ? [outer[1] - out, hy0 + depth] : [hy1 - depth, outer[3] + out]);
     // קונטור ארוך מחזיק שני גשרים בלי להיסגר; קצר מקבל אחד באמצע.
     const center = sideways ? cy : cx;
     const offsets = across > width * 4 ? [center - across / 4, center + across / 4] : [center];
