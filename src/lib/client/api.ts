@@ -284,11 +284,14 @@ export const api = {
       body: JSON.stringify({ versionId, forced }),
     }),
 
-  /** לינק שיתוף לגרסה. קריאה חוזרת על אותה גרסה מחזירה את אותו לינק. */
-  createShare: (designId: string, versionId: string) =>
+  /**
+   * לינק שיתוף לגרסה. קריאה חוזרת על אותה גרסה מחזירה את אותו לינק.
+   * `previewDataUrl` — צילום ההדמיה מהקנבס, שהופך לתמונת השיתוף.
+   */
+  createShare: (designId: string, versionId: string, previewDataUrl?: string | null) =>
     call<{ token: string; url: string; reused: boolean }>("/api/shares", {
       method: "POST",
-      body: JSON.stringify({ designId, versionId }),
+      body: JSON.stringify({ designId, versionId, previewDataUrl: previewDataUrl ?? undefined }),
     }),
 
   /** "להזמין כזה": עותק של עיצוב ששותף, במידות של המזמין. */
