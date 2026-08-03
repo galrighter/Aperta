@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { handleRouteError, parseBody } from "@/lib/api";
+import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { validateDesign } from "@/lib/geometry/validate";
+import { tooManyAttempts } from "@/lib/db/rateLimit";
+import { clientIp } from "@/lib/ip";
 
 // ולידציה בלבד ל-SVG נתון — שימוש פנימי/דיבוג, וגם לקליינט לחישוב גיאומטריה
 // (material/cutUnion) של גרסה קיימת עבור התלת-ממד וההדגשות.
@@ -18,6 +20,11 @@ const schema = z.object({
 
 export async function POST(req: Request) {
   try {
+    // המסלול לא-מאומת ומריץ boolean ops כבדים. תקרת הקלט מגבילה עלות לבקשה;
+    // ההגבלה לפי IP (60 לדקה) מגבילה הצפה של בקשות.
+    if (await tooManyAttempts(`validate:${clientIp(req)}`, 60_000, 60)) {
+      throw new ApiError("rate_limited", "Too many requests, try again later", 429);
+    }
     const body = await parseBody(req, schema);
     const { report, normalized } = validateDesign(body.svg, {
       productType: body.productType,

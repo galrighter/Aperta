@@ -15,6 +15,8 @@ import { designCode } from "@/lib/designCode";
 import { priceFor } from "@/lib/pricing";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
+import { tooManyAttempts } from "@/lib/db/rateLimit";
+import { clientIp } from "@/lib/ip";
 
 // ההזמנה עצמה (docs/TODO.md B1–B3). מסלול ציבורי ליצירה, אדמין לקריאה.
 //
@@ -56,6 +58,12 @@ export async function POST(req: Request) {
 
     // בוט מילא את ה-honeypot: מחזירים הצלחה בלי לשמור.
     if (body.company) return NextResponse.json({ ok: true }, { status: 201 });
+
+    // לפי IP (30 לשעה) לצד לפי מייל: המכסה לפי מייל נעקפת בשינוי המחרוזת, וכל
+    // הזמנה שולחת שני מיילים דרך Resend — וקטור הצפה/reflection.
+    if (await tooManyAttempts(`order:${clientIp(req)}`, 60 * 60_000, 30)) {
+      throw new ApiError("rate_limited", "Too many requests, try again later", 429);
+    }
 
     if ((await countRecentOrdersFromEmail(body.email)) >= MAX_PER_EMAIL_PER_DAY) {
       throw new ApiError("rate_limited", "Too many orders from this email today", 429);
