@@ -355,6 +355,11 @@ export default function DesignPage() {
                   st.image && st.imageRole !== "ready"
                     ? [{ kind: "inspiration" as const, dataUrl: st.image.dataUrl }]
                     : [],
+                // ניסיון חוזר אחרי ניתוק: אותו מזהה, ולכן אותה הרצה על הקופסה.
+                // מה שכבר רונדר ושולם נאסף במקום להיקנות שוב. `jobRef` שורד רק
+                // כשל רשת/תפוגה — תשובה אמיתית של השרת מנקה אותו למטה, וקלט
+                // שהשתנה מקבל ממילא הרצה חדשה (השרת גוזר גם מהבקשה).
+                jobId: jobRef.current ?? undefined,
               },
               undefined,
               // רושמים את ההרצה לפני שהיא מסתיימת: זה מה שמאפשר לחלון "העיצוב
@@ -702,6 +707,8 @@ export default function DesignPage() {
           // "עריכה של הקיים" לבין הדבר שאפשר להעמיד מול הפרומפט.
           baseVersionId: entry.versionId,
           images: [],
+          // כמו ביצירה: ניסיון חוזר על אותו שינוי חוזר לאותה הרצה בקופסה.
+          jobId: jobRef.current ?? undefined,
         },
         undefined,
         // `first: false` — עריכה אינה "העיצוב שלך מוכן". מה שכן נדרש הוא שכשל

@@ -34,14 +34,26 @@ export interface GenerationJobRow {
 export const JOB_STALE_MS = 6 * 60_000;
 
 /**
- * ה-jobId מגיע מהלקוחה. שני לקוחות שונים לעולם לא שולחים אותו מזהה — כל קריאה
- * מגרילה UUID טרי, וההתאוששות היא GET ולא POST חוזר. לכן התנגשות על מפתח קיים
- * אינה חידוש לגיטימי אלא ניסיון לדרוס job של מישהו אחר: הזורק הזה מבדיל אותה
- * משגיאה חולפת (טבלה חסרה בחלון מיגרציה), שאותה עדיין מותר לבלוע ולהמשיך.
+ * ה-jobId מגיע מהלקוחה, ולכן התנגשות על מפתח קיים היא או חידוש לגיטימי או
+ * ניסיון לדרוס job של מישהו אחר. הזורק הזה מסמן את המקרה השני, ומבדיל אותו
+ * משגיאה חולפת (טבלה חסרה בחלון מיגרציה) שאותה עדיין מותר לבלוע ולהמשיך.
  */
 export class JobConflictError extends Error {}
 
-export async function createJob(input: { id: string; designId: string; runId: string }): Promise<void> {
+/**
+ * פותח את ה-job, או **מחדש** אחד שעדיין רץ.
+ *
+ * חידוש הוא הצד השני של C2 (docs/C2_RESILIENT_GENERATION.md): הקופסה מחזיקה את
+ * ההרצה תחת מזהה שנגזר מ-`jobId`, ולכן בקשה חוזרת עם אותו מזהה אוספת עבודה
+ * ששולמה כבר. אם השורה כאן הייתה חוסמת אותה ב-409, הנתיב הזה לא היה קיים.
+ *
+ * הגבול מדויק: מחדשים רק job שהוא `running` ושייך **לאותו עיצוב** שהפונה כבר
+ * עבר עליו `requireDesignAccess`. תוקף לא מגיע לשם — הוא נחסם על העיצוב. job
+ * שהסתיים נשאר 409: התוצאה כבר שם, ויש לקרוא אותה ולא להריץ מחדש.
+ */
+export async function startJob(
+  input: { id: string; designId: string; runId: string },
+): Promise<"created" | "resumed"> {
   const sb = supabaseAdmin();
   const { error } = await sb.from("generation_jobs").insert({
     id: input.id,
@@ -50,10 +62,24 @@ export async function createJob(input: { id: string; designId: string; runId: st
     status: "running",
     stage: "rendering",
   });
-  if (error) {
-    if (error.code === "23505") throw new JobConflictError(`job ${input.id} already exists`);
-    throw new Error(`create job failed: ${error.message}`);
+  if (!error) return "created";
+  if (error.code !== "23505") throw new Error(`create job failed: ${error.message}`);
+
+  const existing = await getJob(input.id);
+  if (!existing || existing.design_id !== input.designId || existing.status !== "running") {
+    throw new JobConflictError(`job ${input.id} already exists`);
   }
+  // `updated_at` נדחף קדימה כדי שהשעון של "תקוע" (JOB_STALE_MS) יימדד מהחידוש
+  // ולא מהניסיון שנקטע — אחרת הלקוחה תראה "נכשל" בזמן שההרצה בדיוק חזרה לחיים.
+  //
+  // ו-`run_id` נכתב מחדש: שורה שנפתחה בגרסה שבה המזהה עוד הוגרל נושאת מזהה
+  // אחר מזה שהחידוש גזר, וכל כתיבת מצב אחריו (שמוצמדת ל-run_id) הייתה נופלת
+  // בשקט — הלקוחה הייתה רואה job שנשאר 'running' עד שייחשב תקוע.
+  await patch(input.id, existing.run_id ?? input.runId, {
+    stage: "rendering",
+    run_id: input.runId,
+  });
+  return "resumed";
 }
 
 async function patch(id: string, runId: string, fields: Record<string, unknown>): Promise<void> {

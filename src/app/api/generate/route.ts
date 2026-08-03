@@ -15,8 +15,9 @@ import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
+import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { createJob, failJob, finishJob, setJobStage, JobConflictError } from "@/lib/db/jobs";
+import { startJob, failJob, finishJob, setJobStage, JobConflictError } from "@/lib/db/jobs";
 import { getAccount } from "@/lib/db/accounts";
 import { designCode } from "@/lib/designCode";
 import { sendMail, mailConfigured } from "@/lib/mail";
@@ -37,17 +38,18 @@ import { he } from "@/i18n/he";
 //
 // כל הרצה נשמרת ל-generation_runs (כולל דחייה/שגיאה) ליומן הבק־אופיס.
 //
-// העבודה רצה בתוך הבקשה. קודם היא הועברה ל-waitUntil וההחזרה הייתה 202 מיידי,
-// כדי שניתוק לא יאבד הרצה שהצליחה — ובפרודקשן העבודה פשוט לא רצה: כל יצירה
-// נתקעה על stage=rendering, לא נכתבה שום שורה ל-generation_runs, ואחרי שש דקות
-// הלקוחה קיבלה job_stalled. אין שגיאה כי לא היה מי שיכתוב אותה. מדוד על שלוש
-// הרצות (27.7, אחרי #61) מול הרצה ישירה של אותו צינור שהצליחה ב-20 שניות.
+// **מה שורד ניתוק, ולמה זה לא isolate.** קודם העבודה הועברה ל-waitUntil
+// וההחזרה הייתה 202 מיידי — ובפרודקשן העבודה פשוט לא רצה: כל יצירה נתקעה על
+// stage=rendering, לא נכתבה שום שורה ל-generation_runs, ואחרי שש דקות הלקוחה
+// קיבלה job_stalled בלי שגיאה, כי לא היה מי שיכתוב אותה (שלוש הרצות, 27.7,
+// אחרי #61). המסקנה: אין להישען על isolate שממשיך לחיות אחרי שהתשובה יצאה.
 //
-// מה שנשמר מ-#61: שורת generation_jobs עדיין נכתבת, והלקוחה מייצרת את המזהה
-// מראש — כך שאחרי ניתוק אפשר למשוך את התוצאה מ-/api/generate/<jobId> במקום
-// לגלות שהיא אבדה. מה שאבד: הרצה לא שורדת ניתוק שקוטע את הבקשה עצמה. הדרך
-// לקבל את זה בחזרה היא שהקופסה תחזיק את ה-job (יש לה כבר חנות + /api/jobs/<id>)
-// ושנמשוך ממנה — לא isolate שאמור לשרוד אחרי שהתשובה יצאה.
+// מה שיש במקום: מי שעושה את העבודה היקרה מחזיק את התוצאה. הקופסה מריצה את
+// הרנדר תחת מזהה שנגזר מ-`jobId` של הלקוחה (`render/attemptId.ts`), ולכן
+// הניתוק כבר לא מוחק את מה ששולם: הבקשה הבאה עם אותו `jobId` נכנסת לאותו job,
+// מקבלת את התוצאה השמורה בלי קריאה נוספת למודל, ומסיימת את השמירה. העבודה
+// עצמה עדיין רצה בתוך הבקשה הזו — היא פשוט כבר לא היחידה שיכולה לסיים אותה.
+// החוזה המלא: docs/C2_RESILIENT_GENERATION.md.
 
 export const maxDuration = 300;
 
@@ -97,7 +99,8 @@ const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export async function POST(req: Request) {
   const startedAt = Date.now();
-  const runId = crypto.randomUUID();
+  // עד שידוע ה-jobId — כשלים לפני פענוח הגוף עדיין צריכים מזהה ליומן.
+  let runId = crypto.randomUUID();
   let pipelineStarted = false;
   let designId: string | null = null;
   let userPrompt: string | null = null;
@@ -138,13 +141,17 @@ export async function POST(req: Request) {
 
     // מזהה שהלקוחה מייצרת מראש, כדי שתוכל למשוך את השורה גם אם הבקשה נקטעה.
     const jobId = body.jobId ?? crypto.randomUUID();
+    // ומכאן מזהה ההרצה נגזר ממנו ולא מוגרל: זה מה שמאפשר לבקשה חוזרת לאסוף
+    // הרצה ששולמה כבר במקום לקנות שנייה. ראה render/attemptId.ts.
+    runId = await deriveAttemptId(jobId, 1);
     // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה
     // למיגרציה) היצירה עדיין רצה.
     try {
-      await createJob({ id: jobId, designId: design.id, runId });
+      await startJob({ id: jobId, designId: design.id, runId });
     } catch (e) {
-      // מזהה job שכבר תפוס אינו חלון מיגרציה — הוא ניסיון לדרוס הרצה של אחר.
-      // דוחים במקום להריץ בשקט ולתת ל-finishJob לכתוב על שורה זרה.
+      // job שכבר הסתיים, או של עיצוב אחר, אינו חלון מיגרציה — דוחים במקום
+      // להריץ בשקט ולתת ל-finishJob לכתוב על שורה זרה. חידוש של הרצה שעדיין
+      // רצה על אותו עיצוב כן מותר, ו-startJob מבדיל ביניהם.
       if (e instanceof JobConflictError) {
         throw new ApiError("job_conflict", "This job id is already in use", 409);
       }
@@ -473,11 +480,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // לפרומפט — מה שנכשל בפועל, ובעקבותיו החזרנו הדמיה מוצללת שסף גלובלי
       // יחיד עיגל למתכת.
       //
-      // הנתיבים נגזרים מ-`attemptId` ומחותמת הזמן של הניסיון ולא מ-`runId`:
-      // ניסיון שני שכותב לאותם קבצים מוחק את הראיות של הראשון, וביומן נשארת
-      // שורה שמצביעה על הדמיה שאינה שלה.
-      const stamp = Date.now();
+      // הנתיבים נגזרים מ-`attemptId` בלבד: הוא כבר שונה בין הניסיונות (זו
+      // הסיבה שהייתה כאן חותמת זמן — ניסיון שני שכותב לאותם קבצים מוחק את
+      // הראיות של הראשון), והוא **יציב** בין בקשה לבקשה. בקשה שמתחדשת אחרי
+      // ניתוק מצביעה בזכות זה על ההדמיות שכבר הועלו, במקום להעלות עותק שני
+      // לצד שם שאיש כבר לא יידע לקשר.
       const job = await runRenderJob({
+        jobId: attemptId,
         prompt,
         calls: plan.calls,
         rows: plan.rows,
@@ -494,7 +503,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
         // נשארות על ברירת המחדל הזולה.
         model: lettering ? LETTERING_MODEL : undefined,
-        renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
+        renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${attemptId}-${i}.png`),
         stagePaths: {
           // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
           reference: `runs/${attemptId}/reference.png`,
@@ -563,8 +572,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     let { job, renderPngPath, framed: candidates } = await attemptOnce(runId, 1);
     let generationId = runId;
     if (candidates.length === 0 && Date.now() - startedAt < RETRY_DEADLINE_MS) {
-      // מזהה חדש: שתי ההרצות נשמרות ביומן, ואף אחת מהן לא דורסת את השנייה.
-      const retryId = crypto.randomUUID();
+      // מזהה שני: שתי ההרצות נשמרות ביומן, ואף אחת מהן לא דורסת את השנייה.
+      // נגזר ולא מוגרל, מאותה סיבה כמו הראשון — בקשה שמתחדשת חייבת לחזור
+      // בדיוק לשני ה-jobs שכבר שולמו, ולא לפתוח שלישי.
+      const retryId = await deriveAttemptId(jobId, 2);
       const second = await attemptOnce(retryId, 2);
       // גם אם השני נכשל אף הוא — הוא התשובה העדכנית, וההדמיה שלו היא זו
       // שהשגיאה מתארת.

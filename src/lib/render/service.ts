@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api";
 import { signedUploadUrl } from "@/lib/db/storage";
+import { deriveRenderJobId } from "./attemptId";
 import type { LlmImage } from "@/lib/llm/core";
 import type { RunStagePaths } from "@/lib/db/runs";
 
@@ -15,6 +16,12 @@ import type { RunStagePaths } from "@/lib/db/runs";
 // לא מהגר: עותק שני של חוקי הייצור בפייתון הוא בדיוק מה שנסחף.
 
 const RENDER_TIMEOUT_MS = 240_000;
+
+/** כמה זמן להמתין לתשובה על בקשה *בודדת* אל הקופסה במסלול המוחזק. הפתיחה
+ *  והסקירה שתיהן קצרות — העבודה עצמה כבר לא רצה בתוך אף אחת מהן. */
+const CALL_TIMEOUT_MS = 30_000;
+/** כל כמה זמן לשאול את הקופסה מה מצב ההרצה. */
+const POLL_INTERVAL_MS = 2_000;
 
 /**
  * ניסיון חוזר אחד, ורק על כשל שקרה *מיד*. כשל מהיר פירושו שהחיבור לא נוצר כלל
@@ -76,7 +83,26 @@ interface RawJob {
   candidates?: RawCandidate[];
   uploaded_renders?: number[];
   uploaded_stages?: string[];
+  /** המסלול המוחזק בלבד: "running" | "done" | "error". */
+  state?: string;
+  /** המסלול המוחזק בלבד: התוצאה, כשהיא מוכנה. */
+  result?: unknown;
   [k: string]: unknown;
+}
+
+async function readBody(resp: Response): Promise<RawJob> {
+  const text = await resp.text();
+  try {
+    return JSON.parse(text) as RawJob;
+  } catch {
+    // גוף שאינו JSON כאן הוא כמעט תמיד עמוד שגיאה של שער בדרך ולא תשובה של
+    // הקופסה — ולכן ההודעה אומרת את זה, במקום להיראות כמו באג בשירות.
+    throw new ApiError(
+      "render_bad_response",
+      `Render service returned non-JSON (${resp.status}), i.e. a gateway error and not the service itself: ${text.slice(0, 300)}`,
+      502,
+    );
+  }
 }
 
 export interface RenderJobInput {
@@ -108,6 +134,12 @@ export interface RenderJobInput {
   /** לאן ייכתבו ההדמיות ותמונות השלבים. אנחנו חותמים, השירות כותב. */
   renderPaths: string[];
   stagePaths: RunStagePaths;
+  /**
+   * המזהה שתחתיו הקופסה מחזיקה את ההרצה — נגזר מ-`jobId` של הלקוחה
+   * (`render/attemptId.ts`). איתו הבקשה חוזרת ואוספת תוצאה שכבר שולמה במקום
+   * להזמין רנדר שני; בלעדיו הקופסה מריצה בתוך הבקשה כמו קודם.
+   */
+  jobId?: string;
 }
 
 const STAGE_KEYS = ["reference", "conditioned", "overlay", "difference", "rendered"] as const;
@@ -125,7 +157,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.VECTORIZER_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_TOKEN}`;
 
-  const payload = JSON.stringify({
+  const request = {
     prompt: input.prompt,
     calls: input.calls,
     rows: input.rows,
@@ -142,14 +174,29 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
       : null,
     base_svg: input.baseSvg,
     model: input.model ?? null,
+  };
+
+  // המזהה שתחתיו הקופסה מחזיקה את ההרצה. הוא נגזר גם מהבקשה עצמה — הכתובות
+  // החתומות בחוץ, כי הן נחתמות מחדש בכל קריאה ואינן משנות מה ייווצר. בקשה
+  // שהשתנתה היא job אחר; בקשה זהה חוזרת לאותו job ולא משלמת עליו שוב.
+  const boxJobId = input.jobId ? await deriveRenderJobId(input.jobId, JSON.stringify(request)) : null;
+  // בלי מזהה הקופסה מריצה בתוך הבקשה ומחזירה את התוצאה — המסלול הישן, שנשאר
+  // כדי שגרסה של הקופסה שקדמה לשינוי עדיין תעבוד.
+  const payload = JSON.stringify({
+    ...request,
+    job_id: boxJobId,
     artifacts: { renders: renderUrls, stages: stageUrls },
   });
+
+  // המסלול הישן מחזיק את הבקשה פתוחה לכל אורך ההרצה; המוחזק פותח ואז סוקר,
+  // ולכן כל קריאה בו קצרה.
+  const callTimeout = boxJobId ? CALL_TIMEOUT_MS : RENDER_TIMEOUT_MS;
   const post = () =>
     fetch(`${serviceUrl()}/api/generate`, {
       method: "POST",
       headers,
       body: payload,
-      signal: AbortSignal.timeout(RENDER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(callTimeout),
     });
 
   let resp: Response;
@@ -172,19 +219,38 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     }
   }
 
-  const text = await resp.text();
-  let body: RawJob;
-  try {
-    body = JSON.parse(text) as RawJob;
-  } catch {
-    // גוף שאינו JSON כאן הוא כמעט תמיד עמוד שגיאה של שער בדרך ולא תשובה של
-    // הקופסה — ולכן ההודעה אומרת את זה, במקום להיראות כמו באג בשירות.
-    throw new ApiError(
-      "render_bad_response",
-      `Render service returned non-JSON (${resp.status}), i.e. a gateway error and not the service itself: ${text.slice(0, 300)}`,
-      502,
-    );
+  let body = await readBody(resp);
+
+  // 202 = הקופסה קיבלה את ההרצה ומחזיקה אותה. מכאן זו סקירה, וניתוק כאן כבר
+  // לא מאבד את העבודה: היא ממשיכה שם, והבקשה הבאה עם אותו jobId תאסוף אותה.
+  if (boxJobId && resp.status === 202) {
+    const deadline = sentAt + RENDER_TIMEOUT_MS;
+    const statusUrl = `${serviceUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
+    while (body.state === "running") {
+      if (Date.now() >= deadline) {
+        throw new ApiError(
+          "render_timeout",
+          `The render service is still working after ${Math.round(RENDER_TIMEOUT_MS / 1000)}s`,
+          504,
+        );
+      }
+      await sleep(POLL_INTERVAL_MS);
+      // כשל רשת בסקירה אינו כשל של ההרצה — היא ממשיכה על הקופסה. שואלים שוב.
+      let poll: Response;
+      try {
+        poll = await fetch(statusUrl, { headers, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+      } catch {
+        continue;
+      }
+      if (poll.status === 404) {
+        // הקופסה קמה מחדש ואיבדה את ההרצה שבאוויר. אין מה לאסוף.
+        throw new ApiError("render_lost", "The render service forgot this run (it restarted)", 502);
+      }
+      resp = poll;
+      body = await readBody(poll);
+    }
   }
+
   if (!resp.ok) {
     // כשל מודל התמונה מגיע כ-RENDER_FAILED; הלקוחה רואה את ההודעה של llm_error.
     // תקציב שנגמר אצל ספק התמונות הוא סיבה בפני עצמה: אין מה לנסות שוב, וזו
@@ -199,6 +265,10 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
           : "render_failed";
     throw new ApiError(code, detail?.message ?? `Render service failed (${resp.status})`, 502);
   }
+
+  // במסלול המוחזק התוצאה עטופה ב-`result`; במסלול הישן היא הגוף עצמו. אותה
+  // תוצאה בדיוק — הקורא לא אמור לדעת באיזה מסלול היא הגיעה.
+  if (body.state === "done" && body.result) body = body.result as RawJob;
 
   const uploadedRenders = new Set(body.uploaded_renders ?? []);
   const uploadedStages = new Set(body.uploaded_stages ?? []);
