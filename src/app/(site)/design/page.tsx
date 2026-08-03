@@ -33,10 +33,10 @@ import {
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
-  INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
+  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
   canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
-  stripLengthMm, widthOf,
+  stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -937,11 +937,7 @@ export default function DesignPage() {
             </div>
             <ProductScreen
               onPick={(p: Product) => {
-                set(
-                  abandonsShare(s, p)
-                    ? { product: p, fromShare: null, fromShareSerial: null, adoptError: null }
-                    : { product: p },
-                );
+                set(switchProduct(s, p));
                 go("sizes");
               }}
             />

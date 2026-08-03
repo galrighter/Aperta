@@ -305,6 +305,35 @@ export function abandonsShare(s: CreateState, picked: Product): boolean {
   return s.fromShare != null && s.product != null && picked !== s.product;
 }
 
+/**
+ * ה-patch שיש להחיל כשבוחרים מוצר במסך המוצר.
+ *
+ * מעבר בין מוצרים **אחרי** שכבר נוצר עיצוב חייב לאפס את פלט העיצוב: גאומטריית
+ * צמיד אינה טבעת. בלי האיפוס הזה `activeEntry` היה ממשיך להצביע על הגרסה הישנה,
+ * המסך היה מציג את סקיצת הצמיד כטבעת, וההזמנה הייתה נשלחת עם `productType` חדש
+ * ו-`versionId` של הפריט הישן — כלומר פריט אחד מוזמן ופריט אחר נחתך. הבריף,
+ * הכיתוב והתמונות נשמרים: הם כוונת הלקוחה, ואפשר לייצר איתם מחדש למוצר החדש.
+ */
+export function switchProduct(s: CreateState, picked: Product): Partial<CreateState> {
+  const base: Partial<CreateState> = abandonsShare(s, picked)
+    ? { product: picked, fromShare: null, fromShareSerial: null, adoptError: null }
+    : { product: picked };
+  // אין עיצוב לאבד, או שזו בחירה חוזרת באותו מוצר — רק קביעת המוצר.
+  if (picked === s.product || s.designId === null) return base;
+  return {
+    ...base,
+    designId: null,
+    designSerial: null,
+    edits: [],
+    activeEdit: -1,
+    procError: null,
+    procErrorDetail: null,
+    chooseError: null,
+    editError: null,
+    resultMode: "render",
+  };
+}
+
 /* ===== נגזרות מידה ===== */
 
 export const widthOf = (s: CreateState): number =>
