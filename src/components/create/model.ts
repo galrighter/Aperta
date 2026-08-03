@@ -306,22 +306,13 @@ export function abandonsShare(s: CreateState, picked: Product): boolean {
 }
 
 /**
- * ה-patch שיש להחיל כשבוחרים מוצר במסך המוצר.
- *
- * מעבר בין מוצרים **אחרי** שכבר נוצר עיצוב חייב לאפס את פלט העיצוב: גאומטריית
- * צמיד אינה טבעת. בלי האיפוס הזה `activeEntry` היה ממשיך להצביע על הגרסה הישנה,
- * המסך היה מציג את סקיצת הצמיד כטבעת, וההזמנה הייתה נשלחת עם `productType` חדש
- * ו-`versionId` של הפריט הישן — כלומר פריט אחד מוזמן ופריט אחר נחתך. הבריף,
- * הכיתוב והתמונות נשמרים: הם כוונת הלקוחה, ואפשר לייצר איתם מחדש למוצר החדש.
+ * השדות שמאפסים עיצוב קיים: פלט המנוע (designId, גרסאות) והזמניים שנתלים בו.
+ * משותף להחלפת מוצר ולשינוי מידה — בשני המקרים הגאומטריה שנוצרה כבר לא תואמת
+ * את מה שהלקוחה בחרה, וחייבים לייצר מחדש. הבריף/כיתוב/תמונות **לא** מתאפסים:
+ * הם כוונת הלקוחה, ואפשר לייצר איתם מחדש.
  */
-export function switchProduct(s: CreateState, picked: Product): Partial<CreateState> {
-  const base: Partial<CreateState> = abandonsShare(s, picked)
-    ? { product: picked, fromShare: null, fromShareSerial: null, adoptError: null }
-    : { product: picked };
-  // אין עיצוב לאבד, או שזו בחירה חוזרת באותו מוצר — רק קביעת המוצר.
-  if (picked === s.product || s.designId === null) return base;
+export function invalidateDesign(): Partial<CreateState> {
   return {
-    ...base,
     designId: null,
     designSerial: null,
     edits: [],
@@ -332,6 +323,33 @@ export function switchProduct(s: CreateState, picked: Product): Partial<CreateSt
     editError: null,
     resultMode: "render",
   };
+}
+
+/** שדות המידה — שינוי שלהם על עיצוב קיים מבטל אותו (ראו `invalidateDesign`). */
+export const SIZE_KEYS = [
+  "ringPreset", "ringSize", "wristPreset", "circ", "fit", "ringWidth", "braceletWidth",
+] as const satisfies readonly (keyof CreateState)[];
+
+/**
+ * ה-patch שיש להחיל כשבוחרים מוצר במסך המוצר.
+ *
+ * מעבר בין מוצרים **אחרי** שכבר נוצר עיצוב חייב לאפס את פלט העיצוב: גאומטריית
+ * צמיד אינה טבעת. בלי האיפוס הזה `activeEntry` היה ממשיך להצביע על הגרסה הישנה,
+ * המסך היה מציג את סקיצת הצמיד כטבעת, וההזמנה הייתה נשלחת עם `productType` חדש
+ * ו-`versionId` של הפריט הישן — כלומר פריט אחד מוזמן ופריט אחר נחתך.
+ */
+export function switchProduct(s: CreateState, picked: Product): Partial<CreateState> {
+  const base: Partial<CreateState> = abandonsShare(s, picked)
+    ? { product: picked, fromShare: null, fromShareSerial: null, adoptError: null }
+    : { product: picked };
+  // אין עיצוב לאבד, או שזו בחירה חוזרת באותו מוצר — רק קביעת המוצר.
+  if (picked === s.product || s.designId === null) return base;
+  return { ...base, ...invalidateDesign() };
+}
+
+/** האם ה-patch משנה מידה בפועל (ערך שונה ממה שיש כבר) — הבסיס לביטול עיצוב. */
+export function sizeReallyChanged(s: CreateState, patch: Partial<CreateState>): boolean {
+  return SIZE_KEYS.some((k) => k in patch && patch[k] !== s[k]);
 }
 
 /* ===== נגזרות מידה ===== */
