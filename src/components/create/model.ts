@@ -4,7 +4,7 @@ import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
 import { svgFrame } from "@/lib/geometry/frame";
 import { FAB, type FitStyle } from "@/lib/fabrication.config";
-import { computeSizing, idMmFromUsSize } from "@/lib/sizing";
+import { computeSizing, idMmFromUsSize, US_RING_ID_MM, US_RING_SIZES } from "@/lib/sizing";
 import { priceFor, type Price } from "@/lib/pricing";
 
 const d = he.design;
@@ -146,6 +146,12 @@ export interface CreateState {
   procError: string | null;
   /** מזהה טכני של הכשל (code · status) — לאבחון מצילום מסך. */
   procErrorDetail: string | null;
+  /**
+   * קוד הכשל, לבדו. `procErrorDetail` נועד לעין אנושית ולא להשוואה, ומה שנדרש
+   * כאן הוא הכרעה: יש כשלים שניסיון חוזר מתקן ויש כשלים שהוא רק חוזר עליהם.
+   * ראו `RETRY_POINTLESS` ב-ProcessingScreen.
+   */
+  procErrorCode: string | null;
   /** כשל במעבר בין הצעות. procError מוצג רק במסך העיבוד, ולכן לא היה למי
    *  לספר שהלחיצה נכשלה — היא פשוט לא עשתה כלום. */
   chooseError: string | null;
@@ -200,6 +206,7 @@ export const INITIAL: CreateState = {
   activeEdit: -1,
   procError: null,
   procErrorDetail: null,
+  procErrorCode: null,
   chooseError: null,
   editError: null,
   applying: false,
@@ -319,6 +326,7 @@ export function invalidateDesign(): Partial<CreateState> {
     activeEdit: -1,
     procError: null,
     procErrorDetail: null,
+    procErrorCode: null,
     chooseError: null,
     editError: null,
     resultMode: "render",
@@ -410,6 +418,82 @@ export const hasExactSize = (s: CreateState): boolean => {
   const v = parseFloat(s.product === "ring" ? s.ringSize : s.circ);
   return !Number.isNaN(v) && v > 0;
 };
+
+/**
+ * הטווח שהשדה "מידה מדויקת" מקבל, במ"מ.
+ *
+ * זו מדידה של גוף, ולכן הגבולות הם אנטומיים ולא ייצוריים: 9 ס"מ הוא פרק יד של
+ * תינוק ו-26 ס"מ הוא פרק יד גדול מאוד. הם רחבים בכוונה — התפקיד היחיד שלהם הוא
+ * לתפוס מספר שאינו מדידה בכלל.
+ *
+ * בטבעת השדה מקבל **שתי** צורות (ראו `circumferenceMm`): עד 30 זו מידה
+ * אמריקאית, שממילא נצבטת לטבלה ב-`idMmFromUsSize`, ומעליה זה היקף במ"מ. לכן
+ * הטווח כאן חל רק על הצורה השנייה.
+ */
+export const CIRC_LIMIT_MM: Record<Product, [number, number]> = {
+  // התחתית היא פרק יד של תינוק (9 ס"מ), ובכוונה: מידות ילדים הן מוצר, לא
+  // טעות. מה שנחסם הוא מספר שאינו מדידה — 10 או 16, כלומר סנטימטרים בשדה
+  // שמבקש מילימטרים.
+  bracelet: [90, 260],
+  // בטבעת זהו **אותו טווח** של הטבלה, בצורתו השנייה: היקף אצבע הוא π·ID, ומי
+  // שמדד בחוט לא אמור לקבל תשובה אחרת ממי שהשתמש במודד טבעות. מעוגל החוצה
+  // למ"מ שלם — 38.9 ו-78.0 הם הקצוות המדויקים.
+  ring: [
+    Math.floor(Math.PI * US_RING_ID_MM[String(US_RING_SIZES[0])]),
+    Math.ceil(Math.PI * US_RING_ID_MM[String(US_RING_SIZES[US_RING_SIZES.length - 1])]),
+  ],
+};
+
+/**
+ * טווח המידה האמריקאית שהשדה מקבל — **נגזר** מהטבלה התקנית ולא נכתב שוב.
+ *
+ * למה זו בדיקה בכלל: `idMmFromUsSize` **צובט** ערך שמחוץ לטבלה לקצה שלה,
+ * בשקט. מידה 20 הפכה שם ל-13 ומידה 0.5 ל-1 — כלומר בדיוק אותו כשל שהוצא
+ * מ-`lengthHintMm`: מדידה של הלקוחה שתוקנה למספר אחר בלי שאיש יידע. הצביטה
+ * נשארת כרשת ביטחון בשרת; כאן היא נעצרת ונאמרת.
+ *
+ * ולמה נגזר ולא קבוע: שני מספרים שאומרים את אותו דבר נפרדים ביום שבו אחד מהם
+ * משתנה. הטבלה התרחבה ל-1–16 (3.8.26) והטווח כאן התרחב איתה מעצמו.
+ */
+export const US_SIZE_LIMIT: [number, number] = [
+  US_RING_SIZES[0],
+  US_RING_SIZES[US_RING_SIZES.length - 1],
+];
+
+/**
+ * המידה שהוזנה אינה מדידה אפשרית — ומה להגיד עליה.
+ *
+ * `null` כשאין בעיה, וגם כשלא הוזנה מידה מדויקת בכלל: כפתור סטנדרטי לא יכול
+ * להיות מחוץ לטווח.
+ *
+ * **חוסם ולא מתקן.** `FAB.lengthHintMm` מתעד למה חיתוך שקט של מידה הוא הדבר
+ * הגרוע ביותר שאפשר לעשות כאן (RM-0065: הוזמן 11 ס"מ ונשמר פס ל-13 ס"מ, בלי
+ * חיווי). מה שנוסף עכשיו הוא הכיוון ההפוך: מידה שאי אפשר לייצר לפיה גם לא
+ * ממשיכה בשקט הלאה. ב-RM-0077 (3.8.26) הוזן היקף 10 — עשרה מילימטרים — והמסע
+ * המשיך עד להדמיה של ריבוע 15.8×18 מ"מ שהמודל צייר נאמנה לפי הפרומפט.
+ */
+export interface SizeIssue {
+  /** `circumference` — היקף במ"מ; `usSize` — מידת טבעת אמריקאית. הכיוונים
+   *  נבדלים ביחידה, ולכן גם בהודעה: "מ"מ" על מידה 20 היה שטות. */
+  kind: "circumference" | "usSize";
+  value: number;
+  lo: number;
+  hi: number;
+}
+
+export function sizeIssue(s: CreateState): SizeIssue | null {
+  if (!hasExactSize(s)) return null;
+  const product = s.product ?? "bracelet";
+  const value = parseFloat(product === "ring" ? s.ringSize : s.circ);
+  // בטבעת השדה מקבל שתי צורות (ראו `circumferenceMm`), וכל אחת נבדקת מול
+  // הטווח שלה: עד 30 זו מידה אמריקאית, מעליה זה היקף במ"מ.
+  if (product === "ring" && value <= 30) {
+    const [lo, hi] = US_SIZE_LIMIT;
+    return value < lo || value > hi ? { kind: "usSize", value, lo, hi } : null;
+  }
+  const [lo, hi] = CIRC_LIMIT_MM[product];
+  return value < lo || value > hi ? { kind: "circumference", value, lo, hi } : null;
+}
 
 /* ===== תמחור (handoff §7) ===== */
 

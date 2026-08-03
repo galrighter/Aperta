@@ -5,6 +5,7 @@ import {
   neutralRadiusFromBlank,
   nearestUsRingSize,
   US_RING_ID_MM,
+  US_RING_SIZES,
   MM_ID_PER_US_SIZE,
 } from "../sizing";
 import { FAB } from "../fabrication.config";
@@ -200,8 +201,31 @@ describe("nearestUsRingSize", () => {
   it("מעגל לחצי מידה ונשאר בטווח הטבלה", () => {
     expect(nearestUsRingSize(US_RING_ID_MM["7"])).toBe(7);
     expect(nearestUsRingSize(US_RING_ID_MM["10"])).toBe(10);
-    expect(nearestUsRingSize(5)).toBe(4);
-    expect(nearestUsRingSize(40)).toBe(13);
+    // הקצוות נקראים מהטבלה ולא נכתבים כמספר: היא התרחבה ל-1–16 (3.8.26),
+    // וטסט שנועל את 4 ו-13 היה נכשל על שינוי שהוא בדיוק מה שהתבקש.
+    const lo = US_RING_SIZES[0];
+    const hi = US_RING_SIZES[US_RING_SIZES.length - 1];
+    expect(nearestUsRingSize(5)).toBe(lo);
+    expect(nearestUsRingSize(40)).toBe(hi);
+  });
+
+  it("הטבלה מכסה מידות ילדים ואצבע גדולה, בסולם אחיד", () => {
+    // הטווח: 1 (אצבע של ילד) עד 16 (קצה הטבלאות המסחריות).
+    expect(US_RING_SIZES[0]).toBe(1);
+    expect(US_RING_SIZES[US_RING_SIZES.length - 1]).toBe(16);
+    // אחידות הסולם היא כל הסיבה שהשורות שנוספו נגזרו מהשיפוע של הטבלה עצמה:
+    // מדרגה בתפר בין הישן לחדש היא חצי מידה שמישהו מקבל בטעות. הבדיקה היא
+    // שהצעד בין חצאי מידה סמוכות נשאר בסביבת `MM_ID_PER_US_SIZE / 2` לכל אורך
+    // הסולם — הטבלה המקורית עצמה מתנדנדת ב-‎±0.08 בין 0.34 ל-0.46 (עיגולים
+    // מהצ'ארט שממנו הועתקה), ולכן זו רצועה ולא מספר.
+    const half = MM_ID_PER_US_SIZE / 2;
+    for (let i = 1; i < US_RING_SIZES.length; i++) {
+      const step =
+        US_RING_ID_MM[String(US_RING_SIZES[i])] - US_RING_ID_MM[String(US_RING_SIZES[i - 1])];
+      expect(US_RING_SIZES[i] - US_RING_SIZES[i - 1]).toBe(0.5);
+      expect(step, `בין ${US_RING_SIZES[i - 1]} ל-${US_RING_SIZES[i]}`).toBeGreaterThan(half - 0.1);
+      expect(step, `בין ${US_RING_SIZES[i - 1]} ל-${US_RING_SIZES[i]}`).toBeLessThan(half + 0.1);
+    }
   });
 
   it("מידה אמריקאית אחת = 0.83 מ\"מ ID", () => {

@@ -85,16 +85,26 @@ export async function bridgesForRun(
    */
   svg: string | null;
   versionNo: number | null;
+  /**
+   * מזהה הגרסה שההרצה הזו שמרה — מה שצריך כדי לבנות ממנה קבצי ייצור.
+   *
+   * הגרסה **של ההרצה**, ולא `current_version_id` של העיצוב: ביומן שואלים
+   * "מה יצא מההרצה הזו", ואחרי עוד סבב עריכה הנוכחית היא כבר הרצה אחרת.
+   */
+  versionId: string | null;
 }> {
   const { data, error } = await supabaseAdmin()
     .from("design_versions")
-    .select("validation_report, candidates, svg, version_no")
+    .select("id, validation_report, candidates, svg, version_no")
     .eq("generation_id", generationId)
     .order("version_no", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return { bridges: null, candidates: null, svg: null, versionNo: null };
+  if (error || !data) {
+    return { bridges: null, candidates: null, svg: null, versionNo: null, versionId: null };
+  }
   const row = data as {
+    id?: string | null;
     validation_report?: { bridges?: unknown[] };
     candidates?: VersionCandidate[] | null;
     svg?: string | null;
@@ -105,6 +115,7 @@ export async function bridgesForRun(
     candidates: row.candidates ?? null,
     svg: row.svg ?? null,
     versionNo: row.version_no ?? null,
+    versionId: row.id ?? null,
   };
 }
 

@@ -2,14 +2,17 @@
 
 // יומן היצירות — כל פעולת יצירה באתר, כולל הנכשלות, ומה שצריך כדי להסביר אותה:
 // הפרומפט המלא שיצא למודל, הקובץ שהמשתמש צירף, ההדמיה שחזרה, שלבי הצינור,
-// המועמדים וה-SVG הסופי — עם הורדה.
+// המועמדים וה-SVG הסופי — עם הורדה, ולצידם קבצי הייצור של הגרסה שההרצה שמרה
+// (DXF ו-SVG במ"מ). ה-SVG של היומן הוא **מה שנחתך** בקנה מידה של התצוגה;
+// קבצי הייצור הם המתאר של המתכת שנשארת. השניים נראים דומה ואינם אותו קובץ.
 //
 // הוצא מ-`/debug` כדי שגם פורטל הניהול (`/admin/runs`) יציג בדיוק את אותו יומן:
 // שני מסכים שמראים את אותו מידע אחרת הם שני מסכים שמתחזקים אחרת. `/debug` נשאר
 // מעבדת ההרצה (להריץ פרומפט או תמונה) ומשתמש באותם רכיבי אבחון.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ExportFiles from "./ExportFiles";
 
-export type Stage = { name: string; status: string; detail: string };
+export type Stage ={ name: string; status: string; detail: string };
 
 export type Candidate = {
   candidate_id: string; iou: number; mean_dev_mm: number; max_dev_mm: number;
@@ -43,6 +46,8 @@ export type StageUrls = {
 export type RunInputs = {
   productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
   rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
+  /** צורת הקנבס שנשלחה למודל, `"1536x1024"`. חסר בהרצות מלפני התיעוד. */
+  canvasSize?: string;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
   imageDropped?: "lettering" | "edit";
@@ -117,6 +122,11 @@ export type LogDetail = {
   rawSvg?: string | null;
   /** מספר הגרסה שנשמרה מההרצה הזו. */
   versionNo?: number | null;
+  /**
+   * מזהה הגרסה שנשמרה — מה שצריך כדי למשוך את קבצי הייצור **של ההרצה הזו**
+   * ולא של הגרסה הנוכחית של העיצוב. `null` בהרצה שלא הגיעה לגרסה.
+   */
+  versionId?: string | null;
   debug: DebugMeta | null;
   /** הפרומפט המלא שיצא למודל התמונה. null בהרצות שנשמרו לפני 0009. */
   renderPrompt?: string | null;
@@ -304,8 +314,16 @@ export default function RunsLog({
   const [log, setLog] = useState<LogItem[] | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
-  /** הסמן לעמוד הבא (`before`), ו-null כשאין עוד. */
-  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  /**
+   * כשל בטעינת **המשך** היומן, בנפרד מכשל של העמוד הראשון.
+   *
+   * הודעת הכשל היחידה ישבה מעל הרשימה, וכפתור "עוד" יושב מתחתיה — כלומר אחרי
+   * עשרים שורות, הרחק מחוץ למסך. כשל בהמשך נראה משם כמו כפתור שנלחץ ולא קורה
+   * כלום. ההודעה הזאת מוצגת ליד הכפתור, במקום שבו הלחיצה נעשתה.
+   */
+  const [moreError, setMoreError] = useState<string | null>(null);
+  /** הסמן לעמוד הבא, ו-null כשאין עוד. אטום בכוונה — ראה `lib/runs/cursor`. */
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   /** סך ההרצות והכשלים — מהשרת, כי הרשימה כבר לא מחזיקה את כולן. */
   const [counts, setCounts] = useState<{ total: number; failed: number } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -317,42 +335,49 @@ export default function RunsLog({
   const [promptFor, setPromptFor] = useState<LogItem | null>(null);
 
   /**
-   * עמוד יומן. `before=null` הוא עמוד ראשון (מחליף), אחרת המשך (מוסיף).
+   * עמוד יומן. `cursor=null` הוא עמוד ראשון (מחליף), אחרת המשך (מוסיף).
    *
    * המונה הוא מי שמונע החלפת סינון שמסתיימת בתשובה של הסינון הקודם: שתי לחיצות
    * מהירות הן שתי בקשות, והאחרונה שנשלחה — לא האחרונה שחזרה — היא הנכונה.
    */
   const seq = useRef(0);
   const loadLog = useCallback(
-    async (before: string | null) => {
+    async (cursor: string | null) => {
       const mine = ++seq.current;
       setLogBusy(true);
-      setLogError(null);
+      if (cursor) setMoreError(null);
+      else setLogError(null);
       // עמוד ראשון: הסמן הישן שייך לרשימה שעומדת להיעלם.
-      if (!before) setNextBefore(null);
+      if (!cursor) {
+        setNextCursor(null);
+        setMoreError(null);
+      }
       try {
         const qs = new URLSearchParams({ limit: String(PAGE) });
         if (statusFilter) qs.set("status", statusFilter);
-        if (before) qs.set("before", before);
+        if (cursor) qs.set("cursor", cursor);
         const resp = await fetch(`/api/debug/log?${qs}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = (await resp.json()) as {
           items?: LogItem[];
-          nextBefore?: string | null;
+          nextCursor?: string | null;
         };
         if (mine !== seq.current) return;
         const items = data.items ?? [];
         setLog((prev) => {
-          if (!before || !prev) return items;
+          if (!cursor || !prev) return items;
           // הרצה שנכתבה בין עמוד לעמוד יכולה לחזור פעמיים; המזהה מכריע.
           const seen = new Set(prev.map((i) => i.id));
           return [...prev, ...items.filter((i) => !seen.has(i.id))];
         });
-        setNextBefore(data.nextBefore ?? null);
+        setNextCursor(data.nextCursor ?? null);
       } catch (e) {
         // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
-        // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
-        if (mine === seq.current) setLogError((e as Error).message);
+        // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת — ובהמשך היומן
+        // הוא נאמר ליד הכפתור שנלחץ, ולא עשרים שורות מעליו.
+        if (mine !== seq.current) return;
+        if (cursor) setMoreError((e as Error).message);
+        else setLogError((e as Error).message);
       } finally {
         if (mine === seq.current) setLogBusy(false);
       }
@@ -412,10 +437,17 @@ export default function RunsLog({
           svg: data.svg ?? null,
           rawSvg: data.rawSvg ?? null,
           versionNo: data.versionNo ?? null,
+          versionId: data.versionId ?? null,
           debug: data.debug ?? null,
           renderPrompt: data.renderPrompt ?? null,
           prompt: data.prompt ?? null,
           inputs: data.inputs ?? null,
+          // הגישור וההצעות מגיעים מהשרת מאז 8c9f990, אבל ההעתקה כאן לא נגעה
+          // בהם — כלומר שכבת הגשרים והחלופות מעולם לא צוירו ביומן, והמסך אמר
+          // "אין נתוני גישור" על הרצות שיש בהן. אלה בדיוק השדות שנוספו כדי
+          // לענות על "מה תוקן אחרי שהמודל צייר".
+          bridges: data.bridges ?? null,
+          offered: data.offered ?? null,
         },
       }));
     } catch {
@@ -542,17 +574,24 @@ export default function RunsLog({
 
       {/* המשך היומן. הכפתור מופיע רק כשהשרת אמר שיש עוד — "אין עוד" הוא מידע
           שהוא מחזיק, לא ניחוש מספירת השורות שהתקבלו. */}
-      {nextBefore && (
-        <button
-          type="button"
-          disabled={logBusy}
-          onClick={() => void loadLog(nextBefore)}
-          className="mt-1 self-center rounded-[2px] border border-graphite/20 px-4 py-1.5 text-xs hover:bg-porcelain disabled:opacity-50"
-        >
-          {logBusy ? "טוען…" : `עוד ${PAGE} הרצות`}
-        </button>
+      {nextCursor && (
+        <div className="mt-1 grid justify-items-center gap-1">
+          {moreError && (
+            <div className="rounded-[2px] border border-red-300 bg-red-50 px-3 py-2 text-center text-xs text-red-700">
+              טעינת ההמשך נכשלה: {moreError}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={logBusy}
+            onClick={() => void loadLog(nextCursor)}
+            className="rounded-[2px] border border-graphite/20 px-4 py-1.5 text-xs hover:bg-porcelain disabled:opacity-50"
+          >
+            {logBusy ? "טוען…" : moreError ? "נסה שוב" : `עוד ${PAGE} הרצות`}
+          </button>
+        </div>
       )}
-      {log && shown > 0 && !nextBefore && !logBusy && (
+      {log && shown > 0 && !nextCursor && !logBusy && (
         <div className="mt-1 text-center text-[11px] text-mist">סוף היומן.</div>
       )}
 
@@ -615,6 +654,13 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     );
   }
   if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
+  // צורת הקנבס שנשלחה למודל. היא נשמרה מאז שנוסף הקנבס לאורך אבל לא הוצגה —
+  // ותלונה על פריט חתוך מתחילה בדיוק בשאלה "על איזה קנבס זה רץ".
+  if (inputs.canvasSize) {
+    const [w, h] = inputs.canvasSize.split("x").map(Number);
+    const orient = w > 0 && h > 0 ? (w < h ? "קנבס לאורך" : "קנבס לרוחב") : "קנבס";
+    chips.push(`${orient} ${inputs.canvasSize.replace("x", "×")}`);
+  }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
   // כשידוע *על איזו* גרסה השינוי נשלח, זה מה שנכתב: "עריכה של הקיים" לבדו לא
@@ -663,35 +709,43 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
   onPrompt: () => void;
   onRerun?: () => void;
 }) {
-  const svg = detailOf(detail)?.svg ?? null;
+  const d = detailOf(detail);
+  const svg = d?.svg ?? null;
   return (
     <div className="overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
-      {/* שורת סיכום */}
-      <div className="flex items-start gap-3 p-2">
-        {it.renderUrl ? (
-          <a href={it.renderUrl} target="_blank" rel="noreferrer" className="shrink-0" title="ההדמיה שנוצרה">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.renderUrl} alt="" className="h-14 w-24 rounded bg-porcelain object-contain" />
-          </a>
-        ) : (
-          <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-porcelain text-[10px] text-mist">אין הדמיה</div>
-        )}
-        {/* מה שהמשתמש צירף, ליד ההדמיה שיצאה ממנו — ההשוואה היחידה שאפשר
-            לעשות בעין על תלונה מסוג "זה לא מה ששלחתי". */}
-        {it.inputImageUrl && (
-          <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
-          </a>
-        )}
-        {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
-            ההדמיה שחזרה ממנה: זו ההשוואה שעונה על "מה איבדנו ומי איבד". */}
-        {it.stages.reference && (
-          <a href={it.stages.reference} target="_blank" rel="noreferrer" className="shrink-0" title="התמונה שנשלחה למודל">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={it.stages.reference} alt="ייחוס" className="h-14 w-24 rounded border border-amber-400/60 bg-porcelain object-contain" />
-          </a>
-        )}
+      {/* שורת סיכום.
+          נערמת במסך צר: התמונות והכפתורים הם ברוחב קבוע, ובטלפון הם לא
+          משאירים לטור האמצעי רוחב אמיתי — הטקסט נדחס לאות בשורה והמסך נשבר.
+          מ-`sm` ומעלה חוזרת השורה האחת, שבה ההדמיה עומדת מול הטקסט שלה. */}
+      <div className="flex flex-col gap-2 p-2 sm:flex-row sm:items-start sm:gap-3">
+        {/* התמונות נשארות זו לצד זו גם כשהשורה נערמת — ההשוואה ביניהן היא
+            כל הטעם שלהן. */}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {it.renderUrl ? (
+            <a href={it.renderUrl} target="_blank" rel="noreferrer" className="shrink-0" title="ההדמיה שנוצרה">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.renderUrl} alt="" className="h-14 w-24 rounded bg-porcelain object-contain" />
+            </a>
+          ) : (
+            <div className="flex h-14 w-24 shrink-0 items-center justify-center rounded bg-porcelain text-[10px] text-mist">אין הדמיה</div>
+          )}
+          {/* מה שהמשתמש צירף, ליד ההדמיה שיצאה ממנו — ההשוואה היחידה שאפשר
+              לעשות בעין על תלונה מסוג "זה לא מה ששלחתי". */}
+          {it.inputImageUrl && (
+            <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
+            </a>
+          )}
+          {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
+              ההדמיה שחזרה ממנה: זו ההשוואה שעונה על "מה איבדנו ומי איבד". */}
+          {it.stages.reference && (
+            <a href={it.stages.reference} target="_blank" rel="noreferrer" className="shrink-0" title="התמונה שנשלחה למודל">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={it.stages.reference} alt="ייחוס" className="h-14 w-24 rounded border border-amber-400/60 bg-porcelain object-contain" />
+            </a>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
@@ -728,7 +782,9 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             {it.colorKey ? ` · צבע ${it.colorKey}` : ""}
           </div>
         </div>
-        <div className="flex shrink-0 flex-col gap-1">
+        {/* טור הפעולות. במסך צר הוא שורה שנשברת מתחת לשורה: טור צר בן מילה
+            אחת היה מה שדחס את שאר השורה לאות בשורה. */}
+        <div className="flex flex-wrap gap-1 sm:shrink-0 sm:flex-col sm:flex-nowrap">
           <button className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
             onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
           <button className="rounded-[2px] border border-cobalt px-2 py-1 text-xs text-cobalt hover:bg-cobalt/5"
@@ -772,6 +828,20 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           {detail === "error" && (
             <div className="text-xs text-red-600">טעינת הפירוט נכשלה. אפשר לסגור ולפתוח שוב.</div>
           )}
+          {/* קבצי הייצור של ההרצה — DXF ו-SVG במ"מ, מה שנכנס למכונה.
+              עד כאן הם היו נגישים רק דרך לשונית העיצובים או מסך ההזמנה, כלומר
+              רק אחרי שמישהו הזמין; בבדיקות רוצים לחתוך בדיוק את מה שהיומן
+              מראה, בלי לעבור דרך הזמנה. נמסרת הגרסה **של ההרצה** ולא הנוכחית:
+              אחרי עוד סבב עריכה "הנוכחית" היא כבר שורה אחרת ביומן.
+              מופיע רק אחרי שהפירוט נטען — עד אז לא ידוע אם נשמרה גרסה בכלל. */}
+          {it.designId && d?.versionId && (
+            <ExportFiles
+              designId={it.designId}
+              versionId={d.versionId}
+              note={d.versionNo != null ? `גרסה ${d.versionNo}` : undefined}
+              className="mb-3 border-b border-graphite/10 pb-3"
+            />
+          )}
           <Diagnostics
             images={{
               input: it.inputImageUrl ?? null,
@@ -784,12 +854,14 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             }}
             renderModel={it.renderModel}
             svg={svg}
-            rawSvg={detailOf(detail)?.rawSvg ?? null}
-            versionNo={detailOf(detail)?.versionNo ?? null}
-            bridges={detailOf(detail)?.bridges ?? null}
-            offered={detailOf(detail)?.offered ?? null}
+            rawSvg={d?.rawSvg ?? null}
+            versionNo={d?.versionNo ?? null}
+            // undefined = הפירוט עוד לא נטען (אין מה להגיד); null = נטען ואין
+            // נתוני גישור — וזה מצב שמוצג, לא שתיקה. ראה ההערה ב-Diagnostics.
+            bridges={d ? d.bridges ?? null : undefined}
+            offered={d?.offered ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
-            debug={detailOf(detail)?.debug ?? it.debug}
+            debug={d?.debug ?? it.debug}
             svgName={`run-${it.id.slice(0, 8)}`}
           />
         </div>
@@ -959,13 +1031,16 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges = null, offered = null, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges, offered = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
   /** הפלט הגולמי, לפני מסגור. מוצג לצד `svg` — ההפרש ביניהם הוא מה שהצינור
    *  עשה אחרי שהמודל צייר, וזה מה שלא היה נראה כאן. */
   rawSvg?: string | null;
   versionNo?: number | null;
-  /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
+  /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. שלושה מצבים, בכוונה
+   *  בלי ברירת מחדל שממזגת אותם: מערך = יש נתונים (גם ריק הוא נתון); `null` =
+   *  אין נתוני גישור להרצה, וזה מוצג; `undefined` = הנתונים עוד לא כאן
+   *  (הפירוט בטעינה), ואז שותקים. */
   bridges?: BridgeRecord[] | null;
   /** ההצעות שהוצעו בהרצה. הראשונה היא הזוכה ומוצגת למעלה. */
   offered?: OfferedCandidate[] | null;
@@ -1060,10 +1135,19 @@ export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo
       {/* אפס גשרים ולא "אין מה להציג": בלי השורה הזאת, הרצה שהגישור לא רץ בה
           נראית בדיוק כמו הרצה שלא היה בה מה לגשר — וזו בדיוק ההבחנה שנדרשה
           כשחזר עיצוב שכל אותיותיו מרחפות. */}
-      {bridges !== null && bridges.length === 0 && (
+      {bridges?.length === 0 && (
         <div className="rounded-[2px] border border-graphite/10 bg-white p-3 text-xs text-ink60">
           לא נוסף אף גשר אחרי המעקב — כלומר לא חזר מהמעקב אף אי מנותק. אם בכל זאת
           יש בעיצוב מתכת מרחפת, היא לא זוהתה כאי.
+        </div>
+      )}
+      {/* אין נתונים ≠ אפס גשרים: הגישור נקרא מהגרסה שההרצה שמרה, והרצה שנדחתה
+          או שקדמה לתיעוד פשוט לא השאירה כלום. בלי ההודעה, היעדר שלב הצביעה
+          נראה כמו באג בתצוגה במקום כמצב של ההרצה. */}
+      {bridges === null && (
+        <div className="rounded-[2px] border border-graphite/10 bg-white p-3 text-xs text-ink60">
+          אין נתוני גישור להרצה הזו — לא נשמרה ממנה גרסה (הרצה שנדחתה או נכשלה),
+          או שהגרסה נשמרה לפני שהגישור החל להירשם.
         </div>
       )}
 

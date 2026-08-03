@@ -5,6 +5,7 @@ import { normalizeSvg } from "@/lib/geometry/normalize";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import { svgFrame } from "@/lib/geometry/frame";
 import { buildDxf, buildExportSvg } from "@/lib/dxf/dxf";
+import { exportFileBase } from "./fileName";
 
 // בניית קבצי הייצור של גרסה — סעיף 10.
 //
@@ -40,11 +41,15 @@ export async function buildVersionExport(
   const dxf = buildDxf(dxfInput);
   const exportSvg = buildExportSvg(dxfInput);
 
-  const safeName = design.name.replace(/[^\p{L}\p{N}_-]+/gu, "_").replace(/^_+|_+$/g, "") || "design";
-  const asciiName = /^[\w-]+$/.test(safeName) ? safeName : "design";
-  const fileBase = `${asciiName}_${design.product_type}_v${version.version_no}`;
-  const dxfPath = `exports/${design.id}/${fileBase}.dxf`;
-  const svgPath = `exports/${design.id}/${fileBase}.svg`;
+  // `0075-120-12` — הסידורי והמידות שהוזמנו, ולא המידות שנמדדו מהמסגרת: הרוחב
+  // עשוי להיבדל מהן בשבריר שנבלע במתיחה, ושם קובץ שאומר 11.7 במקום 12 מתאר
+  // פריט שאיש לא הזמין.
+  const fileBase = exportFileBase(design.serial, Number(design.length_mm), Number(design.width_mm));
+  // הגרסה נשארת בנתיב האחסון (ולא בשם ההורדה): שני ייצואים של אותו עיצוב הם
+  // שני אובייקטים, ורשומות `exports` מצביעות על שניהם.
+  const storedBase = `${fileBase}_v${version.version_no}`;
+  const dxfPath = `exports/${design.id}/${storedBase}.dxf`;
+  const svgPath = `exports/${design.id}/${storedBase}.svg`;
 
   await uploadFile(dxfPath, dxf, "application/dxf");
   await uploadFile(svgPath, exportSvg, "image/svg+xml");
@@ -58,10 +63,9 @@ export async function buildVersionExport(
   });
   if (error) throw new Error(error.message);
 
-  // שם ההורדה המלא (כולל עברית) עובר בפרמטר download של ה-URL החתום
-  const prettyBase = `${design.name}_${design.product_type}_v${version.version_no}`;
-  const dxfUrl = await signedUrlWithName(dxfPath, `${prettyBase}.dxf`);
-  const svgUrl = await signedUrlWithName(svgPath, `${prettyBase}.svg`);
+  // שם ההורדה עובר בפרמטר download של ה-URL החתום
+  const dxfUrl = await signedUrlWithName(dxfPath, `${fileBase}.dxf`);
+  const svgUrl = await signedUrlWithName(svgPath, `${fileBase}.svg`);
 
   return { dxfUrl, svgUrl, dxfPath, svgPath };
 }
