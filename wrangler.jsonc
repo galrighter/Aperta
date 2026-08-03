@@ -10,10 +10,13 @@
   },
   // הדומיין המותאם — wrangler יוצר את רשומות ה-DNS + התעודות אוטומטית בדיפלוי.
   // דורש שה-CLOUDFLARE_API_TOKEN יכלול Zone·Workers-Routes·Edit + Zone·DNS·Edit
-  // עבור rmjewel.com. הקנוניקל נשאר rmjewel.com (SITE.url).
+  // עבור aperta-designs.com. הקנוניקל הוא aperta-designs.com (SITE.url).
+  //
+  // הדומיין הישן (rmjewel.com) אינו כאן במכוון: הוא ממשיך לחיות מחוץ ל-Worker
+  // עם 301 לחדש — קישורי שיתוף שנשלחו בוואטסאפ ומיילים שכבר יצאו מצביעים אליו.
   "routes": [
-    { "pattern": "rmjewel.com", "custom_domain": true },
-    { "pattern": "www.rmjewel.com", "custom_domain": true }
+    { "pattern": "aperta-designs.com", "custom_domain": true },
+    { "pattern": "www.aperta-designs.com", "custom_domain": true }
   ],
   // מסגור המועמדים רץ ב-Worker נפרד (wrangler.frame.jsonc). לא בשביל מקביליות
   // אלא בשביל תקציב: תקרת ה-128MB היא לכל isolate ומשותפת לכל הבקשות שרצות בו,

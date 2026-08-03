@@ -3,9 +3,9 @@
 
 export const SITE = {
   // כתובת האתר בייצור (מוגדר ב-wrangler.jsonc כ-custom domain).
-  url: "https://rmjewel.com",
+  url: "https://aperta-designs.com",
   // כתובת יצירת קשר הרשמית של המותג, על דומיין האתר.
-  contactEmail: "info@rmjewel.com",
+  contactEmail: "info@aperta-designs.com",
   // רשתות חברתיות — להוסיף כשקיימות (null = לא מוצג).
   instagram: null as string | null,
 } as const;
@@ -19,7 +19,7 @@ export const SITE = {
  * שהוא מפסיק (docs/SITE_AUDIT_2026-08.md §7א).
  */
 export function vectorizerUrl(): string {
-  return process.env.VECTORIZER_URL || "https://vec.rmjewel.com";
+  return process.env.VECTORIZER_URL || "https://vec.aperta-designs.com";
 }
 
 // פריטי הניווט הראשיים. label הוא מפתח לתוך he.site.
