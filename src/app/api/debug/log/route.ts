@@ -7,6 +7,7 @@ import {
 import { designCode } from "@/lib/designCode";
 import { listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
+import { decodeRunCursor, encodeRunCursor, legacyRunCursor } from "@/lib/runs/cursor";
 
 // בק־אופיס: יומן כל הרצות הצינור (מכל המסלולים) — הדמיה, שלבי ביניים, סטטוס
 // ומדדים, כדי לאבחן בעיות מתלונות משתמשים ולכייל יחד את איכות ההמרה.
@@ -22,10 +23,15 @@ import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 // קישור ל-/api/debug/log/<id>/image/<name>, שחותם בעצמו — בקשה לתמונה, תקציב
 // לתמונה. עלות הרשימה ירדה מ-401 בקשות לאחת.
 //
-// והרשימה מעומדת: `limit` + `before` (סמן זמן, לא `offset`). קודם היא החזירה 80
+// והרשימה מעומדת: `limit` + `cursor` (סמן, לא `offset`). קודם היא החזירה 80
 // הרצות קבועות — גם כבד וגם קטוע, כי הרצה שמעבר ל-80 פשוט לא הייתה קיימת במסך.
 // גם הסינון עבר לכאן: "נכשלו" סורק את כל ההיסטוריה, ולא רק את מה שנטען.
 // הספירה יושבת ב-/api/debug/log/counts — מספר בלי שורות.
+//
+// הסמן היה חותמת הזמן כמו שהיא (`before`), והוא נסע גולמי בשורת הכתובת עם ה-`+`
+// של אזור הזמן. הוא הגיע לכאן כרווח, יצא ככה ל-Supabase, וכל לחיצה על "עוד"
+// חזרה 400: `invalid input syntax for type timestamp with time zone`. עכשיו הוא
+// base64url של `(created_at, id)` — ראה `lib/runs/cursor`.
 
 export const maxDuration = 60;
 
@@ -58,17 +64,21 @@ export async function GET(req: Request) {
     requireAdmin(req);
     const params = new URL(req.url).searchParams;
     const limit = pageSize(params.get("limit"));
-    const before = params.get("before");
+    // `before` הוא הסמן הישן (חותמת בלבד) — מתקבל כדי שלשונית שנפתחה לפני
+    // הפריסה תמשיך לעמד במקום להיתקע על כפתור שלא עושה כלום.
+    const cursor = decodeRunCursor(params.get("cursor")) ?? legacyRunCursor(params.get("before"));
     const statusParam = params.get("status");
     const status: RunStatusFilter | null =
       statusParam === "approved" || statusParam === "problem" ? statusParam : null;
 
     // שורה אחת מעל גודל העמוד היא הדרך הזולה לדעת אם יש עמוד נוסף — בלי
     // שאילתת ספירה שנייה לכל גלילה.
-    const fetched = await listRuns({ limit: limit + 1, before, status });
+    const fetched = await listRuns({ limit: limit + 1, cursor, status });
     const hasMore = fetched.length > limit;
     const rows = hasMore ? fetched.slice(0, limit) : fetched;
-    const nextBefore = hasMore && rows.length ? rows[rows.length - 1].created_at : null;
+    const last = hasMore && rows.length ? rows[rows.length - 1] : null;
+    const nextCursor = last ? encodeRunCursor(last) : null;
+    const before = cursor?.createdAt ?? null;
 
     // ניסיון שלא הגיע לשורת הרצה. בלעדיו יצירה שנקטעה נעדרת מהיומן לגמרי,
     // ו"אין שורה" נראה בדיוק כמו "לא היה ניסיון" — המקרה היחיד שאי אפשר לאבחן.
@@ -137,8 +147,22 @@ export async function GET(req: Request) {
       ref: (o.designId && designCode(serials.get(o.designId) ?? null)) || null,
     }));
 
-    const merged = [...items, ...withOwners].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return NextResponse.json({ items: merged, hasMore, nextBefore });
+    // `localeCompare` היה משווה כאן חותמות ISO לפי כללי מיון של שפה, שבהם
+    // סימני פיסוק אינם בסדר ה-codepoint שלהם — חותמת בלי שבריר שנייה (Postgres
+    // משמיט אותו כשהוא אפס) הייתה נופלת בצד הלא נכון של שכנתה. ההשוואה כאן היא
+    // על הזמן עצמו, ושובר השוויון הוא המזהה — אותו סדר שהשאילתה מחזירה.
+    const merged = [...items, ...withOwners].sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+    );
+    // `nextBefore` נשאר חותמת, ולא הסמן החדש: לשונית שנפתחה לפני הפריסה שולחת
+    // בחזרה בדיוק את מה שהיא קיבלה, וסמן שהיא לא יודעת לקרוא היה מחזיר אותה
+    // לראש היומן בלולאה.
+    return NextResponse.json({
+      items: merged,
+      hasMore,
+      nextCursor,
+      nextBefore: last ? last.created_at : null,
+    });
   } catch (err) {
     return handleRouteError(err);
   }

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./supabase";
 import type { ProductType } from "@/lib/fabrication.config";
+import type { RunCursor } from "@/lib/runs/cursor";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
 // שנוכל לאבחן תלונות ולכייל יחד. ראה migration 0003_generation_runs.sql.
@@ -251,36 +252,58 @@ export type RunStatusFilter = "approved" | "problem";
 export interface ListRunsOptions {
   limit?: number;
   /**
-   * העמוד הבא: רק הרצות שקדמו לחותמת הזמן הזו. סמן ולא `offset` — היומן מקבל
-   * שורות חדשות בראשו כל הזמן, ו-offset היה מדלג על שורה או מכפיל אותה בכל
-   * פעם שהרצה נוספת נכתבה בין עמוד לעמוד.
+   * העמוד הבא: רק הרצות שקודמות לסמן. סמן ולא `offset` — היומן מקבל שורות
+   * חדשות בראשו כל הזמן, ו-offset היה מדלג על שורה או מכפיל אותה בכל פעם
+   * שהרצה נוספת נכתבה בין עמוד לעמוד.
+   *
+   * הסמן הוא `(created_at, id)` ולא חותמת לבדה: ראה `runs/cursor`.
    */
-  before?: string | null;
+  cursor?: RunCursor | null;
   /** סינון בשרת, כדי ש"נכשלו" יסרוק את כל ההיסטוריה ולא רק את העמוד הראשון. */
   status?: RunStatusFilter | null;
 }
 
 export async function listRuns(opts: ListRunsOptions = {}): Promise<RunListRow[]> {
-  const { limit = 20, before = null, status = null } = opts;
+  const { limit = 20, cursor = null, status = null } = opts;
   const sb = supabaseAdmin();
-  const query = (columns: string) => {
+
+  /**
+   * חלון העמוד. `tie` הוא הזנב של גוש החותמת שהסמן יושב בתוכו — אותה חותמת
+   * בדיוק, מזהה קטן יותר. בלעדיו `lt` על החותמת מדלג על כל הגוש, וכל הרצה בו
+   * שלא נכנסה לעמוד הקודם נעלמת מהיומן; כשהגוש יושב על גבול העמוד זה מה שהופך
+   * לחיצה על "עוד" לעמוד ריק. שאילתה ולא שליפה רחבה עם קילוף בזיכרון: כל שורה
+   * כאן נושאת את ה-debug שלה, וזו בדיוק העלות שהעימוד בא להוריד.
+   */
+  const query = (columns: string, tie: boolean) => {
     let q = sb.from("generation_runs").select(columns);
-    if (before) q = q.lt("created_at", before);
+    if (tie) q = q.eq("created_at", cursor!.createdAt).lt("id", cursor!.id!);
+    else if (cursor) q = q.lt("created_at", cursor.createdAt);
     if (status === "approved") q = q.eq("status", "approved");
     if (status === "problem") q = q.neq("status", "approved");
-    return q.order("created_at", { ascending: false }).limit(limit);
+    // `id` כשובר שוויון, כדי שהסדר יהיה אותו סדר שהסמן מדבר בו.
+    return q.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(limit);
   };
 
-  const { data, error } = await query(LIST_COLUMNS);
-  if (!error) return (data ?? []) as unknown as RunListRow[];
+  /** זנב הגוש קודם — הוא שווה בחותמת ולכן קודם לכל מה שישן ממנה. */
+  const page = async (columns: string) => {
+    const parts = await Promise.all(
+      cursor?.id ? [query(columns, true), query(columns, false)] : [query(columns, false)],
+    );
+    const failed = parts.find((p) => p.error);
+    if (failed?.error) return { error: failed.error, rows: [] };
+    return { error: null, rows: parts.flatMap((p) => (p.data ?? []) as unknown[]).slice(0, limit) };
+  };
+
+  const { rows, error } = await page(LIST_COLUMNS);
+  if (!error) return rows as RunListRow[];
 
   // migrate.yml ו-deploy.yml נדלקים מאותו push ורצים במקביל, כך שיש חלון שבו
   // ה-Worker כבר מבקש עמודה וה-DB עוד לא מכיר אותה. במקום להפיל את היומן על
   // תלות בסדר, נופלים חזרה למסלול הישן — איטי, אבל עובד — עד שההגירה נוחתת.
   if (!/has_svg|inputs|input_image_path/.test(error.message)) throw new Error(error.message);
-  const legacy = await query(`${BASE_COLUMNS}, svg`);
+  const legacy = await page(`${BASE_COLUMNS}, svg`);
   if (legacy.error) throw new Error(legacy.error.message);
-  return ((legacy.data ?? []) as unknown as Array<
+  return (legacy.rows as Array<
     Omit<RunListRow, "has_svg" | "inputs" | "input_image_path"> & { svg: string | null }
   >).map(({ svg, ...rest }) => ({
     ...rest,
