@@ -6,7 +6,7 @@ import {
   Eyebrow, ScreenTitle, FieldLabel, OptionBtn, Slider, PrimaryBtn, Modal,
 } from "./ui";
 import { WidthPreview } from "./Artwork";
-import { WIDTH, hasExactSize, type CreateState, type Fit } from "./model";
+import { WIDTH, hasExactSize, sizeIssue, type CreateState, type Fit } from "./model";
 
 const d = he.design;
 
@@ -24,6 +24,14 @@ export function SizesScreen({
   const ring = s.product === "ring";
   const exact = hasExactSize(s);
   const w = ring ? WIDTH.ring : WIDTH.bracelet;
+  // מידה שאינה מדידה אפשרית עוצרת כאן. הרגע הזה הוא היחיד שבו אפשר לתקן אותה
+  // בלי לזרוק כלום: אחריו היא הופכת לאורך פריסה, לפרומפט ולהדמיה — ומודל
+  // התמונה מבצע אותה נאמנה. ראו `sizeIssue` והתיעוד של RM-0077.
+  const issue = sizeIssue(s);
+  // ההצעה בסנטימטרים מוצגת רק כשהיא באמת מסבירה את המספר שהוקלד: 10 → 100
+  // נכנס לטווח, 400 → 4000 לא, ואז המשפט היה ניחוש ולא עזרה.
+  const cmHint =
+    issue && issue.value * 10 >= issue.lo && issue.value * 10 <= issue.hi ? issue.value : null;
 
   return (
     <section className="mx-auto max-w-[1100px] px-5 py-14 sm:px-10">
@@ -75,9 +83,19 @@ export function SizesScreen({
             value={ring ? s.ringSize : s.circ}
             onChange={(e) => set(ring ? { ringSize: e.target.value } : { circ: e.target.value })}
             placeholder={ring ? d.ringSizePlaceholder : d.circPlaceholder}
-            className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3.5 text-base transition-colors focus:border-cobalt focus:outline-none"
+            aria-invalid={issue ? true : undefined}
+            className={`w-full rounded-[2px] border bg-white px-4 py-3.5 text-base transition-colors focus:outline-none ${
+              issue ? "border-[#c0413b]" : "border-graphite/20 focus:border-cobalt"
+            }`}
           />
-          <p className="mt-2 text-[13px] text-ink60">{d.exactOverridesPreset}</p>
+          {issue ? (
+            <p role="alert" className="mt-2 text-[13px] leading-relaxed" style={{ color: "#c0413b" }}>
+              {d.sizeOutOfRange(issue.value, issue.lo, issue.hi)}
+              {cmHint !== null && <span className="block">{d.sizeCmHint(cmHint)}</span>}
+            </p>
+          ) : (
+            <p className="mt-2 text-[13px] text-ink60">{d.exactOverridesPreset}</p>
+          )}
 
           {/* ישיבה — צמיד בלבד */}
           {!ring && (
@@ -117,7 +135,7 @@ export function SizesScreen({
           )}
 
           <div className="mt-9">
-            <PrimaryBtn onClick={onNext} disabled={busy}>
+            <PrimaryBtn onClick={onNext} disabled={busy || Boolean(issue)}>
               {nextLabel ?? d.sizesContinue}
             </PrimaryBtn>
           </div>

@@ -108,6 +108,7 @@ export async function POST(req: Request) {
     if (body.promptOverride || body.rowsOverride) requireAdmin(req);
 
     const design = await requireDesignAccess(req, body.designId);
+    assertBuildableDims(design);
     const used = await countTodayGenerations(design.profile_id);
     if (used >= FAB.DAILY_GENERATION_LIMIT) {
       throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);
@@ -187,6 +188,31 @@ async function notifyDesignReady(design: DesignRow): Promise<void> {
     if (!res.ok) console.error("design-ready mail failed:", res.error);
   } catch (e) {
     console.error("design-ready mail failed:", (e as Error).message);
+  }
+}
+
+/**
+ * שער השפיות על מידות העיצוב, לפני שיוצאת קריאה שעולה כסף.
+ *
+ * זו **אינה** ולידציית ייצור — היא רצה על הפריסה שהוזמנה, לא על מה שנחתך —
+ * ואינה מתקנת דבר. היא דוחה אורך שאינו יכול להיות פריסה של תכשיט על גוף.
+ *
+ * למה בשרת ולא רק במסך המידות: המסך הוא הגנה טובה מפני הקלדה, אבל הכסף נשרף
+ * כאן. ב-RM-0077 (3.8.26) הוזמן צמיד בהיקף 10 מ"מ; הפרומפט ביקש ממודל התמונה
+ * פריט "15.8mm long and 18mm wide", המודל צייר בדיוק את זה, והווקטורייזר עקב
+ * אחריו ב-IoU 0.93. ההרצה נרשמה `approved` — כי לפי כל מדד בצינור היא הצליחה.
+ * אין שער אחרי הרנדר שיכול לתפוס קלט בלתי אפשרי, וניסיון חוזר ברקע היה מחזיר
+ * את אותו ריבוע בדיוק, בכסף נוסף.
+ */
+function assertBuildableDims(design: DesignRow): void {
+  const [lo, hi] = FAB.products[design.product_type].lengthLimitMm;
+  const lengthMm = Number(design.length_mm);
+  if (!Number.isFinite(lengthMm) || lengthMm < lo || lengthMm > hi) {
+    throw new ApiError(
+      "bad_size",
+      `Blank length ${design.length_mm}mm is outside what a ${design.product_type} can be (${lo}–${hi}mm) — check the measurement that produced it.`,
+      400,
+    );
   }
 }
 

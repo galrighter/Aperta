@@ -146,6 +146,12 @@ export interface CreateState {
   procError: string | null;
   /** מזהה טכני של הכשל (code · status) — לאבחון מצילום מסך. */
   procErrorDetail: string | null;
+  /**
+   * קוד הכשל, לבדו. `procErrorDetail` נועד לעין אנושית ולא להשוואה, ומה שנדרש
+   * כאן הוא הכרעה: יש כשלים שניסיון חוזר מתקן ויש כשלים שהוא רק חוזר עליהם.
+   * ראו `RETRY_POINTLESS` ב-ProcessingScreen.
+   */
+  procErrorCode: string | null;
   /** כשל במעבר בין הצעות. procError מוצג רק במסך העיבוד, ולכן לא היה למי
    *  לספר שהלחיצה נכשלה — היא פשוט לא עשתה כלום. */
   chooseError: string | null;
@@ -200,6 +206,7 @@ export const INITIAL: CreateState = {
   activeEdit: -1,
   procError: null,
   procErrorDetail: null,
+  procErrorCode: null,
   chooseError: null,
   editError: null,
   applying: false,
@@ -363,6 +370,44 @@ export const hasExactSize = (s: CreateState): boolean => {
   const v = parseFloat(s.product === "ring" ? s.ringSize : s.circ);
   return !Number.isNaN(v) && v > 0;
 };
+
+/**
+ * הטווח שהשדה "מידה מדויקת" מקבל, במ"מ.
+ *
+ * זו מדידה של גוף, ולכן הגבולות הם אנטומיים ולא ייצוריים: 9 ס"מ הוא פרק יד של
+ * תינוק ו-26 ס"מ הוא פרק יד גדול מאוד. הם רחבים בכוונה — התפקיד היחיד שלהם הוא
+ * לתפוס מספר שאינו מדידה בכלל.
+ *
+ * בטבעת השדה מקבל **שתי** צורות (ראו `circumferenceMm`): עד 30 זו מידה
+ * אמריקאית, שממילא נצבטת לטבלה ב-`idMmFromUsSize`, ומעליה זה היקף במ"מ. לכן
+ * הטווח כאן חל רק על הצורה השנייה.
+ */
+export const CIRC_LIMIT_MM: Record<Product, [number, number]> = {
+  bracelet: [90, 260],
+  ring: [30, 100],
+};
+
+/**
+ * המידה שהוזנה אינה מדידה אפשרית — ומה להגיד עליה.
+ *
+ * `null` כשאין בעיה, וגם כשלא הוזנה מידה מדויקת בכלל: כפתור סטנדרטי לא יכול
+ * להיות מחוץ לטווח.
+ *
+ * **חוסם ולא מתקן.** `FAB.lengthHintMm` מתעד למה חיתוך שקט של מידה הוא הדבר
+ * הגרוע ביותר שאפשר לעשות כאן (RM-0065: הוזמן 11 ס"מ ונשמר פס ל-13 ס"מ, בלי
+ * חיווי). מה שנוסף עכשיו הוא הכיוון ההפוך: מידה שאי אפשר לייצר לפיה גם לא
+ * ממשיכה בשקט הלאה. ב-RM-0077 (3.8.26) הוזן היקף 10 — עשרה מילימטרים — והמסע
+ * המשיך עד להדמיה של ריבוע 15.8×18 מ"מ שהמודל צייר נאמנה לפי הפרומפט.
+ */
+export function sizeIssue(s: CreateState): { value: number; lo: number; hi: number } | null {
+  if (!hasExactSize(s)) return null;
+  const product = s.product ?? "bracelet";
+  const value = parseFloat(product === "ring" ? s.ringSize : s.circ);
+  // מידה אמריקאית — לא היקף, ולכן לא נמדדת מול טווח ההיקפים.
+  if (product === "ring" && value <= 30) return null;
+  const [lo, hi] = CIRC_LIMIT_MM[product];
+  return value < lo || value > hi ? { value, lo, hi } : null;
+}
 
 /* ===== תמחור (handoff §7) ===== */
 

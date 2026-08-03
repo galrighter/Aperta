@@ -19,12 +19,29 @@ function shuffled<T>(items: readonly T[]): T[] {
   return a;
 }
 
+/**
+ * כשלים שניסיון חוזר רק חוזר עליהם.
+ *
+ * `content_blocked` — מסנן התוכן דחה את התיאור, ואותו תיאור יידחה גם בפעם
+ * הבאה. ב-RM-0077 (3.8.26) זה קרה ארבע פעמים ברציפות מול "עיטורי מיקי מאוס",
+ * וכפתור "נסה שוב" היה הפעולה הראשית בכל אחת מהן.
+ * `bad_size` — המידה נדחתה, והמקום לתקן אותה הוא מסך המידות.
+ * `text_too_long` — הכיתוב לא נכנס לפריט, וזה נכון גם בהרצה הבאה.
+ * `rate_limited` — המכסה היומית; מחר, לא עכשיו.
+ *
+ * מה שאינו כאן הוא ברירת המחדל: כשל רנדר, ניתוק, דחיית ווקטורייזר — כולם
+ * מקריים, ושם ניסיון חוזר הוא בדיוק הפעולה הנכונה.
+ */
+const RETRY_POINTLESS = new Set(["content_blocked", "bad_size", "text_too_long", "rate_limited"]);
+
 export function ProcessingScreen({
-  error, detail, onRetry, onBack,
+  error, detail, code, onRetry, onBack,
 }: {
   error: string | null;
   /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
   detail?: string | null;
+  /** קוד הכשל — קובע אם "נסה שוב" הוא בכלל פעולה. */
+  code?: string | null;
   onRetry: () => void;
   onBack: () => void;
 }) {
@@ -79,9 +96,17 @@ export function ProcessingScreen({
               ואי אפשר להבדיל בין דחיית ווקטורייזר, תשובה קטועה, וקריסת שרת. */}
           {detail && <span className="mt-1.5 block text-[11px] text-mist">{detail}</span>}
         </p>
+        {/* כשניסיון חוזר חסר טעם, החזרה לתיאור היא הפעולה — ולא אפשרות משנית
+            לצד כפתור שמזמין לחזור על אותו כשל. */}
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>
-          <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
+          {RETRY_POINTLESS.has(code ?? "") ? (
+            <PrimaryBtn onClick={onBack}>{d.procBack}</PrimaryBtn>
+          ) : (
+            <>
+              <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>
+              <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
+            </>
+          )}
         </div>
       </section>
     );
