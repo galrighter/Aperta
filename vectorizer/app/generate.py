@@ -25,7 +25,7 @@ import anyio
 
 from . import imagegen, pipeline, uploads
 from .core import renderer
-from .core.panels import split_panels
+from .core.panels import clipped_edges, split_panels
 
 STAGE_NAMES = ("conditioned", "overlay", "difference", "rendered")
 
@@ -120,6 +120,41 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
         openai_key, job.prompt, job.calls, reference, model, size=job.size
     )
 
+    # A render whose metal touches the canvas edge holds only part of the piece:
+    # the model drew past the border despite being asked for white all around,
+    # and no later stage can tell — the crop trims to content and every gate
+    # compares against the clipped picture (RM-0076 sailed through approved).
+    # The remedy is one more render, quietly: same prompt, same model, one round
+    # — the worst case doubles the run's image cost and nothing recurses. A
+    # clean replacement takes the clipped one's slot; a clipped replacement
+    # leaves the original in place. Either way the journal hears about it below
+    # (debug.stages / debug.warnings) — quiet toward the customer, not the log.
+    edge_notes: list[str] = []
+    clipped = {i: edges for i, r in enumerate(renders) if (edges := clipped_edges(r))}
+    if clipped:
+        try:
+            replacements = await imagegen.render_many(
+                openai_key, job.prompt, len(clipped), reference, model, size=job.size
+            )
+        except imagegen.ImageGenError as exc:
+            replacements = []
+            edge_notes.append(f"clipped-render retry failed: {exc}")
+        indices = list(clipped)
+        for i, replacement in zip(indices, replacements):
+            at = "+".join(clipped[i])
+            again = clipped_edges(replacement)
+            if again:
+                edge_notes.append(
+                    f"render {i} clipped at {at}; retry clipped too ({'+'.join(again)}), kept the original"
+                )
+            else:
+                renders[i] = replacement
+                edge_notes.append(f"render {i} clipped at {at}; replaced after one retry")
+        # render_many returns whatever succeeded — a short list leaves the tail
+        # of the clipped renders as they were, and that is worth a line each.
+        for i in indices[len(replacements) :]:
+            edge_notes.append(f"render {i} clipped at {'+'.join(clipped[i])}; no replacement came back")
+
     # One panel per piece of every render. A render holding a single piece
     # passes through untouched, so the common case costs nothing.
     panels: list[bytes] = []
@@ -198,6 +233,19 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     if selected is not None:
         debug = pipeline.build_debug(selected)
         debug.pop("images", None)  # the pictures went to storage, not down the wire
+        # The edge check ran before any pipeline stage, on the whole render, so
+        # it reads first in the timeline — and its notes double as warnings, so
+        # the journal shows what was replaced without anyone opening the box.
+        debug["stages"] = [
+            {
+                "name": "edges",
+                "status": "warn" if edge_notes else "ok",
+                "detail": "; ".join(edge_notes) or "no metal touching the canvas edge",
+            },
+            *debug.get("stages", []),
+        ]
+        if edge_notes:
+            debug["warnings"] = [*debug.get("warnings", []), *edge_notes]
         sel = selected.selection.selected
         payload.update(pipeline.to_result_dict(selected))
         payload["debug"] = debug

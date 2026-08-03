@@ -7,7 +7,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from app.core.panels import find_bands, split_panels, split_rows
+from app.core.panels import clipped_edges, find_bands, split_panels, split_rows
 
 
 def striped(rows: int, shadow: bool = False) -> np.ndarray:
@@ -114,3 +114,35 @@ def test_a_band_that_does_not_hold_the_asked_columns_is_left_whole() -> None:
 
 def test_split_rows_still_cuts_rows_only() -> None:
     assert len(split_rows(_png(gridded(3, 2)))) == 3
+
+
+# --- clipped renders ---------------------------------------------------------
+#
+# A piece drawn with white margin all around never puts metal on the border; a
+# piece the model drew past the canvas does, in a long run — that is the whole
+# signal (RM-0076: the strip ran off the left border and reached the customer
+# with an end cut mid-motif).
+
+
+def test_a_framed_piece_touches_no_edge() -> None:
+    assert clipped_edges(_png(striped(1))) == []
+    assert clipped_edges(_png(gridded(2, 2))) == []
+
+
+def test_a_strip_running_off_the_left_border_is_caught() -> None:
+    rgba = striped(1)
+    rgba[80:120, 0:150, :3] = 17  # the strip continues to (and past) x=0
+    assert clipped_edges(_png(rgba)) == ["left"]
+
+
+def test_each_edge_is_named_for_itself() -> None:
+    rgba = striped(1)
+    rgba[0:4, 100:200, :3] = 17  # metal on the top border
+    rgba[80:120, 280:300, :3] = 17  # and running off the right
+    assert clipped_edges(_png(rgba)) == ["right", "top"]
+
+
+def test_an_edge_speck_is_not_a_clipped_piece() -> None:
+    rgba = striped(1)
+    rgba[100, 0, :3] = 0  # one dark pixel on the border — anti-aliasing, not metal
+    assert clipped_edges(_png(rgba)) == []
