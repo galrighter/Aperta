@@ -1,5 +1,5 @@
 import { svgFrame } from "@/lib/geometry/frame";
-import { LANDSCAPE, type Canvas } from "./canvas";
+import { type Canvas } from "./canvas";
 
 // תמונת הבסיס לעריכה: העיצוב שהלקוחה רואה עכשיו, מצויר בדיוק כמו הדמיה של מודל
 // התמונה — מתכת שחורה מט על לבן שטוח — כדי שאפשר יהיה למסור אותו כרפרנס ל-
@@ -12,10 +12,6 @@ import { LANDSCAPE, type Canvas } from "./canvas";
 //
 // היפוך: ב-SVG הקנוני החיתוכים הם המסלולים השחורים; בהדמיה המתכת היא השחורה
 // והחיתוכים הם הרקע הלבן שנראה מבעדם. לכן החיתוכים נכנסים כמסכה על פס מלא.
-
-/** קנבס ההדמיה — חייב להיות **אותו** קנבס שנשלח למודל, אחרת תמונת הייחוס
- *  והפלט בצורות שונות. ברירת המחדל היא לרוחב, מה שהיה תמיד. */
-export const BASE_CANVAS = LANDSCAPE;
 
 /** כמה מהקנבס הפריט תופס. שוליים לבנים נדיבים, כמו בהדמיה אמיתית. */
 const FILL = 0.9;
@@ -37,10 +33,15 @@ function cutoutPathData(svg: string): string[] {
  * בונה SVG לרסטור על הקופסה: פס מתכת שחור עם החיתוכים פתוחים ללבן, ממורכז על
  * קנבס לבן ביחס ההדמיה. מחזיר null אם אין מה לצייר — ואז העריכה נופלת חזרה
  * ליצירה רגילה במקום למסור למודל תמונה ריקה.
+ *
+ * לקנבס אין ברירת מחדל בכוונה: הוא חייב להיות **אותו** קנבס שנשלח למודל
+ * באותה קריאה. ברירת מחדל לרוחב היא איך שעריכה של פריט בפס הקנבס-לאורך
+ * (lib/render/canvas.ts) שלחה ייחוס רחב מול קנבס צר — והמודל החזיר פריט
+ * חתוך בקצוות.
  */
 export function buildBaseRenderSvg(
   canonicalSvg: string | null | undefined,
-  canvas: Canvas = BASE_CANVAS,
+  canvas: Canvas,
 ): string | null {
   if (!canonicalSvg) return null;
   const frame = svgFrame(canonicalSvg);

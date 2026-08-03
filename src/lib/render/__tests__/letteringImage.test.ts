@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildLetteringRenderSvg } from "../letteringImage";
-import { BASE_CANVAS } from "../baseImage";
+import { LANDSCAPE } from "../canvas";
 import { validateDesign } from "@/lib/geometry/validate";
 import { ringToPathD } from "@/lib/geometry/paths";
 import { FONT_IDS } from "@/lib/text/fonts";
@@ -10,9 +10,9 @@ const RING = { lengthMm: 54, widthMm: 8, thicknessMm: 1.2 };
 
 describe("buildLetteringRenderSvg", () => {
   it("draws the lettering as openings in a black strip, on the render canvas", async () => {
-    const ref = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, ""))!;
+    const ref = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, "", 1, LANDSCAPE))!;
     expect(ref).toBeTruthy();
-    expect(ref.svg).toContain(`viewBox="0 0 ${BASE_CANVAS.widthPx} ${BASE_CANVAS.heightPx}"`);
+    expect(ref.svg).toContain(`viewBox="0 0 ${LANDSCAPE.widthPx} ${LANDSCAPE.heightPx}"`);
     // הפס שחור, והאותיות הן מסכה שפותחת אותו ללבן — הפולריות היא כל העניין
     expect(ref.svg).toContain('fill="#111111"');
     expect(ref.svg).toContain('mask="url(#lt0)"');
@@ -21,7 +21,7 @@ describe("buildLetteringRenderSvg", () => {
   });
 
   it("gives every row its own typeface, so the alternatives differ", async () => {
-    const ref = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 3, ""))!;
+    const ref = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 3, "", 1, LANDSCAPE))!;
     expect(ref.rows).toHaveLength(3);
     expect(new Set(ref.rows.map((r) => r.fontId)).size).toBe(3);
     // ...ובאותה תמונה אחת, אחרת המגוון היה עולה קריאה נוספת למודל
@@ -29,15 +29,15 @@ describe("buildLetteringRenderSvg", () => {
   });
 
   it("follows the brief when it asks for a character", async () => {
-    const soft = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, "צמיד עדין ורומנטי"))!;
-    const loud = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, "משהו חזק ובולט"))!;
+    const soft = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, "צמיד עדין ורומנטי", 1, LANDSCAPE))!;
+    const loud = (await buildLetteringRenderSvg("ענבל", CUFF, "bracelet", 1, "משהו חזק ובולט", 1, LANDSCAPE))!;
     expect(soft.rows[0].fontId).toBe("delicate");
     expect(loud.rows[0].fontId).toBe("display");
   });
 
   it("keeps the lettering inside the strip, however long the text", async () => {
     for (const text of ["א", "ענבל רייטר", "כל עוד בלבב פנימה נפש"]) {
-      const ref = (await buildLetteringRenderSvg(text, CUFF, "bracelet", 1, ""))!;
+      const ref = (await buildLetteringRenderSvg(text, CUFF, "bracelet", 1, "", 1, LANDSCAPE))!;
       expect(ref).toBeTruthy();
       expect(ref.rows[0].textWidthMm).toBeLessThanOrEqual(CUFF.lengthMm * 0.84 + 0.01);
       expect(ref.rows[0].letterHeightMm).toBeLessThanOrEqual(CUFF.widthMm);
@@ -45,20 +45,20 @@ describe("buildLetteringRenderSvg", () => {
   });
 
   it("fits a ring too — the same text, a much smaller letter", async () => {
-    const cuff = (await buildLetteringRenderSvg("אהבה", CUFF, "bracelet", 1, ""))!;
-    const ring = (await buildLetteringRenderSvg("אהבה", RING, "ring", 1, ""))!;
+    const cuff = (await buildLetteringRenderSvg("אהבה", CUFF, "bracelet", 1, "", 1, LANDSCAPE))!;
+    const ring = (await buildLetteringRenderSvg("אהבה", RING, "ring", 1, "", 1, LANDSCAPE))!;
     expect(ring).toBeTruthy();
     expect(ring.rows[0].letterHeightMm).toBeLessThan(cuff.rows[0].letterHeightMm);
   });
 
   it("says no rather than cutting something illegible", async () => {
-    expect(await buildLetteringRenderSvg("", CUFF, "bracelet", 1, "")).toBeNull();
-    expect(await buildLetteringRenderSvg("   ", CUFF, "bracelet", 1, "")).toBeNull();
+    expect(await buildLetteringRenderSvg("", CUFF, "bracelet", 1, "", 1, LANDSCAPE)).toBeNull();
+    expect(await buildLetteringRenderSvg("   ", CUFF, "bracelet", 1, "", 1, LANDSCAPE)).toBeNull();
     // טקסט באורך המרבי שה-API מקבל, על טבעת: אין גובה אות שגם נכנס לאורך
     // וגם נשאר קריא — בשום פנים מהמאגר
     const longest = "כל עוד בלבב פנימה נפש יהודי הומיה ולפאתי"; // 40 תווים
     expect(longest).toHaveLength(40);
-    expect(await buildLetteringRenderSvg(longest, RING, "ring", 1, "")).toBeNull();
+    expect(await buildLetteringRenderSvg(longest, RING, "ring", 1, "", 1, LANDSCAPE)).toBeNull();
   });
 });
 
@@ -73,7 +73,7 @@ describe("bridging holds the enclosed parts of letters", () => {
   // מהאילוץ. אות בגובה שרירותי קרוב לקצה מנתקת את הפס ונופלת ב-V2 — וזה
   // כשל של ההצבה, לא של הגישור.
   it("holds every face in the roster", async () => {
-    const ref = (await buildLetteringRenderSvg("מםעסטד רייטר", CUFF, "bracelet", FONT_IDS.length, ""))!;
+    const ref = (await buildLetteringRenderSvg("מםעסטד רייטר", CUFF, "bracelet", FONT_IDS.length, "", 1, LANDSCAPE))!;
     expect(ref.rows).toHaveLength(FONT_IDS.length);
     for (const row of ref.rows) {
       const svg = wrap(row.glyphs
