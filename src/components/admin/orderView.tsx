@@ -3,10 +3,10 @@
 // חלקי התצוגה של הזמנה, במקום אחד: התווית של הסטטוס, הגיל, פירוט המחיר וקבצי
 // הייצור. הם מופיעים גם בשורת התור וגם במסך ההזמנה הבודדת, ושני מקומות שמציירים
 // סטטוס אחרת הם שני מקומות שמתחזקים אחרת.
-import { useState } from "react";
 import { he } from "@/i18n/he";
 import type { OrderRow, OrderStatus } from "@/lib/db/orders";
 import { daysInStatus, isStuck } from "@/lib/orders/queue";
+import ExportFiles from "./ExportFiles";
 
 const s = he.site;
 const d = he.design;
@@ -96,62 +96,11 @@ export function OrderFiles({
   designId: string;
   versionId: string | null;
 }) {
-  const [state, setState] = useState<"idle" | "busy" | "error" | "blocked" | "none">("idle");
-  const [files, setFiles] = useState<{ svgUrl: string; dxfUrl: string; warn: boolean } | null>(null);
-
-  async function run() {
-    setState("busy");
-    const res = await fetch(`/api/admin/designs/${designId}/export`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ versionId }),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
-      setState(
-        body?.error?.code === "export_blocked"
-          ? "blocked"
-          : body?.error?.code === "no_version"
-            ? "none"
-            : "error",
-      );
-      return;
-    }
-    const body = (await res.json()) as { svgUrl: string; dxfUrl: string; validationStatus: string };
-    setFiles({ svgUrl: body.svgUrl, dxfUrl: body.dxfUrl, warn: body.validationStatus === "warn" });
-    setState("idle");
-  }
-
-  if (files) {
-    return (
-      <div>
-        <div className="flex flex-wrap gap-3 text-[13px]">
-          <a href={files.svgUrl} className="font-semibold text-cobalt hover:underline">
-            {s.adminExportSvg}
-          </a>
-          <a href={files.dxfUrl} className="font-semibold text-cobalt hover:underline">
-            {s.adminExportDxf}
-          </a>
-          {versionId && <span className="text-[12px] text-mist">· {s.adminOrderVersionOrdered}</span>}
-        </div>
-        {files.warn && <p className="mt-1 text-[12px] text-[#8a6d12]">{s.adminExportWarn}</p>}
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => void run()}
-        disabled={state === "busy"}
-        className="text-[13px] text-cobalt hover:underline disabled:text-mist disabled:no-underline"
-      >
-        {state === "busy" ? s.adminExporting : s.adminExport}
-      </button>
-      {state === "blocked" && <p className="mt-1 text-[12px] text-[#c0413b]">{s.adminExportBlocked}</p>}
-      {state === "none" && <p className="mt-1 text-[12px] text-mist">{s.adminExportNone}</p>}
-      {state === "error" && <p className="mt-1 text-[12px] text-[#c0413b]">{s.adminExportError}</p>}
-    </div>
+    <ExportFiles
+      designId={designId}
+      versionId={versionId}
+      note={versionId ? s.adminOrderVersionOrdered : undefined}
+    />
   );
 }
