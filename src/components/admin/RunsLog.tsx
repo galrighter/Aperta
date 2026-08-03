@@ -306,8 +306,16 @@ export default function RunsLog({
   const [log, setLog] = useState<LogItem[] | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
-  /** הסמן לעמוד הבא (`before`), ו-null כשאין עוד. */
-  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  /**
+   * כשל בטעינת **המשך** היומן, בנפרד מכשל של העמוד הראשון.
+   *
+   * הודעת הכשל היחידה ישבה מעל הרשימה, וכפתור "עוד" יושב מתחתיה — כלומר אחרי
+   * עשרים שורות, הרחק מחוץ למסך. כשל בהמשך נראה משם כמו כפתור שנלחץ ולא קורה
+   * כלום. ההודעה הזאת מוצגת ליד הכפתור, במקום שבו הלחיצה נעשתה.
+   */
+  const [moreError, setMoreError] = useState<string | null>(null);
+  /** הסמן לעמוד הבא, ו-null כשאין עוד. אטום בכוונה — ראה `lib/runs/cursor`. */
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   /** סך ההרצות והכשלים — מהשרת, כי הרשימה כבר לא מחזיקה את כולן. */
   const [counts, setCounts] = useState<{ total: number; failed: number } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -319,42 +327,49 @@ export default function RunsLog({
   const [promptFor, setPromptFor] = useState<LogItem | null>(null);
 
   /**
-   * עמוד יומן. `before=null` הוא עמוד ראשון (מחליף), אחרת המשך (מוסיף).
+   * עמוד יומן. `cursor=null` הוא עמוד ראשון (מחליף), אחרת המשך (מוסיף).
    *
    * המונה הוא מי שמונע החלפת סינון שמסתיימת בתשובה של הסינון הקודם: שתי לחיצות
    * מהירות הן שתי בקשות, והאחרונה שנשלחה — לא האחרונה שחזרה — היא הנכונה.
    */
   const seq = useRef(0);
   const loadLog = useCallback(
-    async (before: string | null) => {
+    async (cursor: string | null) => {
       const mine = ++seq.current;
       setLogBusy(true);
-      setLogError(null);
+      if (cursor) setMoreError(null);
+      else setLogError(null);
       // עמוד ראשון: הסמן הישן שייך לרשימה שעומדת להיעלם.
-      if (!before) setNextBefore(null);
+      if (!cursor) {
+        setNextCursor(null);
+        setMoreError(null);
+      }
       try {
         const qs = new URLSearchParams({ limit: String(PAGE) });
         if (statusFilter) qs.set("status", statusFilter);
-        if (before) qs.set("before", before);
+        if (cursor) qs.set("cursor", cursor);
         const resp = await fetch(`/api/debug/log?${qs}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = (await resp.json()) as {
           items?: LogItem[];
-          nextBefore?: string | null;
+          nextCursor?: string | null;
         };
         if (mine !== seq.current) return;
         const items = data.items ?? [];
         setLog((prev) => {
-          if (!before || !prev) return items;
+          if (!cursor || !prev) return items;
           // הרצה שנכתבה בין עמוד לעמוד יכולה לחזור פעמיים; המזהה מכריע.
           const seen = new Set(prev.map((i) => i.id));
           return [...prev, ...items.filter((i) => !seen.has(i.id))];
         });
-        setNextBefore(data.nextBefore ?? null);
+        setNextCursor(data.nextCursor ?? null);
       } catch (e) {
         // בעבר כל כשל תורגם ל-log=[] והדף הציג "אין הרצות" — תקלה שנראית כמו
-        // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת.
-        if (mine === seq.current) setLogError((e as Error).message);
+        // יומן ריק. עכשיו הכשל נאמר במפורש והרשימה הקודמת נשמרת — ובהמשך היומן
+        // הוא נאמר ליד הכפתור שנלחץ, ולא עשרים שורות מעליו.
+        if (mine !== seq.current) return;
+        if (cursor) setMoreError((e as Error).message);
+        else setLogError((e as Error).message);
       } finally {
         if (mine === seq.current) setLogBusy(false);
       }
@@ -544,17 +559,24 @@ export default function RunsLog({
 
       {/* המשך היומן. הכפתור מופיע רק כשהשרת אמר שיש עוד — "אין עוד" הוא מידע
           שהוא מחזיק, לא ניחוש מספירת השורות שהתקבלו. */}
-      {nextBefore && (
-        <button
-          type="button"
-          disabled={logBusy}
-          onClick={() => void loadLog(nextBefore)}
-          className="mt-1 self-center rounded-[2px] border border-graphite/20 px-4 py-1.5 text-xs hover:bg-porcelain disabled:opacity-50"
-        >
-          {logBusy ? "טוען…" : `עוד ${PAGE} הרצות`}
-        </button>
+      {nextCursor && (
+        <div className="mt-1 grid justify-items-center gap-1">
+          {moreError && (
+            <div className="rounded-[2px] border border-red-300 bg-red-50 px-3 py-2 text-center text-xs text-red-700">
+              טעינת ההמשך נכשלה: {moreError}
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={logBusy}
+            onClick={() => void loadLog(nextCursor)}
+            className="rounded-[2px] border border-graphite/20 px-4 py-1.5 text-xs hover:bg-porcelain disabled:opacity-50"
+          >
+            {logBusy ? "טוען…" : moreError ? "נסה שוב" : `עוד ${PAGE} הרצות`}
+          </button>
+        </div>
       )}
-      {log && shown > 0 && !nextBefore && !logBusy && (
+      {log && shown > 0 && !nextCursor && !logBusy && (
         <div className="mt-1 text-center text-[11px] text-mist">סוף היומן.</div>
       )}
 
