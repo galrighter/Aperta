@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { he } from "@/i18n/he";
-import { SITE } from "@/lib/site.config";
 
 const s = he.site;
 
@@ -14,8 +13,9 @@ export default function ContactForm() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !message.trim()) {
       setError(s.contactErrorRequired);
@@ -26,11 +26,38 @@ export default function ContactForm() {
       return;
     }
     setError(null);
-    const subject = `${s.brand} — ${name.trim()}`;
-    const body = `${message.trim()}\n\n— ${name.trim()} (${email.trim()})`;
-    window.location.href = `mailto:${SITE.contactEmail}?subject=${encodeURIComponent(
-      subject,
-    )}&body=${encodeURIComponent(body)}`;
+    setStatus("sending");
+    // הטופס פונה ל-backend הפניות (kind="contact"): הפנייה נשמרת, מופיעה בלשונית
+    // "פניות" בבק־אופיס, וגם נשלח מייל התראה לגל. mailto נשאר כקישור גיבוי מפורש
+    // מתחת — הוא שקט למי שאין לו תוכנת דואר, ולכן לא יכול להיות מסלול השליחה.
+    try {
+      const res = await fetch("/api/inquiries", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "contact",
+          name: name.trim(),
+          email: email.trim(),
+          message: message.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      setStatus("sent");
+      setName("");
+      setEmail("");
+      setMessage("");
+    } catch {
+      setStatus("idle");
+      setError(s.contactErrorSend);
+    }
+  }
+
+  if (status === "sent") {
+    return (
+      <p className="rounded-[2px] border border-graphite/10 bg-white p-4 text-sm text-graphite">
+        {s.contactSuccess}
+      </p>
+    );
   }
 
   return (
@@ -81,9 +108,10 @@ export default function ContactForm() {
 
       <button
         type="submit"
-        className="mt-1 rounded-[2px] bg-graphite px-8 py-3.5 text-sm font-semibold text-porcelain transition-colors hover:bg-graphite/90"
+        disabled={status === "sending"}
+        className="mt-1 rounded-[2px] bg-graphite px-8 py-3.5 text-sm font-semibold text-porcelain transition-colors hover:bg-graphite/90 disabled:opacity-60"
       >
-        {s.contactSubmit}
+        {status === "sending" ? s.contactSending : s.contactSubmit}
       </button>
     </form>
   );

@@ -7,7 +7,10 @@ on:
 
 concurrency:
   group: deploy
-  cancel-in-progress: true
+  # לא מבטלים דיפלוי שרץ: הביטול יכול ליפול בין פריסת forme-frame לפריסת
+  # forme-studio ולהשאיר את השניים בגרסאות שונות — בדיוק מה שהסדר למטה מונע.
+  # דחיפה חדשה ממתינה בתור במקום לקטוע.
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -19,6 +22,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # שער בטיחות: פריסה נחסמת אם הטייפים או הטסטים נכשלים. עד כה הדיפלוי רץ
+      # על push ל-main בלי קשר ל-CI, כך ש-commit אדום יכול היה לעלות לאוויר.
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Test
+        run: npm test
       - name: Build (OpenNext for Cloudflare)
         # NEXT_PUBLIC_* נצרבים לתוך ה-JS בזמן הבילד, ולכן הם `env` על השלב הזה
         # ולא סודות של ה-Worker: ב-secrets.json הם לא היו משפיעים על כלום,

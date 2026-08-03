@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { handleFrame, type FrameRequest } from "@/lib/render/frameRequest";
 
 // מנוע הגיאומטריה כשירות, על הקופסה — לצד ה-vectorizer.
@@ -46,6 +47,15 @@ function readBody(req: import("node:http").IncomingMessage): Promise<string> {
   });
 }
 
+/** השוואת bearer בזמן קבוע. timingSafeEqual זורק על אורך שונה, ולכן משווים אורך
+ *  קודם — ואי-התאמת אורך ממילא אינה דולפת מידע על תוכן הסוד. */
+function bearerOk(authorization: string | undefined): boolean {
+  const expected = `Bearer ${TOKEN}`;
+  const got = authorization ?? "";
+  if (got.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(got), Buffer.from(expected));
+}
+
 const server = createServer(async (req, res) => {
   const send = (status: number, body: unknown) => {
     const text = JSON.stringify(body);
@@ -58,10 +68,10 @@ const server = createServer(async (req, res) => {
     if (req.method !== "POST") return send(405, { error: "POST only" });
 
     // אותו שער כמו שאר הקופסה. הבדיקה קודמת לקריאת הגוף — בקשה לא מורשית לא
-    // אמורה להקצות כלום.
-    if (TOKEN && req.headers.authorization !== `Bearer ${TOKEN}`) {
-      return send(401, { error: "unauthorized" });
-    }
+    // אמורה להקצות כלום. נכשל סגור: בלי token השירות מסרב לכול, במקום לרוץ פתוח
+    // כשמישהו שכח להעביר את המשתנה. ההשוואה בזמן קבוע כדי לא לדלוף את הסוד.
+    if (!TOKEN) return send(503, { error: "auth not configured" });
+    if (!bearerOk(req.headers.authorization)) return send(401, { error: "unauthorized" });
 
     let body: FrameRequest;
     try {

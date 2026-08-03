@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin, ensureProfilesSeeded } from "@/lib/db/supabase";
 import { handleRouteError } from "@/lib/api";
+import { requireAdmin } from "@/lib/admin";
 
 // ששת הבודקים של הסטודיו הפנימי בלבד.
 //
-// מאז שמשתמשים רשומים יושבים באותה טבלה (0008_accounts.sql), רשימה לא מסוננת
-// כאן הייתה מגישה לכל אחד את השם, המייל ומזהה הפרופיל של כל חבר שנרשם. הסינון
-// לפי kind הוא מה שמונע את זה — ולכן אינו קישוט שאפשר להסיר.
-export async function GET() {
+// מאחורי שער האדמין: הרשימה חושפת את מזהי הבודקים, וזה המפתח שפתח את כל
+// שרשרת הבודקים (יצירה/קריאה/מחיקה על עיצובי בודק בלי אימות). הסטודיו קורא
+// לכאן מאחורי AdminGate, ולכן העוגייה נלווית לבקשה. הסינון לפי kind נשאר —
+// גם אדמין לא צריך לראות כאן חשבונות של לקוחות.
+export async function GET(req: Request) {
   try {
+    requireAdmin(req);
     await ensureProfilesSeeded();
     const sb = supabaseAdmin();
     const { data, error } = await sb

@@ -71,8 +71,19 @@ class Settings:
     job_storage_dir: str = os.environ.get("JOB_STORAGE_DIR", "/tmp/raster-to-svg")
     job_ttl_minutes: int = _i("JOB_TTL_MINUTES", 60)
 
-    # optional bearer token; when set, /api/jobs* require Authorization: Bearer <token>
+    # bearer token for /api/jobs* and /api/generate. Auth fails closed when this
+    # is unset (see require_auth) — an open endpoint here spends the OpenAI key.
     auth_token: str = os.environ.get("VECTORIZER_TOKEN", "")
+
+    # SSRF guard for the upload step: signed URLs are PUT to blindly. Internal/
+    # loopback/link-local hosts and non-https are always refused; when this
+    # allowlist is non-empty the host must also be in it (set UPLOAD_ALLOWED_HOSTS
+    # to the storage host in production for a full lockdown).
+    upload_allowed_hosts: tuple[str, ...] = tuple(
+        h.strip().lower()
+        for h in os.environ.get("UPLOAD_ALLOWED_HOSTS", "").split(",")
+        if h.strip()
+    )
 
     # /api/generate: the image-model key, and how many panels may be traced at
     # once. Concurrency is a memory knob — each in-flight trace holds a decoded

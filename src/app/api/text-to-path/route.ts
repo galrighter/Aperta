@@ -4,7 +4,7 @@ import { handleRouteError, parseBody } from "@/lib/api";
 import { textToPolygons } from "@/lib/text/stencil";
 import { FONT_IDS, DEFAULT_FONT } from "@/lib/text/fonts";
 import { ringToPathD } from "@/lib/geometry/paths";
-import { resolveFab } from "@/lib/fabrication.config";
+import { resolveFab, FAB } from "@/lib/fabrication.config";
 
 // המרת טקסט לנתיבי אותיות מגושרים — סעיף 6.4. משמש לדיבוג; בצינור היצירה
 // ההמרה קורית אוטומטית בשלב הנרמול (convertTextRequests).
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const fab = resolveFab(body.thicknessMm, body.productType);
     const polygons = await textToPolygons(
       body.content, body.x, body.y, body.height, body.align, fab.minBridgeCut,
-      { fontId: body.font },
+      { fontId: body.font }, FAB.minLetterBridgeMm,
     );
     const paths = polygons.map((poly) => poly.map((r) => ringToPathD(r)).join(""));
     return NextResponse.json({ paths, polygons });

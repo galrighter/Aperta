@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { getDesign, getVersion, countTodayGenerations } from "@/lib/db/designs";
+import { getDesign, getVersion, countTodayRunsByOutcome } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
@@ -16,7 +16,7 @@ import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { createJob, failJob, finishJob, setJobStage } from "@/lib/db/jobs";
+import { createJob, failJob, finishJob, setJobStage, JobConflictError } from "@/lib/db/jobs";
 import { getAccount } from "@/lib/db/accounts";
 import { designCode } from "@/lib/designCode";
 import { sendMail, mailConfigured } from "@/lib/mail";
@@ -119,9 +119,15 @@ export async function POST(req: Request) {
 
     const design = await requireDesignAccess(req, body.designId);
     assertBuildableDims(design);
-    const used = await countTodayGenerations(design.profile_id);
-    if (used >= FAB.DAILY_GENERATION_LIMIT) {
+    // שתי מכסות נפרדות לפרופיל ליום: הצלחות וכישלונות. נספר מהרצות הצינור, לא
+    // מגרסאות — כך שעיון בחלופות (שיוצר גרסת pick) לא אוכל מכסה, וכישלון שכבר
+    // עלה כסף על תמונה לא נשאר חינמי אינסופית.
+    const { approved, failed } = await countTodayRunsByOutcome(design.profile_id);
+    if (approved >= FAB.DAILY_GENERATION_LIMIT) {
       throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);
+    }
+    if (failed >= FAB.DAILY_FAILED_GENERATION_LIMIT) {
+      throw new ApiError("rate_limited", `Daily failed-generation limit reached (${FAB.DAILY_FAILED_GENERATION_LIMIT}/day)`, 429);
     }
     for (const img of body.images) {
       const { mediaType } = decodeDataUrl(img.dataUrl);
@@ -137,20 +143,25 @@ export async function POST(req: Request) {
     try {
       await createJob({ id: jobId, designId: design.id, runId });
     } catch (e) {
+      // מזהה job שכבר תפוס אינו חלון מיגרציה — הוא ניסיון לדרוס הרצה של אחר.
+      // דוחים במקום להריץ בשקט ולתת ל-finishJob לכתוב על שורה זרה.
+      if (e instanceof JobConflictError) {
+        throw new ApiError("job_conflict", "This job id is already in use", 409);
+      }
       console.error("job row unavailable, running without it:", (e as Error).message);
     }
 
     try {
       pipelineStarted = true;
       const payload = await runGeneration(body, runId, jobId);
-      await finishJob(jobId, payload);
+      await finishJob(jobId, runId, payload);
       // מי שסגרה את החלון באמצע היצירה לא ידעה שהעיצוב מוכן. `design` נקרא
       // *לפני* ההרצה, ולכן `current_version_id` שלו הוא המצב שקדם לה — וזה מה
       // שמבדיל יצירה ראשונה מעריכה.
       await notifyDesignReady(design);
       return NextResponse.json(payload);
     } catch (err) {
-      await failJob(jobId, toJobError(err));
+      await failJob(jobId, runId, toJobError(err));
       throw err;
     }
   } catch (err) {
@@ -520,7 +531,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       persisted = true;
 
       // הרנדר מאחורינו; מכאן זה מסגור, ולידציה ושמירה. הלקוחה רואה את המעבר.
-      await setJobStage(jobId, "saving");
+      await setJobStage(jobId, runId, "saving");
 
       // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
       // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.

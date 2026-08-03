@@ -11,8 +11,14 @@ import {
 } from "@/lib/db/inquiries";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { notifyMail, orderAckMail, type InquiryMail } from "@/lib/mailTemplates";
+import { tooManyAttempts } from "@/lib/db/rateLimit";
+import { clientIp } from "@/lib/ip";
 
 const MAX_PER_EMAIL_PER_DAY = 10;
+// גם לפי IP: המכסה לפי מייל נעקפת בשינוי מחרוזת המייל. 30 לשעה חוסם הצפה בלי
+// לפגוע במשתמשת אמיתית שממלאת טופס פעם-פעמיים.
+const IP_WINDOW_MS = 60 * 60_000;
+const IP_MAX = 30;
 
 const createSchema = z.object({
   kind: z.enum(["order", "contact"]).default("order"),
@@ -36,6 +42,10 @@ export async function POST(req: Request) {
     // בוט מילא את ה-honeypot: מחזירים הצלחה בלי לשמור
     if (body.company) {
       return NextResponse.json({ ok: true }, { status: 201 });
+    }
+
+    if (await tooManyAttempts(`inquiry:${clientIp(req)}`, IP_WINDOW_MS, IP_MAX)) {
+      throw new ApiError("rate_limited", "Too many requests, try again later", 429);
     }
 
     const recent = await countRecentFromEmail(body.email);

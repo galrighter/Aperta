@@ -33,10 +33,10 @@ import {
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
-  INITIAL, RAIL, abandonsShare, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
+  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
-  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, mmLabel, mpToPreviewPath, priceOf,
-  stripLengthMm, widthOf,
+  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
+  sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -87,6 +87,18 @@ export default function DesignPage() {
   const set = useCallback((patch: Partial<CreateState>) => {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  /**
+   * ה-set של מסך המידות. שינוי מידה **בפועל** על עיצוב קיים מבטל אותו — הגאומטריה
+   * נחתכה למידה הישנה — ונועל חזרה את השלבים שקדימה, כדי שקפיצה בסרגל לא תוביל
+   * לתוצאה ישנה שתוזמן במידה החדשה. שאר ה-set (למשל פתיחת מדריך המדידה) נשאר רגיל.
+   */
+  const setSizes = useCallback((patch: Partial<CreateState>) => {
+    const invalidates = s.designId !== null && sizeReallyChanged(s, patch);
+    setState((prev) => (invalidates ? { ...prev, ...patch, ...invalidateDesign() } : { ...prev, ...patch }));
+    // חוזרים לנעילת השלב אחרי המידה: משם ה"המשך" מייצר מחדש למידה החדשה.
+    if (invalidates) setMaxReached(1);
+  }, [s]);
 
   /**
    * המצב העדכני, לקריאה מתוך המשך שרץ **אחרי** שהמצב הוחלף.
@@ -973,11 +985,11 @@ export default function DesignPage() {
             </div>
             <ProductScreen
               onPick={(p: Product) => {
-                set(
-                  abandonsShare(s, p)
-                    ? { product: p, fromShare: null, fromShareSerial: null, adoptError: null }
-                    : { product: p },
-                );
+                const patch = switchProduct(s, p);
+                set(patch);
+                // אם החלפת המוצר ביטלה עיצוב קיים — נועלים חזרה את השלבים שקדימה,
+                // אחרת קפיצה בסרגל הייתה מציגה תוצאה ריקה (העיצוב אופס).
+                if (patch.designId === null && s.designId !== null) setMaxReached(1);
                 go("sizes");
               }}
             />
@@ -1008,7 +1020,7 @@ export default function DesignPage() {
             )}
             <SizesScreen
               s={s}
-              set={set}
+              set={setSizes}
               // עיצוב ששותף כבר קיים: אין תיאור לכתוב ואין מה לייצר, רק
               // להתאים אותו למידה שנבחרה כאן.
               onNext={() => (s.fromShare ? void adoptShared() : go("brief"))}
