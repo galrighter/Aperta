@@ -137,13 +137,19 @@ def test_auth_gate_fails_closed_when_no_token_is_configured(fixture_png: bytes, 
     from app.config import SETTINGS
 
     monkeypatch.setattr(main, "SETTINGS", replace(SETTINGS, auth_token=""))
-    resp = TestClient(main.app).post(
-        "/api/jobs",
-        files={"image": ("f.png", fixture_png, "image/png")},
-        data={"width_mm": "160", "height_mm": "15"},
-    )
-    assert resp.status_code == 503
-    assert resp.json()["detail"]["error_code"] == "AUTH_NOT_CONFIGURED"
+    # Both directions: no credentials, and credentials that *look* right. The
+    # second is the one worth pinning — the gate must refuse before it compares,
+    # because with nothing configured there is nothing to compare against, and a
+    # future reordering that checks the header first would fall open here.
+    for headers in ({}, {"Authorization": "Bearer secret"}):
+        resp = TestClient(main.app).post(
+            "/api/jobs",
+            files={"image": ("f.png", fixture_png, "image/png")},
+            data={"width_mm": "160", "height_mm": "15"},
+            headers=headers,
+        )
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["error_code"] == "AUTH_NOT_CONFIGURED"
     assert TestClient(main.app).get("/api/health").status_code == 200  # health stays open
 
 
