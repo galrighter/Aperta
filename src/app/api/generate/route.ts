@@ -51,6 +51,16 @@ import { he } from "@/i18n/he";
 
 export const maxDuration = 300;
 
+/**
+ * עד מתי מותר **להתחיל** ניסיון רנדר שני.
+ *
+ * הבקשה נהרגת ב-`maxDuration` (300 שניות), והרצה טיפוסית לוקחת 25–50. ניסיון
+ * שני שמתחיל בשנייה ה-200 יכול להיהרג באמצע — כלומר הלקוחה משלמת את ההמתנה
+ * ואת הקריאה למודל ומקבלת בסוף ניתוק במקום את השגיאה המסבירה שכבר הייתה בידנו.
+ * מ-150 שניות והלאה מוותרים על הניסיון השני ומחזירים את מה שיש.
+ */
+const RETRY_DEADLINE_MS = 150_000;
+
 const imageSchema = z.object({
   kind: z.enum(["inspiration", "annotation"]),
   dataUrl: z.string().max(8_000_000),
@@ -430,78 +440,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         : null,
     };
 
-    // 2) הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
-    // עצמם לא עוברים כאן. "coverage" קורא את צבע הרקע משולי התמונה ואת צבע המתכת
-    // מהפיקסלים הרחוקים ממנו, ולכן הוא לא תלוי בכך שהמודל ציית לפרומפט — מה
-    // שנכשל בפועל, ובעקבותיו החזרנו הדמיה מוצללת שסף גלובלי יחיד עיגל למתכת.
-    const stamp = Date.now();
-    const job = await runRenderJob({
-      prompt,
-      calls: plan.calls,
-      rows: plan.rows,
-      size: sizeParam(canvas),
-      cols: plan.cols,
-      heightMm: dims.widthMm,
-      colorKey: "coverage",
-      // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה
-      // מיישמת אותם. בלי זה שערה של 0.17 מ"מ שהטרייסר משאיר לצד עלה נכנסת ל-SVG
-      // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
-      minHoleMm,
-      inspiration,
-      baseSvg,
-      // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
-      // נשארות על ברירת המחדל הזולה.
-      model: lettering ? LETTERING_MODEL : undefined,
-      renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
-      stagePaths: {
-        // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
-        reference: `runs/${runId}/reference.png`,
-        conditioned: `runs/${runId}/conditioned.png`,
-        overlay: `runs/${runId}/overlay.png`,
-        difference: `runs/${runId}/difference.png`,
-        rendered: `runs/${runId}/rendered.png`,
-      },
-    });
-    const renderPngPath = job.renderPaths[0] ?? null;
-
-    // 3) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
-    await persistRun({
-      id: runId,
-      source: "studio",
-      designId: design.id,
-      productType: design.product_type,
-      prompt: body.userPrompt,
-      colorKey: "coverage",
-      startedAt,
-      render: { path: renderPngPath, model: job.model },
-      stagePaths: job.stagePaths,
-      vectorizer: job.raw,
-      ...runLog,
-      inputs: {
-        ...runLog.inputs,
-        // נכתב כאן ולא למעלה: המספר השני ידוע רק אחרי שהקופסה ענתה. פער בין
-        // השניים אומר שהמודל לא צייר את הרשת שהתבקשה.
-        plannedCandidates: plan.candidates,
-        deliveredPanels: job.candidates.length,
-      },
-    });
-    persisted = true;
-
-    // הרנדר מאחורינו; מכאן זה מסגור, ולידציה ושמירה. הלקוחה רואה את המעבר.
-    await setJobStage(jobId, "saving");
-
-    // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
-    // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
-    //
-    // המסגור עצמו כבר לא רץ כאן אלא ב-Worker נפרד (src/lib/render/frameClient).
-    // תקרת ה-128MB היא לכל isolate ומשותפת לכל הבקשות שרצות בו, ומסגור הוא
-    // המקצה הגדול ביותר בבקשה — 45.1MB בתום הקריאה על ארבעה מועמדים אמיתיים
-    // לפני שהפסקנו להחזיק את `normalized`, 16.5MB אחרי. ה-isolate הזה נהרג
-    // על זיכרון בבקשה יחידה (reqs=1), ולכן מה שנשאר להוציא הוא המקצה עצמו,
-    // לא ההחזקה שלו. מכאן ה-isolate של האתר ממסגר פעם אחת בלבד — את הזוכה,
-    // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
     const RANK = { pass: 0, warn: 1, fail: 2 } as const;
-    const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
     // הכיתוב **אינו** נדרס אחרי שהמודל מחזיר. היה כאן שלב שהחליף את מה
     // שהמודל צייר בנתיבי הפונט המקוריים, והוא הוסר (החלטת גל, 31/07): המודל
     // מדויק ב-3 מתוך 4 חלופות, הלקוחה בוחרת ומאשרת בעצמה, והעיצוב שהיא
@@ -509,8 +448,117 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // במפורש בשדה הכיתוב (`textVerify`): לוודא את האיות לפני הזמנה.
     // המדידות ששני הכיוונים נשענים עליהן: docs/research/HEBREW_TEXT_LETTERING_FIELD.md §6.8.
     const bridgePlan = { letterBridges: lettering?.rows.flatMap((r) => r.bridges) };
-    const candidates = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!), bridgePlan))
-      .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+
+    // 2)–4) הרצה אחת של המחצית היקרה: רנדר בקופסה, רישום ליומן, מסגור ודירוג.
+    // מוגדרת כפונקציה כי היא עשויה לרוץ פעמיים — ראה `MAX_RENDER_ATTEMPTS`.
+    // `log` הוא `runLog` בקבוע, כדי שהסגור לא יצטרך להתמודד עם `let` שיכול
+    // להתאפס: כאן הוא כבר נבנה, וזה מה שנרשם בכל ניסיון.
+    const log = runLog;
+    const attemptOnce = async (attemptId: string, attemptNo: number) => {
+      // הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
+      // עצמם לא עוברים כאן. "coverage" קורא את צבע הרקע משולי התמונה ואת צבע
+      // המתכת מהפיקסלים הרחוקים ממנו, ולכן הוא לא תלוי בכך שהמודל ציית
+      // לפרומפט — מה שנכשל בפועל, ובעקבותיו החזרנו הדמיה מוצללת שסף גלובלי
+      // יחיד עיגל למתכת.
+      //
+      // הנתיבים נגזרים מ-`attemptId` ומחותמת הזמן של הניסיון ולא מ-`runId`:
+      // ניסיון שני שכותב לאותם קבצים מוחק את הראיות של הראשון, וביומן נשארת
+      // שורה שמצביעה על הדמיה שאינה שלה.
+      const stamp = Date.now();
+      const job = await runRenderJob({
+        prompt,
+        calls: plan.calls,
+        rows: plan.rows,
+        size: sizeParam(canvas),
+        cols: plan.cols,
+        heightMm: dims.widthMm,
+        colorKey: "coverage",
+        // הפתח המינימלי נגזר כאן ונשלח כמספר: חוקי הייצור נשארים במקום אחד, והקופסה
+        // מיישמת אותם. בלי זה שערה של 0.17 מ"מ שהטרייסר משאיר לצד עלה נכנסת ל-SVG
+        // ופוסלת את כל הפס ב-V5 — פתח שאי אפשר לחתוך ממילא.
+        minHoleMm,
+        inspiration,
+        baseSvg,
+        // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
+        // נשארות על ברירת המחדל הזולה.
+        model: lettering ? LETTERING_MODEL : undefined,
+        renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${stamp}-${i}.png`),
+        stagePaths: {
+          // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
+          reference: `runs/${attemptId}/reference.png`,
+          conditioned: `runs/${attemptId}/conditioned.png`,
+          overlay: `runs/${attemptId}/overlay.png`,
+          difference: `runs/${attemptId}/difference.png`,
+          rendered: `runs/${attemptId}/rendered.png`,
+        },
+      });
+      const renderPngPath = job.renderPaths[0] ?? null;
+
+      // 3) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
+      await persistRun({
+        id: attemptId,
+        source: "studio",
+        designId: design.id,
+        productType: design.product_type,
+        prompt: body.userPrompt,
+        colorKey: "coverage",
+        startedAt,
+        render: { path: renderPngPath, model: job.model },
+        stagePaths: job.stagePaths,
+        vectorizer: job.raw,
+        ...log,
+        inputs: {
+          ...log.inputs,
+          // נכתב כאן ולא למעלה: המספר השני ידוע רק אחרי שהקופסה ענתה. פער בין
+          // השניים אומר שהמודל לא צייר את הרשת שהתבקשה.
+          plannedCandidates: plan.candidates,
+          deliveredPanels: job.candidates.length,
+          attempt: attemptNo,
+        },
+      });
+      persisted = true;
+
+      // הרנדר מאחורינו; מכאן זה מסגור, ולידציה ושמירה. הלקוחה רואה את המעבר.
+      await setJobStage(jobId, "saving");
+
+      // 4) מסגור כל מועמד למידה שהוזמנה, ודירוג: קודם מה שעובר ולידציה, ואז מי
+      // שנמתח הכי פחות — כלומר מי שהמודל צייר הכי קרוב ליחס האמיתי.
+      //
+      // המסגור עצמו כבר לא רץ כאן אלא ב-Worker נפרד (src/lib/render/frameClient).
+      // תקרת ה-128MB היא לכל isolate ומשותפת לכל הבקשות שרצות בו, ומסגור הוא
+      // המקצה הגדול ביותר בבקשה — 45.1MB בתום הקריאה על ארבעה מועמדים אמיתיים
+      // לפני שהפסקנו להחזיק את `normalized`, 16.5MB אחרי. ה-isolate הזה נהרג
+      // על זיכרון בבקשה יחידה (reqs=1), ולכן מה שנשאר להוציא הוא המקצה עצמו,
+      // לא ההחזקה שלו. מכאן ה-isolate של האתר ממסגר פעם אחת בלבד — את הזוכה,
+      // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
+      const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
+      const framed = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!), bridgePlan))
+        .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+      return { job, renderPngPath, framed };
+    };
+
+    // הרנדר חזר ואף מועמד לא עבר — ניסיון שני, אחד בלבד (החלטת גל, 3.8.26).
+    //
+    // **למה דווקא כאן ולא על כל כשל.** הדחייה הזו היא היחידה בצינור שהיא באמת
+    // מקרית: אותו פרומפט בדיוק, אותן מידות, והפעם המודל צייר משהו שהמעקב הצליח
+    // לקרוא. דחיית מסנן תוכן (`content_blocked`) ומידה בלתי אפשרית (`bad_size`)
+    // הן דטרמיניסטיות — ניסיון שני מחזיר בהן את אותה תשובה בכסף כפול, ולכן הן
+    // נופלות מ-`attemptOnce` החוצה ולא מגיעות לכאן בכלל.
+    //
+    // המחיר גלוי: קריאה שנייה למודל התמונה (~$0.006, ~$0.021 עם כיתוב), שתי
+    // שורות ביומן עם `attempt: 1|2`, ועוד ~30 שניות המתנה ללקוחה. מה שהוא קונה
+    // הוא שהיא לא רואה שגיאה על כשל שסיבוב נוסף היה פותר.
+    let { job, renderPngPath, framed: candidates } = await attemptOnce(runId, 1);
+    let generationId = runId;
+    if (candidates.length === 0 && Date.now() - startedAt < RETRY_DEADLINE_MS) {
+      // מזהה חדש: שתי ההרצות נשמרות ביומן, ואף אחת מהן לא דורסת את השנייה.
+      const retryId = crypto.randomUUID();
+      const second = await attemptOnce(retryId, 2);
+      // גם אם השני נכשל אף הוא — הוא התשובה העדכנית, וההדמיה שלו היא זו
+      // שהשגיאה מתארת.
+      ({ job, renderPngPath, framed: candidates } = second);
+      generationId = retryId;
+    }
 
     if (candidates.length === 0) {
       const status = String((job.raw as { status?: string }).status ?? "no candidate");
@@ -548,7 +596,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       renderPngPath,
       metrics,
       candidates: offeredRows,
-      generationId: runId,
+      // ההרצה שהמועמדים האלה באו ממנה — לא בהכרח `runId`, אם הניסיון השני הוא
+      // זה שהצליח. הקיבוץ ביומן הגרסאות נשען על זה.
+      generationId,
       // הגשרים של הכיתוב נחתכים מהפונט אצלנו, לפני שהמודל צייר משהו, ולכן הם
       // אינם נגזרים מה-SVG שהוולידציה בודקת. בלי זה הלקוחה מקבלת פריט שדורש
       // בדיקה בלי לדעת על כך.

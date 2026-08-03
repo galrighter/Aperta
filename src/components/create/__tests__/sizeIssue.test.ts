@@ -16,12 +16,28 @@ const ring = (ringSize: string): CreateState => ({ ...INITIAL, product: "ring", 
 describe("sizeIssue", () => {
   it("תופס את המידה של RM-0077", () => {
     const issue = sizeIssue(bracelet("10"));
-    expect(issue).toEqual({ value: 10, lo: CIRC_LIMIT_MM.bracelet[0], hi: CIRC_LIMIT_MM.bracelet[1] });
+    expect(issue).toEqual({
+      kind: "circumference",
+      value: 10,
+      lo: CIRC_LIMIT_MM.bracelet[0],
+      hi: CIRC_LIMIT_MM.bracelet[1],
+    });
   });
 
   it("שותק על מידות אמיתיות", () => {
     for (const circ of ["90", "110", "165", "168", "230", "260"]) {
       expect(sizeIssue(bracelet(circ))).toBeNull();
+    }
+  });
+
+  it("מידות ילדים עוברות — הן מוצר ולא טעות", () => {
+    // תינוק ~9 ס"מ, פעוט ~11, ילד בן שש ~13. כולן חייבות לעבור; מה שנחסם הוא
+    // מספר שאינו מדידה בכלל.
+    for (const circ of ["90", "95", "110", "130"]) {
+      expect(sizeIssue(bracelet(circ)), `היקף ${circ}`).toBeNull();
+    }
+    for (const typo of ["9", "11", "13", "16"]) {
+      expect(sizeIssue(bracelet(typo)), `טעות ${typo}`).not.toBeNull();
     }
   });
 
@@ -34,9 +50,15 @@ describe("sizeIssue", () => {
     expect(sizeIssue(bracelet("1650"))?.value).toBe(1650);
   });
 
-  it("בטבעת: מידה אמריקאית אינה נמדדת מול טווח ההיקפים", () => {
-    // עד 30 השדה מקבל מידה אמריקאית, והיא ממילא נצבטת לטבלה ב-idMmFromUsSize.
+  it("בטבעת: מידה אמריקאית שבטבלה עוברת", () => {
     for (const size of ["4", "6.5", "13"]) expect(sizeIssue(ring(size))).toBeNull();
+  });
+
+  it("בטבעת: מידה אמריקאית מחוץ לטבלה נעצרת במקום להיצבט בשקט", () => {
+    // `idMmFromUsSize` צובט לקצה הטבלה: מידה 20 הפכה שם ל-13 ומידה 2 ל-4,
+    // כלומר מדידה של הלקוחה שתוקנה למספר אחר בלי חיווי.
+    expect(sizeIssue(ring("20"))).toEqual({ kind: "usSize", value: 20, lo: 4, hi: 13 });
+    expect(sizeIssue(ring("2"))?.kind).toBe("usSize");
   });
 
   it("בטבעת: היקף במ\"מ כן נמדד", () => {

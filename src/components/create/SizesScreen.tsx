@@ -29,9 +29,14 @@ export function SizesScreen({
   // התמונה מבצע אותה נאמנה. ראו `sizeIssue` והתיעוד של RM-0077.
   const issue = sizeIssue(s);
   // ההצעה בסנטימטרים מוצגת רק כשהיא באמת מסבירה את המספר שהוקלד: 10 → 100
-  // נכנס לטווח, 400 → 4000 לא, ואז המשפט היה ניחוש ולא עזרה.
+  // נכנס לטווח, 400 → 4000 לא, ואז המשפט היה ניחוש ולא עזרה. במידה אמריקאית
+  // אין סנטימטרים בכלל.
   const cmHint =
-    issue && issue.value * 10 >= issue.lo && issue.value * 10 <= issue.hi ? issue.value : null;
+    issue?.kind === "circumference" &&
+    issue.value * 10 >= issue.lo &&
+    issue.value * 10 <= issue.hi
+      ? issue.value
+      : null;
 
   return (
     <section className="mx-auto max-w-[1100px] px-5 py-14 sm:px-10">
@@ -90,7 +95,9 @@ export function SizesScreen({
           />
           {issue ? (
             <p role="alert" className="mt-2 text-[13px] leading-relaxed" style={{ color: "#c0413b" }}>
-              {d.sizeOutOfRange(issue.value, issue.lo, issue.hi)}
+              {issue.kind === "usSize"
+                ? d.sizeUsOutOfRange(issue.value, issue.lo, issue.hi)
+                : d.sizeOutOfRange(issue.value, issue.lo, issue.hi)}
               {cmHint !== null && <span className="block">{d.sizeCmHint(cmHint)}</span>}
             </p>
           ) : (

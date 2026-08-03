@@ -107,6 +107,19 @@ export function ProcessingScreen({
               <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
             </>
           )}
+          {/* סירוב של מסנן התוכן הוא הכשל היחיד שיש עליו מה לקרוא: ההודעה
+              אומרת משפט אחד, והדף מרכז את כל הקטגוריות ואת מה לכתוב במקום.
+              נפתח בלשונית חדשה — המשפך נשאר פתוח מאחוריו, על התיאור שנחסם. */}
+          {code === "content_blocked" && (
+            <a
+              href="/design-rules"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-[2px] border border-graphite/25 px-[30px] py-3 text-base font-medium text-graphite transition-colors hover:bg-porcelain"
+            >
+              {he.errContentBlockedRules}
+            </a>
+          )}
         </div>
       </section>
     );

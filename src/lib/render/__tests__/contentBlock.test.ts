@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isContentBlock } from "../service";
 import { he } from "@/i18n/he";
@@ -47,10 +47,24 @@ describe("הקוד מגיע עד ללקוחה", () => {
     expect(api).toContain('if (code === "content_blocked") return he.errContentBlocked;');
   });
 
-  it("הנוסח אינו מזמין לנסות שוב את אותו תיאור", () => {
-    // זו כל הנקודה: ההודעה הקודמת הסתיימה ב"נסו שוב", וזה מה שהלקוח עשה
-    // שלוש פעמים. הנוסח החדש מבקש לנסח מחדש.
-    expect(he.errContentBlocked).toContain("נסחו");
+  it("הנוסח אומר שהמודל סירב, ומבקש לנסח מחדש", () => {
+    // זו כל הנקודה: ההודעה הקודמת תיארה פלט פגום והסתיימה ב"נסו שוב", וזה מה
+    // שהלקוח עשה שלוש פעמים.
+    expect(he.errContentBlocked).toContain("סירב");
+    expect(he.errContentBlocked).toContain("לנסח מחדש");
+  });
+
+  it("לצד הסירוב יש כפתור לדף הכללים, והדף קיים", () => {
+    const screen = readFileSync(join(SRC, "components/create/ProcessingScreen.tsx"), "utf8");
+    expect(screen).toContain('code === "content_blocked"');
+    expect(screen).toContain('href="/design-rules"');
+    expect(existsSync(join(SRC, "app/(site)/design-rules/page.tsx"))).toBe(true);
+  });
+
+  it("דף הכללים מונה את הקטגוריות ואומר גם שהמסנן שוגה", () => {
+    // רשימה בלי הסעיף הזה הופכת כל חסימה שגויה ל"כנראה ביקשתי משהו אסור".
+    expect(he.site.designRules.cases.length).toBeGreaterThanOrEqual(8);
+    expect(he.site.designRules.falsePositiveBody).toContain("שוגה");
   });
 
   it("מסך העיבוד לא מציע ניסיון חוזר על דחייה דטרמיניסטית", () => {

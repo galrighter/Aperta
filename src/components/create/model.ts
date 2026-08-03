@@ -383,9 +383,22 @@ export const hasExactSize = (s: CreateState): boolean => {
  * הטווח כאן חל רק על הצורה השנייה.
  */
 export const CIRC_LIMIT_MM: Record<Product, [number, number]> = {
+  // התחתית היא פרק יד של תינוק (9 ס"מ), ובכוונה: מידות ילדים הן מוצר, לא
+  // טעות. מה שנחסם הוא מספר שאינו מדידה — 10 או 16, כלומר סנטימטרים בשדה
+  // שמבקש מילימטרים.
   bracelet: [90, 260],
   ring: [30, 100],
 };
+
+/**
+ * טווח המידה האמריקאית שהשדה מקבל — בדיוק זה של הטבלה התקנית (`US_RING_ID_MM`).
+ *
+ * למה זה בכלל בדיקה: `idMmFromUsSize` **צובט** ערך שמחוץ לטבלה לקצה שלה, בשקט.
+ * מידה 20 הפכה שם למידה 13 ומידה 2 למידה 4 — כלומר בדיוק אותו כשל שהוצא
+ * מ-`lengthHintMm`: מדידה של הלקוחה שתוקנה למספר אחר בלי שאיש יידע. הצביטה
+ * נשארת כרשת ביטחון בשרת; כאן היא נעצרת ונאמרת.
+ */
+export const US_SIZE_LIMIT: [number, number] = [4, 13];
 
 /**
  * המידה שהוזנה אינה מדידה אפשרית — ומה להגיד עליה.
@@ -399,14 +412,27 @@ export const CIRC_LIMIT_MM: Record<Product, [number, number]> = {
  * ממשיכה בשקט הלאה. ב-RM-0077 (3.8.26) הוזן היקף 10 — עשרה מילימטרים — והמסע
  * המשיך עד להדמיה של ריבוע 15.8×18 מ"מ שהמודל צייר נאמנה לפי הפרומפט.
  */
-export function sizeIssue(s: CreateState): { value: number; lo: number; hi: number } | null {
+export interface SizeIssue {
+  /** `circumference` — היקף במ"מ; `usSize` — מידת טבעת אמריקאית. הכיוונים
+   *  נבדלים ביחידה, ולכן גם בהודעה: "מ"מ" על מידה 20 היה שטות. */
+  kind: "circumference" | "usSize";
+  value: number;
+  lo: number;
+  hi: number;
+}
+
+export function sizeIssue(s: CreateState): SizeIssue | null {
   if (!hasExactSize(s)) return null;
   const product = s.product ?? "bracelet";
   const value = parseFloat(product === "ring" ? s.ringSize : s.circ);
-  // מידה אמריקאית — לא היקף, ולכן לא נמדדת מול טווח ההיקפים.
-  if (product === "ring" && value <= 30) return null;
+  // בטבעת השדה מקבל שתי צורות (ראו `circumferenceMm`), וכל אחת נבדקת מול
+  // הטווח שלה: עד 30 זו מידה אמריקאית, מעליה זה היקף במ"מ.
+  if (product === "ring" && value <= 30) {
+    const [lo, hi] = US_SIZE_LIMIT;
+    return value < lo || value > hi ? { kind: "usSize", value, lo, hi } : null;
+  }
   const [lo, hi] = CIRC_LIMIT_MM[product];
-  return value < lo || value > hi ? { value, lo, hi } : null;
+  return value < lo || value > hi ? { kind: "circumference", value, lo, hi } : null;
 }
 
 /* ===== תמחור (handoff §7) ===== */
