@@ -36,7 +36,9 @@ export function mailConfigured(): boolean {
  * הבקשה, ולא משנה מה כתוב כאן. ניתנת לשינוי בלי פריסת קוד דרך `MAIL_FROM`.
  */
 function from(): string {
-  return process.env.MAIL_FROM || `RM JEWEL <noreply@rmjewel.com>`;
+  // הכתובת חייבת לשבת על הדומיין המאומת ב-Resend. שם התצוגה נשאר שם המותג
+  // ("RM JEWEL") — הוא אינו חלק מהחלפת הדומיין, וישתנה בנפרד אם המותג ישתנה.
+  return process.env.MAIL_FROM || `RM JEWEL <noreply@aperta-designs.com>`;
 }
 
 /** לאן נשלחות ההתראות הפנימיות. */
