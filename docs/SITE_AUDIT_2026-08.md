@@ -1,5 +1,51 @@
 # דוח ביקורת מקיף — Forme Studio (אוגוסט 2026)
 
+> ## מצב הטיפול — עודכן 3.8.2026
+>
+> **כל תשעת הממצאים בתקציר המנהלים (C1–C9) נסגרו**, ואיתם רוב ממצאי המשנה.
+> הסקירה למטה נשארת כפי שנכתבה — היא התיעוד של *מה היה* ולמה — והטבלאות כאן
+> אומרות מה מזה עדיין חי.
+>
+> ### נסגר
+>
+> | ממצא | איפה |
+> |------|------|
+> | C1 — שרשרת הבודקים האנונימית | הסטודיו מאחורי שער האדמין; `/api/profiles` ונתיבי הבודק דורשים עוגייה |
+> | C2 — ניתוק שמאבד ריצה בתשלום | `docs/C2_RESILIENT_GENERATION.md`; `startJob` מחדש job שרץ |
+> | C3 — עקיפת המכסה | `reserveGeneration` — שריון אטומי מזוהה ב-`runId`, הצלחות וכישלונות בנפרד |
+> | C4 — דריסת job דרך `jobId` | התנגשות נדחית; כתיבות מוצמדות ל-`run_id` |
+> | C5 — שירותי הקופסה פתוחים | אימות fail-closed קבוע-זמן; שומר SSRF על ההעלאות (`app/net.py`) |
+> | C6 — תאריכים עבריים הפוכים | `LTR_CONNECTOR_RE` שומר מפרידים בתוך רצף ה-LTR |
+> | C7 — חלקים לא-ייצוריים עוברים | `validate.ts` אוכף רצפת `minLetterBridgeMm` |
+> | C8 — פריסה לא חסומה על CI | `deploy.yml` מריץ typecheck+טסטים; `migrate.yml` נכשל בקול |
+> | C9 — טופס צור-קשר | פונה ל-`/api/inquiries` |
+> | הגבלת קצב לפי IP | `rate_events` (מיגרציה 0015) — אדמין, הזמנות, פניות, validate |
+> | תקרת קלט ל-`/api/validate` | 500KB |
+> | אי-התאמת epsilon בניקוי מול V5 | אוחד ל-`OPENING_AREA_EPS` |
+> | DXF R12 חסר LTYPE | תוקן |
+> | אפס לוגים בווקטורייזר | `logging` בשלושה מודולים |
+> | event loop חסום ב-`/api/jobs` | `anyio.to_thread` |
+> | כפתור הזמנה פעיל בזמן עריכה/כשל | `disabled={s.applying \|\| status === "fail"}` |
+> | שדות בלי label | `htmlFor` |
+> | החלפת מוצר/מידה אחרי יצירה | `invalidateDesign` + נעילת שלבים |
+> | מיתוג משפטי + הערת עו"ד פנימית | תוקן והוסר |
+> | הסטודיו מפורסם ל-SEO | הוסר מ-sitemap ומ-llms.txt |
+> | כפילות URL הווקטורייזר | אוחד ל-`vectorizerUrl()` |
+> | `tsconfig.tsbuildinfo` ב-repo | הוסר |
+> | ESLint לא מוגדר | `eslint.config.mjs` |
+>
+> ### פתוח — ארבעה פריטים, אף אחד לא חוסם
+>
+> | # | נושא | חומרה | הערה |
+> |---|------|-------|------|
+> | O1 | כליאת פוקוס במודלים | 🟡 נגישות | Escape ומיקוד התחלתי קיימים; `Tab` עדיין יוצא מהחלון (מתועד ב-`ui.tsx`) |
+> | O2 | `restoreBridges` בלי windowing | 🟡 ביצועים | O(V·E). `thickenBridges` קיבל חלון 2 מ"מ אחרי מדידה (186ms→1281ms); זה לא |
+> | O3 | fan-out בלתי מוגבל של פאנלים | 🟡 עמידות | אין `MAX_PANELS` בווקטורייזר; render רועש יכול לחרוג מה-timeout |
+> | O4 | `npm audit` — 6 פגיעויות | 🟢 נמוך | 5 high + 1 moderate, **כולן ב-`sharp`/libvips דרך wrangler** — כלי פיתוח, לא פרודקשן |
+>
+> **הצעד הבא הוא סעיף 7 — החלפת הדומיין.** האיחוד ל-`vectorizerUrl()` ול-`SITE.url`
+> הקטין את מספר הנקודות מאז שהרשימה נכתבה; היא מסומנת בהתאם.
+
 מסמך זה מרכז ביקורת מקצה-לקצה של האתר ומנגנון היצירה, לקראת החלפת הדומיין.
 הבדיקה כיסתה שש חזיתות: **אבטחה**, **מנגנון היצירה בצד ה-Worker**, **שירות
 הווקטורייזר (Python/Hetzner)**, **מנוע הגאומטריה והוולידציה הייצורית**,
@@ -414,16 +460,24 @@ boolean ops מלאים; גרף החומר נגזר מחדש ≥6 פעמים למ
 הדומיין הנוכחי: `rmjewel.com` (ווקטורייזר ב-`vec.rmjewel.com`).
 
 ### א. קוד/קונפיג שחייב להשתנות (hardcoded, מגיע לפרודקשן)
+
+> **עודכן 3.8.2026 מול main.** שתי נקודות מהרשימה המקורית כבר לא קיימות:
+> ה-fallback הכפול של כתובת הווקטורייזר אוחד ל-`vectorizerUrl()` ב-`site.config`,
+> וה-`|| 'rmjewel.com'` defaults ב-workflows **הוסרו** — הם נכשלים בקול כשמשתנה
+> חסר, כלומר הסיכון שהמעבר "יחזיר" בשקט את הדומיין הישן כבר נסגר.
+
 | מקום | שולט על |
 |------|---------|
 | `src/lib/site.config.ts:6` (`SITE.url`) | **מקור יחיד** ל-metadataBase, og:url, sitemap, robots, קישורי share, קישורי מייל. עריכה אחת מתקנת את כולם |
 | `src/lib/site.config.ts:8` (`contactEmail`) | מוצג באתר + fallback ל-`notifyAddress()` |
-| `wrangler.jsonc:14-16` | routes של custom-domain ב-Cloudflare — נדרש re-scope של `CLOUDFLARE_API_TOKEN` ל-zone החדש |
+| `src/lib/site.config.ts:22` (`vectorizerUrl()`) | fallback `https://vec.rmjewel.com` — **מקור יחיד** לשני הקוראים (`vectorizer.ts`, `render/service.ts`) |
+| `wrangler.jsonc:15-16` (+ הערה בשורה 13) | routes של custom-domain ב-Cloudflare — נדרש re-scope של `CLOUDFLARE_API_TOKEN` ל-zone החדש |
 | `src/lib/mail.ts:39` | sender fallback `noreply@rmjewel.com` — חייב אימות דומיין ב-Resend |
-| `src/lib/vectorizer.ts:53` + `src/lib/render/service.ts:31` | fallback `https://vec.rmjewel.com` (משוכפל בשני קבצים) |
-| `public/llms.txt:16-23` | 8 כתובות `rmjewel.com` מוחלטות — קובץ סטטי שיתיישן בשקט |
-| `.github/workflows/deploy.yml:43-49` | defaults ל-`MAIL_FROM`/`MAIL_TO`/`ALERT_TO`/`VECTORIZER_URL` |
-| `.github/workflows/deploy-vectorizer.yml:78,134` | `VDOMAIN` (vhost + cert של nginx) + מייל certbot `admin@rmjewel.com` |
+| `public/llms.txt` | 7 כתובות `rmjewel.com` מוחלטות — קובץ סטטי שיתיישן בשקט |
+| `.github/workflows/deploy-vectorizer.yml:148` | מייל הרישום של certbot (`admin@rmjewel.com`) |
+
+**משתני repo שצריך להגדיר לפני הפריסה** (ה-workflows נכשלים בלעדיהם, וזה מכוון):
+`MAIL_FROM`, `MAIL_TO`, `ALERT_TO`, `VECTORIZER_URL`, `VECTORIZER_DOMAIN`.
 
 ### ב. קוסמטי / להחליט (לא URL)
 - מפתחות localStorage נושאים את המותג הישן: `rmjewel.create.pending`,
@@ -453,30 +507,56 @@ OpenNext, ולהסיר את כל ה-`|| 'rmjewel...'` defaults מה-workflows (�
 
 ---
 
-## 8. סדר עדיפויות מומלץ לפעולה
+## 8. סדר הביצוע להחלפת הדומיין
 
-**גל אחת — לפני שנוגעים בדומיין (אבטחה + כסף):**
-1. C1 — לסגור את שרשרת הבודקים (הכי דחוף: אנונימי, סקריפטבילי, עולה כסף בכל בקשה,
-   ומאפשר מחיקת עיצובים).
-2. C5 — לוודא `VECTORIZER_TOKEN` נאכף (לא opt-in), ו-allowlist ל-SSRF; לתקן את
-   ה-bind ל-`0.0.0.0` בשירות הגאומטרי.
-3. C3 + C4 — שריון מכסה אטומי + בדיקת בעלות על patch של job.
-4. throttling לפי IP על admin-login, orders, inquiries, validate.
+ארבעת גלי התיקון המקוריים בוצעו (ראו טבלת המצב בראש המסמך). מה שנשאר הוא המעבר
+עצמו. הסדר כאן אינו שרירותי — כל שלב נשען על קודמו, והשלב האחרון הוא היחיד
+שאי-אפשר לבטל בקלות.
 
-**גל שתיים — עמידות מנגנון היצירה:**
-5. C2 — להעביר את ההחזקה של ה-job לקופסה ולתת ל-Worker לסקר (TODO #12), כדי
-   שניתוק לא יאבד ריצה בתשלום.
-6. timeouts ו-fallback פר-מועמד ב-framing; להוריד עומס זיכרון (תמונה אחת, גופנים
-   עצלים); למחוק את צינור ה-LLM המת.
+**לפני הכול — להחליט על הדומיין ולרכוש אותו.** כל השאר תלוי בזה.
 
-**גל שלוש — נכונות ייצור:**
-7. C6 — לתקן bidi למפרידים (תאריכים).
-8. C7 — ולידציית רוחב-גשר מינימלי + רצפה בנתיב text-request; לרשום ביומן כש-
-   `thickenBridges` מוותר.
-9. לתקן DXF R12 (נקודת דמה + LTYPE).
+### שלב 1 — הכנה שלא נוגעת בייצור
+1. **DNS**: רשומה ל-`vec.<דומיין-חדש>` → ה-IP של Hetzner. ה-workflow של
+   הווקטורייזר מניח שהיא כבר קיימת לפני שcertbot רץ.
+2. **Cloudflare**: להוסיף את ה-zone החדש לחשבון, ו-re-scope ל-`CLOUDFLARE_API_TOKEN`
+   (Workers-Routes + DNS edit **על ה-zone החדש**).
+3. **Resend**: לאמת את הדומיין החדש (רשומות DNS). לשים לב — גם מיילי קוד-ההתחברות
+   של Supabase עוברים דרך Resend, כלומר ההתחברות תלויה בזה.
 
-**גל ארבע — יחד עם החלפת הדומיין:**
-10. C8 — לחסום deploy על CI, לסדר מיגרציה↔קוד, health-check לקופסה.
-11. רשימת התיוג של סעיף 7.
-12. תיקוני UX: מיתוג בתנאים, הסרת הערת עורך-הדין, טופס צור-קשר ל-`/api/inquiries`,
-    חסימת החלפת-מוצר/שינוי-מידה אחרי יצירה, אינדיקציית "יצירה רצה" אחרי refresh.
+### שלב 2 — קוד (PR אחד)
+4. סעיף 7א: `site.config.ts` (3 שורות), `mail.ts:39`, `wrangler.jsonc:15-16`,
+   `public/llms.txt`, `deploy-vectorizer.yml:148`.
+5. **לא לגעת** במפתחות ה-localStorage (`rmjewel.*`) — שינוי מוחק למשתמשות קיימות
+   את רשימת העיצובים המקומית.
+
+### שלב 3 — משתני סביבה, ואז פריסה
+6. משתני repo: `MAIL_FROM`, `MAIL_TO`, `ALERT_TO`, `VECTORIZER_URL`,
+   `VECTORIZER_DOMAIN`. **ה-workflows נכשלים בלעדיהם** — זה מכוון, ולכן זה חייב
+   לקרות לפני הפריסה ולא אחריה.
+7. להריץ `deploy-vectorizer` (כותב vhost וcert חדשים), ואז `deploy`.
+8. **Supabase Auth**: `site_url` ו-`uri_allow_list`. בלי זה ההתחברות נשברת ברגע
+   שהדומיין מתחלף. (תוך כדי — לתקן את `https://localhost` ל-`http://`.)
+9. **Google OAuth**: authorized domain במסך ההסכמה.
+
+### שלב 4 — אחרי המעבר
+10. **להשאיר את `rmjewel.com` חי עם 301** לפחות שנה: מיילים שכבר נשלחו, קישורי
+    שיתוף בוואטסאפ (`/d/<token>`), ועמודים מאונדקסים — כולם מצביעים לישן.
+11. **Search Console**: אימות הדומיין החדש והגשת sitemap. דומיין חדש מאפס מוניטין
+    Safe Browsing — ראו `docs/SITE.md:34-45`, שם דומיין בן 10 ימים חטף חסימת Chrome.
+12. להסיר את ה-routes הישנים מ-Cloudflare רק אחרי שהכול מאומת.
+
+### בדיקות קבלה
+- כניסה עם מייל **וגם** עם גוגל בדומיין החדש
+- יצירה מקצה-לקצה (מוודא ש-`VECTORIZER_URL` ו-`VECTORIZER_TOKEN` הגיעו ל-Worker)
+- הזמנה → מייל התראה ומייל אישור מגיעים
+- קישור שיתוף ישן (`rmjewel.com/d/<token>`) מפנה לחדש ונפתח
+- `/sitemap.xml` ו-`/robots.txt` מצביעים לדומיין החדש
+
+---
+
+## 9. מה שנשאר פתוח מהביקורת
+
+ארבעת הפריטים בטבלת "פתוח" בראש המסמך (O1–O4). אף אחד מהם אינו חוסם את החלפת
+הדומיין, וכולם מתועדים שם עם המיקום והנימוק. סדר מומלץ כשיתפנה זמן:
+**O3** (גבול בטיחות — fan-out של פאנלים) → **O2** (ביצועים) → **O1** (נגישות) →
+**O4** (עדכון תלויות פיתוח).
