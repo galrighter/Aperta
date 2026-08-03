@@ -2,14 +2,17 @@
 
 // יומן היצירות — כל פעולת יצירה באתר, כולל הנכשלות, ומה שצריך כדי להסביר אותה:
 // הפרומפט המלא שיצא למודל, הקובץ שהמשתמש צירף, ההדמיה שחזרה, שלבי הצינור,
-// המועמדים וה-SVG הסופי — עם הורדה.
+// המועמדים וה-SVG הסופי — עם הורדה, ולצידם קבצי הייצור של הגרסה שההרצה שמרה
+// (DXF ו-SVG במ"מ). ה-SVG של היומן הוא **מה שנחתך** בקנה מידה של התצוגה;
+// קבצי הייצור הם המתאר של המתכת שנשארת. השניים נראים דומה ואינם אותו קובץ.
 //
 // הוצא מ-`/debug` כדי שגם פורטל הניהול (`/admin/runs`) יציג בדיוק את אותו יומן:
 // שני מסכים שמראים את אותו מידע אחרת הם שני מסכים שמתחזקים אחרת. `/debug` נשאר
 // מעבדת ההרצה (להריץ פרומפט או תמונה) ומשתמש באותם רכיבי אבחון.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ExportFiles from "./ExportFiles";
 
-export type Stage = { name: string; status: string; detail: string };
+export type Stage ={ name: string; status: string; detail: string };
 
 export type Candidate = {
   candidate_id: string; iou: number; mean_dev_mm: number; max_dev_mm: number;
@@ -119,6 +122,11 @@ export type LogDetail = {
   rawSvg?: string | null;
   /** מספר הגרסה שנשמרה מההרצה הזו. */
   versionNo?: number | null;
+  /**
+   * מזהה הגרסה שנשמרה — מה שצריך כדי למשוך את קבצי הייצור **של ההרצה הזו**
+   * ולא של הגרסה הנוכחית של העיצוב. `null` בהרצה שלא הגיעה לגרסה.
+   */
+  versionId?: string | null;
   debug: DebugMeta | null;
   /** הפרומפט המלא שיצא למודל התמונה. null בהרצות שנשמרו לפני 0009. */
   renderPrompt?: string | null;
@@ -414,10 +422,17 @@ export default function RunsLog({
           svg: data.svg ?? null,
           rawSvg: data.rawSvg ?? null,
           versionNo: data.versionNo ?? null,
+          versionId: data.versionId ?? null,
           debug: data.debug ?? null,
           renderPrompt: data.renderPrompt ?? null,
           prompt: data.prompt ?? null,
           inputs: data.inputs ?? null,
+          // הגישור וההצעות מגיעים מהשרת מאז 8c9f990, אבל ההעתקה כאן לא נגעה
+          // בהם — כלומר שכבת הגשרים והחלופות מעולם לא צוירו ביומן, והמסך אמר
+          // "אין נתוני גישור" על הרצות שיש בהן. אלה בדיוק השדות שנוספו כדי
+          // לענות על "מה תוקן אחרי שהמודל צייר".
+          bridges: data.bridges ?? null,
+          offered: data.offered ?? null,
         },
       }));
     } catch {
@@ -790,6 +805,20 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           {detail === "loading" && <div className="text-xs text-ink60">טוען פירוט…</div>}
           {detail === "error" && (
             <div className="text-xs text-red-600">טעינת הפירוט נכשלה. אפשר לסגור ולפתוח שוב.</div>
+          )}
+          {/* קבצי הייצור של ההרצה — DXF ו-SVG במ"מ, מה שנכנס למכונה.
+              עד כאן הם היו נגישים רק דרך לשונית העיצובים או מסך ההזמנה, כלומר
+              רק אחרי שמישהו הזמין; בבדיקות רוצים לחתוך בדיוק את מה שהיומן
+              מראה, בלי לעבור דרך הזמנה. נמסרת הגרסה **של ההרצה** ולא הנוכחית:
+              אחרי עוד סבב עריכה "הנוכחית" היא כבר שורה אחרת ביומן.
+              מופיע רק אחרי שהפירוט נטען — עד אז לא ידוע אם נשמרה גרסה בכלל. */}
+          {it.designId && d?.versionId && (
+            <ExportFiles
+              designId={it.designId}
+              versionId={d.versionId}
+              note={d.versionNo != null ? `גרסה ${d.versionNo}` : undefined}
+              className="mb-3 border-b border-graphite/10 pb-3"
+            />
           )}
           <Diagnostics
             images={{

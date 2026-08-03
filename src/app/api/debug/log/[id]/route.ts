@@ -18,7 +18,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     // ריק הוא התשובה הנכונה: הפתיחה תציג "אין נתונים" במקום "טעינת הפירוט נכשלה".
     if (!row) {
       return NextResponse.json({
-        id, svg: null, rawSvg: null, versionNo: null,
+        id, svg: null, rawSvg: null, versionNo: null, versionId: null,
         debug: null, renderPrompt: null, inputs: null, bridges: null, offered: null,
       });
     }
@@ -33,6 +33,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       // מה שנשמר, ובהיעדרו (הרצה שלא הגיעה לגרסה) מה שהווקטורייזר החזיר.
       svg: version.svg ?? row.svg,
       versionNo: version.versionNo,
+      // הגרסה שההרצה שמרה — המפתח לקבצי הייצור שלה מתוך היומן. `null` בהרצה
+      // שלא הגיעה לגרסה: שם אין מה לחתוך, ולכן גם אין מה להוריד.
+      versionId: version.versionId,
       /** הפלט הגולמי — לפני מתיחה, גישור ועיבוי. ההפרש בינו לבין `svg` הוא
        *  בדיוק מה שהצינור עשה אחרי שהמודל צייר. */
       rawSvg: version.svg ? row.svg : null,
