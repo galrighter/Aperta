@@ -10,6 +10,7 @@
 // ובכוונה — סיסמה היא עוד דבר לאבד, ועוד דבר לאבטח.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
+import { useDialog } from "@/lib/client/useDialog";
 import { TextInput } from "./ui";
 import { supabaseBrowser, authConfigured } from "@/lib/client/supabaseBrowser";
 
@@ -49,6 +50,9 @@ export function AccountGate({
   const busy = ownBusy || Boolean(externalBusy);
   const [error, setError] = useState<string | null>(null);
   const firstField = useRef<HTMLDivElement>(null);
+  // Escape, כליאת מיקוד, והחזרת המיקוד לכפתור שפתח. `undefined` כשעסוק —
+  // אין טעם לאפשר בריחה באמצע אימות שכבר יצא לדרך.
+  const box = useDialog(open, busy ? undefined : onCancel);
 
   // הטופס נפתח נקי בכל פעם. הרכיב נשאר מותקן כשהוא סגור, ובלי האיפוס הזה
   // "לא אתם?" היה מציג לחבר הבא את המייל של מי שהיה לפניו.
@@ -61,15 +65,12 @@ export function AccountGate({
     setBusy(false);
   }, [open]);
 
+  // המיקוד נכנס לשדה ולא לכפתור הראשון: זה מה שמבקשים מהמשתמשת למלא.
+  // רץ **אחרי** useDialog (סדר ה-hooks), ולכן גובר על המיקוד הכללי שלו.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onCancel();
-    };
-    window.addEventListener("keydown", onKey);
     firstField.current?.querySelector("input")?.focus();
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, busy, onCancel]);
+  }, [open, step]);
 
   const withGoogle = useCallback(async () => {
     setError(null);
@@ -152,7 +153,10 @@ export function AccountGate({
       aria-modal="true"
       aria-label={d.acctTitle}
     >
-      <div className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-white p-7">
+      <div
+        ref={box}
+        className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-white p-7"
+      >
         <h2 className="mb-2 text-[22px] font-semibold tracking-tight text-graphite">
           {step === "code" ? d.acctCodeTitle : d.acctTitle}
         </h2>

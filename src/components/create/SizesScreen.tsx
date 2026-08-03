@@ -82,8 +82,9 @@ export function SizesScreen({
           </div>
 
           {/* מידה מדויקת */}
-          <FieldLabel>{ring ? d.ringSizeLabel : d.circLabel}</FieldLabel>
+          <FieldLabel htmlFor="exact-size">{ring ? d.ringSizeLabel : d.circLabel}</FieldLabel>
           <input
+            id="exact-size"
             inputMode="decimal"
             value={ring ? s.ringSize : s.circ}
             onChange={(e) => set(ring ? { ringSize: e.target.value } : { circ: e.target.value })}

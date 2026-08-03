@@ -17,6 +17,7 @@ import {
   clearPendingJob, isUnwatched, readPendingJob, type PendingJob,
 } from "@/lib/client/pendingJob";
 import { markMyDesignDone } from "@/lib/client/myDesigns";
+import { useDialog } from "@/lib/client/useDialog";
 
 const d = he.design;
 
@@ -27,6 +28,10 @@ type Outcome = { kind: "ready"; job: PendingJob } | { kind: "failed"; job: Pendi
 
 export default function DesignReadyWatch() {
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const dismiss = useCallback(() => setOutcome(null), []);
+  // Escape, כליאת מיקוד, והחזרת המיקוד למקום שממנו החלון קפץ. הוא נפתח מעצמו
+  // על עמוד שהמשתמשת באמצע, ולכן דווקא כאן חייבת להיות דרך לצאת ממנו במקלדת.
+  const box = useDialog(Boolean(outcome), dismiss);
 
   const check = useCallback(async () => {
     const job = readPendingJob();
@@ -73,18 +78,23 @@ export default function DesignReadyWatch() {
     };
   }, [check]);
 
-  if (!outcome) return null;
+  const ready = outcome?.kind === "ready";
 
-  const ready = outcome.kind === "ready";
-
-  return (
+  return !outcome ? null : (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-graphite/45 p-4"
       role="dialog"
       aria-modal="true"
       aria-label={ready ? d.readyTitle : d.readyFailedTitle}
+      // סגירה בלחיצה על הרקע. עד כאן לא הייתה שום דרך לסגור חוץ משני
+      // הכפתורים, והחלון קופץ מעצמו על עמוד שהמשתמשת באמצע.
+      onClick={dismiss}
     >
-      <div className="w-full max-w-[420px] border border-graphite/15 bg-white p-7">
+      <div
+        ref={box}
+        className="w-full max-w-[420px] border border-graphite/15 bg-white p-7"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h2 className="mb-2 text-[22px] font-semibold tracking-tight text-graphite">
           {ready ? d.readyTitle : d.readyFailedTitle}
         </h2>
@@ -109,7 +119,7 @@ export default function DesignReadyWatch() {
           </button>
           <button
             type="button"
-            onClick={() => setOutcome(null)}
+            onClick={dismiss}
             className="text-[13px] text-ink60 underline-offset-4 hover:underline"
           >
             {d.readyLater}

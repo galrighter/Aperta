@@ -270,8 +270,9 @@ export function ResultScreen({
 
           {/* בקשה למודל */}
           <div className="mt-4 border border-graphite/10 bg-white p-5">
-            <CardLabel>{`${d.editReqTitle} · ${d.regions[s.region ?? "all"]}`}</CardLabel>
+            <CardLabel htmlFor="edit-request">{`${d.editReqTitle} · ${d.regions[s.region ?? "all"]}`}</CardLabel>
             <textarea
+              id="edit-request"
               value={s.editReq}
               onChange={(e) => set({ editReq: e.target.value })}
               placeholder={d.editReqPlaceholder}
@@ -399,9 +400,20 @@ export function ResultScreen({
             )}
           </div>
 
-          <PrimaryBtn onClick={onOrder} full>
+          {/* שני מצבים שבהם ההזמנה הייתה פתוחה ולא הייתה צריכה להיות.
+              **בזמן שהשינוי רץ:** הוא מסתיים ברקע ומחליף את הגרסה — כלומר
+              הלקוחה מזמינה פריט אחד ומקבלת אחר, בלי שדבר על המסך זז.
+              **כשהוולידציה אומרת "לא ניתן לייצור":** הסטודיו חוסם ייצוא על
+              אותו סטטוס בדיוק, והמשפך שלח את זה הלאה — עד לסדנה, שם זה נעצר
+              בלי דרך להסביר ללקוחה למה. */}
+          <PrimaryBtn onClick={onOrder} disabled={s.applying || status === "fail"} full>
             {d.resultOrder}
           </PrimaryBtn>
+          {(s.applying || status === "fail") && (
+            <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: s.applying ? undefined : STATUS_COLOR.fail }}>
+              {s.applying ? d.resultOrderBusy : d.resultOrderBlocked}
+            </p>
+          )}
         </div>
       </div>
     </section>
