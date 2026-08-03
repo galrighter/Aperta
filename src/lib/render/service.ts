@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api";
 import { signedUploadUrl } from "@/lib/db/storage";
 import { deriveRenderJobId } from "./attemptId";
+import { vectorizerUrl } from "@/lib/site.config";
 import type { LlmImage } from "@/lib/llm/core";
 import type { RunStagePaths } from "@/lib/db/runs";
 
@@ -33,10 +34,6 @@ const FAST_FAILURE_MS = 5_000;
 const RETRY_DELAY_MS = 2_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function serviceUrl(): string {
-  return process.env.VECTORIZER_URL || "https://vec.rmjewel.com";
-}
 
 /**
  * דחייה של מסנן התוכן, ולא כשל של המודל.
@@ -192,7 +189,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   // ולכן כל קריאה בו קצרה.
   const callTimeout = boxJobId ? CALL_TIMEOUT_MS : RENDER_TIMEOUT_MS;
   const post = () =>
-    fetch(`${serviceUrl()}/api/generate`, {
+    fetch(`${vectorizerUrl()}/api/generate`, {
       method: "POST",
       headers,
       body: payload,
@@ -225,7 +222,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   // לא מאבד את העבודה: היא ממשיכה שם, והבקשה הבאה עם אותו jobId תאסוף אותה.
   if (boxJobId && resp.status === 202) {
     const deadline = sentAt + RENDER_TIMEOUT_MS;
-    const statusUrl = `${serviceUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
+    const statusUrl = `${vectorizerUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
     while (body.state === "running") {
       if (Date.now() >= deadline) {
         throw new ApiError(

@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api";
+import { vectorizerUrl } from "@/lib/site.config";
 import {
   type DesignRow,
   type VersionRow,
@@ -47,10 +48,6 @@ export interface VectorizeFull {
   metrics: VectorizeResult["metrics"];
   /** התגובה הגולמית מה-vectorizer (כולל debug) — נשמרת ליומן הבק־אופיס. */
   raw: Record<string, unknown>;
-}
-
-function vectorizerUrl(): string {
-  return process.env.VECTORIZER_URL || "https://vec.rmjewel.com";
 }
 
 /** בקשת POST אחת ל-vectorizer. מחזיר את הגוף הגולמי או זורק על כשל תקשורת/תגובה לא־JSON. */

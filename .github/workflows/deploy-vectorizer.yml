@@ -68,6 +68,20 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -p ${PORT:-22}" \
             vectorizer/ "$USER@$HOST:~/forme-vectorizer/"
 
+      # אותו שער כמו ב-deploy.yml: עד כאן היה כאן `|| 'vec.rmjewel.com'`, וזה
+      # ה-vhost וה-cert של nginx — כלומר משתנה שנשכח בהחלפת דומיין היה מקים את
+      # השירות מחדש על השם הישן, בשקט.
+      - name: Check the vectorizer domain is set
+        env:
+          VDOMAIN: ${{ vars.VECTORIZER_DOMAIN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VDOMAIN:-}" ]; then
+            echo "::error::VECTORIZER_DOMAIN is not set (Settings → Secrets and variables → Actions → Variables)."
+            echo "It used to fall back to vec.rmjewel.com — the vhost and certificate name, which a domain switch must never silently restore."
+            exit 1
+          fi
+
       - name: Build and run container (behind Caddy HTTPS)
         env:
           HOST: ${{ secrets.HETZNER_HOST }}
@@ -75,7 +89,7 @@ jobs:
           PORT: ${{ secrets.HETZNER_PORT }}
           VTOKEN: ${{ secrets.VECTORIZER_TOKEN }}
           # HTTPS hostname for the vectorizer (Cloudflare Workers can't call raw-IP HTTP).
-          VDOMAIN: ${{ vars.VECTORIZER_DOMAIN || 'vec.rmjewel.com' }}
+          VDOMAIN: ${{ vars.VECTORIZER_DOMAIN }}
           # /api/generate calls the image model from here. Storage needs no key:
           # forme hands the box a signed upload URL per artefact.
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}

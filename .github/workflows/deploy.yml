@@ -43,6 +43,30 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx opennextjs-cloudflare build
+      # שער על המשתנים שנושאים את שם הדומיין.
+      #
+      # עד כאן לכל אחד מהם הייתה נפילה-לברירת-מחדל עם `rmjewel.com` כתוב בתוכה.
+      # זה עובד — בדיוק עד להחלפת הדומיין, שהיא הרגע שבו משתנה שנשכח מחזיר את
+      # הדומיין הישן לפרודקשן בלי מילה. עדיף דיפלוי שנעצר ואומר מה חסר.
+      # (המודלים למטה נשארים עם ברירת מחדל: הם לא נוגעים בדומיין.)
+      - name: Check the domain-bearing variables are set
+        env:
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          MAIL_TO: ${{ vars.MAIL_TO }}
+          VECTORIZER_URL: ${{ vars.VECTORIZER_URL }}
+        run: |
+          set -euo pipefail
+          missing=""
+          for name in MAIL_FROM MAIL_TO VECTORIZER_URL; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository variables:$missing"
+            echo "Set them under Settings → Secrets and variables → Actions → Variables."
+            echo "They used to fall back to rmjewel.com, which is the one value a domain switch must never silently restore."
+            exit 1
+          fi
+
       # המיגרציות רצות כאן, ולא ב-workflow משלהן. שני workflows על אותו commit
       # מתחרים: הקוד יכול לעלות לפני העמודה שהוא קורא, והחלון הזה כבר הפיל
       # קריאה *וכתיבה* ליומן ההרצות. שלב באותו job הוא היחיד שמבטיח סדר.
@@ -93,13 +117,13 @@ jobs:
             "SUPABASE_SECRET_KEY": "${{ secrets.SUPABASE_SECRET_KEY }}",
             "ADMIN_TOKEN": "${{ secrets.ADMIN_TOKEN }}",
             "RESEND_API": "${{ secrets.RESEND_API }}",
-            "MAIL_FROM": "${{ vars.MAIL_FROM || 'RM JEWEL <noreply@rmjewel.com>' }}",
-            "MAIL_TO": "${{ vars.MAIL_TO || 'info@rmjewel.com' }}",
-            "ALERT_TO": "${{ vars.ALERT_TO || vars.MAIL_TO || 'info@rmjewel.com' }}",
+            "MAIL_FROM": "${{ vars.MAIL_FROM }}",
+            "MAIL_TO": "${{ vars.MAIL_TO }}",
+            "ALERT_TO": "${{ vars.ALERT_TO || vars.MAIL_TO }}",
             "LLM_MODEL": "${{ vars.LLM_MODEL || 'claude-sonnet-4-6' }}",
             "OPENAI_MODEL": "${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}",
             "LLM_PROVIDER": "${{ vars.LLM_PROVIDER || 'openai' }}",
-            "VECTORIZER_URL": "${{ vars.VECTORIZER_URL || 'https://vec.rmjewel.com' }}",
+            "VECTORIZER_URL": "${{ vars.VECTORIZER_URL }}",
             "VECTORIZER_TOKEN": "${{ secrets.VECTORIZER_TOKEN }}"
           }
           EOF
