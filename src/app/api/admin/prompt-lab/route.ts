@@ -17,7 +17,8 @@ import { planRender, maxRows } from "@/lib/render/panels";
 export const maxDuration = 30;
 
 /** הפרופיל שכל עיצובי הכיול נרשמים עליו. `tester` — ולכן `assertDesignAccess`
- *  מתיר אותו בלי עוגייה, והמכסה היומית שלו נפרדת משל לקוחות. */
+ *  מתיר אותו מאחורי שער האדמין (מסך הכיול ממילא admin-only), והמכסה היומית
+ *  שלו נפרדת משל לקוחות. */
 const LAB_PROFILE_NAME = "prompt-debug";
 const LAB_PROFILE_COLOR = "#8a5de0";
 
