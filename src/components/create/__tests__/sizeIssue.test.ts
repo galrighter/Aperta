@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CIRC_LIMIT_MM, INITIAL, sizeIssue, stripLengthMm, type CreateState } from "../model";
+import {
+  CIRC_LIMIT_MM, INITIAL, US_SIZE_LIMIT, WIDTH, sizeIssue, stripLengthMm, type CreateState,
+} from "../model";
 import { FAB } from "@/lib/fabrication.config";
+import { US_RING_SIZES } from "@/lib/sizing";
 
 // RM-0077 (3.8.26): הוזמן צמיד ב"היקף מדויק" 10 — עשרה מילימטרים, כלומר
 // סנטימטרים בשדה שמבקש מ"מ. החישוב נתן פריסה של 15.8 מ"מ על רוחב 18, הפרומפט
@@ -51,14 +54,23 @@ describe("sizeIssue", () => {
   });
 
   it("בטבעת: מידה אמריקאית שבטבלה עוברת", () => {
-    for (const size of ["4", "6.5", "13"]) expect(sizeIssue(ring(size))).toBeNull();
+    // כולל הקצוות שנוספו ב-3.8.26: מידות ילדים (1–3.5) ואצבע גדולה (13.5–16).
+    for (const size of ["1", "2", "3.5", "4", "6.5", "13", "14", "16"]) {
+      expect(sizeIssue(ring(size)), `מידה ${size}`).toBeNull();
+    }
   });
 
-  it("בטבעת: מידה אמריקאית מחוץ לטבלה נעצרת במקום להיצבט בשקט", () => {
-    // `idMmFromUsSize` צובט לקצה הטבלה: מידה 20 הפכה שם ל-13 ומידה 2 ל-4,
+  it("בטבעת: מידה מחוץ לטבלה נעצרת במקום להיצבט בשקט", () => {
+    // `idMmFromUsSize` צובט לקצה הטבלה: מידה 20 הפכה שם ל-16 ומידה 0.5 ל-1,
     // כלומר מדידה של הלקוחה שתוקנה למספר אחר בלי חיווי.
-    expect(sizeIssue(ring("20"))).toEqual({ kind: "usSize", value: 20, lo: 4, hi: 13 });
-    expect(sizeIssue(ring("2"))?.kind).toBe("usSize");
+    expect(sizeIssue(ring("20"))).toEqual({ kind: "usSize", value: 20, lo: 1, hi: 16 });
+    expect(sizeIssue(ring("0.5"))?.kind).toBe("usSize");
+  });
+
+  it("הטווח נגזר מהטבלה ולא נכתב פעמיים", () => {
+    // שני מספרים שאומרים את אותו דבר נפרדים ביום שבו אחד מהם משתנה — וזה בדיוק
+    // מה שקרה עכשיו כשהטבלה התרחבה.
+    expect(US_SIZE_LIMIT).toEqual([US_RING_SIZES[0], US_RING_SIZES[US_RING_SIZES.length - 1]]);
   });
 
   it("בטבעת: היקף במ\"מ כן נמדד", () => {
@@ -87,6 +99,20 @@ describe("הגבולות מסכימים עם שער השרת", () => {
     const [lo, hi] = CIRC_LIMIT_MM.ring;
     expect(stripLengthMm(ring(String(lo)))).toBeGreaterThanOrEqual(floor);
     expect(stripLengthMm(ring(String(hi)))).toBeLessThanOrEqual(ceil);
+  });
+
+  it("טבעת: **כל** מידה בטבלה עוברת את שער השרת, בכל רוחב", () => {
+    // הטבלה התרחבה ל-1–16, והשאלה שהתשובה לה חייבת להיות אוטומטית היא אם
+    // הקצוות החדשים עדיין מייצרים פריסה שהשרת מוכן לקבל. רוחב הפס משנה את
+    // האורך (תוספת הנוחות), ולכן שני הקצוות שלו נבדקים גם הם.
+    const [floor, ceil] = FAB.products.ring.lengthLimitMm;
+    for (const size of US_RING_SIZES) {
+      for (const ringWidth of [WIDTH.ring.min, WIDTH.ring.def, WIDTH.ring.max]) {
+        const length = stripLengthMm({ ...ring(String(size)), ringWidth });
+        expect(length, `מידה ${size} ברוחב ${ringWidth}`).toBeGreaterThanOrEqual(floor);
+        expect(length, `מידה ${size} ברוחב ${ringWidth}`).toBeLessThanOrEqual(ceil);
+      }
+    }
   });
 
   it("המידה של RM-0077 נדחית גם בשרת, לא רק במסך", () => {

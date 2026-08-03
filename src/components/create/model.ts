@@ -4,7 +4,7 @@ import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
 import { svgFrame } from "@/lib/geometry/frame";
 import { FAB, type FitStyle } from "@/lib/fabrication.config";
-import { computeSizing, idMmFromUsSize } from "@/lib/sizing";
+import { computeSizing, idMmFromUsSize, US_RING_ID_MM, US_RING_SIZES } from "@/lib/sizing";
 import { priceFor, type Price } from "@/lib/pricing";
 
 const d = he.design;
@@ -387,18 +387,30 @@ export const CIRC_LIMIT_MM: Record<Product, [number, number]> = {
   // טעות. מה שנחסם הוא מספר שאינו מדידה — 10 או 16, כלומר סנטימטרים בשדה
   // שמבקש מילימטרים.
   bracelet: [90, 260],
-  ring: [30, 100],
+  // בטבעת זהו **אותו טווח** של הטבלה, בצורתו השנייה: היקף אצבע הוא π·ID, ומי
+  // שמדד בחוט לא אמור לקבל תשובה אחרת ממי שהשתמש במודד טבעות. מעוגל החוצה
+  // למ"מ שלם — 38.9 ו-78.0 הם הקצוות המדויקים.
+  ring: [
+    Math.floor(Math.PI * US_RING_ID_MM[String(US_RING_SIZES[0])]),
+    Math.ceil(Math.PI * US_RING_ID_MM[String(US_RING_SIZES[US_RING_SIZES.length - 1])]),
+  ],
 };
 
 /**
- * טווח המידה האמריקאית שהשדה מקבל — בדיוק זה של הטבלה התקנית (`US_RING_ID_MM`).
+ * טווח המידה האמריקאית שהשדה מקבל — **נגזר** מהטבלה התקנית ולא נכתב שוב.
  *
- * למה זה בכלל בדיקה: `idMmFromUsSize` **צובט** ערך שמחוץ לטבלה לקצה שלה, בשקט.
- * מידה 20 הפכה שם למידה 13 ומידה 2 למידה 4 — כלומר בדיוק אותו כשל שהוצא
+ * למה זו בדיקה בכלל: `idMmFromUsSize` **צובט** ערך שמחוץ לטבלה לקצה שלה,
+ * בשקט. מידה 20 הפכה שם ל-13 ומידה 0.5 ל-1 — כלומר בדיוק אותו כשל שהוצא
  * מ-`lengthHintMm`: מדידה של הלקוחה שתוקנה למספר אחר בלי שאיש יידע. הצביטה
  * נשארת כרשת ביטחון בשרת; כאן היא נעצרת ונאמרת.
+ *
+ * ולמה נגזר ולא קבוע: שני מספרים שאומרים את אותו דבר נפרדים ביום שבו אחד מהם
+ * משתנה. הטבלה התרחבה ל-1–16 (3.8.26) והטווח כאן התרחב איתה מעצמו.
  */
-export const US_SIZE_LIMIT: [number, number] = [4, 13];
+export const US_SIZE_LIMIT: [number, number] = [
+  US_RING_SIZES[0],
+  US_RING_SIZES[US_RING_SIZES.length - 1],
+];
 
 /**
  * המידה שהוזנה אינה מדידה אפשרית — ומה להגיד עליה.
