@@ -29,8 +29,9 @@ import { decodeRunCursor, encodeRunCursor, legacyRunCursor } from "@/lib/runs/cu
 // הספירה יושבת ב-/api/debug/log/counts — מספר בלי שורות.
 //
 // הסמן היה חותמת הזמן כמו שהיא (`before`), והוא נסע גולמי בשורת הכתובת עם ה-`+`
-// של אזור הזמן — התו שמשמעותו רווח כשמשהו בדרך נגע בקידוד. עכשיו הוא base64url
-// של `(created_at, id)`; למה דווקא כך, ולמה גם המזהה, כתוב ב-`lib/runs/cursor`.
+// של אזור הזמן. הוא הגיע לכאן כרווח, יצא ככה ל-Supabase, וכל לחיצה על "עוד"
+// חזרה 400: `invalid input syntax for type timestamp with time zone`. עכשיו הוא
+// base64url של `(created_at, id)` — ראה `lib/runs/cursor`.
 
 export const maxDuration = 60;
 

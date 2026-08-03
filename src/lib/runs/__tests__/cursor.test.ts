@@ -34,8 +34,17 @@ describe("סמן העמוד", () => {
 
   it("מקבל את הסמן הישן מלשונית שנפתחה לפני הפריסה", () => {
     expect(legacyRunCursor(TS)).toEqual({ createdAt: TS, id: null });
-    // וזה מה שקרה כשה-`+` הפך לרווח: ערך שאינו זמן, ושאילתה שנשענה עליו נכשלה.
-    expect(legacyRunCursor("2026-08-03T08:41:00.100019 00:00")).toBeNull();
+    expect(legacyRunCursor(null)).toBeNull();
+    expect(legacyRunCursor("לא זמן")).toBeNull();
+  });
+
+  it("מאחה את הרווח שהיה ה-`+` — זה מה שהגיע ל-Postgres ונדחה", () => {
+    // invalid input syntax for type timestamp with time zone:
+    //   "2026-08-01T15:23:03.156629 00:00"
+    expect(legacyRunCursor("2026-08-03T08:41:00.100019 00:00")).toEqual({
+      createdAt: TS,
+      id: null,
+    });
   });
 
   it("נושא את המזהה, ולכן הוא מצביע על שורה אחת ולא על גוש", () => {
