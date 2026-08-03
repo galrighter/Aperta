@@ -282,7 +282,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // ארבעה בעלות מול הצינור החדש (~$0.006 להרצה).
     const fab = resolveFab(dims.thicknessMm, design.product_type);
     const minHoleMm = fab.minHole;
-    const editSvg = buildBaseRenderSvg(body.currentSvg);
+    // צורת הקנבס נגזרת מהאורך, לא מהעדפה: בפס שבו הפריט קצר מכדי לבקש שורות
+    // בקנבס לרוחב וארוך מכדי לקבל עמודה שנייה, קנבס לאורך הוא הידית היחידה.
+    // היא נבחרת כאן, לפני תמונת הבסיס: תמונת הייחוס חייבת להצטייר על אותו קנבס
+    // שיתבקש מהמודל — ייחוס לרוחב מול קנבס לאורך מחזיר פריט חתוך בקצוות.
+    const canvas = canvasFor(dims.lengthMm);
+    const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
     const baseVersionNo = editSvg && body.baseVersionId
@@ -292,10 +297,6 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       : undefined;
     // עקיפת הכיול נוגעת בשורות בלבד; העמודות נשארות 1 כדי שהניסוי יהיה על
     // משתנה אחד — ומספר החלופות שווה למספר השורות, כמו לפני שהיו עמודות.
-    // צורת הקנבס נגזרת מהאורך, לא מהעדפה: בפס שבו הפריט קצר מכדי לבקש שורות
-    // בקנבס לרוחב וארוך מכדי לקבל עמודה שנייה, קנבס לאורך הוא הידית היחידה.
-    // המתג כבוי כברירת מחדל עד שהקופסה נפרסת — ראו lib/render/canvas.ts.
-    const canvas = canvasFor(dims.lengthMm);
     const plan = body.rowsOverride
       ? { rows: body.rowsOverride, cols: 1, calls: 1 as const, candidates: body.rowsOverride, canvas }
       : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildBaseRenderSvg, BASE_CANVAS } from "../baseImage";
+import { buildBaseRenderSvg } from "../baseImage";
+import { LANDSCAPE, PORTRAIT } from "../canvas";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 
 const canonical = (inner: string, l = 140, w = 15) =>
@@ -10,7 +11,7 @@ const CUTS = '<path d="M10 3L30 3L30 12L10 12Z" fill="black"/><path d="M50 3L70 
 
 describe("buildBaseRenderSvg", () => {
   it("draws the piece the way a render looks: black metal, openings masked out to white", () => {
-    const svg = buildBaseRenderSvg(canonical(CUTS))!;
+    const svg = buildBaseRenderSvg(canonical(CUTS), LANDSCAPE)!;
     expect(svg).toBeTruthy();
     // הפס עצמו — שחור, עם מסכת החיתוכים
     expect(svg).toContain('fill="#111111" mask="url(#cutouts)"');
@@ -21,32 +22,42 @@ describe("buildBaseRenderSvg", () => {
   });
 
   it("puts the piece on the render canvas, centred, with white margins", () => {
-    const svg = buildBaseRenderSvg(canonical(CUTS))!;
-    expect(svg).toContain(`viewBox="0 0 ${BASE_CANVAS.widthPx} ${BASE_CANVAS.heightPx}"`);
+    const svg = buildBaseRenderSvg(canonical(CUTS), LANDSCAPE)!;
+    expect(svg).toContain(`viewBox="0 0 ${LANDSCAPE.widthPx} ${LANDSCAPE.heightPx}"`);
     const scale = Number(/scale\(([\d.]+)\)/.exec(svg)![1]);
     // 140mm על קנבס 1536 עם 90% מילוי
-    expect(scale).toBeCloseTo((BASE_CANVAS.widthPx * 0.9) / 140, 4);
+    expect(scale).toBeCloseTo((LANDSCAPE.widthPx * 0.9) / 140, 4);
     const [, tx, ty] = /translate\(([-\d.]+) ([-\d.]+)\)/.exec(svg)!;
-    expect(Number(tx)).toBeCloseTo(BASE_CANVAS.widthPx * 0.05, 1);
+    expect(Number(tx)).toBeCloseTo(LANDSCAPE.widthPx * 0.05, 1);
     // הפס דק — הוא מרכזי אנכית, עם הרבה לבן מעל ומתחת
-    expect(Number(ty)).toBeGreaterThan(BASE_CANVAS.heightPx * 0.4);
+    expect(Number(ty)).toBeGreaterThan(LANDSCAPE.heightPx * 0.4);
+  });
+
+  // הרגרסיה של הצמיד החתוך: פריט בפס הקנבס-לאורך נערך, הייחוס צויר לרוחב
+  // (1536 רוחב) והמודל התבקש לצייר על 1024 — והעתיק פריט רחב לקנבס צר.
+  it("draws the reference on the same canvas the model will be asked for — portrait included", () => {
+    const svg = buildBaseRenderSvg(canonical(CUTS), PORTRAIT)!;
+    expect(svg).toContain(`viewBox="0 0 ${PORTRAIT.widthPx} ${PORTRAIT.heightPx}"`);
+    const scale = Number(/scale\(([\d.]+)\)/.exec(svg)![1]);
+    // הציר הארוך של הפריט נפרס על 1024 הפיקסלים של רוחב הקנבס, לא על 1536
+    expect(scale).toBeCloseTo((PORTRAIT.widthPx * 0.9) / 140, 4);
   });
 
   it("carries nothing but the path data across to the rasteriser", () => {
     const nasty = canonical('<path d="M1 1L2 2Z" fill="black" onload="x()"/><script>y()</script>');
-    const svg = buildBaseRenderSvg(nasty)!;
+    const svg = buildBaseRenderSvg(nasty, LANDSCAPE)!;
     expect(svg).toContain('d="M1 1L2 2Z"');
     expect(svg).not.toContain("onload");
     expect(svg).not.toContain("script");
   });
 
   it("is null when there is nothing to draw from", () => {
-    expect(buildBaseRenderSvg(null)).toBeNull();
-    expect(buildBaseRenderSvg("")).toBeNull();
+    expect(buildBaseRenderSvg(null, LANDSCAPE)).toBeNull();
+    expect(buildBaseRenderSvg("", LANDSCAPE)).toBeNull();
     // אין viewBox
-    expect(buildBaseRenderSvg('<svg><g id="cutouts"><path d="M0 0Z"/></g></svg>')).toBeNull();
+    expect(buildBaseRenderSvg('<svg><g id="cutouts"><path d="M0 0Z"/></g></svg>', LANDSCAPE)).toBeNull();
     // אין חיתוכים — פס חלק אינו רפרנס
-    expect(buildBaseRenderSvg(canonical(""))).toBeNull();
+    expect(buildBaseRenderSvg(canonical(""), LANDSCAPE)).toBeNull();
   });
 });
 

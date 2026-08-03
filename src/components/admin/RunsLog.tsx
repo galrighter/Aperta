@@ -43,6 +43,8 @@ export type StageUrls = {
 export type RunInputs = {
   productType?: string; lengthMm?: number; widthMm?: number; thicknessMm?: number;
   rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
+  /** צורת הקנבס שנשלחה למודל, `"1536x1024"`. חסר בהרצות מלפני התיעוד. */
+  canvasSize?: string;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
   imageDropped?: "lettering" | "edit";
@@ -615,6 +617,13 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     );
   }
   if (inputs.calls != null) chips.push(`${inputs.calls} קריאות`);
+  // צורת הקנבס שנשלחה למודל. היא נשמרה מאז שנוסף הקנבס לאורך אבל לא הוצגה —
+  // ותלונה על פריט חתוך מתחילה בדיוק בשאלה "על איזה קנבס זה רץ".
+  if (inputs.canvasSize) {
+    const [w, h] = inputs.canvasSize.split("x").map(Number);
+    const orient = w > 0 && h > 0 ? (w < h ? "קנבס לאורך" : "קנבס לרוחב") : "קנבס";
+    chips.push(`${orient} ${inputs.canvasSize.replace("x", "×")}`);
+  }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
   // כשידוע *על איזו* גרסה השינוי נשלח, זה מה שנכתב: "עריכה של הקיים" לבדו לא
@@ -663,7 +672,8 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
   onPrompt: () => void;
   onRerun?: () => void;
 }) {
-  const svg = detailOf(detail)?.svg ?? null;
+  const d = detailOf(detail);
+  const svg = d?.svg ?? null;
   return (
     <div className="overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
       {/* שורת סיכום.
@@ -793,12 +803,14 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             }}
             renderModel={it.renderModel}
             svg={svg}
-            rawSvg={detailOf(detail)?.rawSvg ?? null}
-            versionNo={detailOf(detail)?.versionNo ?? null}
-            bridges={detailOf(detail)?.bridges ?? null}
-            offered={detailOf(detail)?.offered ?? null}
+            rawSvg={d?.rawSvg ?? null}
+            versionNo={d?.versionNo ?? null}
+            // undefined = הפירוט עוד לא נטען (אין מה להגיד); null = נטען ואין
+            // נתוני גישור — וזה מצב שמוצג, לא שתיקה. ראה ההערה ב-Diagnostics.
+            bridges={d ? d.bridges ?? null : undefined}
+            offered={d?.offered ?? null}
             // המדדים מגיעים עם הרשימה; ה-SVG של המועמדים רק מהפירוט.
-            debug={detailOf(detail)?.debug ?? it.debug}
+            debug={d?.debug ?? it.debug}
             svgName={`run-${it.id.slice(0, 8)}`}
           />
         </div>
@@ -968,13 +980,16 @@ export function PromptDialog({
 }
 
 /** רכיב אבחון משותף לתצוגת הרצה חיה וליומן. images כבר כתובות URL/dataURL מוכנות. */
-export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges = null, offered = null, svgName = "design" }: {
+export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo = null, debug, bridges, offered = null, svgName = "design" }: {
   images: StageUrls; renderModel: string | null; svg: string | null; debug: DebugMeta | null;
   /** הפלט הגולמי, לפני מסגור. מוצג לצד `svg` — ההפרש ביניהם הוא מה שהצינור
    *  עשה אחרי שהמודל צייר, וזה מה שלא היה נראה כאן. */
   rawSvg?: string | null;
   versionNo?: number | null;
-  /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. */
+  /** גשרים שנוצרו אחרי המעקב — לא חלק ממה שהמודל צייר. שלושה מצבים, בכוונה
+   *  בלי ברירת מחדל שממזגת אותם: מערך = יש נתונים (גם ריק הוא נתון); `null` =
+   *  אין נתוני גישור להרצה, וזה מוצג; `undefined` = הנתונים עוד לא כאן
+   *  (הפירוט בטעינה), ואז שותקים. */
   bridges?: BridgeRecord[] | null;
   /** ההצעות שהוצעו בהרצה. הראשונה היא הזוכה ומוצגת למעלה. */
   offered?: OfferedCandidate[] | null;
@@ -1069,10 +1084,19 @@ export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo
       {/* אפס גשרים ולא "אין מה להציג": בלי השורה הזאת, הרצה שהגישור לא רץ בה
           נראית בדיוק כמו הרצה שלא היה בה מה לגשר — וזו בדיוק ההבחנה שנדרשה
           כשחזר עיצוב שכל אותיותיו מרחפות. */}
-      {bridges !== null && bridges.length === 0 && (
+      {bridges?.length === 0 && (
         <div className="rounded-[2px] border border-graphite/10 bg-white p-3 text-xs text-ink60">
           לא נוסף אף גשר אחרי המעקב — כלומר לא חזר מהמעקב אף אי מנותק. אם בכל זאת
           יש בעיצוב מתכת מרחפת, היא לא זוהתה כאי.
+        </div>
+      )}
+      {/* אין נתונים ≠ אפס גשרים: הגישור נקרא מהגרסה שההרצה שמרה, והרצה שנדחתה
+          או שקדמה לתיעוד פשוט לא השאירה כלום. בלי ההודעה, היעדר שלב הצביעה
+          נראה כמו באג בתצוגה במקום כמצב של ההרצה. */}
+      {bridges === null && (
+        <div className="rounded-[2px] border border-graphite/10 bg-white p-3 text-xs text-ink60">
+          אין נתוני גישור להרצה הזו — לא נשמרה ממנה גרסה (הרצה שנדחתה או נכשלה),
+          או שהגרסה נשמרה לפני שהגישור החל להירשם.
         </div>
       )}
 

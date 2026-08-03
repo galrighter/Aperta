@@ -1,4 +1,3 @@
-import { BASE_CANVAS } from "./baseImage";
 import type { Canvas } from "./canvas";
 import {
   textToStencil, measureText, polygonsBBox, translatePolygons,
@@ -212,8 +211,10 @@ export async function buildLetteringRenderSvg(
   productType: "bracelet" | "ring",
   rows: number,
   brief: string,
-  cols = 1,
-  canvas: Canvas = BASE_CANVAS,
+  cols: number,
+  // בלי ברירת מחדל, כמו ב-buildBaseRenderSvg: הייחוס חייב להצטייר על אותו
+  // קנבס שיישלח למודל באותה קריאה, וברירת מחדל שקטה היא איך שהשניים נפרדים.
+  canvas: Canvas,
 ): Promise<LetteringReference | null> {
   const content = text.trim();
   if (!content) return null;
