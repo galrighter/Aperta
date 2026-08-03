@@ -2,7 +2,7 @@ import opentype from "opentype.js";
 import { loadFace, DEFAULT_FONT, type FontId } from "./fonts";
 import { samplePathToRings, ringToPathD } from "@/lib/geometry/paths";
 import { union, difference, intersection, offset, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
-import { resolveFab } from "@/lib/fabrication.config";
+import { resolveFab, FAB } from "@/lib/fabrication.config";
 import type { DesignDims } from "@/lib/geometry/validate";
 import type { MultiPolygon, Ring } from "@/lib/geometry/types";
 
@@ -27,6 +27,12 @@ const SEAM_MM = 0.05;
 const HEBREW_RE = /[֐-׿]/;
 /** מה שנקרא משמאל לימין גם בתוך משפט עברי: לטינית, ספרות. */
 const LTR_RUN_RE = /[A-Za-z0-9]/;
+/**
+ * מפריד שנשאר בתוך רצף LTR כשהוא חסום בין שני תווי LTR: הנקודות של תאריך
+ * (`12.3.24`), הלוכסן (`3/12`), המקף והנקודתיים (`10:30`). בלעדיו כל קבוצת
+ * ספרות מתהפכת בנפרד והתאריך יוצא הפוך — `24.3.12` במקום `12.3.24`.
+ */
+const LTR_CONNECTOR_RE = /[-./:]/;
 
 /** סוגריים וכיוצא בהם מתהפכים כשהסדר מתהפך, אחרת "(רייטר" יוצא ")רייטר". */
 const MIRROR: Record<string, string> = {
@@ -47,9 +53,14 @@ export function visualOrder(text: string): string {
   const chars = [...text].reverse().map((c) => MIRROR[c] ?? c);
   for (let i = 0; i < chars.length; ) {
     if (!LTR_RUN_RE.test(chars[i])) { i++; continue; }
-    let j = i;
-    while (j < chars.length && LTR_RUN_RE.test(chars[j])) j++;
-    // רווח בין שתי מילים לטיניות שייך לרצף; רווח בגבול העברית אינו.
+    let j = i + 1;
+    while (j < chars.length) {
+      if (LTR_RUN_RE.test(chars[j])) { j++; continue; }
+      // מפריד נשאר ברצף רק כשהתו הבא גם הוא LTR (התו הקודם כבר ידוע כ-LTR),
+      // כלומר הוא חסום בין שני צדדים לטיניים — נקודה בתאריך, לא נקודת סוף משפט.
+      if (LTR_CONNECTOR_RE.test(chars[j]) && LTR_RUN_RE.test(chars[j + 1] ?? "")) { j++; continue; }
+      break;
+    }
     const run = chars.slice(i, j).reverse();
     chars.splice(i, j - i, ...run);
     i = j;
@@ -142,7 +153,11 @@ export async function renderTextRequests(svg: string, dims: DesignDims): Promise
       // בקשה לא תקינה — מסירים; הוולידציה תמשיך על שאר העיצוב
       return "";
     }
-    const mp = await textToPolygons(content.trim(), x, y, height, align, fab.minBridgeCut);
+    // FAB.minLetterBridgeMm הוא הרצפה שהנתיב החי (letteringImage) מעביר; בלעדיה
+    // גשר של אות בטקסט קטן יורד מתחת למינימום הייצור ונשבר בחיתוך.
+    const mp = await textToPolygons(
+      content.trim(), x, y, height, align, fab.minBridgeCut, {}, FAB.minLetterBridgeMm,
+    );
     return mp
       .map((poly) => `<path d="${poly.map((r) => ringToPathD(r)).join("")}" fill="black"/>`)
       .join("");

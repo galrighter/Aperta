@@ -27,10 +27,6 @@ export default function LegalPage({
           </section>
         ))}
       </div>
-
-      <p className="mt-12 rounded-[2px] border border-graphite/10 bg-white p-4 text-xs text-ink60">
-        {s.legalNote}
-      </p>
     </div>
   );
 }

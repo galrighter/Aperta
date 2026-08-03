@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError, parseBody } from "@/lib/api";
 import { requireAccountId } from "@/lib/account";
+import { requireAdmin } from "@/lib/admin";
 import { getAccount } from "@/lib/db/accounts";
 import { FAB } from "@/lib/fabrication.config";
 
@@ -20,7 +21,9 @@ export async function GET(req: Request) {
     let profileId: string | null = null;
     if (asked) {
       const target = await getAccount(asked);
-      if (target?.kind === "tester") profileId = target.id;
+      // מסלול הבודק הוא הסטודיו הפנימי — מאחורי שער האדמין. בלי זה רשימת
+      // העיצובים של כל בודק הייתה נמשכת בידי כל אנונימי שהחזיק את המזהה.
+      if (target?.kind === "tester") { requireAdmin(req); profileId = target.id; }
     }
     if (!profileId) profileId = await requireAccountId(req);
 
@@ -55,7 +58,9 @@ export async function POST(req: Request) {
     let profileId: string | null = null;
     if (body.profileId) {
       const asked = await getAccount(body.profileId);
-      if (asked?.kind === "tester") profileId = asked.id;
+      // יצירת עיצוב בבעלות בודק = מסלול הסטודיו הפנימי, מאחורי שער האדמין.
+      // בלי זה כל אנונימי יכול היה לייצר עיצובי בודק ולשרוף כסף OpenAI.
+      if (asked?.kind === "tester") { requireAdmin(req); profileId = asked.id; }
     }
     if (!profileId) profileId = await requireAccountId(req);
 

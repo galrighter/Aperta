@@ -1,5 +1,6 @@
 import { ApiError } from "./api";
 import { requireAccountId } from "./account";
+import { requireAdmin } from "./admin";
 import { getAccount } from "./db/accounts";
 import { getDesign, type DesignRow } from "./db/designs";
 
@@ -15,18 +16,24 @@ import { getDesign, type DesignRow } from "./db/designs";
  * שלא, כי כל פרמטר שהדפדפן שולח הוא פרמטר שאפשר לזייף.
  *
  * שני מסלולים לגיטימיים:
- * 1. **הסטודיו הפנימי** — עיצוב ששייך לפרופיל בודק. לסטודיו אין חשבון ואין
- *    עוגייה; הוא מזוהה דרך הבעלים של העיצוב עצמו.
+ * 1. **הסטודיו הפנימי** — עיצוב ששייך לפרופיל בודק. לסטודיו אין חשבון-לקוח, ולכן
+ *    הוא מזדהה דרך עוגיית האדמין (forme_admin): הסטודיו יושב מאחורי AdminGate,
+ *    וקריאות ה-fetch שלו נושאות את העוגייה. בלי השער הזה כל אנונימי שהחזיק מזהה
+ *    בודק יכול היה לקרוא/לשנות/למחוק/לייצר על עיצובי בודק — לשרוף כסף ולמחוק
+ *    היסטוריה.
  * 2. **האתר** — העוגייה החתומה חייבת להצביע על אותו פרופיל בדיוק.
  *
  * הערה על 46 העיצובים הישנים: כולם רשומים על "בודק 1", כי המשפך ייחס כל עיצוב
- * לפרופיל הראשון לפני שהיה רישום. לכן הם נשארים נגישים דרך מסלול (1) — זו
- * היסטוריה של גל עצמו, לא של לקוחות, והצרתה הייתה שוברת את הסטודיו.
+ * לפרופיל הראשון לפני שהיה רישום. הם נשארים נגישים דרך מסלול (1) — עכשיו מאחורי
+ * שער האדמין — זו היסטוריה של גל עצמו, לא של לקוחות.
  */
 export async function assertDesignAccess(req: Request, ownerId: string | null): Promise<void> {
   if (ownerId) {
     const owner = await getAccount(ownerId);
-    if (owner?.kind === "tester") return;
+    if (owner?.kind === "tester") {
+      requireAdmin(req);
+      return;
+    }
   }
   const accountId = await requireAccountId(req);
   if (accountId !== ownerId) {

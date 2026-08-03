@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import secrets
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -24,11 +25,16 @@ app = FastAPI(title="raster-to-svg vectorizer", version="0.1.0")
 
 
 def require_auth(authorization: str = Header(default="")) -> None:
-    """When VECTORIZER_TOKEN is configured, gate the job endpoints on a bearer token."""
+    """Gate the job/generate endpoints on a bearer token.
+
+    Fails closed: with no VECTORIZER_TOKEN configured the endpoints refuse
+    everything rather than run open — an open endpoint here spends the OpenAI
+    key. The comparison is constant-time to avoid leaking the token via timing.
+    """
     if not SETTINGS.auth_token:
-        return
+        raise HTTPException(503, detail={"error_code": "AUTH_NOT_CONFIGURED"})
     expected = f"Bearer {SETTINGS.auth_token}"
-    if authorization != expected:
+    if not secrets.compare_digest(authorization, expected):
         raise HTTPException(401, detail={"error_code": "UNAUTHORIZED"})
 
 

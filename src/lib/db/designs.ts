@@ -308,3 +308,39 @@ export async function countTodayGenerations(profileId: string): Promise<number> 
   if (cntErr) throw new Error(cntErr.message);
   return count ?? 0;
 }
+
+/**
+ * ספירת הרצות הצינור של היום לפרופיל, מפוצלת לפי תוצאה.
+ *
+ * נספר מ-`generation_runs` (הרצה אמיתית), לא מ-`design_versions`: כל בחירת מועמד
+ * יוצרת גרסת `pick` בלי להריץ את המנוע, וספירת גרסאות "אכלה" מכסה על עיון בלבד.
+ * `approved` = הצלחה; כל השאר (`rejected`/`error`) = כישלון — אבל התמונה כבר
+ * נוצרה ושולם עליה, ולכן לכישלונות מכסה נפרדת משלהם ולא דלת פתוחה לשריפת תקציב.
+ */
+export async function countTodayRunsByOutcome(
+  profileId: string,
+): Promise<{ approved: number; failed: number }> {
+  const sb = supabaseAdmin();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const { data: designs, error } = await sb
+    .from("designs")
+    .select("id")
+    .eq("profile_id", profileId);
+  if (error) throw new Error(error.message);
+  const ids = (designs ?? []).map((d) => d.id);
+  if (ids.length === 0) return { approved: 0, failed: 0 };
+  const base = () =>
+    sb
+      .from("generation_runs")
+      .select("id", { count: "exact", head: true })
+      .in("design_id", ids)
+      .gte("created_at", startOfDay.toISOString());
+  const [approved, failed] = await Promise.all([
+    base().eq("status", "approved"),
+    base().neq("status", "approved"),
+  ]);
+  if (approved.error) throw new Error(approved.error.message);
+  if (failed.error) throw new Error(failed.error.message);
+  return { approved: approved.count ?? 0, failed: failed.count ?? 0 };
+}

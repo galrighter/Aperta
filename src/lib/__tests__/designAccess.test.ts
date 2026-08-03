@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // הסוד נקבע לפני הטעינה — המפתח נגזר פעם אחת ונשמר במודול.
 process.env.ACCOUNT_SECRET = "test-secret-for-account-cookies";
+// גישה לעיצוב בודק דורשת עכשיו עוגיית אדמין (שער הסטודיו הפנימי).
+process.env.ADMIN_TOKEN = "test-admin-token-value";
 
 const OWNER = "8f14e45f-ceea-4c7f-9c47-1a2b3c4d5e6f";
 const STRANGER = "00000000-0000-4000-8000-000000000000";
@@ -43,9 +45,11 @@ beforeAll(async () => {
   access = await import("../designAccess");
 });
 
-async function reqAs(profileId: string | null): Promise<Request> {
+async function reqAs(profileId: string | null, opts?: { admin?: boolean }): Promise<Request> {
   signedInAs = profileId;
-  return new Request("https://rmjewel.com/");
+  const headers: Record<string, string> = {};
+  if (opts?.admin) headers.cookie = `forme_admin=${process.env.ADMIN_TOKEN}`;
+  return new Request("https://rmjewel.com/", { headers });
 }
 
 describe("בעלות על עיצוב קיים", () => {
@@ -71,12 +75,20 @@ describe("בעלות על עיצוב קיים", () => {
     });
   });
 
-  it("משאירה את הסטודיו הפנימי פתוח — לעיצוב של בודק אין חשבון", async () => {
-    // הסטודיו נכנס בלי עוגייה, ולכן הוא מזוהה דרך הבעלים של העיצוב עצמו.
-    // אילו הבדיקה הייתה נשענת על `profileId` שהלקוח שולח, היה אפשר לזייף אותו.
+  it("פותחת עיצוב בודק כשיש עוגיית אדמין — זה מסלול הסטודיו הפנימי", async () => {
+    // הסטודיו נכנס בלי חשבון-לקוח, אבל מאחורי שער האדמין: העוגייה נלווית
+    // לבקשה. אילו הבדיקה נשענה על `profileId` שהלקוח שולח, היה אפשר לזייף אותו.
+    await expect(
+      access.requireDesignAccess(await reqAs(null, { admin: true }), "studio-design"),
+    ).resolves.toMatchObject({ profile_id: TESTER });
+  });
+
+  it("חוסמת עיצוב בודק בלי עוגיית אדמין — הפרצה שנסגרה", async () => {
+    // בלי השער הזה כל אנונימי שהחזיק מזהה עיצוב בודק יכול היה לקרוא/למחוק/לייצר
+    // עליו. עכשיו זו דרישת אדמין, לא דלת פתוחה.
     await expect(
       access.requireDesignAccess(await reqAs(null), "studio-design"),
-    ).resolves.toMatchObject({ profile_id: TESTER });
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it("חוסמת עיצוב בלי בעלים", async () => {

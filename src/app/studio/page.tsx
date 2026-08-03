@@ -11,6 +11,7 @@ import { ValidationPanel } from "@/components/ValidationPanel";
 import { PromptBar } from "@/components/PromptBar";
 import { VersionBar } from "@/components/VersionBar";
 import { EmptyState } from "@/components/EmptyState";
+import { AdminGate } from "@/components/admin/AdminGate";
 
 // three נטען רק בקליינט ורק כשנכנסים לטאב ההדמיה
 const Preview3D = dynamic(() => import("@/components/Preview3D").then((m) => m.Preview3D), {
@@ -18,7 +19,18 @@ const Preview3D = dynamic(() => import("@/components/Preview3D").then((m) => m.P
   loading: () => <div className="flex h-full items-center justify-center text-mist">{he.loading}</div>,
 });
 
+// הסטודיו הוא כלי פנימי (בחירת בודק, עיצובים בבעלות בודק). הוא יושב מאחורי שער
+// האדמין: השרת ממילא דורש עוגיית admin על נתיבי הבודק, וה-AdminGate דואג
+// שהמשתמש יתחבר לפני שהעמוד מריץ init ומנסה לקרוא אותם.
 export default function StudioPage() {
+  return (
+    <AdminGate>
+      <Studio />
+    </AdminGate>
+  );
+}
+
+function Studio() {
   const s = useStudio();
   const [initError, setInitError] = useState(false);
 
