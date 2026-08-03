@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { getDesign, getVersion, countTodayRunsByOutcome } from "@/lib/db/designs";
+import { getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
@@ -122,16 +122,6 @@ export async function POST(req: Request) {
 
     const design = await requireDesignAccess(req, body.designId);
     assertBuildableDims(design);
-    // שתי מכסות נפרדות לפרופיל ליום: הצלחות וכישלונות. נספר מהרצות הצינור, לא
-    // מגרסאות — כך שעיון בחלופות (שיוצר גרסת pick) לא אוכל מכסה, וכישלון שכבר
-    // עלה כסף על תמונה לא נשאר חינמי אינסופית.
-    const { approved, failed } = await countTodayRunsByOutcome(design.profile_id);
-    if (approved >= FAB.DAILY_GENERATION_LIMIT) {
-      throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);
-    }
-    if (failed >= FAB.DAILY_FAILED_GENERATION_LIMIT) {
-      throw new ApiError("rate_limited", `Daily failed-generation limit reached (${FAB.DAILY_FAILED_GENERATION_LIMIT}/day)`, 429);
-    }
     for (const img of body.images) {
       const { mediaType } = decodeDataUrl(img.dataUrl);
       if (!ALLOWED_MEDIA.has(mediaType)) {
@@ -144,6 +134,26 @@ export async function POST(req: Request) {
     // ומכאן מזהה ההרצה נגזר ממנו ולא מוגרל: זה מה שמאפשר לבקשה חוזרת לאסוף
     // הרצה ששולמה כבר במקום לקנות שנייה. ראה render/attemptId.ts.
     runId = await deriveAttemptId(jobId, 1);
+
+    // שתי מכסות נפרדות לפרופיל ליום: הצלחות וכישלונות. נספרות מהרצות הצינור,
+    // לא מגרסאות — כך שעיון בחלופות (שיוצר גרסת pick) לא אוכל מכסה, וכישלון
+    // שכבר עלה כסף על תמונה לא נשאר חינמי אינסופית.
+    //
+    // השריון אטומי ומזוהה ב-`runId`: הוא נעשה **אחרי** גזירת המזהה כדי שבקשה
+    // שמתחדשת אחרי ניתוק תשריין את אותה יחידה במקום יחידה שנייה על אותה הרצה.
+    const verdict = await reserveGeneration({
+      runId,
+      profileId: design.profile_id,
+      approvedLimit: FAB.DAILY_GENERATION_LIMIT,
+      failedLimit: FAB.DAILY_FAILED_GENERATION_LIMIT,
+    });
+    if (verdict === "approved_limit") {
+      throw new ApiError("rate_limited", `Daily generation limit reached (${FAB.DAILY_GENERATION_LIMIT}/day)`, 429);
+    }
+    if (verdict === "failed_limit") {
+      throw new ApiError("rate_limited", `Daily failed-generation limit reached (${FAB.DAILY_FAILED_GENERATION_LIMIT}/day)`, 429);
+    }
+
     // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה
     // למיגרציה) היצירה עדיין רצה.
     try {
@@ -172,11 +182,17 @@ export async function POST(req: Request) {
       throw err;
     }
   } catch (err) {
-    // דחייה לפני שהצינור התחיל — מכסה יומית, תמונה לא נתמכת, עיצוב לא קיים,
-    // גוף בקשה פסול — לא השאירה עד עכשיו שום עקבה. המשתמש ראה שגיאה והיומן לא
-    // ראה כלום, כך שהתלונה "יצרתי ואין את זה ביומן" לא הייתה ניתנת לאבחון.
-    // אחרי שהצינור התחיל, runGeneration כבר כותב את השורה בעצמו.
-    if (!pipelineStarted) {
+    // דחייה לפני שהצינור התחיל — תמונה לא נתמכת, עיצוב לא קיים, גוף בקשה פסול
+    // — לא השאירה עד עכשיו שום עקבה. המשתמש ראה שגיאה והיומן לא ראה כלום, כך
+    // שהתלונה "יצרתי ואין את זה ביומן" לא הייתה ניתנת לאבחון. אחרי שהצינור
+    // התחיל, runGeneration כבר כותב את השורה בעצמו.
+    //
+    // חריג אחד: דחייה על המכסה עצמה. היא אינה הרצה — שום דבר לא רץ ושום דבר לא
+    // שולם — ולרשום אותה כהרצה שנכשלה יוצר מעגל: פרופיל שהגיע לתקרת ההצלחות
+    // מייצר שורת כישלון בכל ניסיון נוסף, וסוגר על עצמו גם את מכסת הכישלונות.
+    // הסיבה ידועה ודטרמיניסטית ממילא; אין מה לאבחן בה.
+    const quotaRejection = err instanceof ApiError && err.code === "rate_limited";
+    if (!pipelineStarted && !quotaRejection) {
       await persistRun({
         id: runId,
         source: "studio",
