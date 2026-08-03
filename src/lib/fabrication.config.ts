@@ -140,6 +140,9 @@ export const FAB = {
 
   MAX_REPAIR_ROUNDS: 3,
   DAILY_GENERATION_LIMIT: 50,
+  /** הרצות שנכשלו (rejected/error) נספרות בנפרד מהצלחות: כישלון לא פוגע במכסת
+   *  ההצלחות, אבל התמונה כבר עלתה כסף — ולכן יש תקרה משלו, באותו גודל. */
+  DAILY_FAILED_GENERATION_LIMIT: 50,
 } as const;
 
 /** סט המגבלות האפקטיבי לעובי ומוצר נתונים. כל הקוד (ולידציה, פרומפט, ייצוא)
