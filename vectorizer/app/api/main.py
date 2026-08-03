@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import secrets
+
+import anyio
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -21,6 +24,15 @@ from ..core.renderer import RenderError
 from ..core.validation import InputError
 from ..storage.generation_store import DONE, ERROR, GENERATIONS, Failure, GenerationRecord, valid_id
 from ..storage.job_storage import STORE
+
+log = logging.getLogger(__name__)
+
+# Say something, anywhere. There was no logging in the whole of `app/` — one
+# print in cli.py. A systematic bug took out every panel of every run and left
+# nothing on the box to diagnose it from: forme saw status="rejected", and that
+# was the entire record. uvicorn owns the handlers; this only makes sure our
+# loggers are not silent by default.
+logging.getLogger("app").setLevel(logging.INFO)
 
 app = FastAPI(title="raster-to-svg vectorizer", version="0.1.0")
 
@@ -68,7 +80,12 @@ async def create_job(
 
     rec = STORE.create()
     try:
-        res = pipeline.run_pipeline(
+        # Off the event loop. The pipeline is seconds to tens of seconds of CPU,
+        # and uvicorn runs one worker: called inline it froze /api/health and
+        # every /api/generate in flight along with it, so the health poll or
+        # nginx started answering 502 while the box was simply busy.
+        res = await anyio.to_thread.run_sync(
+            pipeline.run_pipeline,
             data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key, min_hole_mm
         )
     except InputError as exc:

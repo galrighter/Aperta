@@ -51,6 +51,11 @@ class JobStore:
                 shutil.rmtree(path, ignore_errors=True)
 
     def create(self) -> JobRecord:
+        # Sweep here and not only in get(). forme only ever POSTs — it never
+        # reads a job back or deletes one — so with the sweep on the read path
+        # alone nothing was ever collected: every /api/jobs left a directory of
+        # megabyte PNGs and a record in memory, and both grew until a restart.
+        self.sweep()
         now = time.time()
         job_id = str(uuid.uuid4())
         directory = os.path.join(self._base, job_id)
