@@ -838,14 +838,29 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
               רק אחרי שמישהו הזמין; בבדיקות רוצים לחתוך בדיוק את מה שהיומן
               מראה, בלי לעבור דרך הזמנה. נמסרת הגרסה **של ההרצה** ולא הנוכחית:
               אחרי עוד סבב עריכה "הנוכחית" היא כבר שורה אחרת ביומן.
-              מופיע רק אחרי שהפירוט נטען — עד אז לא ידוע אם נשמרה גרסה בכלל. */}
-          {it.designId && d?.versionId && (
+              מופיע רק אחרי שהפירוט נטען — עד אז לא ידוע אם נשמרה גרסה בכלל.
+              `it.version` מגיע כבר עם הרשימה; `d.versionId` הוא הנפילה לאחור
+              לשורה שנטענה לפני שהרשימה נשאה אותו. */}
+          {it.designId && (it.version?.id ?? d?.versionId) && (
             <ExportFiles
               designId={it.designId}
-              versionId={d.versionId}
-              note={d.versionNo != null ? `גרסה ${d.versionNo}` : undefined}
+              versionId={it.version?.id ?? d?.versionId ?? null}
+              note={
+                (it.version?.versionNo ?? d?.versionNo) != null
+                  ? `גרסה ${it.version?.versionNo ?? d?.versionNo}`
+                  : undefined
+              }
               className="mb-3 border-b border-graphite/10 pb-3"
             />
+          )}
+          {/* אין גרסה מקושרת — וזה נאמר, לא מושתק. שורה שמראה שלבים והדמיה אבל
+              שום קובץ נראית כמו תקלה בהצגה; הסיבה האמיתית היא שההרצה לא הגיעה
+              לגרסה, או שהיא מלפני הקישור (0012, ובהעלאות — עד הבאגפיקס). */}
+          {d && !it.version && !d.versionId && (
+            <div className="mb-3 border-b border-graphite/10 pb-3 text-[12px] text-mist">
+              אין גרסה מקושרת להרצה הזו — ולכן אין ממנה קובץ ייצור. קבצי הייצור
+              של העיצוב עצמו זמינים בלשונית העיצובים.
+            </div>
           )}
           <Diagnostics
             images={{
