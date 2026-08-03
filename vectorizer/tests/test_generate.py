@@ -494,3 +494,93 @@ def test_the_canvas_is_reported_back_so_the_log_can_tell_two_runs_apart(wired):
     out = run(generate.GenerateJob(prompt="p", calls=1, rows=1, size="1024x1536"))
     assert out["size"] == "1024x1536"
     assert run(generate.GenerateJob(prompt="p", calls=1, rows=1))["size"] == "1536x1024"
+
+
+# --- the held generation: the same id never renders twice --------------------
+
+
+@pytest.fixture
+def held(tmp_path, monkeypatch):
+    """Point the endpoint at a store of this test's own."""
+    from app.api import main
+    from app.storage.generation_store import GenerationStore
+
+    store = GenerationStore(str(tmp_path / "gen"), ttl_minutes=60)
+    monkeypatch.setattr(main, "GENERATIONS", store)
+    return store
+
+
+JOB_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def _collect(client, job_id: str, tries: int = 50) -> dict:
+    """Poll the way forme does, until the background run lands."""
+    for _ in range(tries):
+        resp = client.get(f"/api/generate/{job_id}")
+        if resp.status_code != 202:
+            return resp
+    raise AssertionError("the run never finished")
+
+
+def test_a_job_id_answers_immediately_and_finishes_in_the_background(wired, client, held):
+    resp = client.post(
+        "/api/generate",
+        json={"prompt": "a ring", "calls": 2, "rows": 1, "height_mm": 10, "job_id": JOB_ID},
+    )
+    assert resp.status_code == 202
+    assert resp.json() == {"job_id": JOB_ID, "state": "running"}
+
+    done = _collect(client, JOB_ID)
+    assert done.status_code == 200
+    body = done.json()
+    assert body["state"] == "done"
+    # The result is the body the synchronous path returns, unchanged — forme
+    # reads one shape however it got there.
+    assert len(body["result"]["candidates"]) == 2
+
+
+def test_posting_the_same_id_again_does_not_call_the_model_again(wired, client, held):
+    """The property the whole change exists for: a customer whose connection
+    dropped re-sends the request, and it costs nothing."""
+    client.post("/api/generate", json={"prompt": "p", "calls": 2, "job_id": JOB_ID})
+    _collect(client, JOB_ID)
+    assert wired["calls"] == 2
+
+    again = client.post("/api/generate", json={"prompt": "p", "calls": 2, "job_id": JOB_ID})
+    assert again.status_code == 200
+    assert again.json()["state"] == "done"
+    assert wired["calls"] == 2  # not re-rendered
+
+
+def test_a_background_failure_is_reported_with_its_reason(wired, monkeypatch, client, held):
+    async def broke(*a, **k):
+        raise generate.imagegen.ImageGenError(
+            'gpt-image-1-mini: 429 {"error":{"code":"insufficient_quota"}}', quota=True
+        )
+
+    monkeypatch.setattr(generate.imagegen, "render_many", broke)
+    assert client.post("/api/generate", json={"prompt": "p", "job_id": JOB_ID}).status_code == 202
+
+    failed = _collect(client, JOB_ID)
+    # Same status and same code as the synchronous path: a run that failed after
+    # the caller hung up must not be a different kind of failure.
+    assert failed.status_code == 422
+    assert failed.json()["detail"]["error_code"] == "QUOTA_EXHAUSTED"
+
+
+def test_no_job_id_still_runs_inline(wired, client, held):
+    """The Worker deployed before this change sends no id, and must keep working
+    through the window where the box is ahead of it."""
+    resp = client.post("/api/generate", json={"prompt": "p", "calls": 1})
+    assert resp.status_code == 200
+    assert "candidates" in resp.json()
+
+
+def test_an_unknown_generation_is_a_404(client, held):
+    assert client.get(f"/api/generate/{JOB_ID}").status_code == 404
+
+
+def test_an_id_that_is_not_a_uuid_is_refused(wired, client, held):
+    resp = client.post("/api/generate", json={"prompt": "p", "job_id": "../../etc/passwd"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error_code"] == "BAD_JOB_ID"

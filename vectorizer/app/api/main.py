@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import secrets
+
+import anyio
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -19,7 +22,17 @@ from .. import generate, imagegen, pipeline
 from ..config import SETTINGS
 from ..core.renderer import RenderError
 from ..core.validation import InputError
+from ..storage.generation_store import DONE, ERROR, GENERATIONS, Failure, GenerationRecord, valid_id
 from ..storage.job_storage import STORE
+
+log = logging.getLogger(__name__)
+
+# Say something, anywhere. There was no logging in the whole of `app/` — one
+# print in cli.py. A systematic bug took out every panel of every run and left
+# nothing on the box to diagnose it from: forme saw status="rejected", and that
+# was the entire record. uvicorn owns the handlers; this only makes sure our
+# loggers are not silent by default.
+logging.getLogger("app").setLevel(logging.INFO)
 
 app = FastAPI(title="raster-to-svg vectorizer", version="0.1.0")
 
@@ -67,7 +80,12 @@ async def create_job(
 
     rec = STORE.create()
     try:
-        res = pipeline.run_pipeline(
+        # Off the event loop. The pipeline is seconds to tens of seconds of CPU,
+        # and uvicorn runs one worker: called inline it froze /api/health and
+        # every /api/generate in flight along with it, so the health poll or
+        # nginx started answering 502 while the box was simply busy.
+        res = await anyio.to_thread.run_sync(
+            pipeline.run_pipeline,
             data, width_mm, height_mm, dark_region_role, output_mode, condition, color_key, min_hole_mm
         )
     except InputError as exc:
@@ -155,6 +173,13 @@ class GenerateIn(BaseModel):
     # rather than passed through: the name goes to OpenAI on our key.
     model: str | None = None
     artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
+    # An id forme derived from its own job id (see docs/C2_RESILIENT_GENERATION.md).
+    # Supplying it moves the run into the background and makes it *addressable*:
+    # the same id posted again joins the run in flight, or gets the finished
+    # result back, instead of paying the image model a second time. Omitted =
+    # the old synchronous behaviour, which is what a Worker deployed before this
+    # still asks for.
+    job_id: str | None = None
 
 
 @app.post("/api/generate", dependencies=[Depends(require_auth)])
@@ -164,6 +189,10 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
     Returns every panel's cutouts with the tracer's verdict. Whether a candidate
     can actually be manufactured is forme's call, not ours: that engine stays in
     one place.
+
+    With `job_id`, answers 202 immediately and runs in the background; forme
+    polls `GET /api/generate/{job_id}`. That is what keeps a dropped connection
+    from losing a run the image model was already billed for.
     """
     if body.color_key not in ("coverage", "warm", "dark", "saturation", "auto"):
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad color_key"})
@@ -194,22 +223,63 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
 
-    try:
-        payload = await generate.run(job, artifacts, SETTINGS.openai_key, SETTINGS.generate_concurrency)
-    except imagegen.ImageGenError as exc:
-        # The image model, not us: forme surfaces this as a retriable failure.
-        #
-        # 422 and not 502, which is what this used to be: forme reaches us from a
-        # Cloudflare Worker, and Cloudflare replaces the *body* of a 502 with its
-        # own error page. The JSON below never arrived — forme logged
-        # "Render service returned non-JSON (502): error code: 502" on a run that
-        # failed for a perfectly legible reason (30.7.26: the OpenAI budget ran
-        # out, and the log said nothing about it). The status has to be one the
-        # edge passes through untouched, or the reason dies in transit.
-        code = "QUOTA_EXHAUSTED" if exc.quota else "RENDER_FAILED"
-        raise HTTPException(422, detail={"error_code": code, "message": str(exc)}) from exc
+    async def work() -> dict:
+        try:
+            return await generate.run(
+                job, artifacts, SETTINGS.openai_key, SETTINGS.generate_concurrency
+            )
+        except imagegen.ImageGenError as exc:
+            # The image model, not us: forme surfaces this as a retriable failure.
+            #
+            # 422 and not 502, which is what this used to be: forme reaches us from a
+            # Cloudflare Worker, and Cloudflare replaces the *body* of a 502 with its
+            # own error page. The JSON below never arrived — forme logged
+            # "Render service returned non-JSON (502): error code: 502" on a run that
+            # failed for a perfectly legible reason (30.7.26: the OpenAI budget ran
+            # out, and the log said nothing about it). The status has to be one the
+            # edge passes through untouched, or the reason dies in transit.
+            code = "QUOTA_EXHAUSTED" if exc.quota else "RENDER_FAILED"
+            raise Failure(422, code, str(exc)) from exc
 
-    return JSONResponse(status_code=200, content=payload)
+    if body.job_id is None:
+        try:
+            return JSONResponse(status_code=200, content=await work())
+        except Failure as exc:
+            raise HTTPException(exc.detail["status"], detail=_detail(exc.detail)) from exc
+
+    if not valid_id(body.job_id):
+        raise HTTPException(400, detail={"error_code": "BAD_JOB_ID", "message": "job_id must be a UUID"})
+    rec, _started = GENERATIONS.start(body.job_id, work)
+    return _generation_response(rec)
+
+
+def _detail(detail: dict) -> dict:
+    return {k: v for k, v in detail.items() if k != "status"}
+
+
+def _generation_response(rec: GenerationRecord) -> JSONResponse:
+    """One shape for both the POST and the GET.
+
+    A finished run answers 200 with its result — the same body the synchronous
+    path returns, so the caller does not branch on how it got there. A run still
+    going answers 202, which is also what a *repeat* POST gets: it means "this
+    is in hand", not "I started it just now".
+    """
+    if rec.state == DONE:
+        return JSONResponse(status_code=200, content=rec.public())
+    if rec.state == ERROR:
+        return JSONResponse(status_code=(rec.error or {}).get("status", 500), content=rec.public())
+    return JSONResponse(status_code=202, content=rec.public())
+
+
+@app.get("/api/generate/{job_id}", dependencies=[Depends(require_auth)])
+def generation_status(job_id: str) -> JSONResponse:
+    """Where forme collects a run it started — including one whose POST it
+    never saw the end of."""
+    rec = GENERATIONS.get(job_id) if valid_id(job_id) else None
+    if rec is None:
+        raise HTTPException(404, detail={"error_code": "NOT_FOUND"})
+    return _generation_response(rec)
 
 
 @app.get("/api/jobs/{job_id}", dependencies=[Depends(require_auth)])

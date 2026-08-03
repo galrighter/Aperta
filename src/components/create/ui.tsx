@@ -1,8 +1,8 @@
 "use client";
 
 // פרימיטיבים משותפים למסע היצירה. טוקנים: handoff §10.
-import { useEffect } from "react";
 import { he } from "@/i18n/he";
+import { useDialog } from "@/lib/client/useDialog";
 import { RAIL, type Screen } from "./model";
 
 const d = he.design;
@@ -23,12 +23,27 @@ export function ScreenTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function CardLabel({ children }: { children: React.ReactNode }) {
-  return <div className="mb-4 font-display text-xs tracking-[0.15em] text-mist">{children}</div>;
+// שתי הכותרות למטה מקבלות `htmlFor` אופציונלי, ואז הן `<label>` אמיתי ולא
+// `<div>` שנראה כמו אחד. בלי הקישור הזה השדות המרכזיים במשפך היו מתויגים
+// לקורא-מסך דרך ה-placeholder בלבד — שנעלם ברגע שמתחילים להקליד, כלומר בדיוק
+// כשמישהי חוזרת לשאול "מה הוקלד כאן". הקישור גם עושה את הכותרת לחיצה.
+
+export function CardLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+  const cls = "mb-4 font-display text-xs tracking-[0.15em] text-mist";
+  return htmlFor ? (
+    <label htmlFor={htmlFor} className={`block ${cls}`}>{children}</label>
+  ) : (
+    <div className={cls}>{children}</div>
+  );
 }
 
-export function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <div className="mb-3 text-sm font-semibold text-ink60">{children}</div>;
+export function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
+  const cls = "mb-3 text-sm font-semibold text-ink60";
+  return htmlFor ? (
+    <label htmlFor={htmlFor} className={`block ${cls}`}>{children}</label>
+  ) : (
+    <div className={cls}>{children}</div>
+  );
 }
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
@@ -253,12 +268,9 @@ export function Modal({
 }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Escape והמיקוד גם יחד — ראה useDialog. הכליאה חסרה כאן: Tab יצא מהחלון
+  // אל הטופס שמאחוריו, וקורא-מסך המשיך להקריא עמוד שכבר מכוסה.
+  const box = useDialog(open, onClose);
 
   if (!open) return null;
   return (
@@ -270,6 +282,7 @@ export function Modal({
       aria-label={title}
     >
       <div
+        ref={box}
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-graphite/15 bg-white p-7"
         onClick={(e) => e.stopPropagation()}
       >

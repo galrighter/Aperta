@@ -85,8 +85,9 @@ export function BriefScreen({
             {...(locked ? { inert: "" as unknown as boolean } : {})}
           >
             <div className="border border-graphite/10 bg-white p-6">
-              <CardLabel>{d.briefLabel}</CardLabel>
+              <CardLabel htmlFor="brief-text">{d.briefLabel}</CardLabel>
               <textarea
+                id="brief-text"
                 value={s.brief}
                 onChange={(e) => set({ brief: e.target.value })}
                 placeholder={d.briefPlaceholder}
@@ -114,10 +115,11 @@ export function BriefScreen({
               style={{ opacity: locked || letteringLocked ? 0.45 : 1 }}
             >
               <div className="mb-4 flex items-baseline justify-between gap-4">
-                <CardLabel>{d.textLabel}</CardLabel>
+                <CardLabel htmlFor="lettering-text">{d.textLabel}</CardLabel>
                 <span className="text-[12px] text-mist">{d.textTooLong(MAX_LETTERING)}</span>
               </div>
               <input
+                id="lettering-text"
                 type="text"
                 value={s.lettering}
                 onChange={(e) => set({ lettering: e.target.value.slice(0, MAX_LETTERING) })}

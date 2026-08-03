@@ -36,9 +36,18 @@ def auth_configured(monkeypatch) -> str:
 
 
 @pytest.fixture
-def client(auth_configured: str) -> TestClient:
-    """An authorised client — what a test that is about the handler wants."""
-    return TestClient(main.app, headers={"Authorization": f"Bearer {auth_configured}"})
+def client(auth_configured: str):
+    """An authorised client — what a test that is about the handler wants.
+
+    Entered as a context manager, which is not a formality: outside one, the
+    TestClient builds and tears down an event loop *per request*, and a
+    background task started by a handler is cancelled the moment its response
+    is returned. A held generation (`storage/generation_store.py`) is exactly
+    that kind of task, so without this the tests would report a service that
+    abandons every run — a property of the harness, not of the service.
+    """
+    with TestClient(main.app, headers={"Authorization": f"Bearer {auth_configured}"}) as c:
+        yield c
 
 
 @pytest.fixture

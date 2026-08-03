@@ -40,7 +40,11 @@ describe("ניסיון הרנדר השני", () => {
   });
 
   it("לכל ניסיון מזהה משלו — שתי שורות ביומן, בלי דריסה", () => {
-    expect(ROUTE).toContain("const retryId = crypto.randomUUID();");
+    // נגזר ולא מוגרל: בקשה שמתחדשת אחרי ניתוק חייבת לחזור בדיוק לשני ה-jobs
+    // שכבר שולמו על הקופסה ולא לפתוח שלישי (docs/C2_RESILIENT_GENERATION.md).
+    // שונה בין הניסיונות — זו התכונה שהסעיף הזה שומר עליה.
+    expect(ROUTE).toContain("const retryId = await deriveAttemptId(jobId, 2);");
+    expect(ROUTE).toContain("runId = await deriveAttemptId(jobId, 1);");
     // נתיבי ה-storage נגזרים מהמזהה של הניסיון, אחרת השני מוחק את הראיות של
     // הראשון והשורה הראשונה מצביעה על הדמיה שאינה שלה.
     expect(ROUTE).toContain("runs/${attemptId}/reference.png");

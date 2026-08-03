@@ -33,6 +33,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+      # עד כאן lint לא רץ בשום מקום — לא היה קובץ קונפיג, והפקודה נעצרה על
+      # שאלה אינטראקטיבית. עכשיו יש (eslint.config.mjs), והוא נקי.
+      - run: npm run lint
       - name: Install ezdxf for DXF round-trip test
         run: pip install ezdxf
       - run: npm test

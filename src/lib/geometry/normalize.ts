@@ -283,8 +283,28 @@ export function normalizeSvg(rawSvg: string, lengthMm: number, widthMm: number):
 }
 
 /**
- * מסיר כל cutout שאי אפשר לחתוך — אותה בדיקה בדיוק ש-V5 מריץ: פתח שורד רק אם
- * נשאר לו שטח אחרי כיווץ בחצי מהמינימום מכל צד.
+ * הסף שמתחתיו פתח נחשב לא-קיים אחרי הכיווץ.
+ *
+ * מספר אחד לשני הצדדים, ובכוונה מיוצא: הניקוי כאן ובדיקת V5 הריצו שני ספים
+ * (`> 1e-9` מול `< 1e-4`) על אותו predicate, ולכן הניקוי השאיר בדיוק את מה
+ * ש-V5 פסל — פתח בשטח הביניים עבר את המנקה ואז הפיל את הוולידציה.
+ */
+export const OPENING_AREA_EPS = 1e-4;
+
+/**
+ * האם את הפתח הזה אפשר לחתוך: נשאר לו שטח אחרי כיווץ בחצי מהמינימום מכל צד.
+ *
+ * **פר-פוליגון ולא פר-קבוצה.** cutout אחד יכול לשאת כמה פוליגונים, וכיווץ של
+ * הקבוצה כולה מסתיר שערה בודדת בתוך שכנים בריאים. V5 מודד פוליגון-פוליגון,
+ * ולכן גם המנקה — אחרת הוא "מנקה" ומשאיר בדיוק את מה שייפסל.
+ */
+export function isCuttableOpening(poly: Polygon, minHoleMm: number): boolean {
+  return multiPolygonArea(offset([poly], -minHoleMm / 2)) >= OPENING_AREA_EPS;
+}
+
+/**
+ * מסיר כל cutout שאי אפשר לחתוך — אותה בדיקה בדיוק ש-V5 מריץ
+ * (`isCuttableOpening`, אותו סף ואותה גרנולריות).
  *
  * הווקטורייזר כבר מסנן בייצור, אבל גרסאות שנשמרו לפני כן עדיין נושאות שערות
  * של 0.17–0.3 מ"מ ונפסלות. כאן זה חל על כל SVG שנכנס לגרסה — כולל עריכה של
@@ -295,8 +315,12 @@ export function normalizeSvg(rawSvg: string, lengthMm: number, widthMm: number):
  */
 export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): NormalizedDesign {
   if (minHoleMm <= 0) return n;
-  const kept = n.cutouts.filter((mp) => multiPolygonArea(offset(mp, -minHoleMm / 2)) > 1e-9);
-  if (kept.length === n.cutouts.length) return n;
+  const before = n.cutouts.reduce((sum, mp) => sum + mp.length, 0);
+  const kept = n.cutouts
+    .map((mp) => mp.filter((poly) => isCuttableOpening(poly, minHoleMm)))
+    .filter((mp) => mp.length > 0);
+  const after = kept.reduce((sum, mp) => sum + mp.length, 0);
+  if (after === before) return n;
 
   const cutUnion = union(...kept);
   const pathEls = kept.flatMap((mp) => mp.map((poly) => `<path d="${polygonToPathD(poly)}" fill="black"/>`));

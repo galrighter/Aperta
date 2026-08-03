@@ -317,6 +317,51 @@ export async function countTodayGenerations(profileId: string): Promise<number> 
  * `approved` = הצלחה; כל השאר (`rejected`/`error`) = כישלון — אבל התמונה כבר
  * נוצרה ושולם עליה, ולכן לכישלונות מכסה נפרדת משלהם ולא דלת פתוחה לשריפת תקציב.
  */
+/** מה קרה בבקשת השריון. `ok` = מותר להריץ. */
+export type QuotaVerdict = "ok" | "approved_limit" | "failed_limit";
+
+/**
+ * משריין מקום להרצה — בדיקה ורישום בפעולה אחת.
+ *
+ * הבדיקה הישנה הייתה read-then-act: המונה נקרא, ואז הצינור רץ. N בקשות מקבילות
+ * ראו כולן `used < LIMIT` וכולן המשיכו, כלומר התקרה נחצתה בדיוק כשלוחצים עליה.
+ * הפעולה האטומית חיה במסד (`reserve_generation`, migration 0017) כי זה המקום
+ * היחיד שיכול לסרל את שתיהן.
+ *
+ * `runId` נגזר מ-`jobId` של הלקוחה, ולכן השריון idempotent: בקשה שמתחדשת אחרי
+ * ניתוק אינה צורכת יחידה שנייה על אותה הרצה.
+ *
+ * **fail-open על היעדר הפונקציה בלבד.** בחלון שבין הפריסה למיגרציה חוזרים
+ * לספירה הישנה: תקרה שנחצית תחת מקביליות עדיפה על אתר שאינו מייצר כלום. כשל
+ * אחר של המסד נזרק — הוא לא ראיה לכך שיש מכסה.
+ */
+export async function reserveGeneration(input: {
+  runId: string;
+  profileId: string;
+  approvedLimit: number;
+  failedLimit: number;
+}): Promise<QuotaVerdict> {
+  const sb = supabaseAdmin();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await sb.rpc("reserve_generation", {
+    p_id: input.runId,
+    p_profile: input.profileId,
+    p_since: startOfDay.toISOString(),
+    p_approved_limit: input.approvedLimit,
+    p_failed_limit: input.failedLimit,
+  });
+  if (!error) return data as QuotaVerdict;
+  if (!/reserve_generation|schema cache|does not exist/i.test(error.message)) {
+    throw new Error(`reserve generation failed: ${error.message}`);
+  }
+  console.error("reserve_generation missing, falling back to counting:", error.message);
+  const { approved, failed } = await countTodayRunsByOutcome(input.profileId);
+  if (approved >= input.approvedLimit) return "approved_limit";
+  if (failed >= input.failedLimit) return "failed_limit";
+  return "ok";
+}
+
 export async function countTodayRunsByOutcome(
   profileId: string,
 ): Promise<{ approved: number; failed: number }> {
