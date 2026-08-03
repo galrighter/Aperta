@@ -15,10 +15,17 @@ import asyncio
 
 import httpx
 
+from .config import SETTINGS
+from .net import is_upload_url_allowed
+
 TIMEOUT_S = 60.0
 
 
 async def _put(client: httpx.AsyncClient, url: str, data: bytes, content_type: str) -> bool:
+    # A signed URL is written to blindly — never PUT to an internal/non-https
+    # target, even if one is handed to us.
+    if not is_upload_url_allowed(url, SETTINGS.upload_allowed_hosts):
+        return False
     try:
         resp = await client.put(
             url,
