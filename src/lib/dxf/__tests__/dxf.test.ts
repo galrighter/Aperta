@@ -29,6 +29,9 @@ describe("buildDxf", () => {
     const seqends = dxf.match(/^SEQEND$/gm)?.length ?? 0;
     expect(polylines).toBeGreaterThanOrEqual(3); // מתאר + 2 cutouts
     expect(seqends).toBe(polylines);
+    // שתי השכבות מפנות ל-linetype בשם CONTINUOUS. בלי טבלת LTYPE שמגדירה
+    // אותו זו הפניה לרשומה שלא קיימת — קורא סלחני ממציא, קורא קפדני נופל.
+    expect(dxf).toContain("LTYPE");
     // זוגות group-code/ערך תקינים: מספר שורות זוגי
     expect(dxf.trim().split("\n").length % 2).toBe(0);
   });
@@ -58,6 +61,14 @@ layers = {e.dxf.layer for e in polys}
 assert "OUTLINE" in layers and "CUTOUTS" in layers, layers
 for p in polys:
     assert p.is_closed, "polyline not closed"
+# R12 requires the dummy 10/20/30 on the POLYLINE itself, before flag 70. It is
+# ignored on read — the real coordinates live on the VERTEX entities — but a
+# strict importer (AutoCAD AUDIT, laser-shop CAM) refuses the file without it.
+for p in polys:
+    assert p.dxf.hasattr("elevation"), "POLYLINE is missing its dummy point"
+assert "CONTINUOUS" in doc.linetypes, "no LTYPE table entry for CONTINUOUS"
+auditor = doc.audit()
+assert not auditor.errors, [str(e) for e in auditor.errors]
 pts = [v.dxf.location for p in polys for v in p.vertices]
 xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
 assert 155 <= max(xs) <= 161, max(xs)

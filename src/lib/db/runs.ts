@@ -202,7 +202,10 @@ export async function insertRun(run: NewRun): Promise<void> {
     input_image_path: run.input_image_path ?? null,
   };
 
-  const { error } = await sb.from("generation_runs").insert(row);
+  // upsert ולא insert: מזהה ההרצה נגזר מ-`jobId` של הלקוחה (render/attemptId.ts),
+  // כדי שבקשה שמתחדשת אחרי ניתוק תחזור לאותה הרצה. לכן היא גם כותבת לאותה שורה
+  // — insert היה נכשל שם על מפתח כפול ומשאיר את הניסיון המוצלח בלי יומן.
+  const { error } = await sb.from("generation_runs").upsert(row);
   if (!error) return;
 
   // אותו חלון שבין migrate.yml ל-deploy.yml שהפיל את קריאת היומן יכול להפיל
@@ -212,7 +215,7 @@ export async function insertRun(run: NewRun): Promise<void> {
     throw new Error(`insert run failed: ${error.message}`);
   }
   for (const c of INPUT_COLUMNS) delete (row as Record<string, unknown>)[c];
-  const retry = await sb.from("generation_runs").insert(row);
+  const retry = await sb.from("generation_runs").upsert(row);
   if (retry.error) throw new Error(`insert run failed: ${retry.error.message}`);
 }
 

@@ -1,7 +1,7 @@
 import opentype from "opentype.js";
 import { loadFace, DEFAULT_FONT, type FontId } from "./fonts";
 import { samplePathToRings, ringToPathD } from "@/lib/geometry/paths";
-import { union, difference, intersection, offset, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
+import { union, difference, offset, ringArea, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
 import { resolveFab, FAB } from "@/lib/fabrication.config";
 import type { DesignDims } from "@/lib/geometry/validate";
 import type { MultiPolygon, Ring } from "@/lib/geometry/types";

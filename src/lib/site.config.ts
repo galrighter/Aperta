@@ -10,6 +10,18 @@ export const SITE = {
   instagram: null as string | null,
 } as const;
 
+/**
+ * כתובת השירות על הקופסה.
+ *
+ * מקום אחד, כי היו שניים: `lib/vectorizer.ts` ו-`lib/render/service.ts` נשאו
+ * כל אחד עותק של אותה נפילה-לברירת-מחדל. בהחלפת דומיין שני עותקים פירושם
+ * הזדמנות אחת לפספס אחד מהם — ואז חצי מהצינור מדבר עם ההוסט הישן, וזה עובד עד
+ * שהוא מפסיק (docs/SITE_AUDIT_2026-08.md §7א).
+ */
+export function vectorizerUrl(): string {
+  return process.env.VECTORIZER_URL || "https://vec.rmjewel.com";
+}
+
 // פריטי הניווט הראשיים. label הוא מפתח לתוך he.site.
 export const NAV = [
   { href: "/", key: "navHome" as const },

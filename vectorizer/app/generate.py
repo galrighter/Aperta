@@ -18,6 +18,7 @@ one geometry engine, in TypeScript, with no second copy to drift from.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -27,7 +28,14 @@ from . import imagegen, pipeline, uploads
 from .core import renderer
 from .core.panels import clipped_edges, split_panels
 
+log = logging.getLogger(__name__)
+
 STAGE_NAMES = ("conditioned", "overlay", "difference", "rendered")
+
+#: Panels to keep per cell the grid actually asked for. Three is generous — a
+#: render that splits into more than three times its own grid is noise, not
+#: pieces — while leaving room for the padding bands a clean render produces.
+PANELS_PER_RENDER_CAP = 3
 
 
 @dataclass
@@ -157,9 +165,28 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
 
     # One panel per piece of every render. A render holding a single piece
     # passes through untouched, so the common case costs nothing.
+    #
+    # Capped at what was *asked for*, with headroom. split_panels returns a
+    # panel per band it detected, not per row requested: a noisy render can
+    # yield dozens, each one a 15-candidate pipeline, and the run then blows
+    # through forme's 240s and nginx's 300s while the box keeps computing for
+    # an hour on an answer nobody is waiting for. The extra panels are also the
+    # least likely to be real pieces — they are the noise that produced them.
     panels: list[bytes] = []
     for data in renders:
-        panels.extend(split_panels(data, job.cols))
+        found = split_panels(data, job.cols)
+        if len(found) > PANELS_PER_RENDER_CAP * job.rows * job.cols:
+            keep = max(1, PANELS_PER_RENDER_CAP * job.rows * job.cols)
+            log.warning(
+                "render split into %d panels for a %dx%d grid; keeping %d",
+                len(found), job.rows, job.cols, keep,
+            )
+            edge_notes.append(f"render split into {len(found)} panels, kept {keep}")
+            found = found[:keep]
+        panels.extend(found)
+    log.info(
+        "generate: model=%s calls=%d grid=%dx%d panels=%d", model, job.calls, job.rows, job.cols, len(panels)
+    )
 
     # The trace is CPU-bound; run it off the event loop, a few at a time, so the
     # box stays responsive and its memory stays bounded no matter what forme asks
@@ -173,6 +200,11 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
                     _trace, panel, job.height_mm, job.color_key, job.min_hole_mm
                 )
             except Exception:  # a panel the pipeline cannot read is not a failed run
+                # Swallowed toward the customer, not toward us. A systematic bug
+                # takes out every panel of every run and forme only ever sees
+                # status="rejected" — with nothing on the box to diagnose it
+                # from, because until now this except returned None in silence.
+                log.exception("panel trace failed")
                 return None
 
     results = await asyncio.gather(*(trace(p) for p in panels))

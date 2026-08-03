@@ -118,6 +118,16 @@ async function startAndAwaitGeneration(
     text?: string;
     currentSvg: string | null;
     images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
+    /**
+     * מזהה של הרצה שנקטעה, כשמנסים אותה **שוב עם אותו קלט**.
+     *
+     * הקופסה מחזיקה את ההרצה תחת מזהה שנגזר מזה, ולכן ניסיון חוזר עם המזהה
+     * הישן אוסף את מה שכבר רונדר במקום לשלם עליו שוב (ראה
+     * docs/C2_RESILIENT_GENERATION.md). קלט שהשתנה מקבל ממילא הרצה חדשה —
+     * השרת גוזר את מזהה הקופסה גם מהבקשה עצמה — כך שמיחזור בטעות לא יחזיר
+     * ללקוחה ציור שלא ביקשה.
+     */
+    jobId?: string;
   },
   onStage?: (stage: string | null) => void,
   /** המזהה, ברגע שנקבע — כדי שהקורא יוכל לזכור אותו ולמצוא את התוצאה אחר כך. */
@@ -125,7 +135,7 @@ async function startAndAwaitGeneration(
 ): Promise<GenerationResult> {
   // המזהה נקבע כאן ולא בשרת: אם הבקשה עצמה תיקטע, הוא מה שמאפשר לחזור ולשאול
   // מה עלה בגורל ההרצה במקום להניח שאבדה.
-  const jobId = crypto.randomUUID();
+  const jobId = input.jobId ?? crypto.randomUUID();
   onJob?.(jobId);
   let started: { jobId?: string } & Partial<GenerationResult>;
   try {
@@ -236,6 +246,8 @@ export const api = {
       /** הגרסה ש-`currentSvg` נלקח ממנה — נרשמת ביומן הבק־אופיס. */
       baseVersionId?: string;
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
+      /** ניסיון חוזר על הרצה שנקטעה — ראה `startAndAwaitGeneration`. */
+      jobId?: string;
     },
     onStage?: (stage: string | null) => void,
     onJob?: (jobId: string) => void,

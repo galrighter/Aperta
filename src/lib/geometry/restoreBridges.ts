@@ -271,6 +271,15 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
 
     // הצלע הצרה של האי היא זו שקובעת: גשר רחב ממנה בולע אותו משני צדדיו.
     const width = ornamentBridgeWidth(Math.min(base.widthMm, base.heightMm), opts);
+    // **סריקה מלאה, במכוון.** `thickenBridges` חותך את החיפוש לחלון סביב האי,
+    // ומתבקש להעתיק את זה גם לכאן — הסריקה היא O(V·E). נמדד, וזה הפוך: החלון
+    // דורש `intersection` פר-אי, וההיסט הזה יקר יותר מהסריקה שהוא חוסך.
+    // 3,464 קודקודים עם 12 איים: 233 מ"ש מלא מול 257 עם חלון. 10,376 קודקודים:
+    // 1,874 מול 6,063 — פי שלושה **גרוע** יותר.
+    //
+    // ההבדל מ-`thickenBridges` הוא במבנה ולא בגודל: שם הלולאה היא כל גוף מול
+    // כל גוף, וכאן היא כל אי מול הגוף הראשי בלבד — פי מספר הגופים פחות סריקות
+    // לחלוק עליהן את מחיר החיתוך. עיצוב אמיתי נמדד ב-720–787 קודקודים.
     const link = shortestLink(island, main);
     if (width !== null && link.distMm <= opts.maxSpanMm) {
       const drawn = linkRect(link.a, link.b, width);

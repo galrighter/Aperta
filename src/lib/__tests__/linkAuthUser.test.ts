@@ -29,7 +29,7 @@ function fakeClient() {
     from() {
       let mode: "select" | "update" | "insert" = "select";
       let patch: Record<string, unknown> = {};
-      let filters: Array<[string, unknown]> = [];
+      const filters: Array<[string, unknown]> = [];
 
       const q = {
         select() {
