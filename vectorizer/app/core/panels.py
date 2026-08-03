@@ -29,6 +29,16 @@ def _round(x: float) -> int:
     return int(np.floor(x + 0.5))
 
 
+def _dark(rgba: np.ndarray, threshold: int) -> np.ndarray:
+    """Metal pixels: dark and opaque. One definition for every raster question
+    asked of a render — bands, columns and edges all mean the same thing by
+    "metal", or they disagree about the same picture."""
+    rgb = rgba[:, :, :3].astype(np.int32)
+    # Approximate luma, same weights as the original.
+    luma = (rgb[:, :, 0] * 299 + rgb[:, :, 1] * 587 + rgb[:, :, 2] * 114) / 1000
+    return (luma < threshold) & (rgba[:, :, 3] > 128)
+
+
 def find_bands(
     rgba: np.ndarray,
     threshold: int = 128,
@@ -42,11 +52,7 @@ def find_bands(
     height, width = rgba.shape[0], rgba.shape[1]
     min_pixels = max(2, _round(width * min_coverage))
 
-    rgb = rgba[:, :, :3].astype(np.int32)
-    # Approximate luma, same weights as the original.
-    luma = (rgb[:, :, 0] * 299 + rgb[:, :, 1] * 587 + rgb[:, :, 2] * 114) / 1000
-    opaque = rgba[:, :, 3] > 128
-    dark = ((luma < threshold) & opaque).sum(axis=1) >= min_pixels
+    dark = _dark(rgba, threshold).sum(axis=1) >= min_pixels
 
     bands: list[list[int]] = []
     start: int | None = None
@@ -71,6 +77,47 @@ def find_bands(
 
     min_height = max(4, _round(height * 0.015))
     return [(y0, y1) for y0, y1 in merged if y1 - y0 >= min_height]
+
+
+def clipped_edges(
+    data: bytes,
+    threshold: int = 128,
+    margin: int = 2,
+    min_run: float = 0.01,
+) -> list[str]:
+    """Which canvas edges the metal touches — a clipped piece, not a framed one.
+
+    The prompt asks for plain white around every piece, so metal within
+    ``margin`` pixels of the border means the model drew past the canvas and the
+    picture holds only part of the piece. Nothing downstream can tell: the crop
+    trims to content, the trace is faithful to the clipped picture, every gate
+    compares the two — so the check has to happen here, on the whole render,
+    before any of that. Measured on RM-0076: the strip ran off the left border
+    (~150 metal pixels on the edge), the derived length came back 147.95mm
+    against the 160.4 ordered, and the customer saw a design cut mid-motif.
+
+    The bar is a run of metal, not a pixel: anti-aliasing specks stay below
+    ``min_run`` of the edge length, a strip end that continues off-canvas
+    crosses it by an order of magnitude.
+    """
+    with Image.open(io.BytesIO(data)) as img:
+        rgba = np.array(img.convert("RGBA"))
+    dark = _dark(rgba, threshold)
+    height, width = dark.shape
+
+    out: list[str] = []
+    # (name, border strip, axis whose runs we count) — for left/right a run is
+    # rows of metal along the edge, for top/bottom it is columns.
+    for name, band, along in (
+        ("left", dark[:, :margin], 1),
+        ("right", dark[:, width - margin :], 1),
+        ("top", dark[:margin, :], 0),
+        ("bottom", dark[height - margin :, :], 0),
+    ):
+        edge_len = height if along == 1 else width
+        if band.any(axis=along).sum() >= max(2, _round(edge_len * min_run)):
+            out.append(name)
+    return out
 
 
 def _encode(cell: np.ndarray) -> bytes:

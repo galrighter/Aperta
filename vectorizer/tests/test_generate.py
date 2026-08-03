@@ -410,6 +410,85 @@ def test_a_run_without_a_reference_stores_nothing_for_it(wired):
     assert out["uploaded_stages"] == []
 
 
+# --- clipped renders and the quiet retry -------------------------------------
+#
+# A render whose metal touches the canvas edge holds only part of the piece, and
+# nothing downstream can tell (RM-0076 sailed through approved with an end cut
+# mid-motif). The box asks the model once more — quietly, same prompt, one round
+# — and the journal hears about it either way.
+
+
+def clipped_png() -> bytes:
+    width, height = 300, 200
+    rgba = np.full((height, width, 4), 255, dtype=np.uint8)
+    rgba[80:120, 0 : width - 50, :3] = 17  # the strip runs off the left border
+    buf = io.BytesIO()
+    Image.fromarray(rgba).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def rounds_of(monkeypatch, *rounds: list[bytes]) -> list[int]:
+    """Feed render_many one prepared round per call; record how many renders
+    each round asked for."""
+    asked: list[int] = []
+
+    async def render_many(key, prompt, calls, reference=None, model=None, size=None):
+        asked.append(calls)
+        batch = rounds[len(asked) - 1]
+        if isinstance(batch, Exception):
+            raise batch
+        return batch
+
+    monkeypatch.setattr(generate.imagegen, "render_many", render_many)
+    return asked
+
+
+def test_a_clipped_render_is_replaced_without_involving_anyone(wired, monkeypatch):
+    asked = rounds_of(monkeypatch, [clipped_png(), striped_png(1)], [striped_png(1)])
+    out = run(generate.GenerateJob(prompt="p", calls=2, rows=1))
+    # one retry, sized to the clipped renders only — not a second full round
+    assert asked == [2, 1]
+    stage = out["debug"]["stages"][0]
+    assert stage["name"] == "edges"
+    assert stage["status"] == "warn"
+    assert "render 0 clipped at left; replaced after one retry" in stage["detail"]
+    assert any("replaced after one retry" in w for w in out["debug"]["warnings"])
+    # the run itself is untouched: same candidates as a clean run
+    assert len(out["candidates"]) == 2
+
+
+def test_a_retry_that_is_also_clipped_keeps_the_original(wired, monkeypatch):
+    asked = rounds_of(monkeypatch, [clipped_png()], [clipped_png()])
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert asked == [1, 1]
+    stage = out["debug"]["stages"][0]
+    assert "kept the original" in stage["detail"]
+    # still one round of retry — nothing recurses
+    assert len(asked) == 2
+
+
+def test_a_failed_retry_does_not_fail_the_run(wired, monkeypatch):
+    asked = rounds_of(
+        monkeypatch, [clipped_png()], imagegen.ImageGenError("429 rate limited")
+    )
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert asked == [1, 1]
+    assert len(out["candidates"]) == 1  # the clipped render still traced
+    stage = out["debug"]["stages"][0]
+    assert "retry failed" in stage["detail"]
+    assert "no replacement came back" in stage["detail"]
+
+
+def test_a_clean_run_costs_no_extra_call_and_says_so(wired, monkeypatch):
+    asked = rounds_of(monkeypatch, [striped_png(1)])
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert asked == [1]
+    stage = out["debug"]["stages"][0]
+    assert stage["name"] == "edges"
+    assert stage["status"] == "ok"
+    assert "warnings" not in out["debug"]
+
+
 # --- the canvas shape --------------------------------------------------------
 
 
