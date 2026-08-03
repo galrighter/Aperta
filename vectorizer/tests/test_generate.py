@@ -226,13 +226,8 @@ def test_a_base_svg_that_cannot_be_drawn_fails_the_run(wired, monkeypatch):
         run(generate.GenerateJob(prompt="p", calls=1, rows=1, base_svg=BASE_SVG))
 
 
-def test_endpoint_passes_the_base_svg_through(wired, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
+def test_endpoint_passes_the_base_svg_through(wired, monkeypatch, client):
     monkeypatch.setattr(generate.renderer, "render_svg_to_png", lambda *a: b"current")
-    client = TestClient(main.app)
     resp = client.post(
         "/api/generate",
         json={"prompt": "less cuts", "calls": 1, "rows": 1, "height_mm": 15, "base_svg": BASE_SVG},
@@ -244,12 +239,7 @@ def test_endpoint_passes_the_base_svg_through(wired, monkeypatch):
 # --- the HTTP contract forme codes against ----------------------------------
 
 
-def test_endpoint_returns_the_candidates(wired):
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
-    client = TestClient(main.app)
+def test_endpoint_returns_the_candidates(wired, client):
     resp = client.post(
         "/api/generate",
         json={"prompt": "a ring", "calls": 2, "rows": 1, "height_mm": 10, "color_key": "dark"},
@@ -262,26 +252,16 @@ def test_endpoint_returns_the_candidates(wired):
     assert body["selected_panel"] == 0
 
 
-def test_endpoint_rejects_an_unknown_colour_key(wired):
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
-    client = TestClient(main.app)
+def test_endpoint_rejects_an_unknown_colour_key(wired, client):
     resp = client.post("/api/generate", json={"prompt": "p", "color_key": "chartreuse"})
     assert resp.status_code == 400
 
 
-def test_endpoint_surfaces_an_image_model_failure_as_retriable(wired, monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
+def test_endpoint_surfaces_an_image_model_failure_as_retriable(wired, monkeypatch, client):
     async def boom(*a, **k):
         raise generate.imagegen.ImageGenError("gpt-image-1-mini: 429 rate limited")
 
     monkeypatch.setattr(generate.imagegen, "render_many", boom)
-    client = TestClient(main.app)
     resp = client.post("/api/generate", json={"prompt": "p"})
     # 422 and not 502: Cloudflare replaces the body of a 502 with its own error
     # page, so on the old status forme received "error code: 502" and logged that
@@ -291,24 +271,19 @@ def test_endpoint_surfaces_an_image_model_failure_as_retriable(wired, monkeypatc
     assert "429" in resp.json()["detail"]["message"]
 
 
-def test_endpoint_names_a_spent_budget_as_its_own_failure(wired, monkeypatch):
+def test_endpoint_names_a_spent_budget_as_its_own_failure(wired, monkeypatch, client):
     """A spent OpenAI budget is the one failure nobody can fix from the app.
 
     It has to arrive at forme as its own code — that is what triggers the alert
     mail. Folded into RENDER_FAILED it reads like any other flaky render, and the
     site stays down until somebody happens to look.
     """
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
     async def broke(*a, **k):
         raise generate.imagegen.ImageGenError(
             'gpt-image-1-mini: 429 {"error":{"code":"insufficient_quota"}}', quota=True
         )
 
     monkeypatch.setattr(generate.imagegen, "render_many", broke)
-    client = TestClient(main.app)
     resp = client.post("/api/generate", json={"prompt": "p"})
     assert resp.status_code == 422
     assert resp.json()["detail"]["error_code"] == "QUOTA_EXHAUSTED"
@@ -348,16 +323,11 @@ def test_a_spent_budget_survives_the_aggregation(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_the_default_model_is_what_renders_unless_forme_names_another(wired):
+def test_the_default_model_is_what_renders_unless_forme_names_another(wired, client):
     """The model is forme's decision and the box's default. Both directions are
     load-bearing: a run that carries lettering asks for a model that copies the
     reference lettering (see forme's LETTERING_MODEL), and every other run must
     stay on the cheap default without anyone remembering to say so."""
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
-    client = TestClient(main.app)
 
     resp = client.post("/api/generate", json={"prompt": "p"})
     assert resp.status_code == 200
@@ -371,13 +341,9 @@ def test_the_default_model_is_what_renders_unless_forme_names_another(wired):
     assert resp.json()["model"] == "gpt-image-2"
 
 
-def test_a_model_the_box_does_not_know_is_refused():
+def test_a_model_the_box_does_not_know_is_refused(client):
     """An allowlist and not a pass-through: the name reaches OpenAI on our key."""
-    from fastapi.testclient import TestClient
-
-    from app.api import main
-
-    resp = TestClient(main.app).post("/api/generate", json={"prompt": "p", "model": "gpt-9"})
+    resp = client.post("/api/generate", json={"prompt": "p", "model": "gpt-9"})
     assert resp.status_code == 400
 
 

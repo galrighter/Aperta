@@ -72,12 +72,7 @@ def test_border_snap_recovers_edge_column(fixture_png: bytes) -> None:
     assert int((ren[:, -1] > 0).sum()) > 0
 
 
-def test_http_roundtrip(fixture_png: bytes) -> None:
-    from fastapi.testclient import TestClient
-
-    from app.api.main import app
-
-    client = TestClient(app)
+def test_http_roundtrip(fixture_png: bytes, client) -> None:
     assert client.get("/api/health").json()["status"] == "ok"
 
     resp = client.post(
@@ -100,17 +95,12 @@ def test_http_roundtrip(fixture_png: bytes) -> None:
     assert client.delete(f"/api/jobs/{job_id}").json()["deleted"] is True
 
 
-def test_conditioning_single_call(fixture_png: bytes) -> None:
+def test_conditioning_single_call(fixture_png: bytes, client) -> None:
     """A raw (non-two-tone) render goes straight through with condition=true.
 
     The fixture is black-on-white, so key='dark' selects the metal; width_mm is
     derived from the crop, so only height_mm is supplied.
     """
-    from fastapi.testclient import TestClient
-
-    from app.api.main import app
-
-    client = TestClient(app)
     resp = client.post(
         "/api/jobs",
         files={"image": ("f.png", fixture_png, "image/png")},
@@ -123,22 +113,38 @@ def test_conditioning_single_call(fixture_png: bytes) -> None:
     assert "cutouts_svg" in body
 
 
-def test_auth_gate_when_token_set(fixture_png: bytes, monkeypatch) -> None:
-    from types import SimpleNamespace
+def test_auth_gate_when_token_set(fixture_png: bytes, unauthorised_client, auth_configured) -> None:
+    files = {"image": ("f.png", fixture_png, "image/png")}
+    data = {"width_mm": "160", "height_mm": "15"}
+
+    assert unauthorised_client.post("/api/jobs", files=files, data=data).status_code == 401
+    ok = unauthorised_client.post(
+        "/api/jobs", files=files, data=data,
+        headers={"Authorization": f"Bearer {auth_configured}"},
+    )
+    assert ok.status_code == 200
+    assert unauthorised_client.get("/api/health").status_code == 200  # health stays open
+
+
+def test_auth_gate_fails_closed_when_no_token_is_configured(fixture_png: bytes, monkeypatch) -> None:
+    """No token configured must refuse, not run open — this endpoint spends the
+    OpenAI key, and an unset environment variable is exactly how it would."""
+    from dataclasses import replace
 
     from fastapi.testclient import TestClient
 
     from app.api import main
+    from app.config import SETTINGS
 
-    monkeypatch.setattr(main, "SETTINGS", SimpleNamespace(auth_token="secret", tracer_backend="opencv", max_upload_mb=20))
-    client = TestClient(main.app)
-    files = {"image": ("f.png", fixture_png, "image/png")}
-    data = {"width_mm": "160", "height_mm": "15"}
-
-    assert client.post("/api/jobs", files=files, data=data).status_code == 401
-    ok = client.post("/api/jobs", files=files, data=data, headers={"Authorization": "Bearer secret"})
-    assert ok.status_code == 200
-    assert client.get("/api/health").status_code == 200  # health stays open
+    monkeypatch.setattr(main, "SETTINGS", replace(SETTINGS, auth_token=""))
+    resp = TestClient(main.app).post(
+        "/api/jobs",
+        files={"image": ("f.png", fixture_png, "image/png")},
+        data={"width_mm": "160", "height_mm": "15"},
+    )
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error_code"] == "AUTH_NOT_CONFIGURED"
+    assert TestClient(main.app).get("/api/health").status_code == 200  # health stays open
 
 
 def _SHADED_OPENINGS(width: int) -> range:
