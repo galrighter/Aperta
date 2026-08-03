@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
 import {
-  existingRunIds, listRuns, designsForRuns, type RunStagePaths, type RunStatusFilter,
+  existingRunIds, listRuns, designsForRuns, versionsForRuns,
+  type RunStagePaths, type RunStatusFilter,
 } from "@/lib/db/runs";
 import { designCode } from "@/lib/designCode";
 import { listRecentJobs } from "@/lib/db/jobs";
@@ -104,6 +105,10 @@ export async function GET(req: Request) {
         (v): v is string => !!v,
       ),
     );
+    // הגרסה של כל הרצה — מה שהכפתור בשורה צריך כדי למשוך קובץ ייצור בלי
+    // לפתוח את הפירוט. שאילתה אחת לעמוד, כמו הבעלים.
+    const versions = await versionsForRuns(rows.map((r) => r.id));
+
     const items = rows.map((r) => {
       const stages = (r.stage_paths ?? {}) as RunStagePaths;
       const image = (name: string) => `/api/debug/log/${r.id}/image/${name}`;
@@ -137,12 +142,20 @@ export async function GET(req: Request) {
         },
         /** ה-SVG הסופי נטען בפירוט; ברשימה רק האם הוא קיים. */
         hasSvg: r.has_svg,
+        /**
+         * הגרסה שההרצה שמרה. זה מה שיש ממנו קובץ ייצור, ולכן זה מה שקובע אם
+         * כפתור ה-SVG בשורה פעיל. `null` = ההרצה לא הגיעה לגרסה, או שהיא
+         * מלפני 0012 ואין לה `generation_id`.
+         */
+        version: versions.get(r.id) ?? null,
         metrics: r.metrics,
         debug: slimDebug(r.debug),
       };
     });
     const withOwners = orphans.map((o) => ({
       ...o,
+      // ניסיון בלי שורת הרצה לא שמר גרסה, ולכן אין לו קובץ ייצור.
+      version: null,
       owner: (o.designId && owners.get(o.designId)) || null,
       ref: (o.designId && designCode(serials.get(o.designId) ?? null)) || null,
     }));

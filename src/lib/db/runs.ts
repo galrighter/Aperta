@@ -353,6 +353,58 @@ export async function countQuotaFailuresSince(sinceIso: string, beforeIso: strin
   return count ?? 0;
 }
 
+/** הגרסה שהרצה שמרה, כפי שהיומן צריך אותה כדי למשוך ממנה קובץ ייצור. */
+export interface RunVersion {
+  id: string;
+  versionNo: number | null;
+  validationStatus: string | null;
+}
+
+/**
+ * הגרסה שכל הרצה בעמוד שמרה, בשאילתה אחת.
+ *
+ * זה מה שמאפשר לכפתור ה-SVG שבשורה למשוך את **קובץ הייצור** בלי לפתוח קודם את
+ * הפירוט: בלי זה מזהה הגרסה מגיע רק מ-/api/debug/log/<id>, כלומר הקובץ שמעניין
+ * בפועל היה חבוי מאחורי פתיחת שורה.
+ *
+ * הגרסה **הראשונה** של כל הרצה, כמו ב-`bridgesForRun`: זו שההרצה עצמה שמרה,
+ * להבדיל מעריכות שבאו אחריה. שאילתה נפרדת ולא embed, ו-best-effort — כשל כאן
+ * משאיר יומן בלי כפתור הורדה, ולא יומן בלי שורות.
+ *
+ * הרצות מלפני מיגרציה 0012 לא נושאות `generation_id` ולכן אין להן התאמה כאן.
+ */
+export async function versionsForRuns(runIds: string[]): Promise<Map<string, RunVersion>> {
+  const ids = [...new Set(runIds)];
+  const out = new Map<string, RunVersion>();
+  if (ids.length === 0) return out;
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from("design_versions")
+      .select("id, generation_id, version_no, validation_status")
+      .in("generation_id", ids)
+      .order("version_no", { ascending: true });
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as Array<{
+      id: string;
+      generation_id: string | null;
+      version_no: number | null;
+      validation_status: string | null;
+    }>) {
+      // הראשונה זוכה: המיון עולה, ולכן שורה מאוחרת יותר של אותה הרצה היא
+      // גרסה מאוחרת יותר ולא זו שההרצה שמרה.
+      if (!row.generation_id || out.has(row.generation_id)) continue;
+      out.set(row.generation_id, {
+        id: row.id,
+        versionNo: row.version_no,
+        validationStatus: row.validation_status,
+      });
+    }
+  } catch (e) {
+    console.error("run version lookup failed:", (e as Error).message);
+  }
+  return out;
+}
+
 /**
  * הבעלים **והמספר הסידורי** של כל עיצוב שביומן, בשאילתה אחת. הבעלים הוא מה
  * שמאפשר לקבץ את היומן לפי משתמש במקום לפי זמן.

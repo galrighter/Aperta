@@ -91,6 +91,11 @@ export type LogItem = {
   };
   /** הרשימה לא נושאת SVG — רק האם קיים. הפירוט נטען בפתיחה. */
   hasSvg: boolean;
+  /**
+   * הגרסה שההרצה שמרה. היא שמאפשרת למשוך קובץ ייצור ישירות מהשורה, בלי לפתוח
+   * את הפירוט. `null` = ההרצה לא הגיעה לגרסה, או שהיא מלפני מיגרציה 0012.
+   */
+  version?: { id: string; versionNo: number | null; validationStatus: string | null } | null;
   metrics: { iou?: number; holes?: number; meanDeviationMm?: number; maxDeviationMm?: number } | null;
   debug: DebugMeta | null;
 };
@@ -809,13 +814,13 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
               הרץ מחדש
             </button>
           )}
-          {/* הורדת ה-SVG הסופי. הכפתור מופיע כשידוע שיש SVG; ההורדה עצמה
-              דורשת את הפירוט, שנטען בלחיצה אם עוד לא נטען. */}
-          {it.hasSvg && (
+          {/* ה-SVG לייצור. מופיע כשההרצה שמרה גרסה — זה מה שיש ממנו קובץ
+              לחתוך. הרצה בלי גרסה עדיין מציגה את ה-SVG של התצוגה בפירוט. */}
+          {it.designId && it.version && (
             <DownloadSvgButton
-              svg={svg}
-              filename={`run-${it.id.slice(0, 8)}`}
-              onNeedDetail={onToggle}
+              designId={it.designId}
+              versionId={it.version.id}
+              blocked={it.version.validationStatus === "fail"}
             />
           )}
         </div>
@@ -870,22 +875,71 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
   );
 }
 
-/** הורדת ה-SVG של הרצה. כל עוד הפירוט לא נטען, הלחיצה פותחת אותו. */
-function DownloadSvgButton({
-  svg, filename, onNeedDetail,
-}: {
-  svg: string | null;
-  filename: string;
-  onNeedDetail: () => void;
+/**
+ * הורדת ה-SVG **לייצור** של ההרצה: המתאר של המתכת במ"מ, מה שנכנס למכונה.
+ *
+ * קודם הכפתור הזה הוריד את ה-SVG של התצוגה — הגאומטריה של מה שנחתך בקנה מידה
+ * של המסך. הוא נראה כמעט זהה ואינו קובץ שאפשר לחתוך לפיו, וכל עוד שני הדברים
+ * נקראו "SVG" ההבדל היה מלכודת. השם נשאר; מה שיורד השתנה.
+ *
+ * הקובץ נבנה בלחיצה (`buildVersionExport`) ולא מראש, כי הקישור נחתם לשעה.
+ * `versionId` הוא של הגרסה שההרצה שמרה, ולא הנוכחית של העיצוב — ראה `ExportFiles`.
+ */
+function DownloadSvgButton({ designId, versionId, blocked }: {
+  designId: string;
+  versionId: string;
+  /** נכשלה בוולידציה: אין קובץ ייצור, ולכן הכפתור אומר זאת במקום לנסות. */
+  blocked: boolean;
 }) {
+  const [state, setState] = useState<"idle" | "busy" | "error">("idle");
+
+  async function run() {
+    setState("busy");
+    const res = await fetch(`/api/admin/designs/${designId}/export`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ versionId }),
+    });
+    if (!res.ok) {
+      setState("error");
+      return;
+    }
+    const body = (await res.json()) as { svgUrl: string };
+    // הכתובת החתומה נושאת כבר `download` עם שם הקובץ (הסידורי והמידות), ולכן
+    // די בניווט אליה — אין צורך ב-blob כמו בהורדה של SVG שיושב בזיכרון.
+    const a = document.createElement("a");
+    a.href = body.svgUrl;
+    a.rel = "noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setState("idle");
+  }
+
+  if (blocked) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="cursor-not-allowed rounded-[2px] border border-graphite/20 px-2 py-1 text-xs text-mist"
+        title="הגרסה נכשלה בוולידציה ואי אפשר לייצא אותה לחיתוך."
+      >
+        SVG
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
-      className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
-      title={svg ? "הורדת ה-SVG הסופי" : "פתיחת הפירוט כדי להוריד את ה-SVG"}
-      onClick={() => (svg ? downloadSvg(filename, svg) : onNeedDetail())}
+      disabled={state === "busy"}
+      className={`rounded-[2px] border px-2 py-1 text-xs hover:bg-porcelain disabled:text-mist ${
+        state === "error" ? "border-red-300 text-red-700" : "border-graphite/20"
+      }`}
+      title={state === "error" ? "הכנת הקובץ נכשלה." : "הורדת ה-SVG לייצור (מ\"מ)"}
+      onClick={() => void run()}
     >
-      {svg ? "⭳ SVG" : "SVG"}
+      {state === "busy" ? "…" : state === "error" ? "SVG ✕" : "⭳ SVG"}
     </button>
   );
 }

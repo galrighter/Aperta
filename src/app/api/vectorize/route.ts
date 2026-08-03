@@ -70,6 +70,11 @@ export async function POST(req: Request) {
       userPrompt: null,
       renderPngPath,
       metrics: vec.metrics,
+      // הקישור בין הגרסה להרצה שיצרה אותה. מסלול היצירה מהתיאור מוסר אותו מאז
+      // 0012, וכאן הוא נשכח: גרסה מ"קובץ מוכן לחיתוך" נשמרה בלי `generation_id`,
+      // ולכן שורת היומן שלה לא ידעה על שום גרסה — לא הגישור, לא מספר הגרסה,
+      // ולא הקובץ לייצור.
+      generationId: runId,
     });
 
     return NextResponse.json({ runId, version, report, geometry, lengthMm, vectorizer: vec.metrics });
