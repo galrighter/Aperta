@@ -88,6 +88,29 @@ export default function DesignPage() {
     setState((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  /**
+   * המצב העדכני, לקריאה מתוך המשך שרץ **אחרי** שהמצב הוחלף.
+   *
+   * החזרה מגוגל טוענת את העמוד מחדש: אפקט אחד משחזר את המשפך מה-stash
+   * (`setState(stash.state)`) וקורא מיד ל-`afterSignedIn`, שממשיך את היצירה
+   * כשהחשבון חוזר מהשרת. `afterSignedIn` נתפס באותו רגע יחד עם ה-closure של
+   * `startGeneration`, ובו `s` הוא עדיין `INITIAL` — כי `setState` טרם עברה
+   * רינדור. כלומר היצירה שהמשיכה מעצמה בדקה טופס **ריק**, נפלה על
+   * `canGenerate` והחזירה למסך הבריף: הלקוח נכנס, ראה את התיאור שלו שלם על
+   * המסך, ונדרש ללחוץ "שליחה" שוב בלי שדבר יסביר למה.
+   *
+   * מסלול הקוד במייל לא סבל מזה (אין טעינה מחדש, ה-closure עדכני), ולכן הכשל
+   * נראה כאילו הוא של גוגל בלבד. הרפרנס פותר את שניהם באותה דרך: מי שממשיך
+   * פעולה קורא את המצב ברגע ההמשך, לא ברגע שבו נוצרה הפונקציה.
+   *
+   * נכתב באפקט ולא בגוף הרינדור — הוא רץ בסיום כל רינדור, הרבה לפני שהתשובה
+   * של `/api/account` חוזרת מהרשת.
+   */
+  const stateRef = useRef(s);
+  useEffect(() => {
+    stateRef.current = s;
+  });
+
   useEffect(() => setSaved(listMyDesigns()), []);
 
   /* ===== הציור של כרטיס שהמכשיר הזה לא יצר =====
@@ -240,6 +263,9 @@ export default function DesignPage() {
 
   /* ===== יצירה ראשונה ===== */
   const startGeneration = useCallback(async (signedIn?: Account) => {
+    // המצב מהרפרנס ולא מה-closure: הקריאה שממשיכה אחרי כניסה לחשבון נתפסה לפני
+    // שהמשפך שוחזר מה-stash. ראו `stateRef`.
+    const cur = stateRef.current;
     // עד כאן אפשר להתקדם בלי להזדהות. מכאן והלאה נוצרת רשומה שצריכה בעלים,
     // ורצה הרצת מנוע שעולה כסף — ולכן זה הרגע שבו נפתח השער.
     const who = signedIn ?? account;
@@ -257,12 +283,18 @@ export default function DesignPage() {
     // והפרומפט היה שורת המאפיינים לבדה), והלקוחה קיבלה אחרי המתנה עיצוב שלא
     // ביקשה — והוא נספר במכסה היומית שלה. חזרה למסך הבריף היא התשובה הנכונה:
     // מה שמילאה אבד, ולפחות היא רואה זאת מיד ולא אחרי דקה.
-    if (!canGenerate(s)) {
+    if (!canGenerate(cur)) {
       go("brief");
       return;
     }
 
-    const st = { ...s, screen: "processing" as Screen, procError: null, procErrorDetail: null };
+    const st = {
+      ...cur,
+      screen: "processing" as Screen,
+      procError: null,
+      procErrorDetail: null,
+      procErrorCode: null,
+    };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
     if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -271,11 +303,11 @@ export default function DesignPage() {
       // "נסה שוב" חוזר לכאן. עיצוב שכבר נוצר ועוד אין לו גרסה הוא בדיוק
       // המקום שאליו היצירה אמורה לנחות — אחרת כל לחיצה מייצרת עיצוב נוסף.
       // לקוח שלחץ ארבע פעמים אחרי כשל השאיר ארבעה עיצובים ריקים ברשימה.
-      const reuse = s.designId && s.edits.length === 0 ? s.designId : null;
+      const reuse = st.designId && st.edits.length === 0 ? st.designId : null;
 
       // בלי profileId: הבעלות נקבעת בשרת לפי העוגייה של החשבון.
       const design = reuse
-        ? { id: reuse, serial: s.designSerial }
+        ? { id: reuse, serial: st.designSerial }
         : (
             await api.createDesign({
               productType: st.product ?? "bracelet",
@@ -340,16 +372,20 @@ export default function DesignPage() {
         procErrorDetail: apiErr
           ? `${apiErr.code} · ${apiErr.status}`
           : ((e as Error)?.message?.slice(0, 80) ?? null),
+        procErrorCode: apiErr?.code ?? null,
       }));
     }
-  }, [s, account, go, pushEntry, remember]);
+  }, [account, go, pushEntry, remember]);
 
   /* ===== "להזמין כזה" — עיצוב ששותף, במידה של מי שמזמין =====
      נכנסים לכאן במקום ל-`brief`: אין מה לתאר ואין מה לייצר, הדוגמה כבר קיימת.
      מה שכן חייב לקרות הוא מתיחה למידה שנבחרה עכשיו, והיא רצה בשרת (ראו
      `/api/shares/[token]/adopt`) כדי שהוולידציה תרוץ על מה שבאמת ייחתך. */
   const adoptShared = useCallback(async (signedIn?: Account) => {
-    const token = s.fromShare;
+    // כמו ביצירה: המסלול הזה ממשיך גם אחרי חזרה מגוגל, ואז ה-closure מקדים את
+    // שחזור המשפך. בלי הרפרנס `fromShare` היה עדיין null והלחיצה נבלעה.
+    const cur = stateRef.current;
+    const token = cur.fromShare;
     if (!token) return;
 
     // אותו רגע בדיוק כמו ביצירה: כאן נוצרת רשומה שצריכה בעלים.
@@ -365,13 +401,13 @@ export default function DesignPage() {
     set({ adopting: true, adoptError: null });
     try {
       const res = await api.adoptShare(token, {
-        lengthMm: stripLengthMm(s),
-        widthMm: widthOf(s),
-        gapMm: gapOf(s),
+        lengthMm: stripLengthMm(cur),
+        widthMm: widthOf(cur),
+        gapMm: gapOf(cur),
       });
       const entry = entryFromGeneration(res, { region: null, text: "" });
       const next: CreateState = {
-        ...s,
+        ...cur,
         adopting: false,
         adoptError: null,
         designId: res.design.id,
@@ -393,7 +429,7 @@ export default function DesignPage() {
         adoptError: apiErr?.code === "not_found" ? he.share.adoptGone : he.share.adoptFailed,
       });
     }
-  }, [s, account, set, remember]);
+  }, [account, set, remember]);
 
   /* ===== פעימת לב: "יש מסך שמחכה ליצירה הזו" =====
      `DesignReadyWatch` (ב-layout) מציג חלון קופץ רק כשהפעימה מתיישנת. דגל
@@ -994,9 +1030,10 @@ export default function DesignPage() {
           <ProcessingScreen
             error={s.procError}
             detail={s.procErrorDetail}
+            code={s.procErrorCode}
             onRetry={() => void startGeneration()}
             onBack={() => {
-              set({ procError: null, procErrorDetail: null });
+              set({ procError: null, procErrorDetail: null, procErrorCode: null });
               go("brief");
             }}
           />

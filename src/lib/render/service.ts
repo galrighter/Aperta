@@ -31,6 +31,20 @@ function serviceUrl(): string {
   return process.env.VECTORIZER_URL || "https://vec.rmjewel.com";
 }
 
+/**
+ * דחייה של מסנן התוכן, ולא כשל של המודל.
+ *
+ * הקופסה מעבירה את גוף ה-400 של OpenAI כמות שהוא בתוך הודעת RENDER_FAILED
+ * (`vectorizer/app/imagegen.py`), ולכן הזיהוי נעשה כאן — ובלי לחכות לפריסה
+ * שלה. **ההבחנה אינה קוסמטית**: כשל רגיל של מודל התמונה הוא מקרי וניסיון חוזר
+ * מתקן אותו, ודחיית מסנן היא דטרמיניסטית — אותו תיאור ייחסם שוב ושוב. נמדד
+ * ב-RM-0077 (3.8.26): ארבע הרצות של "עיטורי מיקי מאוס" חזרו כולן ב-400
+ * `rejected by the safety system`, והלקוח קיבל בכל אחת מהן הזמנה לנסות שוב.
+ */
+export function isContentBlock(message: string): boolean {
+  return /safety system|content[_ ]?policy|moderation_blocked|content[_ ]?filter/i.test(message);
+}
+
 export interface RenderCandidate {
   panel: number;
   status: string;
@@ -176,11 +190,12 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     // תקציב שנגמר אצל ספק התמונות הוא סיבה בפני עצמה: אין מה לנסות שוב, וזו
     // ההרצה היחידה שדורשת שמישהו יידע עליה — ראה alerts/quota בנתיב היצירה.
     const detail = (body as { detail?: { error_code?: string; message?: string } }).detail;
+    const message = detail?.message ?? "";
     const code =
       detail?.error_code === "QUOTA_EXHAUSTED"
         ? "quota_exhausted"
         : detail?.error_code === "RENDER_FAILED"
-          ? "llm_error"
+          ? isContentBlock(message) ? "content_blocked" : "llm_error"
           : "render_failed";
     throw new ApiError(code, detail?.message ?? `Render service failed (${resp.status})`, 502);
   }

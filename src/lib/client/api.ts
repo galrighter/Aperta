@@ -46,6 +46,11 @@ function messageFor(code: string): string {
   if (code === "rate_limited") return he.errRateLimit;
   if (code === "network") return he.errNetwork;
   if (code === "llm_error") return he.errLlmNotSvg;
+  // דחיית מסנן התוכן של מודל התמונה. נוסח משלה כי היא **דטרמיניסטית**: אותו
+  // תיאור ייחסם גם בניסיון הבא, ולכן "נסו שוב" הוא בדיוק העצה הלא נכונה.
+  if (code === "content_blocked") return he.errContentBlocked;
+  // מידה שאי אפשר לייצר לפיה. הפעולה היא חזרה למסך המידות, לא ניסיון חוזר.
+  if (code === "bad_size") return he.errBadSize;
   // דחיית ווקטורייזר היא תוצאה לגיטימית ולא תקלה — הרנדר לא עבר את שערי
   // הנאמנות. עד כה היא הוצגה כ"משהו השתבש", ולכן נראתה כמו באג במערכת.
   if (code === "vectorize_failed") return he.errVectorizeFailed;

@@ -297,6 +297,23 @@ export function ResultScreen({
             {s.editError && (
               <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail }}>
                 {s.editError}
+                {/* סירוב של מסנן התוכן נכון גם בבקשת שינוי — "תוסיף אוזניים של
+                    מיקי מאוס" נחסם בדיוק כמו תיאור ראשוני. ההשוואה היא לאותו
+                    קבוע שממנו נבנתה ההודעה (`messageFor` ב-client/api), ולכן
+                    היא זהות ולא ניחוש על טקסט. */}
+                {s.editError === he.errContentBlocked && (
+                  <>
+                    {" "}
+                    <a
+                      href="/design-rules"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold underline underline-offset-4"
+                    >
+                      {he.errContentBlockedRules}
+                    </a>
+                  </>
+                )}
               </p>
             )}
           </div>
