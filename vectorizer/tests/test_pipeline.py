@@ -126,6 +126,27 @@ def test_auth_gate_when_token_set(fixture_png: bytes, unauthorised_client, auth_
     assert unauthorised_client.get("/api/health").status_code == 200  # health stays open
 
 
+def test_auth_gate_fails_closed_when_no_token_is_configured(fixture_png: bytes, monkeypatch) -> None:
+    """No token configured must refuse, not run open — this endpoint spends the
+    OpenAI key, and an unset environment variable is exactly how it would."""
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+
+    from app.api import main
+    from app.config import SETTINGS
+
+    monkeypatch.setattr(main, "SETTINGS", replace(SETTINGS, auth_token=""))
+    resp = TestClient(main.app).post(
+        "/api/jobs",
+        files={"image": ("f.png", fixture_png, "image/png")},
+        data={"width_mm": "160", "height_mm": "15"},
+    )
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error_code"] == "AUTH_NOT_CONFIGURED"
+    assert TestClient(main.app).get("/api/health").status_code == 200  # health stays open
+
+
 def _SHADED_OPENINGS(width: int) -> range:
     """x positions of the cut-outs punched into _shaded_render's bar."""
     return range(160, width - 140, 90)

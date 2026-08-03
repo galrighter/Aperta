@@ -19,7 +19,6 @@
 - [Gallery](https://rmjewel.com/gallery): illustrative pattern styles.
 - [Sizing guide](https://rmjewel.com/sizing): how to measure a ring size and a wrist at home, US ring size conversion table, and what each cuff fit style adds.
 - [FAQ](https://rmjewel.com/faq): material, sizes, ordering.
-- [Studio](https://rmjewel.com/studio): the advanced design tool itself.
 - [Contact](https://rmjewel.com/contact): reach the team.
 
 ## Notes
