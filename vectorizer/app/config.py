@@ -70,6 +70,14 @@ class Settings:
     # storage / lifecycle
     job_storage_dir: str = os.environ.get("JOB_STORAGE_DIR", "/tmp/raster-to-svg")
     job_ttl_minutes: int = _i("JOB_TTL_MINUTES", 60)
+    # Held generations (see storage/generation_store.py). A *sibling* of the job
+    # directory, never a child: JobStore deletes every directory under its own
+    # base at startup, which would throw away exactly the paid results this
+    # store exists to keep.
+    generation_storage_dir: str = os.environ.get(
+        "GENERATION_STORAGE_DIR",
+        os.environ.get("JOB_STORAGE_DIR", "/tmp/raster-to-svg").rstrip("/") + "-generations",
+    )
 
     # bearer token for /api/jobs* and /api/generate. Auth fails closed when this
     # is unset (see require_auth) — an open endpoint here spends the OpenAI key.
