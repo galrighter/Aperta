@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # ההיסטוריה נדרשת כדי לדעת אם הדחיפה הזו נגעה במיגרציות. ב-checkout
+          # רדוד ה-commit הקודם לא קיים, והבדיקה הייתה נופלת חזרה ל"אין שינוי"
+          # — כלומר עוברת בשקט בדיוק במקרה שהיא נועדה לתפוס.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -26,6 +31,8 @@ jobs:
       # על push ל-main בלי קשר ל-CI, כך ש-commit אדום יכול היה לעלות לאוויר.
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test
       - name: Build (OpenNext for Cloudflare)
@@ -36,6 +43,43 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx opennextjs-cloudflare build
+      # המיגרציות רצות כאן, ולא ב-workflow משלהן. שני workflows על אותו commit
+      # מתחרים: הקוד יכול לעלות לפני העמודה שהוא קורא, והחלון הזה כבר הפיל
+      # קריאה *וכתיבה* ליומן ההרצות. שלב באותו job הוא היחיד שמבטיח סדר.
+      #
+      # אחרי הטסטים ולפני הפריסה: אין טעם לגעת במסד עבור commit אדום, ואין טעם
+      # לפרוס קוד שהעמודה שלו טרם קיימת.
+      #
+      # ההרצה חוזרת על כל הקבצים בכל פעם ונשענת על כך שהם idempotent (ראה
+      # migrate.yml, שנשאר כשלוף ידני).
+      - name: Apply database migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            # חסר ה-secret. אם הדחיפה הזו לא נגעה במיגרציות, אין מה להחיל וזו
+            # רק אזהרה. אם היא כן — עצירה: check ירוק על קוד שדורש עמודה שלא
+            # נוצרה הוא בדיוק הכשל השקט שהסידור הזה בא לסגור.
+            changed=""
+            if [ -n "${BEFORE:-}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+              changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA" -- supabase/migrations || true)
+            fi
+            if [ -n "$changed" ]; then
+              echo "::error::SUPABASE_DB_URL is not set and this push changes migrations:"
+              echo "$changed"
+              exit 1
+            fi
+            echo "::warning::SUPABASE_DB_URL is not set — no migrations applied (none changed here)."
+            exit 0
+          fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "Applying $f"
+            psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
       - name: Push runtime secrets to the Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

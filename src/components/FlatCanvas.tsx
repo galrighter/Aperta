@@ -49,7 +49,6 @@ export function FlatCanvas() {
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [L, W, design.id]);
 
   // מיקוד בנקודה מבקשת ValidationPanel

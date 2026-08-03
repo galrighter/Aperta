@@ -25,6 +25,14 @@ export function AccountGate({
   onBeforeRedirect,
   /** שגיאה שנולדה מחוץ לשער — למשל חזרה כושלת מגוגל. */
   externalError,
+  /**
+   * עבודה שרצה מחוץ לשער ועדיין קשורה אליו — משיכת החשבון אחרי שהזהות אומתה.
+   *
+   * במסלול הקוד היא נעשית בתוך `verify`, שמחזיק את הטופס עסוק לכל אורכה.
+   * בחזרה מגוגל אין `verify`: העמוד נטען מחדש, קורא ל-`onSignedIn` בעצמו,
+   * והדיאלוג עמד פתוח עם כפתורים חיים בזמן שהוא עובד.
+   */
+  externalBusy,
 }: {
   open: boolean;
   onCancel: () => void;
@@ -32,11 +40,13 @@ export function AccountGate({
   onSignedIn: () => void | Promise<void>;
   onBeforeRedirect?: () => void;
   externalError?: string | null;
+  externalBusy?: boolean;
 }) {
   const [step, setStep] = useState<Step>("choose");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [ownBusy, setBusy] = useState(false);
+  const busy = ownBusy || Boolean(externalBusy);
   const [error, setError] = useState<string | null>(null);
   const firstField = useRef<HTMLDivElement>(null);
 

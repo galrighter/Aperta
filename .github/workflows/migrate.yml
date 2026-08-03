@@ -11,12 +11,11 @@ name: Apply Supabase migrations
 # בסיסמה במקום בכתובת — שהיא הדבר שבאמת נכשל.
 # בלי ה-secret הזה יש להריץ את קובצי ה-SQL ידנית ב-SQL Editor של Supabase.
 
+# **ידני בלבד.** ההחלה בפועל חיה כשלב בתוך deploy.yml, כי שני workflows על אותו
+# commit מתחרים: הקוד יכול לעלות לפני העמודה שהוא קורא. מה שנשאר כאן הוא
+# השליפה הידנית — להריץ את הקבצים בלי לפרוס, כשמתקנים מסד שיצא מסנכרון.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "supabase/migrations/**"
 
 jobs:
   migrate:
@@ -28,10 +27,12 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::warning::SUPABASE_DB_URL secret is not set — skipping."
+            # נכשל, לא מזהיר-ויוצא-0. מישהו הפעיל את זה **כדי** להחיל מיגרציות;
+            # check ירוק שלא החיל דבר הוא בדיוק התשובה שאסור לתת לו.
+            echo "::error::SUPABASE_DB_URL secret is not set — nothing was applied."
             echo "Run the SQL files in supabase/migrations/ manually in the Supabase SQL Editor,"
             echo "or add a SUPABASE_DB_URL secret to enable automatic migration."
-            exit 0
+            exit 1
           fi
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
           for f in $(ls supabase/migrations/*.sql | sort); do

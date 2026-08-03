@@ -3,7 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { listVersions } from "@/lib/db/designs";
-import { assertDesignAccess, requireDesignAccess } from "@/lib/designAccess";
+import { requireDesignAccess } from "@/lib/designAccess";
 
 type Params = { params: Promise<{ id: string }> };
 

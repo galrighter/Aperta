@@ -1103,6 +1103,7 @@ export default function DesignPage() {
           setGateOpen(false);
         }}
         externalError={gateError}
+        externalBusy={gateBusy}
       />
     </div>
   );
