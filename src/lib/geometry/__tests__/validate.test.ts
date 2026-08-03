@@ -65,13 +65,13 @@ describe("normalizeSvg (contract V1)", () => {
   });
 });
 
-describe("validateDesign — permissive engine (V1/V2/V3/V5 only)", () => {
-  it("passes a clean design and only runs the four kept checks", () => {
+describe("validateDesign — permissive engine (V1/V2/V3/V4/V5 only)", () => {
+  it("passes a clean design and only runs the five kept checks", () => {
     const holes: string[] = [];
     for (let x = 20; x <= 140; x += 8) holes.push(`<circle cx="${x}" cy="7.5" r="1.25"/>`);
     const { report } = validateDesign(svg(holes.join("")), DIMS);
     expect(report.status).toBe("pass");
-    expect(report.checks.map((c) => c.check).sort()).toEqual(["V1", "V2", "V3", "V5"]);
+    expect(report.checks.map((c) => c.check).sort()).toEqual(["V1", "V2", "V3", "V4", "V5"]);
     expect(report.metrics.estWeightGrams).toBeGreaterThan(20);
     expect(report.metrics.estWeightGrams).toBeLessThan(40);
   });
@@ -97,16 +97,39 @@ describe("validateDesign — permissive engine (V1/V2/V3/V5 only)", () => {
     expect(ok.checks.find((c) => c.check === "V5")!.status).toBe("pass");
   });
 
-  it("does NOT flag former limits (thin bridge, margins, open area, sharp corners)", () => {
-    // עיצוב שהיה נכשל/מזהיר בעבר: גשר דק, נוגע בשוליים, אליפסות שטוחות — עכשיו pass
+  it("does NOT flag former limits (margins, open area, sharp corners)", () => {
+    // עיצוב שהיה נכשל/מזהיר בעבר: נוגע בשוליים, אליפסות שטוחות — עכשיו pass.
+    // הגשרים כאן הם 1 מ"מ, כלומר מעל הרצפה המוחלטת ומתחת ל-minBridgeCut —
+    // בדיוק התחום שהמנוע המתירני מכוון לאפשר.
     const { report } = validateDesign(
       svg(`<rect x="70" y="1" width="8" height="13"/><rect x="79" y="1" width="8" height="13"/>`),
       DIMS,
     );
-    // (זה כן מנתק? לא — נשאר מחובר סביב הקצוות) → אין V2 fail, ואין V4/V7/V8
-    expect(report.checks.map((c) => c.check)).not.toContain("V4");
+    // (זה כן מנתק? לא — נשאר מחובר סביב הקצוות) → אין V2 fail, ואין V7/V8
+    expect(report.checks.find((c) => c.check === "V4")!.status).toBe("pass");
     expect(report.checks.map((c) => c.check)).not.toContain("V7");
     expect(report.checks.map((c) => c.check)).not.toContain("V8");
+  });
+
+  it("V4: fails a neck thinner than the absolute floor, passes one above it", () => {
+    // צוואר של 0.2 מ"מ: החומר עדיין גוף אחד, ולכן V2 מרוצה — וזה בדיוק הפגם
+    // שעבר את כל הוולידציה ונשבר בחיתוך. הרצפה היא minLetterBridgeMm (0.75)
+    // ולא minBridgeCut: גשר של אות יושב בכוונה בין השניים.
+    // שני חיתוכים שנוגעים בשפות, ומשאירים ביניהם פס אופקי שהוא **הקישור
+    // היחיד** בין חצי הפס השמאלי לימני. רוחב הפס הוא הצוואר.
+    const neck = (mm: number) =>
+      svg(
+        `<rect x="70" y="0" width="16" height="${7.5 - mm / 2}"/>` +
+        `<rect x="70" y="${7.5 + mm / 2}" width="16" height="${7.5 - mm / 2}"/>`,
+      );
+    const thin = validateDesign(neck(0.2), DIMS).report;
+    const v4 = thin.checks.find((c) => c.check === "V4")!;
+    expect(v4.status).toBe("fail");
+    expect(v4.locations.length).toBeGreaterThan(0);
+    expect(thin.status).toBe("fail");
+
+    const ok = validateDesign(neck(1), DIMS).report;
+    expect(ok.checks.find((c) => c.check === "V4")!.status).toBe("pass");
   });
 
   it("returns fail with V1 for non-SVG input", () => {

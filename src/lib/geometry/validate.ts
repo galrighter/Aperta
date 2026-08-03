@@ -1,8 +1,8 @@
 import { he } from "@/i18n/he";
 import { FAB, resolveFab, type ProductType } from "@/lib/fabrication.config";
-import { normalizeSvg, ContractViolation, type NormalizedDesign } from "./normalize";
+import { normalizeSvg, ContractViolation, isCuttableOpening, type NormalizedDesign } from "./normalize";
 import {
-  difference, offset,
+  difference, morphologicalOpen, simplify,
   multiPolygonArea, polygonArea, ringCentroid, ringBBoxRadius, rectPolygon,
 } from "./poly";
 import type {
@@ -24,7 +24,17 @@ export interface ValidationOutcome {
   normalized: NormalizedDesign | null;
 }
 
-const AREA_EPS = 1e-4;
+/** כמה מותר לניקוי להזיז את המתאר לפני מדידת הצווארים. סדר גודל מתחת לרצפה. */
+const NECK_CLEAN_MM = 0.02;
+
+/**
+ * מעל כמה קודקודים מוותרים על מדידת הצווארים.
+ *
+ * אותה תקרה כמו ב-`thickenBridges`, ומאותה סיבה: שתי פעולות ההיסט מתייקרות
+ * מהר יותר מלינארית בקודקודים, והוולידציה רצה פר-מועמד. עיצוב אמיתי נמדד
+ * ב-720–787 קודקודים — פי סדר גודל מתחת לתקרה.
+ */
+const NECK_MAX_VERTICES = 10_000;
 
 function centroidLocations(mp: MultiPolygon): ValidationLocation[] {
   return mp.map((poly) => {
@@ -124,6 +134,59 @@ export function validateNormalized(n: NormalizedDesign, dims: DesignDims): Valid
     }
   }
 
+  // V4 — רוחב גשר מינימלי מוחלט.
+  //
+  // V2 תופס אי ש**נותק**; זה תופס אי שמחובר בחוט. טופולוגית הם שונים, פיזית הם
+  // אותו פגם: צוואר של 0.2 מ"מ נחתך ונשבר בגלגול או בדרך לסדנה, ועד כאן הוא
+  // עבר את כל הוולידציה.
+  //
+  // **הרצפה היא `minLetterBridgeMm` ולא `minBridgeCut`.** זו אינה החזרה של V4
+  // ההיסטורי (2.25 מ"מ, מודע-כיוון) שהוסר במדיניות המתירנית — ראה
+  // docs/REMOVED_CONSTRAINTS.md. גשר של אות יושב במכוון בין 0.75 ל-1.5, ולפסול
+  // אותו פירושו לפסול כל פריט עם כיתוב. מה שנפסל כאן הוא רק מה שהקוד עצמו כבר
+  // מכריז עליו כרצפה שלא יורדים מתחתיה.
+  //
+  // הבדיקה רצה **אחרי** `thickenBridges` (ראה frameCutouts), ולכן היא נדלקת
+  // בדיוק כשהתיקון best-effort ויתר — מה שעד כה קרה בשקט מוחלט.
+  {
+    const floor = FAB.minLetterBridgeMm;
+    // אותו ניקוי כמו ב-thickenBridges: מתאר שחוזר מהמעקב נושא נקודה כל
+    // 0.02–0.1 מ"מ, וזה מה שמייקר את ההיסטים. התזוזה מתחת לרצפה שנמדדת.
+    const simplified = simplify(material, NECK_CLEAN_MM);
+    const vertices = simplified.reduce((s, p) => s + p.reduce((t, r) => t + r.length, 0), 0);
+    if (vertices > NECK_MAX_VERTICES) {
+      // לא לדלג בשקט. בדיקה שלא רצה אינה בדיקה שעברה, ומי שמסתכל על הכרטיס
+      // צריך לדעת שדווקא הפריט המורכב הוא זה שלא נבדק.
+      checks.push({
+        check: "V4", status: "warn", message: he.checks.V4warn,
+        details: `Bridge-width check skipped: ${vertices} vertices over the ${NECK_MAX_VERTICES} budget.`,
+        locations: [],
+      });
+    } else {
+      // פתיחה מורפולוגית בדיסק ברוחב הרצפה: כל צוואר שאינו מסוגל להכיל אותו
+      // נקרע, והגוף מתפרק. טריז שמתחדד נעלם בקצהו ולא מפריד — ולכן ספירת
+      // הרכיבים מודדת צווארים ולא קווים דקים.
+      const opened = morphologicalOpen(simplified, floor / 2);
+      const extra = opened.length - simplified.length;
+      if (extra > 0) {
+        const sorted = [...opened].sort((a, b) => polygonArea(b) - polygonArea(a));
+        const hanging = sorted.slice(simplified.length);
+        checks.push({
+          check: "V4", status: "fail", message: he.checks.V4,
+          details: `Material is held by ${extra} neck(s) thinner than the ${floor}mm floor, at (mm): ` +
+            `${hanging.map((p) => { const c = ringCentroid(p[0]); return `(${c[0].toFixed(1)}, ${c[1].toFixed(1)})`; }).join(", ")}. ` +
+            `A neck this thin survives validation but breaks when cut or rolled — widen it.`,
+          locations: centroidLocations(hanging),
+        });
+      } else {
+        checks.push({
+          check: "V4", status: "pass", message: he.checks.V4,
+          details: `No neck thinner than ${floor}mm`, locations: [],
+        });
+      }
+    }
+  }
+
   // V5 — גודל פתח מינימלי (erosion של כל cutout ברדיוס minHole/2). מדיניות גל:
   // minHole=0.5מ"מ בלבד. שאר המגבלות (גשר/חריץ/שוליים/שטח-פתוח/פינות/פרט) הוסרו —
   // ראו docs/REMOVED_CONSTRAINTS.md. סומכים על המודל; נחזיר אם ניתקל בבעיה.
@@ -131,8 +194,10 @@ export function validateNormalized(n: NormalizedDesign, dims: DesignDims): Valid
     const locs: ValidationLocation[] = [];
     for (const cut of n.cutouts) {
       for (const poly of cut) {
-        const eroded = offset([poly], -fab.minHole / 2);
-        if (multiPolygonArea(eroded) < AREA_EPS) {
+        // אותו predicate בדיוק שהמנקה מריץ (`isCuttableOpening`). שני מימושים
+        // של אותה שאלה נבדלו כאן בסף — והתוצאה הייתה שהמנקה השאיר בשקט את מה
+        // שהבדיקה הזו פוסלת.
+        if (!isCuttableOpening(poly, fab.minHole)) {
           const [x, y] = ringCentroid(poly[0]);
           locs.push({ x, y, r: ringBBoxRadius(poly[0]) });
         }
