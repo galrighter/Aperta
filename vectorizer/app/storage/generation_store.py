@@ -48,6 +48,15 @@ def valid_id(job_id: str) -> bool:
     return bool(ID_RE.match(job_id))
 
 
+class Busy(Exception):
+    """The box is already running as many generations as it will hold.
+
+    Its own exception rather than a `Failure`: a `Failure` is a run that
+    happened and went wrong, and this is a run that never started — nothing was
+    billed, and asking again later is the right move.
+    """
+
+
 class Failure(Exception):
     """A failure the work callable already shaped for forme.
 
@@ -85,9 +94,11 @@ class GenerationRecord:
 
 
 class GenerationStore:
-    def __init__(self, base_dir: str, ttl_minutes: int) -> None:
+    def __init__(self, base_dir: str, ttl_minutes: int, max_running: int = 0) -> None:
         self._base = base_dir
         self._ttl = ttl_minutes * 60
+        #: 0 = unbounded, which is what a test that is not about the cap wants.
+        self._limit = max_running
         self._runs: dict[str, GenerationRecord] = {}
         self._lock = threading.Lock()
         os.makedirs(self._base, exist_ok=True)
@@ -147,6 +158,12 @@ class GenerationStore:
             racer = self._runs.get(job_id)
             if racer is not None:
                 return racer, False
+            # Counted under the same lock as the insert, for the same reason the
+            # id is: two requests arriving together must not both find room.
+            # Only a *new* id is refused — a repeat POST is already counted, and
+            # turning it away would strand a run that is genuinely in flight.
+            if self._limit and sum(1 for r in self._runs.values() if r.state == RUNNING) >= self._limit:
+                raise Busy(f"{self._limit} generations already running")
             rec = GenerationRecord(
                 job_id=job_id, state=RUNNING, created_at=now, expires_at=now + self._ttl
             )
@@ -218,4 +235,6 @@ class GenerationStore:
             shutil.rmtree(os.path.join(self._base, jid), ignore_errors=True)
 
 
-GENERATIONS = GenerationStore(SETTINGS.generation_storage_dir, SETTINGS.job_ttl_minutes)
+GENERATIONS = GenerationStore(
+    SETTINGS.generation_storage_dir, SETTINGS.job_ttl_minutes, SETTINGS.max_concurrent_generations
+)

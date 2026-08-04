@@ -185,10 +185,42 @@ export default function DesignPage() {
   }, []);
 
   const go = useCallback((screen: Screen) => {
-    setState((prev) => ({ ...prev, screen }));
+    setState((prev) => {
+      // כניסה להיסטוריה לכל מעבר מסך. כל שמונת המסכים חיים על כתובת אחת
+      // ובמצב בזיכרון, ולכן בלי זה Back בנייד יוצא מ-`/design` לגמרי — כלומר
+      // כתובת המשלוח, אישור התנאים וטקסט העריכה נעלמים ביחד. הכתובת עצמה לא
+      // משתנה: מה שנדחף הוא רק המסך, כדי ש-`popstate` יידע לאן לחזור.
+      //
+      // בתוך ה-updater ולא לצידו: `screen` הקודם נקרא כאן מהמצב עצמו, כך
+      // שהדחיפה לא תלויה ב-closure שיכול להיות ישן (אותה סיבה שבגללה `go`
+      // חסר תלויות).
+      if (typeof window !== "undefined" && prev.screen !== screen) {
+        window.history.pushState({ screen }, "");
+      }
+      return { ...prev, screen };
+    });
     const i = RAIL.findIndex((r) => r.screens.includes(screen));
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  }, []);
+
+  /**
+   * Back של הדפדפן חוזר מסך אחד במשפך במקום לצאת ממנו.
+   *
+   * מסך שאינו בהיסטוריה שלנו (`state.screen` ריק) הוא הכניסה למשפך, ושם Back
+   * *צריך* לצאת — לכן אין כאן `preventDefault` ואין דחיפה מחדש. מה שכן:
+   * `processing` לא נכנס לרשימת היעדים החוקיים, כי חזרה אליו הייתה מציגה
+   * ספינר של הרצה שכבר הסתיימה.
+   */
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const screen = (e.state as { screen?: Screen } | null)?.screen;
+      if (!screen || screen === "processing") return;
+      setState((prev) => (prev.screen === screen ? prev : { ...prev, screen }));
+      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   /** הרשומה המקומית של עיצוב. נכתבת פעמיים: פעם עם יצירת העיצוב (pending),
