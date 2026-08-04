@@ -12,7 +12,7 @@ export default function SiteFooter() {
         <div className="flex flex-col gap-8 md:flex-row md:justify-between">
           <div className="max-w-xs">
             {/* בפוטר יש מקום לנעילה המלאה — הסימן מעל השם, ומתחתיו DESIGNS. */}
-            <BrandLockup height={22} stacked withSub align="right" title={s.brand} />
+            <BrandLockup height={44} stacked withSub align="right" title={s.brand} />
             {/* bdi ולא dir="ltr": ראו הנימוק אצל כתובת האימייל למטה — dir היה
                 מיישר את השורה שמאלה בעוד שאר העמודה ימנית. */}
             <p className="mt-4 text-sm text-mist"><bdi>{s.tagline}</bdi></p>

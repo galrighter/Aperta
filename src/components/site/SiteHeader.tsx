@@ -75,7 +75,7 @@ export default function SiteHeader() {
         {/* בלי שורת ה-DESIGNS: בהדר יש רוחב לנעילה, אבל השורה הזו במשקל הזה
             רק מוסיפה רעש מתחת לשם. היא חוזרת בפוטר ובתמונת השיתוף. */}
         <Link href="/" className="flex items-center" onClick={() => setOpen(false)}>
-          <BrandLockup height={20} title={s.brand} />
+          <BrandLockup height={24} title={s.brand} />
         </Link>
 
         {/* ניווט דסקטופ */}

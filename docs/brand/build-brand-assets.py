@@ -264,12 +264,18 @@ def build_og(path: str) -> None:
     )
     im.paste(lock, (right - lock.width, 175), lock)
 
-    sub = font("archivo.ttf", 20, 300)
-    text = "D E S I G N S"
-    tw = d.textlength(text, font=sub)
-    d.text((right - tw, 285), text, font=sub, fill=GRAPHITE)
-    d.line([(right - tw - 34, 287), (right - tw - 34, 307)], fill=LAPIS, width=2)
-    d.line([(right + 18, 287), (right + 18, 307)], fill=LAPIS, width=2)
+    # שורת ה-DESIGNS קטנה בהרבה מהשם, כמו בלוגו המקורי: שם גובה האות שלה הוא
+    # עשירית מגובה הרישית של "Aperta", והמרווח בין האותיות גדול מרוחב האות.
+    # מרווח אותיות ביד — PIL לא יודע tracking.
+    sub = font("archivo.ttf", 13, 300)
+    text, spaced = "DESIGNS", 14.6
+    tw = sum(d.textlength(c, font=sub) + spaced for c in text) - spaced
+    x = right - tw
+    for c in text:
+        d.text((x, 292), c, font=sub, fill=GRAPHITE)
+        x += d.textlength(c, font=sub) + spaced
+    for bx in (right - tw - 26, right + 26):
+        d.line([(bx, 291), (bx, 303)], fill=LAPIS, width=2)
 
     head = font("assistant.ttf", 62, 700)
     for i, line in enumerate(["אינסוף צורות.", "אחת שלך."]):

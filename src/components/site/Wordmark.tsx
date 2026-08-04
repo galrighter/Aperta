@@ -54,19 +54,25 @@ export function Wordmark({
  * טקסט חי ולא ווקטור: זו סתם רשומית מרווחת, והיא נראית נכון בכל גופן סנס —
  * בניגוד למילולוגו, שהאותיות שלו הן הצורה עצמה. `dir="ltr"` כי המילה לטינית
  * ויושבת בתוך עמוד RTL.
+ *
+ * המידות ביחס לגובה הנעילה, כפי שנמדדו בלוגו המקורי: גובה אות 0.076 מגובה
+ * קופסת המילולוגו — כלומר **עשירית** מגובה האות הרישית של "Aperta" — ומרווח
+ * אותיות של 1.12em. השורה הזו אמורה להיות זעירה וצרה מהשם, לא שווה לו: היא
+ * חתימה מתחת למותג, לא שורה שנייה שלו. (`0.16em` ולא `0.122em` המדויק — מתחת
+ * לזה, בגודל שהפוטר מגיש, האותיות מפסיקות להיקרא.)
  */
 export function BrandSub({ className }: { className?: string }) {
   return (
     <span
       dir="ltr"
-      className={`flex items-center gap-[0.9em] text-[0.62em] leading-none ${className ?? ""}`}
+      className={`flex items-center gap-[1.5em] text-[0.16em] leading-none ${className ?? ""}`}
       aria-hidden="true"
     >
-      <span className="h-[1.6em] w-px bg-lapis" />
-      <span className="font-display font-light tracking-[0.62em] text-graphite">
+      <span className="h-[0.95em] w-px bg-lapis" />
+      <span className="font-display font-light tracking-[1em] text-graphite">
         {he.site.brandSub}
       </span>
-      <span className="h-[1.6em] w-px bg-lapis" />
+      <span className="h-[0.95em] w-px bg-lapis" />
     </span>
   );
 }
@@ -99,13 +105,16 @@ export default function BrandLockup({
 }) {
   // הסימן קצת גדול מגובה המילולוגו בשורה אחת, כדי ששניהם ייראו באותו משקל
   // אופטי: המילולוגו הוא בעיקר חלל לבן, והסימן הוא קו סגור.
-  const markSize = stacked ? height * 1.9 : height * 1.55;
+  // קוטר הדיו של הטבעת בלוגו המקורי הוא 1.04 מגובה קופסת המילולוגו; קופסת
+  // ה-SVG גדולה ממנו ב-64/60 (הריפוד שבתוך ה-viewBox), ומכאן 1.106. אותו יחס
+  // בשתי הצורות — סימן שמשנה את גודלו היחסי בין ההדר לפוטר הוא שני לוגואים.
+  const markSize = height * 1.106;
   return (
     <span
       dir="ltr"
       className={`flex w-fit ${
         stacked
-          ? `flex-col items-center gap-[0.5em] ${
+          ? `flex-col items-center gap-[0.16em] ${
               align === "left" ? "mr-auto" : align === "right" ? "ml-auto" : "mx-auto"
             }`
           : "flex-row items-center gap-[0.55em]"
@@ -115,7 +124,7 @@ export default function BrandLockup({
       {/* הסימן `aria-hidden`: השם נקרא פעם אחת, מהמילולוגו שלצידו. */}
       <BrandMark size={markSize} />
       <Wordmark height={height} title={title} />
-      {withSub && <BrandSub className="mt-[0.15em]" />}
+      {withSub && <BrandSub />}
     </span>
   );
 }
