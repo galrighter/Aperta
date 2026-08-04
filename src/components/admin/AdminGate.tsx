@@ -59,7 +59,7 @@ export function AdminLogin({
           type="password"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm outline-none focus:border-[#315bff] focus:ring-2 focus:ring-[#315bff]/20"
+          className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm outline-none focus:border-[#3f6297] focus:ring-2 focus:ring-[#3f6297]/20"
           dir="ltr"
           autoComplete="current-password"
         />

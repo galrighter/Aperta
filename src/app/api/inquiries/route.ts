@@ -27,7 +27,7 @@ const createSchema = z.object({
   phone: z.string().trim().max(40).optional(),
   productType: z.enum(["bracelet", "ring"]).optional(),
   message: z.string().trim().min(1).max(4000),
-  /** מספר ההזמנה שהלקוחה רואה על המסך (`RM-0047`). נשלח מפורשות ולא נחלץ
+  /** מספר ההזמנה שהלקוחה רואה על המסך (`AP-0047`). נשלח מפורשות ולא נחלץ
    *  מגוף ההודעה — חילוץ בביטוי רגולרי מטקסט שנבנה במקום אחר נשבר בשקט
    *  ברגע שמישהו מנסח את השורה מחדש. */
   orderRef: z.string().trim().max(40).optional(),

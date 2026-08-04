@@ -268,7 +268,7 @@ GET /api/debug/log/<id>/image/render     → 200, PNG של 1.7MB
       יושבת **לפני** ה-`try`, לא בתוכו: ה-`catch` שם כותב שורת הרצה על כל כשל,
       ולכן שער בתוך ה-`try` היה נותן לזר לכתוב למסד בכל בקשה נדחית.
 - [x] **E2. שער על `/debug`** — `AdminGate` ב-`src/components/admin/AdminGate.tsx`,
-      אותה עוגיית `forme_admin` של `/admin`. נוסף `GET /api/admin/session`
+      אותה עוגיית `aperta_admin` של `/admin`. נוסף `GET /api/admin/session`
       ("האם אני מחובר?") כדי שהעמוד יוכל להציג טופס כניסה בלי למשוך קודם את
       המידע שהוא מגן עליו. טופס הכניסה הוצא מ-`AdminDashboard` ומשותף לשניהם —
       שני שערים שנראים אחרת הם שני שערים שמתחזקים אחרת.
@@ -407,7 +407,7 @@ GET /api/debug/log/<id>/image/render     → 200, PNG של 1.7MB
 הכותרת **היחידה** של אתר `lang="he" dir="rtl"` — בתוצאת חיפוש עברית ובשיתוף
 בוואטסאפ לא הופיעה מילה אחת בעברית.
 
-- [x] **F1.** נוספה `he.site.titleHe` = `"RM JEWEL — תכשיטים בעיצוב אישי"`,
+- [x] **F1.** נוספה `he.site.titleHe` = `"Aperta — תכשיטים בעיצוב אישי"`,
       והיא משמשת ב-`<title>` של השורש ושל קבוצת האתר, ב-`og:title`,
       ב-`twitter:title` וב-`manifest.name`. `tagline` **לא נגעו בו** — הוא נשאר
       הטאגליין האנגלי של המותג בפוטר, וזה המקום היחיד שהוא מופיע בו.

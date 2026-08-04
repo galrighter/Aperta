@@ -19,7 +19,7 @@ const statusLabel: Record<InquiryStatus, string> = {
   closed: s.adminStatusClosed,
 };
 const statusColor: Record<InquiryStatus, string> = {
-  new: "bg-[#315bff]/20 text-[#204acc]",
+  new: "bg-[#3f6297]/20 text-[#2c4a76]",
   contacted: "bg-blue-100 text-blue-700",
   closed: "bg-stonesoft text-ink60",
 };
@@ -86,7 +86,7 @@ export default function AdminInquiries({
               }}
               aria-pressed={kind === k}
               className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
-                kind === k ? "bg-cobalt text-white" : "bg-porcelain text-ink60 hover:bg-stonesoft"
+                kind === k ? "bg-lapis text-white" : "bg-porcelain text-ink60 hover:bg-stonesoft"
               }`}
             >
               {label}

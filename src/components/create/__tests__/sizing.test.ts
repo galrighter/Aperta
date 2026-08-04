@@ -152,7 +152,7 @@ describe("אורך הפריסה נגזר מהמידה ואינו נחתך", () =
     }
   });
 
-  it("היקף קטן עובר כמו שהוא — RM-0065", () => {
+  it("היקף קטן עובר כמו שהוא — AP-0065", () => {
     // 11 ס"מ, פס 40 מ"מ. `regular` הוא comfort. עד כה חזר 125.0 בשקט.
     const L = stripLengthMm(cuff({ circ: "110", fit: "regular", braceletWidth: 40 }));
     expect(L).toBeCloseTo(104.4, 1);

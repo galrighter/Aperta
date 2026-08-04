@@ -49,7 +49,7 @@ export function PromptBar() {
     <footer className="border-t border-graphite/10 bg-white p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       {statusText && (
         <div className={`px-1 pb-1 text-xs ${s.genStatus === "error" ? "text-red-600" : "text-ink60"}`}>
-          {busy && <span className="me-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-graphite/20 border-t-cobalt align-middle" />}
+          {busy && <span className="me-1 inline-block h-3 w-3 animate-spin rounded-full border-2 border-graphite/20 border-t-lapis align-middle" />}
           {statusText}
           {s.genStatus === "error" && (
             <button className="ms-2 rounded bg-porcelain px-2 py-0.5 hover:bg-stonesoft" onClick={() => void send()}>
@@ -101,7 +101,7 @@ export function PromptBar() {
           }}
         />
         <textarea
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-[2px] border border-graphite/20 px-3 py-2 text-sm focus:border-cobalt focus:outline-none"
+          className="max-h-32 min-h-10 flex-1 resize-none rounded-[2px] border border-graphite/20 px-3 py-2 text-sm focus:border-lapis focus:outline-none"
           rows={1}
           placeholder={he.promptPlaceholder}
           value={prompt}

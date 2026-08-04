@@ -106,7 +106,7 @@ export default function OrderDetail({
       </Link>
 
       <div className="mt-3 flex flex-wrap items-baseline gap-3">
-        <h1 className="font-display text-[22px] font-bold tracking-[0.12em] text-cobalt" dir="ltr">
+        <h1 className="font-display text-[22px] font-bold tracking-[0.12em] text-lapis" dir="ltr">
           {order.ref ?? "—"}
         </h1>
         <StatusPill status={order.status} />
@@ -192,7 +192,7 @@ export default function OrderDetail({
                 href={`/design?resume=${order.design_id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1 inline-block text-[13px] text-cobalt hover:underline"
+                className="mt-1 inline-block text-[13px] text-lapis hover:underline"
               >
                 {s.adminOrderDesignLink}
               </a>
@@ -281,7 +281,7 @@ function NoteEditor({
           setState("idle");
         }}
         rows={3}
-        className="mt-2 w-full rounded-[2px] border border-graphite/20 bg-white px-3 py-2 text-sm outline-none focus:border-[#315bff] focus:ring-2 focus:ring-[#315bff]/20"
+        className="mt-2 w-full rounded-[2px] border border-graphite/20 bg-white px-3 py-2 text-sm outline-none focus:border-[#3f6297] focus:ring-2 focus:ring-[#3f6297]/20"
       />
       <div className="mt-1 flex items-center gap-3">
         <button

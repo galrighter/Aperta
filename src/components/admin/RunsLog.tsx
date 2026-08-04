@@ -83,7 +83,7 @@ export type LogItem = {
   inputs?: RunInputs | null;
   owner?: Owner | null;
   designId?: string | null;
-  /** `RM-0047` — המספר הסידורי של העיצוב, הרפרנס שתלונה מגיעה איתו. */
+  /** `AP-0047` — המספר הסידורי של העיצוב, הרפרנס שתלונה מגיעה איתו. */
   ref?: string | null;
   stages: {
     reference: string | null; conditioned: string | null;
@@ -120,7 +120,7 @@ export type LogDetail = {
    * הפלט הגולמי של הווקטורייזר, לפני מתיחה, גישור ועיבוי.
    *
    * זה מה שהוצג כאן עד היום ככותרת "SVG סופי" — ולכן כל גשר שהצינור מוסיף היה
-   * בלתי נראה בבק־אופיס. ב-RM-0075 הלקוחה ראתה פס על ה-G והיומן הראה אות
+   * בלתי נראה בבק־אופיס. ב-AP-0075 הלקוחה ראתה פס על ה-G והיומן הראה אות
    * נקייה, ואי אפשר היה להעמיד תלונה מול שום דבר. `null` בהרצה שלא נשמרה
    * ממנה גרסה — שם אין "אחרי", והגולמי הוא כל מה שיש.
    */
@@ -739,7 +739,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           {it.inputImageUrl && (
             <a href={it.inputImageUrl} target="_blank" rel="noreferrer" className="shrink-0" title="הקובץ שהמשתמש צירף">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-cobalt/40 bg-porcelain object-contain" />
+              <img src={it.inputImageUrl} alt="קובץ שצורף" className="h-14 w-14 rounded border border-lapis/40 bg-porcelain object-contain" />
             </a>
           )}
           {/* התמונה שנמסרה למודל — הכיתוב שנחתך מהפונט, או העיצוב שנערך. ליד
@@ -755,7 +755,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           <div className="flex flex-wrap items-center gap-1.5">
             {/* המספר קודם לכל השאר: הוא מה שמחפשים בעין כשמגיעה תלונה. */}
             {it.ref && (
-              <span className="font-display text-xs font-bold tracking-[0.12em] text-cobalt" dir="ltr">
+              <span className="font-display text-xs font-bold tracking-[0.12em] text-lapis" dir="ltr">
                 {it.ref}
               </span>
             )}
@@ -792,7 +792,7 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
         <div className="flex flex-wrap gap-1 sm:shrink-0 sm:flex-col sm:flex-nowrap">
           <button className="rounded-[2px] border border-graphite/20 px-2 py-1 text-xs hover:bg-porcelain"
             onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
-          <button className="rounded-[2px] border border-cobalt px-2 py-1 text-xs text-cobalt hover:bg-cobalt/5"
+          <button className="rounded-[2px] border border-lapis px-2 py-1 text-xs text-lapis hover:bg-lapis/5"
             onClick={onPrompt}>פרומפט</button>
           {/* ההדמיה שהלקוחה עצמה רואה במסך התוצאה — הגרסה החיה של העיצוב הזה. */}
           {it.designId && (
@@ -1291,7 +1291,7 @@ export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo
                         <button
                           type="button"
                           onClick={() => setSvgView({ id: c.candidate_id, metal: c.metal_svg!, cutouts: c.cutouts_svg ?? "" })}
-                          className="rounded-[2px] border border-cobalt px-2 py-0.5 text-cobalt hover:bg-cobalt/5"
+                          className="rounded-[2px] border border-lapis px-2 py-0.5 text-lapis hover:bg-lapis/5"
                         >
                           הצג
                         </button>
@@ -1317,7 +1317,7 @@ export function Diagnostics({ images, renderModel, svg, rawSvg = null, versionNo
 
       {/* גאומטריה של המועמד שנבחר לצפייה */}
       {svgView && (
-        <div className="rounded-[2px] border border-cobalt/40 bg-white p-3">
+        <div className="rounded-[2px] border border-lapis/40 bg-white p-3">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="font-semibold">שרטוט מהמעקב · {svgView.id}</div>
             <div className="flex items-center gap-2">

@@ -41,7 +41,7 @@ export default function SizingPage() {
       {/* ===== טבעת ===== */}
       <Section title={g.ringTitle} intro={g.ringIntro}>
         <Method title={g.ringMethod1Title} steps={g.ringMethod1Steps} />
-        <p className="mt-3 rounded-[2px] border-r-2 border-cobalt bg-porcelain px-4 py-3 text-sm text-graphite">
+        <p className="mt-3 rounded-[2px] border-r-2 border-lapis bg-porcelain px-4 py-3 text-sm text-graphite">
           {g.ringMethod1Warn}
         </p>
 
@@ -106,7 +106,7 @@ export default function SizingPage() {
         <ul className="space-y-3">
           {g.tips.map((tip) => (
             <li key={tip} className="flex gap-3 text-ink60">
-              <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cobalt" />
+              <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-lapis" />
               <span>{tip}</span>
             </li>
           ))}
@@ -115,14 +115,14 @@ export default function SizingPage() {
 
       <p className="mt-14 text-sm text-ink60">
         {g.ctaText}{" "}
-        <Link href="/design" className="font-medium text-cobalt hover:underline">
+        <Link href="/design" className="font-medium text-lapis hover:underline">
           {g.ctaLink}
         </Link>{" "}
         ·{" "}
         <a
           href={`mailto:${SITE.contactEmail}`}
           dir="ltr"
-          className="font-medium text-cobalt hover:underline"
+          className="font-medium text-lapis hover:underline"
         >
           {SITE.contactEmail}
         </a>

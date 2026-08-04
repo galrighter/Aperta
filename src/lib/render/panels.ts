@@ -160,7 +160,7 @@ export function maxCols(lengthMm: number, minHoleMm: number, canvas: Canvas = LA
  *
  *     (גובה·ROW_FILL)/שורות / רוחב_הפס  ≥  (רוחב·FILL)/אורך
  *
- * נמדד ב-RM-0065 (104.4×40, לאורך): שורה אחת ושתיים נותנות **8.83 px/mm שתיהן**,
+ * נמדד ב-AP-0065 (104.4×40, לאורך): שורה אחת ושתיים נותנות **8.83 px/mm שתיהן**,
  * ורק השלישית יורדת ל-6.40.
  */
 function freeRows(lengthMm: number, widthMm: number, canvas: Canvas): number {

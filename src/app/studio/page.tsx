@@ -102,7 +102,7 @@ function Studio() {
             {s.genStatus !== "idle" && s.genStatus !== "error" && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/50">
                 <div className="flex items-center gap-2 rounded-[2px] bg-white px-4 py-2 text-sm shadow-lg">
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-graphite/20 border-t-cobalt" />
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-graphite/20 border-t-lapis" />
                   {s.genStatus === "generating" ? he.statusGenerating : s.genStatus === "validating" ? he.statusValidating : he.statusRepairing}
                 </div>
               </div>

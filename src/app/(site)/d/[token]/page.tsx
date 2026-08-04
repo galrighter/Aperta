@@ -108,7 +108,7 @@ export default async function SharePage({ params }: Params) {
       </h1>
       {code && (
         <p className="mt-2 font-display text-[12px] tracking-[0.14em] text-mist">
-          {t.codeLabel} <span className="text-cobalt" dir="ltr">{code}</span>
+          {t.codeLabel} <span className="text-lapis" dir="ltr">{code}</span>
         </p>
       )}
       <p className="mt-4 max-w-[620px] text-[15px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
@@ -152,7 +152,7 @@ export default async function SharePage({ params }: Params) {
             <div>
               <Link
                 href="/design"
-                className="block rounded-[2px] border border-graphite px-[34px] py-3.5 text-center text-base font-medium text-graphite transition-colors hover:border-cobalt hover:text-cobalt"
+                className="block rounded-[2px] border border-graphite px-[34px] py-3.5 text-center text-base font-medium text-graphite transition-colors hover:border-lapis hover:text-lapis"
               >
                 {t.ctaOwn}
               </Link>

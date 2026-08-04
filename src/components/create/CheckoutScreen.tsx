@@ -73,7 +73,7 @@ export function CheckoutScreen({
           {/* תשלום */}
           <div className="mt-4 border border-graphite/10 bg-white p-6">
             <CardLabel>{d.payTitle}</CardLabel>
-            <div className="border-s-2 border-cobalt bg-porcelain p-5">
+            <div className="border-s-2 border-lapis bg-porcelain p-5">
               <div className="mb-2 text-sm font-semibold text-graphite">{d.payPendingTitle}</div>
               <p className="text-sm leading-relaxed text-ink80" style={{ textWrap: "pretty" }}>
                 {d.payPendingBody}
@@ -111,7 +111,7 @@ export function CheckoutScreen({
                     <p className="mt-2 text-ink60">{d.checkoutMailtoNote}</p>
                     <a
                       href={s.sendMailto}
-                      className="mt-1 inline-block font-semibold text-graphite underline underline-offset-4 hover:text-cobalt"
+                      className="mt-1 inline-block font-semibold text-graphite underline underline-offset-4 hover:text-lapis"
                     >
                       {d.checkoutMailtoCta}
                     </a>

@@ -9,7 +9,7 @@ const MAX = 30;
 
 export interface SavedDesign {
   id: string;
-  /** המספר הסידורי מהשרת. designCode() הופך אותו ל-"RM-0007". */
+  /** המספר הסידורי מהשרת. designCode() הופך אותו ל-"AP-0007". */
   serial?: number;
   name: string;
   product: "bracelet" | "ring";

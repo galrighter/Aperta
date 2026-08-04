@@ -8,7 +8,7 @@
 import { he } from "@/i18n/he";
 import { designCode } from "@/lib/designCode";
 import {
-  Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT,
+  Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, LAPIS,
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
 import { ProgressBar } from "./ProgressBar";
@@ -79,7 +79,7 @@ export function ResultScreen({
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
           {designCode(s.designSerial) && (
             <p className="font-display text-[12px] tracking-[0.14em] text-mist">
-              {d.codeLabel} <span className="text-cobalt" dir="ltr">{designCode(s.designSerial)}</span>
+              {d.codeLabel} <span className="text-lapis" dir="ltr">{designCode(s.designSerial)}</span>
             </p>
           )}
           {s.designId && entry && (
@@ -277,7 +277,7 @@ export function ResultScreen({
               value={s.editReq}
               onChange={(e) => set({ editReq: e.target.value })}
               placeholder={d.editReqPlaceholder}
-              className="w-full resize-y rounded-[2px] border border-graphite/20 bg-porcelain p-3.5 text-[15px] leading-relaxed transition-colors focus:border-cobalt focus:outline-none"
+              className="w-full resize-y rounded-[2px] border border-graphite/20 bg-porcelain p-3.5 text-[15px] leading-relaxed transition-colors focus:border-lapis focus:outline-none"
               style={{ minHeight: 88 }}
             />
             <div className="mt-3">
@@ -286,7 +286,7 @@ export function ResultScreen({
                 onClick={onApply}
                 disabled={s.applying || !s.editReq.trim()}
                 className="rounded-[2px] px-6 py-3 text-[15px] font-semibold text-white transition-colors disabled:cursor-not-allowed"
-                style={{ background: s.applying || !s.editReq.trim() ? "rgba(49,91,255,0.35)" : COBALT }}
+                style={{ background: s.applying || !s.editReq.trim() ? "rgba(63,98,151,0.35)" : LAPIS }}
               >
                 {s.applying ? d.editApplying : d.editApply}
               </button>
@@ -393,7 +393,7 @@ export function ResultScreen({
                         <button
                           type="button"
                           onClick={() => onRestore(i)}
-                          className="flex-none whitespace-nowrap text-[12px] text-cobalt underline-offset-4 hover:underline"
+                          className="flex-none whitespace-nowrap text-[12px] text-lapis underline-offset-4 hover:underline"
                         >
                           {d.versionRestore}
                         </button>

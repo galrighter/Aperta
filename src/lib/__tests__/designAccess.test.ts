@@ -48,7 +48,7 @@ beforeAll(async () => {
 async function reqAs(profileId: string | null, opts?: { admin?: boolean }): Promise<Request> {
   signedInAs = profileId;
   const headers: Record<string, string> = {};
-  if (opts?.admin) headers.cookie = `forme_admin=${process.env.ADMIN_TOKEN}`;
+  if (opts?.admin) headers.cookie = `aperta_admin=${process.env.ADMIN_TOKEN}`;
   return new Request("https://rmjewel.com/", { headers });
 }
 

@@ -37,7 +37,7 @@ export function isQuotaFailure(err: unknown): boolean {
 
 export interface QuotaAlertContext {
   runId: string;
-  /** מספר העיצוב שהלקוחה רואה (`RM-0054`), כשיש — הוא מה שמקשר בין המייל ליומן. */
+  /** מספר העיצוב שהלקוחה רואה (`AP-0054`), כשיש — הוא מה שמקשר בין המייל ליומן. */
   designRef?: string | null;
   /** מתי ההרצה שנכשלה התחילה. גם חלון הכפילות נמדד ממנה. */
   startedAt: number;

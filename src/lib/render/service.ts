@@ -42,7 +42,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * (`vectorizer/app/imagegen.py`), ולכן הזיהוי נעשה כאן — ובלי לחכות לפריסה
  * שלה. **ההבחנה אינה קוסמטית**: כשל רגיל של מודל התמונה הוא מקרי וניסיון חוזר
  * מתקן אותו, ודחיית מסנן היא דטרמיניסטית — אותו תיאור ייחסם שוב ושוב. נמדד
- * ב-RM-0077 (3.8.26): ארבע הרצות של "עיטורי מיקי מאוס" חזרו כולן ב-400
+ * ב-AP-0077 (3.8.26): ארבע הרצות של "עיטורי מיקי מאוס" חזרו כולן ב-400
  * `rejected by the safety system`, והלקוח קיבל בכל אחת מהן הזמנה לנסות שוב.
  */
 export function isContentBlock(message: string): boolean {

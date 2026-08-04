@@ -67,10 +67,10 @@ export default function ExportFiles({
     return (
       <div className={className}>
         <div className="flex flex-wrap gap-3 text-[13px]">
-          <a href={files.svgUrl} className="font-semibold text-cobalt hover:underline">
+          <a href={files.svgUrl} className="font-semibold text-lapis hover:underline">
             {s.adminExportSvg}
           </a>
-          <a href={files.dxfUrl} className="font-semibold text-cobalt hover:underline">
+          <a href={files.dxfUrl} className="font-semibold text-lapis hover:underline">
             {s.adminExportDxf}
           </a>
           {note && <span className="text-[12px] text-mist">· {note}</span>}
@@ -86,7 +86,7 @@ export default function ExportFiles({
         type="button"
         onClick={() => void run()}
         disabled={state === "busy"}
-        className="text-[13px] text-cobalt hover:underline disabled:text-mist disabled:no-underline"
+        className="text-[13px] text-lapis hover:underline disabled:text-mist disabled:no-underline"
       >
         {state === "busy" ? s.adminExporting : s.adminExport}
       </button>

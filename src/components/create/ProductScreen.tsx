@@ -49,7 +49,7 @@ function Item({
     <button
       type="button"
       onClick={onClick}
-      className="group block border border-graphite/[0.16] bg-white text-start transition-all hover:-translate-y-[3px] hover:border-cobalt"
+      className="group block border border-graphite/[0.16] bg-white text-start transition-all hover:-translate-y-[3px] hover:border-lapis"
     >
       <div className="relative overflow-hidden border-b border-graphite/10" style={{ aspectRatio: "16 / 10" }}>
         <Image
@@ -64,7 +64,7 @@ function Item({
       <div className="p-[26px]">
         <div className="mb-2.5 flex items-baseline justify-between gap-3">
           <div className="text-[22px] font-semibold text-graphite">{name}</div>
-          <div className="whitespace-nowrap font-display text-sm text-cobalt">{price}</div>
+          <div className="whitespace-nowrap font-display text-sm text-lapis">{price}</div>
         </div>
         <p className="mb-4 text-[15px] text-ink60">{desc}</p>
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-ink60">

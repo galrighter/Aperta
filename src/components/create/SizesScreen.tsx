@@ -26,7 +26,7 @@ export function SizesScreen({
   const w = ring ? WIDTH.ring : WIDTH.bracelet;
   // מידה שאינה מדידה אפשרית עוצרת כאן. הרגע הזה הוא היחיד שבו אפשר לתקן אותה
   // בלי לזרוק כלום: אחריו היא הופכת לאורך פריסה, לפרומפט ולהדמיה — ומודל
-  // התמונה מבצע אותה נאמנה. ראו `sizeIssue` והתיעוד של RM-0077.
+  // התמונה מבצע אותה נאמנה. ראו `sizeIssue` והתיעוד של AP-0077.
   const issue = sizeIssue(s);
   // ההצעה בסנטימטרים מוצגת רק כשהיא באמת מסבירה את המספר שהוקלד: 10 → 100
   // נכנס לטווח, 400 → 4000 לא, ואז המשפט היה ניחוש ולא עזרה. במידה אמריקאית
@@ -51,7 +51,7 @@ export function SizesScreen({
             <button
               type="button"
               onClick={() => set({ guideOpen: true })}
-              className="text-sm text-cobalt underline-offset-4 hover:underline"
+              className="text-sm text-lapis underline-offset-4 hover:underline"
             >
               {ring ? d.sizesGuideBtnRing : d.sizesGuideBtn}
             </button>
@@ -91,7 +91,7 @@ export function SizesScreen({
             placeholder={ring ? d.ringSizePlaceholder : d.circPlaceholder}
             aria-invalid={issue ? true : undefined}
             className={`w-full rounded-[2px] border bg-white px-4 py-3.5 text-base transition-colors focus:outline-none ${
-              issue ? "border-[#c0413b]" : "border-graphite/20 focus:border-cobalt"
+              issue ? "border-[#c0413b]" : "border-graphite/20 focus:border-lapis"
             }`}
           />
           {issue ? (
@@ -135,7 +135,7 @@ export function SizesScreen({
           {/* דיסקליימר טבעת — מוצג תמיד */}
           {ring && (
             <p
-              className="mt-7 border-s-2 border-cobalt bg-white p-4 text-sm leading-relaxed text-ink80"
+              className="mt-7 border-s-2 border-lapis bg-white p-4 text-sm leading-relaxed text-ink80"
               style={{ textWrap: "pretty" }}
             >
               {d.ringDisclaimer}

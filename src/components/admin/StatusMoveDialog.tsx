@@ -68,7 +68,7 @@ export default function StatusMoveDialog({
                   type="checkbox"
                   checked={notify}
                   onChange={(e) => setNotify(e.target.checked)}
-                  className="mt-1 h-4 w-4 accent-[#315bff]"
+                  className="mt-1 h-4 w-4 accent-[#3f6297]"
                 />
                 <span>
                   <span className="text-sm text-graphite">{s.adminOrderNotifyAsk}</span>

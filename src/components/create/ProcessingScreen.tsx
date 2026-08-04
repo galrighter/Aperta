@@ -24,7 +24,7 @@ function shuffled<T>(items: readonly T[]): T[] {
  * כשלים שניסיון חוזר רק חוזר עליהם.
  *
  * `content_blocked` — מסנן התוכן דחה את התיאור, ואותו תיאור יידחה גם בפעם
- * הבאה. ב-RM-0077 (3.8.26) זה קרה ארבע פעמים ברציפות מול "עיטורי מיקי מאוס",
+ * הבאה. ב-AP-0077 (3.8.26) זה קרה ארבע פעמים ברציפות מול "עיטורי מיקי מאוס",
  * וכפתור "נסה שוב" היה הפעולה הראשית בכל אחת מהן.
  * `bad_size` — המידה נדחתה, והמקום לתקן אותה הוא מסך המידות.
  * `text_too_long` — הכיתוב לא נכנס לפריט, וזה נכון גם בהרצה הבאה.
@@ -82,7 +82,7 @@ export function ProcessingScreen({
             והוא צריך להיות הקריא ביותר במסך, לא החיוור ביותר. */}
         <p
           role="alert"
-          className="mx-auto mb-9 max-w-md border-s-2 border-cobalt bg-white px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
+          className="mx-auto mb-9 max-w-md border-s-2 border-lapis bg-white px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
         >
           {error}
           {/* מזהה טכני — בלי זה כשל אצל הלקוחה מגיע אלינו כ"משהו השתבש"

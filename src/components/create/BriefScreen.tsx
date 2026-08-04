@@ -92,7 +92,7 @@ export function BriefScreen({
                 onChange={(e) => set({ brief: e.target.value })}
                 placeholder={d.briefPlaceholder}
                 disabled={locked}
-                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-white p-4 text-base leading-relaxed transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed"
+                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-white p-4 text-base leading-relaxed transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed"
                 style={{ minHeight: 150 }}
               />
               <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.briefHint}</p>
@@ -127,7 +127,7 @@ export function BriefScreen({
                 maxLength={MAX_LETTERING}
                 disabled={locked || letteringLocked}
                 dir="auto"
-                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-cobalt focus:outline-none disabled:cursor-not-allowed disabled:bg-porcelain"
+                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed disabled:bg-porcelain"
               />
             </div>
             {letteringLocked ? (
@@ -140,7 +140,7 @@ export function BriefScreen({
             {/* האזהרה מופיעה רק כשיש כיתוב — היא מיותרת עד שיש מה לבדוק,
                 ואזהרה שמוצגת תמיד מפסיקה להיקרא. */}
             {s.lettering.trim() && (
-              <p className="mt-3 border-s-2 border-cobalt bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+              <p className="mt-3 border-s-2 border-lapis bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
                 {d.textVerify}
               </p>
             )}
@@ -164,7 +164,7 @@ export function BriefScreen({
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     disabled={imageLocked}
-                    className="rounded-[2px] border border-dashed border-graphite/35 bg-white px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt disabled:cursor-not-allowed disabled:border-graphite/20 disabled:bg-porcelain disabled:text-mist disabled:hover:border-graphite/20 disabled:hover:text-mist"
+                    className="rounded-[2px] border border-dashed border-graphite/35 bg-white px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-lapis hover:text-lapis disabled:cursor-not-allowed disabled:border-graphite/20 disabled:bg-porcelain disabled:text-mist disabled:hover:border-graphite/20 disabled:hover:text-mist"
                   >
                     {d.imageUpload}
                   </button>
@@ -211,8 +211,8 @@ export function BriefScreen({
                           aria-pressed={on}
                           className="rounded-[2px] p-3.5 text-start transition-colors"
                           style={{
-                            border: `1.5px solid ${on ? "#315bff" : "rgba(32,35,38,0.18)"}`,
-                            background: on ? "rgba(49,91,255,0.06)" : "#fff",
+                            border: `1.5px solid ${on ? "#3f6297" : "rgba(32,35,38,0.18)"}`,
+                            background: on ? "rgba(63,98,151,0.06)" : "#fff",
                           }}
                         >
                           <div className="text-sm font-semibold text-graphite">{info.name}</div>
@@ -235,7 +235,7 @@ export function BriefScreen({
           {/* הערת נעילה של "קובץ מוכן לחיתוך" — יושבת מתחת לתמונה, כי היא
               מסבירה מה התפקיד שנבחר שם עשה לשדות שמעליה. */}
           {locked && (
-            <p className="mt-4 border-s-2 border-cobalt bg-white p-4 text-sm leading-relaxed text-ink80">
+            <p className="mt-4 border-s-2 border-lapis bg-white p-4 text-sm leading-relaxed text-ink80">
               {d.readyLockNote}
             </p>
           )}
@@ -259,7 +259,7 @@ export function BriefScreen({
                   checked={s.attrsAuto}
                   disabled={locked}
                   onChange={(e) => set({ attrsAuto: e.target.checked })}
-                  className="h-[15px] w-[15px] accent-cobalt"
+                  className="h-[15px] w-[15px] accent-lapis"
                 />
                 {d.attrsAuto}
               </label>

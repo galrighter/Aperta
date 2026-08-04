@@ -93,7 +93,7 @@ describe("cuff blank length", () => {
   });
 
   it("פרק יד קטן מהטבלה מחזיר את האורך שלו, לא את תחתית הרמז", () => {
-    // RM-0065: היקף 11 ס"מ, פס 40 מ"מ, comfort. עד כה זה נחתך ל-125.
+    // AP-0065: היקף 11 ס"מ, פס 40 מ"מ, comfort. עד כה זה נחתך ל-125.
     const L = computeSizing({
       product: "bracelet", thicknessMm: T, widthMm: 40,
       gapChordMm: 25.4, wristMm: 110, fit: "comfort",

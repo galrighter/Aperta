@@ -12,7 +12,7 @@ export type InquiryMail = {
   phone?: string | null;
   /** גוף הפנייה — במסלול ההזמנה אלה שורות הסיכום שהמשפך בנה. */
   message: string;
-  /** מספר ההזמנה שהלקוחה רואה על המסך (`RM-0047`), כשיש. */
+  /** מספר ההזמנה שהלקוחה רואה על המסך (`AP-0047`), כשיש. */
   orderRef?: string | null;
 };
 
@@ -87,7 +87,7 @@ export function orderAckMail(q: InquiryMail): { subject: string; text: string } 
  */
 export function designReadyMail(input: {
   name: string;
-  /** `RM-0047` — הרפרנס האנושי לעיצוב, כשיש. */
+  /** `AP-0047` — הרפרנס האנושי לעיצוב, כשיש. */
   code: string | null;
   /** הקישור שפותח בדיוק את העיצוב הזה. */
   url: string;
@@ -126,7 +126,7 @@ export function quotaAlertMail(input: {
   /** הודעת הכשל כמו שהתקבלה מהקופסה, כולל גוף התשובה של OpenAI. */
   reason: string;
   runId: string;
-  /** `RM-0054` — העיצוב שההרצה נכשלה עליו, כשידוע. */
+  /** `AP-0054` — העיצוב שההרצה נכשלה עליו, כשידוע. */
   designRef: string | null;
 }): { subject: string; text: string } {
   return {
