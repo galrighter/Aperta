@@ -5,6 +5,7 @@ import { restoreBridges, type BridgeRecord, type LetterBridge } from "./restoreB
 import { thickenBridges } from "./thickenBridges";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
+import type { Box } from "@/lib/text/stencil";
 
 // מסגור מועמד: מתיחה למידה שהוזמנה + ולידציה, בלי DB ובלי רשת.
 //
@@ -96,10 +97,47 @@ export interface BridgePlan {
   letterBridges?: readonly LetterBridge[];
 }
 
+/**
+ * העברת תוכנית הגשרים אל המרחב שאחרי המסגור.
+ *
+ * ההערה מעל `BridgePlan` מבטיחה ש"אלה אותן קואורדינטות שהמסגור עובד בהן". זה
+ * נכון לציר האורך — הוא נמתח תמיד אל האורך שהוזמן — ולא נכון לציר הרוחב: כשהיחס
+ * שהמודל צייר נופל בתוך `WIDTH_TOLERANCE`, המסגרת מקבלת את הרוחב האחיד ולא את
+ * המוזמן, עד 5% הפרש. התוכנית נמדדה על הפס שהוזמן, ולכן היא מפגרת אחריו.
+ *
+ * למה זה משנה: `matchLetter` מזהה חלל של אות לפי מרחק בין מרכזים, בסובלנות של
+ * חצי מילימטר. 5% על פס של 18 מ"מ מזיזים מרכז עד ~0.45 מ"מ — עדיין בתוך
+ * הסובלנות, אבל היא בוחרת את **הקרוב ביותר**, ובשדה שבו שני חללים סמוכים די
+ * בכך כדי להצמיד אי לגשר של האות השכנה. אז נחתך גשר בכיוון הלא נכון, ועל `ם`
+ * זו אות אחרת.
+ *
+ * שתי ההעברות שונות בכוונה:
+ * - **תיבת החלל** נמתחת, מרכז וגובה כאחד — היא מתארת גאומטריה שנמתחה.
+ * - **מלבן הגשר** רק זז, וגובהו נשמר. הגובה הזה הוא מידת ייצור במילימטרים,
+ *   וכיווץ שלו ב-5% היה מדלל גשר אל מתחת ל-`minLetterBridgeMm` בשקט — הענף של
+ *   גשרי האות ב-`restoreBridges` מצייר את המלבנים כמו שהם ואינו בודק רצפה.
+ */
+function planInFrame(plan: BridgePlan, k: number): BridgePlan {
+  if (!plan.letterBridges?.length || Math.abs(k - 1) < 1e-9) return plan;
+  const stretch = ([x0, y0, x1, y1]: Box): Box => [x0, y0 * k, x1, y1 * k];
+  const shift = ([x0, y0, x1, y1]: Box): Box => {
+    const half = (y1 - y0) / 2;
+    const cy = ((y0 + y1) / 2) * k;
+    return [x0, cy - half, x1, cy + half];
+  };
+  return {
+    letterBridges: plan.letterBridges.map((b) => ({
+      ...b,
+      counter: stretch(b.counter),
+      rects: b.rects.map(shift),
+    })),
+  };
+}
+
 export function frameCutoutsDims(
   dims: DesignDims,
   cutoutsSvg: string,
-  plan: BridgePlan = {},
+  orderedPlan: BridgePlan = {},
 ): FramedCutouts {
   const { lengthMm } = dims;
   const orderedWidth = dims.widthMm;
@@ -122,6 +160,8 @@ export function frameCutoutsDims(
     widthMm,
     thicknessMm: dims.thicknessMm,
   };
+  // התוכנית נמדדה על הרוחב שהוזמן; המסגור עשוי למסור אחר. ראה `planInFrame`.
+  const plan = planInFrame(orderedPlan, widthMm / orderedWidth);
   let framedSvg = rescaleCutoutsSvg(cutoutsSvg, { lengthMm, widthMm });
   let { report, normalized } = validateDesign(framedSvg, framedDims);
 
