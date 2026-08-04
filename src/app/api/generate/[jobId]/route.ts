@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
-import { getJob, JOB_STALE_MS } from "@/lib/db/jobs";
+import { getJob, finishJob, JOB_STALE_MS } from "@/lib/db/jobs";
+import { versionForGeneration } from "@/lib/db/designs";
+import { mayHaveFinished, resultFromVersion } from "@/lib/jobRecovery";
 import { requireDesignAccess } from "@/lib/designAccess";
 
 // מצב בקשת יצירה. הלקוחה מושכת מכאן עד ש-status אינו 'running'.
@@ -25,6 +27,26 @@ export async function GET(req: Request, { params }: Params) {
     }
     if (job.status === "error") {
       return NextResponse.json({ status: "error", error: job.error });
+    }
+
+    // ה-isolate יכול להיהרג **אחרי** שהגרסה נשמרה ולפני שנסגר ה-job: הגרסה
+    // נכתבת בסוף `ingestCutouts`, ו-`finishJob` הוא הפעולה שאחריה. נמדד ב-3.8
+    // על RM-0084 — הרצה שנרשמה `approved`, גרסה שנשמרה, ושורת job שנתקעה
+    // ב-`running`/`saving`. הלקוחה קיבלה "היצירה נכשלה" על עיצוב שקיים בשרת,
+    // ו"נסה שוב" הוסיף לו גרסה כפולה מאותה הרצה.
+    //
+    // לכן לפני שמכריזים על כישלון — שואלים את המקור שיודע: האם ההרצה הזו הפיקה
+    // גרסה. אם כן, העבודה הסתיימה ומה שחסר הוא רק הרישום. ההכרעה עצמה ב-
+    // `lib/jobRecovery`, שם היא נבדקת.
+    if (job.design_id && job.run_id && mayHaveFinished(job)) {
+      const version = await versionForGeneration(job.design_id, job.run_id);
+      if (version) {
+        const result = resultFromVersion(job.run_id, version);
+        // תיקון השורה, best-effort: סקר הבא יענה מיד, והיומן יפסיק לדווח על
+        // הרצה שהצליחה כאילו היא תקועה. כישלון כאן לא מונע את התשובה.
+        await finishJob(jobId, job.run_id, result);
+        return NextResponse.json({ status: "done", result });
+      }
     }
 
     // ה-isolate שהריץ את העבודה יכול למות בלי לכתוב כלום, ואז השורה נשארת

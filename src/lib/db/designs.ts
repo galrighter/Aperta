@@ -131,6 +131,35 @@ export async function getVersion(id: string): Promise<VersionRow> {
 }
 
 /**
+ * הגרסה שהרצה מסוימת הפיקה, אם הפיקה.
+ *
+ * זו העדות שהעבודה הסתיימה גם כששורת ה-job לא מספרת את זה. הגרסה נכתבת בסוף
+ * `ingestCutouts`, ומיד אחריה נסגר ה-job — ובחלון שביניהם ה-isolate יכול להיהרג
+ * (`exceededResources`, ראו docs/worker-memory-diagnosis.md). אז השורה נשארת
+ * 'running' לנצח בזמן שהעיצוב כבר שמור, והלקוחה מקבלת "היצירה נכשלה" על עיצוב
+ * שקיים. הקיום של גרסה להרצה הזו הוא מה שמאפשר להתאושש מזה בקריאה.
+ */
+export async function versionForGeneration(
+  designId: string,
+  generationId: string,
+): Promise<VersionRow | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("design_versions")
+    .select("*")
+    .eq("design_id", designId)
+    .eq("generation_id", generationId)
+    // הגבוהה ביותר: ניסיון חוזר שנפל באותה נקודה מוסיף עוד גרסה לאותה הרצה,
+    // ומה שמעניין את הלקוחה הוא האחרונה.
+    .order("version_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // עמודת `generation_id` היא של 0012. מסד שעוד לא קיבל אותה יחזיר שגיאה, וזו
+  // התאוששות ולא מסלול חובה — עדיף לוותר עליה מאשר להפיל את הסקר.
+  if (error) return null;
+  return (data as VersionRow | null) ?? null;
+}
+
+/**
  * נתיב ההדמיה של גרסה, מתוך `validation_report` (jsonb).
  *
  * הוא יושב שם ולא בעמודה — ראו ההערה ב-`ingestCutouts`. נקרא בהגנה: הדוח מגיע
