@@ -11,6 +11,7 @@ import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT,
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
+import { ProgressBar } from "./ProgressBar";
 import { RolledStage } from "./RolledStage";
 import { ShareButton } from "./ShareButton";
 import {
@@ -290,10 +291,14 @@ export function ResultScreen({
                 {s.applying ? d.editApplying : d.editApply}
               </button>
             </div>
-            {/* השינוי לוקח כדקה וחצי. בלי המשפט הזה הכפתור אומר "מחיל…" ושום
-                דבר אחר על המסך לא מעיד שמשהו רץ. */}
+            {/* השינוי לוקח כדקה וחצי — אותה המתנה בדיוק כמו ביצירה הראשונה,
+                ולכן אותו פס. עד כאן היה כאן משפט בלבד: הכפתור אמר "מחיל…",
+                הטקסט אמר "זה ייקח", ושום דבר על המסך לא זז בזמן שזה רץ. */}
             {s.applying && (
-              <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">{d.editApplyingNote}</p>
+              <>
+                <ProgressBar active label={d.editApplying} className="mt-3.5" />
+                <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">{d.editApplyingNote}</p>
+              </>
             )}
             {s.editError && (
               <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail }}>

@@ -4,6 +4,7 @@
 // (לא טיימר, כנדרש ב-§5). מצב הכשל נוסף כאן — §11.2 מסמן אותו כחסר.
 import { useEffect, useMemo, useState } from "react";
 import { he } from "@/i18n/he";
+import { ProgressBar } from "./ProgressBar";
 import { GhostBtn, PrimaryBtn } from "./ui";
 
 const d = he.design;
@@ -50,7 +51,6 @@ export function ProcessingScreen({
   const order = useMemo(() => shuffled(d.procQuotes), []);
   const [qi, setQi] = useState(0);
   const [fade, setFade] = useState(true);
-  const [progress, setProgress] = useState(4);
 
   // החלפת ציטוטים כל 7 שניות עם fade
   useEffect(() => {
@@ -64,13 +64,6 @@ export function ProcessingScreen({
     }, QUOTE_MS);
     return () => clearInterval(t);
   }, [error, order.length]);
-
-  // התקדמות אסימפטוטית עד 96% — מושלמת ל-100% רק כשהמנוע חוזר
-  useEffect(() => {
-    if (error) return;
-    const t = setInterval(() => setProgress((p) => (p >= 96 ? 96 : p + (96 - p) * 0.035 + 0.35)), 240);
-    return () => clearInterval(t);
-  }, [error]);
 
   if (error) {
     return (
@@ -137,18 +130,7 @@ export function ProcessingScreen({
       </p>
 
       {/* פס התקדמות */}
-      <div
-        className="mb-12 h-[3px] w-full overflow-hidden bg-graphite/12"
-        role="progressbar"
-        aria-valuenow={Math.round(progress)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div
-          className="h-full bg-cobalt transition-[width] duration-300 ease-out"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
+      <ProgressBar active label={d.procTitle} className="mb-12" />
 
       {/* ציטוט מתחלף */}
       <blockquote
