@@ -50,6 +50,24 @@ export function tokenizePath(d: string): Cmd[] {
       buf = [];
     } else {
       if (cur === null) throw new Error("Path data does not start with a command");
+      // שני הדגלים של הקשת הם **תו אחד** כל אחד ("0"/"1"), ולכן מותר לכתוב
+      // אותם בלי מפריד: `a1 1 0 011 0` הוא large-arc=0, sweep=1, x=1. הסורק
+      // קורא מספרים בחמדנות, ולכן הוא בלע את `011` כמספר 11 — ואז ספירת
+      // הארגומנטים יצאה 6 במקום 7 וכל הנתיב נדחה כ"invalid path data".
+      //
+      // זה תחביר חוקי שאנחנו לא מייצרים (הווקטורייזר פולט M/L/Z בלבד), אבל
+      // כל SVG שעבר אופטימיזציה — SVGO וחבריו דוחסים בדיוק ככה — נכנס לכאן
+      // דרך ייבוא או share-adopt. הקשחה, לא באג שנצפה בייצור.
+      if ((cur === "A" || cur === "a") && buf.length % 7 >= 3 && buf.length % 7 <= 4) {
+        const tok = m[2];
+        if (tok[0] !== "0" && tok[0] !== "1") {
+          throw new Error(`Arc flag must be 0 or 1, got "${tok.slice(0, 8)}"`);
+        }
+        buf.push(tok[0] === "1" ? 1 : 0);
+        // מה שנשאר מהאסימון חוזר לזרם: הדגל צרך תו אחד בלבד.
+        if (tok.length > 1) re.lastIndex = m.index + 1;
+        continue;
+      }
       buf.push(parseFloat(m[2]));
     }
   }

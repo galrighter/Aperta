@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
-import { getJob, finishJob, JOB_STALE_MS } from "@/lib/db/jobs";
-import { versionForGeneration } from "@/lib/db/designs";
-import { mayHaveFinished, resultFromVersion } from "@/lib/jobRecovery";
+import { getJob, claimJobDone, JOB_STALE_MS } from "@/lib/db/jobs";
+import { versionForGeneration, getDesign } from "@/lib/db/designs";
+import { mayHaveFinished, resultFromVersion, isFirstVersion } from "@/lib/jobRecovery";
+import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { requireDesignAccess } from "@/lib/designAccess";
 
 // מצב בקשת יצירה. הלקוחה מושכת מכאן עד ש-status אינו 'running'.
@@ -44,7 +45,31 @@ export async function GET(req: Request, { params }: Params) {
         const result = resultFromVersion(job.run_id, version);
         // תיקון השורה, best-effort: סקר הבא יענה מיד, והיומן יפסיק לדווח על
         // הרצה שהצליחה כאילו היא תקועה. כישלון כאן לא מונע את התשובה.
-        await finishJob(jobId, job.run_id, result);
+        //
+        // התשובה חוזרת בכל מקרה; מה שתלוי בסגירה הוא **המייל** בלבד. הסגירה
+        // מותנית ב-`running` ולכן רק סקר אחד מקבל `true`, וזה מה שמונע שני
+        // מיילים על אותו עיצוב כששני סקרים נחתו על אותה גרסה.
+        const claimed = await claimJobDone(jobId, job.run_id, result);
+        if (claimed) {
+          // הפער שסוגרים כאן: ב-POST המייל נשלח אחרי `finishJob`, אבל מסלול זה
+          // קיים בדיוק כי ה-isolate של ה-POST נהרג לפני כן — כלומר בהתאוששות
+          // אף אחד לא שלח אותו. לקוחה שה-isolate שלה מת **וגם** סגרה את החלון
+          // לא קיבלה שום הודעה על עיצוב שמוכן ושמור אצלנו.
+          //
+          // `isFirstVersion` ולא `current_version_id`: הגרסה כבר נשמרה, והשדה
+          // כבר מצביע עליה. ראו את ההערה ב-`lib/jobRecovery`.
+          //
+          // ה-try הוא על `getDesign` בלבד — `notifyDesignReady` כבר בולע את
+          // שלו. בלעדיו קריאת עיצוב שנכשלת הייתה הופכת התאוששות **מוצלחת**
+          // ל-500, כלומר בדיוק ל"היצירה נכשלה" על עיצוב שקיים — הכשל שהמסלול
+          // הזה נבנה כדי למנוע. ההתראה לעולם לא מכריעה את התשובה.
+          try {
+            const design = await getDesign(job.design_id);
+            await notifyDesignReady(design, isFirstVersion(version));
+          } catch (e) {
+            console.error("design-ready mail skipped:", (e as Error).message);
+          }
+        }
         return NextResponse.json({ status: "done", result });
       }
     }

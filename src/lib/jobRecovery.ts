@@ -28,6 +28,19 @@ export function mayHaveFinished(
   return now - new Date(job.updated_at).getTime() > JOB_STALE_MS;
 }
 
+/**
+ * האם הגרסה ששוחזרה היא הגרסה הראשונה של העיצוב — כלומר יצירה ולא עריכה.
+ *
+ * זו השאלה ש-`notifyDesignReady` שואל, ובמסלול ההתאוששות אי אפשר לענות עליה
+ * דרך `design.current_version_id`: הגרסה כבר נשמרה עד שמגיעים לכאן, השדה כבר
+ * מצביע עליה, ובדיקת "אין גרסה קודמת" הייתה יוצאת שקרית **תמיד** — כלומר
+ * משתיקה את המייל בדיוק במסלול שנועד להחזיר אותו. `version_no` נספר מ-1
+ * (`insertVersion`), ולכן הוא העדות שכן שורדת את השמירה.
+ */
+export function isFirstVersion(version: Pick<VersionRow, "version_no">): boolean {
+  return version.version_no === 1;
+}
+
 /** התוצאה כפי שהלקוחה מצפה לה, משוחזרת מהגרסה שנשמרה. */
 export interface RecoveredResult {
   runId: string;

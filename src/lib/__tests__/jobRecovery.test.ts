@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mayHaveFinished, resultFromVersion } from "../jobRecovery";
+import { mayHaveFinished, resultFromVersion, isFirstVersion } from "../jobRecovery";
 import { JOB_STALE_MS } from "../db/jobs";
 import type { VersionRow } from "../db/designs";
 
@@ -23,6 +23,20 @@ describe("mayHaveFinished", () => {
     // שם החלופה היא להכריז על כישלון, וזה שווה שאילתה.
     expect(mayHaveFinished({ stage: "rendering", updated_at: at(JOB_STALE_MS + 1_000) })).toBe(true);
     expect(mayHaveFinished({ stage: null, updated_at: at(JOB_STALE_MS + 1_000) })).toBe(true);
+  });
+});
+
+describe("isFirstVersion", () => {
+  // זו השאלה שמכריעה אם נשלח מייל "העיצוב מוכן" במסלול ההתאוששות. היא נשאלת
+  // על `version_no` ולא על `design.current_version_id`, שכבר מצביע על הגרסה
+  // הזו עצמה עד שמגיעים לכאן.
+  it("calls version 1 a creation", () => {
+    expect(isFirstVersion({ version_no: 1 })).toBe(true);
+  });
+
+  it("calls anything above it an edit", () => {
+    expect(isFirstVersion({ version_no: 2 })).toBe(false);
+    expect(isFirstVersion({ version_no: 7 })).toBe(false);
   });
 });
 

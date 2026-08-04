@@ -98,6 +98,36 @@ async function patch(id: string, runId: string, fields: Record<string, unknown>)
 export const setJobStage = (id: string, runId: string, stage: JobStage) => patch(id, runId, { stage });
 export const finishJob = (id: string, runId: string, result: unknown) =>
   patch(id, runId, { status: "done", stage: null, result });
+
+/**
+ * סגירת job במסלול ההתאוששות — עם תשובה על מי סגר אותו.
+ *
+ * ההבדל מ-`finishJob` הוא התניה על `status = 'running'`, והיא קיימת בגלל
+ * הלקוחה: היא מושכת כל שנייה וחצי, ולכן שני סקרים יכולים למצוא את אותה גרסה
+ * משוחזרת בו-זמנית. `finishJob` היה נותן לשניהם לכתוב `done` בלי הבדל ביניהם,
+ * וכל אחד היה שולח את מייל "העיצוב מוכן" — שני מיילים על אותו עיצוב.
+ *
+ * כאן רק העדכון שהעביר את השורה מ-`running` נוגע בשורה, ולכן `true` חוזר
+ * לסקר אחד בלבד. הוא הבעלים של ההתאוששות הזו, וההתראה נתלית בו.
+ *
+ * שגיאה מחזירה `false`: כתיבת מצב היא best-effort (אין להפיל את התשובה
+ * ללקוחה בגללה), אבל היא **לא** רשות לשלוח מייל על סמך סגירה שלא ידוע שקרתה.
+ */
+export async function claimJobDone(id: string, runId: string, result: unknown): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from("generation_jobs")
+    .update({ status: "done", stage: null, result, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("run_id", runId)
+    .eq("status", "running")
+    .select("id");
+  if (error) {
+    console.error(`claim job ${id} failed:`, error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
 export const failJob = (id: string, runId: string, error: JobError) =>
   patch(id, runId, { status: "error", stage: null, error });
 
