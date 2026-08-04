@@ -225,10 +225,23 @@ export async function buildLetteringRenderSvg(
   // שנייה בבחירה מאשר להגיד לה שהטקסט לא נכנס כשהוא כן.
   const cells = Math.max(1, rows * cols);
   const ordered = stylesForBrief(brief);
-  const drawnAll = await Promise.all(
-    ordered.map((style) => letteringPolygons(content, dims, productType, style)),
-  );
-  const fitting = drawnAll.filter((d): d is NonNullable<typeof d> => d !== null);
+
+  // עצל, ובזה אחר זה. שתי סיבות, ושתיהן זיכרון:
+  //
+  // 1. **מפסיקים כשיש פנים לכל תא.** רשת של 2×2 צריכה ארבע, והמאגר בן תשע —
+  //    חמש חתיכות של גאומטריית אותיות שנבנו ונזרקו. הסדר נשמר, ולכן הבחירה
+  //    זהה: אלה בדיוק אותן פנים ראשונות-שמתאימות שהמסנן היה מחזיר.
+  // 2. **בלי `Promise.all`.** זו עבודת CPU ב-thread יחיד — ההרצה במקביל לא
+  //    מקצרת דבר, היא רק מחזיקה את כל התשע בזיכרון בו-זמנית במקום אחת.
+  //
+  // מי שפחות פנים מתאימות לו מהתאים שיש עדיין מנסה את כולן, וחוזר עליהן
+  // במחזוריות למטה — כלומר ההתנהגות במקרה הצר לא השתנתה.
+  const fitting: NonNullable<Awaited<ReturnType<typeof letteringPolygons>>>[] = [];
+  for (const style of ordered) {
+    if (fitting.length >= cells) break;
+    const drawn = await letteringPolygons(content, dims, productType, style);
+    if (drawn) fitting.push(drawn);
+  }
   if (fitting.length === 0) return null;
   // תא לכל פריט שהמודל יצייר. פחות פנים מתאימות מתאים — חוזרים עליהן.
   const cuts = Array.from({ length: cells }, (_, i) => fitting[i % fitting.length]);
