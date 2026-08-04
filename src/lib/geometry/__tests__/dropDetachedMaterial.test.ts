@@ -3,7 +3,7 @@ import { normalizeSvg, dropDetachedMaterial } from "../normalize";
 import { difference, rectPolygon, polygonArea } from "../poly";
 import { validateNormalized, type DesignDims } from "../validate";
 
-// אי חומר הוא הכשל שהשאיר עיצוב אמיתי (RM-0060) במצב "לא ניתן לייצור": שני
+// אי חומר הוא הכשל שהשאיר עיצוב אמיתי (AP-0060) במצב "לא ניתן לייצור": שני
 // רכיבי מתכת, שבב של 67.6 מ"מ² שנושר בחיתוך. V2 ו-V3 מדווחים עליו כשני ממצאים
 // אבל הוא פגם אחד, ומחיקת הרכיב הקטן סוגרת את שניהם.
 

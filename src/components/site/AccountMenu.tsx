@@ -109,7 +109,7 @@ export default function AccountMenu({
       <a
         href={SIGN_IN_HREF}
         onClick={onNavigate}
-        className="text-sm text-ink60 transition-colors hover:text-cobalt"
+        className="text-sm text-ink60 transition-colors hover:text-lapis"
       >
         {s.headerSignIn}
       </a>
@@ -127,7 +127,7 @@ export default function AccountMenu({
         </span>
         {/* `a` ולא `Link`: הקישור נושא מצב פתיחה בכתובת, וניווט פנימי מ-/design
             אל /design?designs=1 לא מרנדר את העמוד מחדש — כלומר לא היה קורה כלום. */}
-        <a href={MY_DESIGNS_HREF} onClick={onNavigate} className="text-graphite hover:text-cobalt">
+        <a href={MY_DESIGNS_HREF} onClick={onNavigate} className="text-graphite hover:text-lapis">
           {s.headerMyDesigns}
         </a>
         <button
@@ -150,7 +150,7 @@ export default function AccountMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={s.headerAccountMenu}
-        className="flex items-center gap-2 rounded-[2px] border border-graphite/15 py-1 pe-2.5 ps-1 text-sm text-graphite transition-colors hover:border-cobalt"
+        className="flex items-center gap-2 rounded-[2px] border border-graphite/15 py-1 pe-2.5 ps-1 text-sm text-graphite transition-colors hover:border-lapis"
       >
         <Avatar name={name} />
         <bdi className="max-w-[9ch] truncate">{name}</bdi>
@@ -195,7 +195,7 @@ function Avatar({ name }: { name: string }) {
   return (
     <span
       aria-hidden="true"
-      className="flex h-6 w-6 items-center justify-center rounded-full bg-cobalt/10 font-display text-[11px] font-semibold text-cobalt"
+      className="flex h-6 w-6 items-center justify-center rounded-full bg-lapis/10 font-display text-[11px] font-semibold text-lapis"
     >
       {name.slice(0, 1).toUpperCase()}
     </span>

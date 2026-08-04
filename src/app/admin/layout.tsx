@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import AdminShell from "@/components/admin/AdminShell";
+import BrandMark from "@/components/site/BrandMark";
 
 export const metadata: Metadata = {
   title: `${he.site.adminTitle} — ${he.site.brand}`,
@@ -13,8 +14,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-full">
       <header className="border-b border-graphite/10 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link href="/admin" className="flex items-baseline gap-2">
-            <span className="text-lg font-semibold text-graphite">{he.site.brand}</span>
+          <Link href="/admin" className="flex items-center gap-2.5">
+            {/* הסימן לבדו: בשורת ניהול צרה אין מקום לנעילה, ובדיוק בשביל זה
+                הסימן עומד לבדו. */}
+            <BrandMark size={22} title={he.site.brand} />
             <span className="text-xs text-mist">{he.site.adminTitle}</span>
           </Link>
           <Link href="/" className="text-xs text-ink60 hover:text-graphite">

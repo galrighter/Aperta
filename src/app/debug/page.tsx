@@ -168,7 +168,7 @@ function PromptLab() {
     <div dir="rtl" className="mx-auto max-w-5xl p-4 text-sm">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-lg font-bold">{he.site.adminNavLab} — כיול פרומפט</h1>
-        <Link href="/admin" className="text-[13px] text-cobalt hover:underline">
+        <Link href="/admin" className="text-[13px] text-lapis hover:underline">
           → {he.site.adminBackHome}
         </Link>
       </div>
@@ -317,7 +317,7 @@ function PromptLab() {
  */
 function RunOutcome({ result, onLog }: { result: RunResult; onLog: () => void }) {
   return (
-    <div className="grid gap-3 rounded-[2px] border border-cobalt/40 bg-white p-3">
+    <div className="grid gap-3 rounded-[2px] border border-lapis/40 bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-semibold">
           {result.candidates.length} חלופות · {Math.round(result.lengthMm)}×{result.widthMm} מ״מ
@@ -325,7 +325,7 @@ function RunOutcome({ result, onLog }: { result: RunResult; onLog: () => void })
             אורך נגזר — כמה שהמודל באמת צייר
           </span>
         </div>
-        <button type="button" onClick={onLog} className="text-[13px] text-cobalt hover:underline">
+        <button type="button" onClick={onLog} className="text-[13px] text-lapis hover:underline">
           → ההרצה ביומן, עם השלבים והפרומפט
         </button>
       </div>

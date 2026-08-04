@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { he } from "@/i18n/he";
 import { NAV } from "@/lib/site.config";
-import BrandMark from "./BrandMark";
+import BrandLockup from "./Wordmark";
 import AccountMenu from "./AccountMenu";
 
 const s = he.site;
@@ -13,7 +13,7 @@ const s = he.site;
 // טיפול ה-CTA זהה בדסקטופ ובמובייל. קודם הדסקטופ קיבל כפתור מתאר והמובייל
 // כפתור מלא — אותה פעולה בשני משקלים היררכיים שונים.
 const CTA_CLASS =
-  "rounded-[2px] border border-graphite px-4 py-1.5 font-medium text-graphite transition-colors hover:border-cobalt hover:text-cobalt";
+  "rounded-[2px] border border-graphite px-4 py-1.5 font-medium text-graphite transition-colors hover:border-lapis hover:text-lapis";
 
 export default function SiteHeader() {
   const [open, setOpen] = useState(false);
@@ -28,7 +28,7 @@ export default function SiteHeader() {
     const el = ref.current;
     if (!el) return;
     const write = () =>
-      document.documentElement.style.setProperty("--rm-header-h", `${el.offsetHeight}px`);
+      document.documentElement.style.setProperty("--ap-header-h", `${el.offsetHeight}px`);
     write();
     const ro = new ResizeObserver(write);
     ro.observe(el);
@@ -56,7 +56,7 @@ export default function SiteHeader() {
         href={item.href}
         onClick={() => setOpen(false)}
         className={`cursor-pointer transition-colors ${
-          active ? "text-cobalt" : "text-graphite hover:text-cobalt"
+          active ? "text-lapis" : "text-graphite hover:text-lapis"
         }`}
         aria-current={active ? "page" : undefined}
       >
@@ -72,11 +72,10 @@ export default function SiteHeader() {
     >
       <nav className="flex items-center justify-between px-5 py-5 sm:px-10">
         {/* לוגו */}
-        <Link href="/" className="flex items-center gap-3.5" onClick={() => setOpen(false)}>
-          <BrandMark size={38} />
-          <span className="whitespace-nowrap font-display text-[15px] font-semibold tracking-[0.25em] text-graphite">
-            {s.brand}
-          </span>
+        {/* בלי שורת ה-DESIGNS: בהדר יש רוחב לנעילה, אבל השורה הזו במשקל הזה
+            רק מוסיפה רעש מתחת לשם. היא חוזרת בפוטר ובתמונת השיתוף. */}
+        <Link href="/" className="flex items-center" onClick={() => setOpen(false)}>
+          <BrandLockup height={20} title={s.brand} />
         </Link>
 
         {/* ניווט דסקטופ */}

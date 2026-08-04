@@ -47,7 +47,7 @@ export default function DesignRulesPage() {
                   מיד, ולכן הוא מסומן ולא נבלע בפסקה. יש קטגוריות שאין להן
                   ניסוח חלופי — שם השדה ריק, ולא ממציאים לו אחד. */}
               {c.instead && (
-                <p className="mt-2 border-s-2 border-cobalt bg-porcelain px-4 py-2.5 text-sm leading-relaxed text-graphite">
+                <p className="mt-2 border-s-2 border-lapis bg-porcelain px-4 py-2.5 text-sm leading-relaxed text-graphite">
                   {c.instead}
                 </p>
               )}
@@ -66,7 +66,7 @@ export default function DesignRulesPage() {
         <ul className="space-y-3">
           {g.howTo.map((tip) => (
             <li key={tip} className="flex gap-3 text-ink60">
-              <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cobalt" />
+              <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-lapis" />
               <span>{tip}</span>
             </li>
           ))}
@@ -76,7 +76,7 @@ export default function DesignRulesPage() {
       <Section title={g.notFilterTitle}>
         <p className="leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
           {g.notFilterBody}{" "}
-          <Link href="/sizing" className="font-medium text-cobalt hover:underline">
+          <Link href="/sizing" className="font-medium text-lapis hover:underline">
             {g.sizingLink}
           </Link>
         </p>
@@ -84,14 +84,14 @@ export default function DesignRulesPage() {
 
       <p className="mt-14 text-sm text-ink60">
         {g.ctaText}{" "}
-        <Link href="/design" className="font-medium text-cobalt hover:underline">
+        <Link href="/design" className="font-medium text-lapis hover:underline">
           {g.ctaLink}
         </Link>{" "}
         ·{" "}
         <a
           href={`mailto:${SITE.contactEmail}`}
           dir="ltr"
-          className="font-medium text-cobalt hover:underline"
+          className="font-medium text-lapis hover:underline"
         >
           {SITE.contactEmail}
         </a>

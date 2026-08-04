@@ -225,7 +225,7 @@ export default function AdminOrders({
                         return next;
                       })
                     }
-                    className="text-[12px] text-cobalt hover:underline"
+                    className="text-[12px] text-lapis hover:underline"
                   >
                     {bucket.orders.every((o) => picked.has(o.id))
                       ? s.adminOrderClearSelection
@@ -331,7 +331,7 @@ function OrderLine({
   return (
     <div
       className={`flex flex-wrap items-center gap-x-3 gap-y-1 border bg-white px-3 py-2 transition-colors ${
-        picked ? "border-cobalt" : "border-graphite/10"
+        picked ? "border-lapis" : "border-graphite/10"
       }`}
     >
       <input
@@ -339,11 +339,11 @@ function OrderLine({
         checked={picked}
         onChange={onPick}
         aria-label={order.ref ?? order.name}
-        className="h-4 w-4 accent-[#315bff]"
+        className="h-4 w-4 accent-[#3f6297]"
       />
       <Link
         href={`/admin/orders/${order.id}`}
-        className="font-display text-[13px] font-bold tracking-[0.14em] text-cobalt hover:underline"
+        className="font-display text-[13px] font-bold tracking-[0.14em] text-lapis hover:underline"
         dir="ltr"
       >
         {order.ref ?? order.id.slice(0, 8)}
@@ -363,7 +363,7 @@ function OrderLine({
           {s.adminOrderNoteFlag}
         </span>
       )}
-      <Link href={`/admin/orders/${order.id}`} className="text-[12px] text-cobalt hover:underline">
+      <Link href={`/admin/orders/${order.id}`} className="text-[12px] text-lapis hover:underline">
         {s.adminOrderOpen}
       </Link>
     </div>

@@ -322,7 +322,7 @@ export default function DesignPage() {
     }
 
     // אין ממה לייצר. הכפתור חוסם את זה, אבל לכאן מגיעים גם אחרי כניסה לחשבון
-    // (`startAfterSignIn`) — מסלול שלא עבר בכפתור מעולם. ב-RM-0074 הבקשה הגיעה
+    // (`startAfterSignIn`) — מסלול שלא עבר בכפתור מעולם. ב-AP-0074 הבקשה הגיעה
     // לשרת בלי תיאור ובלי תמונה, עם ברירות המחדל בלבד (`imageCount: 0`,
     // והפרומפט היה שורת המאפיינים לבדה), והלקוחה קיבלה אחרי המתנה עיצוב שלא
     // ביקשה — והוא נספר במכסה היומית שלה. חזרה למסך הבריף היא התשובה הנכונה:
@@ -986,8 +986,8 @@ export default function DesignPage() {
   const showRail = s.screen !== "done";
 
   return (
-    // בלי rm-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
-    // את הגריד ואת הזוהר הקובלטי פעמיים זה על זה במסך המרכזי של המשפך.
+    // בלי ap-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
+    // את הגריד ואת הזוהר הלאפיסי פעמיים זה על זה במסך המרכזי של המשפך.
     <div className="min-h-screen">
       {showRail && (
         <StepRail
@@ -997,7 +997,7 @@ export default function DesignPage() {
         />
       )}
 
-      <div key={s.screen} className="rm-fade">
+      <div key={s.screen} className="ap-fade">
         {s.screen === "product" && (
           <>
             <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
@@ -1042,7 +1042,7 @@ export default function DesignPage() {
                 שראה עוד איתו. */}
             {s.fromShare && (
               <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
-                <div className="border border-cobalt/30 bg-cobalt/[0.06] px-5 py-4">
+                <div className="border border-lapis/30 bg-lapis/[0.06] px-5 py-4">
                   <div className="text-[13px] font-semibold text-graphite">
                     {designCode(s.fromShareSerial)
                       ? he.share.adoptBanner(designCode(s.fromShareSerial)!)

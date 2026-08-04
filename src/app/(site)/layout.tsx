@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rm-scope relative flex min-h-full flex-col">
+    <div className="ap-scope relative flex min-h-full flex-col">
       <ArchBackground />
       <SiteHeader />
       <main className="relative z-[2] flex-1">{children}</main>

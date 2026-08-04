@@ -81,7 +81,7 @@ describe("buildShareSnapshot", () => {
     }
   });
 
-  it("carries the serial, so the page can show RM-0047", () => {
+  it("carries the serial, so the page can show AP-0047", () => {
     expect(buildShareSnapshot(design({ serial: 47 }), version()).serial).toBe(47);
     expect(buildShareSnapshot(design({ serial: null }), version()).serial).toBeNull();
   });

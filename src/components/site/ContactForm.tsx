@@ -6,7 +6,7 @@ import { he } from "@/i18n/he";
 const s = he.site;
 
 const inputCls =
-  "w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-cobalt focus:ring-2 focus:ring-cobalt/20";
+  "w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-lapis focus:ring-2 focus:ring-lapis/20";
 
 export default function ContactForm() {
   const [name, setName] = useState("");

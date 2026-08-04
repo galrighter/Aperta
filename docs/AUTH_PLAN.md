@@ -35,7 +35,7 @@ POST /api/designs    → 401 account_required  (השער אוכף)
 | רכיב | מצב |
 |---|---|
 | טבלת חשבונות (`profiles` עם `kind`/`email`/`phone`) | ✅ חי |
-| מספר סידורי לעיצוב (`designs.serial`) | ✅ חי — 46 הקיימים מוספרו `RM-0001`–`RM-0046` |
+| מספר סידורי לעיצוב (`designs.serial`) | ✅ חי — 46 הקיימים מוספרו `AP-0001`–`AP-0046` |
 | שער זיהוי במשפך היצירה | ✅ חי |
 | בעלות על עיצוב לפי עוגייה חתומה | ✅ חי |
 | לשונית "עיצובים" בבק־אופיס | ✅ חי |
@@ -96,7 +96,7 @@ POST /api/designs    → 401 account_required  (השער אוכף)
 
 Google Cloud Console → APIs & Services:
 
-1. **OAuth consent screen:** External. שם האפליקציה `RM JEWEL`, מייל תמיכה,
+1. **OAuth consent screen:** External. שם האפליקציה `Aperta`, מייל תמיכה,
    דומיין `rmjewel.com`, לוגו. ה-scopes הם `email`/`profile`/`openid` בלבד —
    הם **אינם רגישים**, ולכן אין צורך בתהליך אימות של גוגל ואין מסך אזהרה.
 2. **Credentials → Create credentials → OAuth client ID → Web application.**
@@ -126,7 +126,7 @@ Dashboard של הפרויקט:
 2. Resend → API Keys → מפתח חדש.
 3. Supabase → Authentication → Emails → SMTP Settings:
    - Host `smtp.resend.com`, Port `465`, User `resend`, Password = מפתח ה-API
-   - Sender: `noreply@rmjewel.com`, שם השולח `RM JEWEL`
+   - Sender: `noreply@rmjewel.com`, שם השולח `Aperta`
 4. Authentication → Emails → Templates: לתרגם לעברית (`dir="rtl"`) את תבנית
    ה-Magic Link / OTP.
 

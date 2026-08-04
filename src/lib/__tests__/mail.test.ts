@@ -7,13 +7,13 @@ const ORDER: InquiryMail = {
   email: "dana@example.com",
   phone: "050-1234567",
   message: "מוצר: צמיד\nהיקף: 170 מ\"מ\nסה\"כ: ₪290",
-  orderRef: "RM-0047",
+  orderRef: "AP-0047",
 };
 
 describe("מייל התראה", () => {
   it("נושא את מספר ההזמנה ואת השם בכותרת", () => {
     // הכותרת היא לעיתים כל מה שנקרא — ברשימת המיילים בנייד.
-    expect(notifyMail(ORDER).subject).toBe("הזמנה חדשה RM-0047 — דנה");
+    expect(notifyMail(ORDER).subject).toBe("הזמנה חדשה AP-0047 — דנה");
   });
 
   it("מבדיל פנייה מהזמנה", () => {
@@ -36,8 +36,8 @@ describe("מייל התראה", () => {
 describe("אישור ללקוחה", () => {
   it("נושא את מספר ההזמנה", () => {
     const mail = orderAckMail(ORDER);
-    expect(mail.subject).toContain("RM-0047");
-    expect(mail.text).toContain("RM-0047");
+    expect(mail.subject).toContain("AP-0047");
+    expect(mail.text).toContain("AP-0047");
   });
 
   it("חוזר על אותו סיכום בדיוק — לא ניסוח שני", () => {

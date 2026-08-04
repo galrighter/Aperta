@@ -87,7 +87,7 @@ function Stat({ label, value, href }: { label: string; value: number | null; hre
   return (
     <Link
       href={href}
-      className="border border-graphite/10 bg-white p-5 transition-colors hover:border-cobalt"
+      className="border border-graphite/10 bg-white p-5 transition-colors hover:border-lapis"
     >
       <div className="font-display text-[30px] leading-none text-graphite">
         {value == null ? <span className="text-mist">{s.adminStatUnavailable}</span> : value}
@@ -101,9 +101,9 @@ function Card({ href, title, desc }: { href: string; title: string; desc: string
   return (
     <Link
       href={href}
-      className="group flex flex-col border border-graphite/10 bg-white p-6 transition-colors hover:border-cobalt"
+      className="group flex flex-col border border-graphite/10 bg-white p-6 transition-colors hover:border-lapis"
     >
-      <span className="text-[15px] font-semibold text-graphite group-hover:text-cobalt">{title}</span>
+      <span className="text-[15px] font-semibold text-graphite group-hover:text-lapis">{title}</span>
       <span className="mt-1.5 text-[13px] leading-relaxed text-ink60">{desc}</span>
     </Link>
   );

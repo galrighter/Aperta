@@ -63,7 +63,7 @@ export function Header() {
       <div className="min-w-0 flex-1">
         {design ? (
           <input
-            className="w-full truncate rounded-[2px] border border-transparent bg-transparent px-2 py-1 text-center text-base font-medium focus:border-cobalt focus:bg-white focus:outline-none"
+            className="w-full truncate rounded-[2px] border border-transparent bg-transparent px-2 py-1 text-center text-base font-medium focus:border-lapis focus:bg-white focus:outline-none"
             value={nameDraft ?? design.name}
             placeholder={he.designNamePlaceholder}
             onChange={(e) => setNameDraft(e.target.value)}

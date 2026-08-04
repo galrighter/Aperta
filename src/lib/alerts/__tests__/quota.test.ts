@@ -43,7 +43,7 @@ describe("מייל ההתראה", () => {
   const mail = quotaAlertMail({
     reason: 'Image generation failed. gpt-image-1-mini: 429 {"error":{"code":"insufficient_quota"}}',
     runId: "0d9f0f5e-1111-2222-3333-444455556666",
-    designRef: "RM-0054",
+    designRef: "AP-0054",
   });
 
   it("אומר בכותרת מה קרה, לא איזה שירות נפל", () => {
@@ -57,7 +57,7 @@ describe("מייל ההתראה", () => {
   });
 
   it("מקשר את ההתראה ליומן ולעיצוב", () => {
-    expect(mail.text).toContain("RM-0054");
+    expect(mail.text).toContain("AP-0054");
     expect(mail.text).toContain("0d9f0f5e-1111-2222-3333-444455556666");
   });
 

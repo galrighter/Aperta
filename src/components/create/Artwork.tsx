@@ -5,7 +5,7 @@
 import { useId } from "react";
 import Image from "next/image";
 import { he } from "@/i18n/he";
-import { COBALT } from "./ui";
+import { LAPIS } from "./ui";
 import type { Region } from "./model";
 
 const d = he.design;
@@ -163,8 +163,8 @@ export function FlatDrawing({
                 y={0}
                 width={lengthMm * (z.to - z.from)}
                 height={widthMm}
-                fill={on ? "rgba(49,91,255,0.20)" : "transparent"}
-                stroke={on ? COBALT : "transparent"}
+                fill={on ? "rgba(63,98,151,0.20)" : "transparent"}
+                stroke={on ? LAPIS : "transparent"}
                 strokeWidth={Math.max(0.3, widthMm / 70)}
                 strokeDasharray={`${Math.max(1, widthMm / 8)} ${Math.max(0.8, widthMm / 12)}`}
               />
@@ -194,8 +194,8 @@ export function RegionChips({
             aria-pressed={on}
             className="rounded-[2px] px-3.5 py-2 text-[13px] transition-colors"
             style={{
-              border: `1px solid ${on ? COBALT : "rgba(32,35,38,0.2)"}`,
-              background: on ? COBALT : "#fff",
+              border: `1px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
+              background: on ? LAPIS : "#fff",
               color: on ? "#fff" : "#202326",
             }}
           >

@@ -131,7 +131,7 @@ export default function PatternMark({
   className?: string;
 }) {
   const paths = GENERATORS[variant]();
-  // פלטת RM JEWEL: אבן שטוחה (בלי גרדיאנט מטלי) עם חיתוכים בגרפיט.
+  // פלטת Aperta: אבן שטוחה (בלי גרדיאנט מטלי) עם חיתוכים בגרפיט.
   return (
     <svg
       viewBox={`0 0 ${L} ${W}`}

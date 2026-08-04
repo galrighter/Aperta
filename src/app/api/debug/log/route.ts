@@ -130,7 +130,7 @@ export async function GET(req: Request) {
         inputs: r.inputs ?? null,
         owner: (r.design_id && owners.get(r.design_id)) || null,
         designId: r.design_id,
-        /** `RM-0047` — הרפרנס שתלונה מגיעה איתו. ה-uuid אינו רפרנס אנושי. */
+        /** `AP-0047` — הרפרנס שתלונה מגיעה איתו. ה-uuid אינו רפרנס אנושי. */
         ref: (r.design_id && designCode(serials.get(r.design_id) ?? null)) || null,
         stages: {
           /** תמונת הייחוס כפי שנמסרה למודל — לא שחזור שלה. */

@@ -11,3 +11,6 @@ next-env.d.ts
 # סמן reflect-before-merge — פר-ענף, נצרך בשימוש (SPEC §7)
 .claude/state/
 geometry-service/dist/
+
+# מטמון של docs/brand/build-brand-assets.py (גופנים שמורדים בהרצה)
+docs/brand/.cache/

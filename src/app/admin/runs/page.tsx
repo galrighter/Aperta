@@ -14,7 +14,7 @@ export default function AdminRunsPage() {
             {he.site.adminCardRunsDesc}
           </p>
         </div>
-        <Link href="/debug" className="text-[13px] text-cobalt hover:underline">
+        <Link href="/debug" className="text-[13px] text-lapis hover:underline">
           {he.site.adminNavLab} ←
         </Link>
       </div>

@@ -6,7 +6,7 @@ import { he } from "@/i18n/he";
 
 const ORDER: OrderRow = {
   id: "00000000-0000-0000-0000-000000000001",
-  ref: "RM-0047",
+  ref: "AP-0047",
   design_id: "00000000-0000-0000-0000-000000000002",
   version_id: "00000000-0000-0000-0000-000000000003",
   profile_id: null,
@@ -41,7 +41,7 @@ describe("סיכום הזמנה", () => {
   it("נגזר מהשורה — כולל המידות והרפרנס", () => {
     const lines = orderItemLines(ORDER).join("\n");
     expect(lines).toContain("170");
-    expect(lines).toContain("RM-0047");
+    expect(lines).toContain("AP-0047");
     expect(lines).toContain("34");
   });
 
@@ -82,14 +82,14 @@ describe("מיילים של הזמנה", () => {
   });
 
   it("הכותרת נושאת מספר ושם", () => {
-    expect(orderNotifyMail(ORDER).subject).toBe("הזמנה חדשה RM-0047 — דנה");
+    expect(orderNotifyMail(ORDER).subject).toBe("הזמנה חדשה AP-0047 — דנה");
   });
 
   it("לכל סטטוס שמעניין את הלקוחה יש נוסח, ול-sent אין", () => {
     for (const st of ["approved", "in_production", "shipped", "cancelled"] as const) {
       const mail = orderStatusMail({ ...ORDER, status: st }, st);
       expect(mail).not.toBeNull();
-      expect(mail!.subject).toContain("RM-0047");
+      expect(mail!.subject).toContain("AP-0047");
     }
     // חזרה ל-sent היא תיקון פנימי של גל, לא אירוע שהלקוחה צריכה לשמוע עליו.
     expect(orderStatusMail(ORDER, "sent")).toBeNull();

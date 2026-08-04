@@ -25,14 +25,14 @@ export default function FaqPage() {
 
       <p className="mt-8 text-sm text-ink60">
         {s.contactSubtitle}{" "}
-        <Link href="/contact" className="font-medium text-cobalt hover:underline">
+        <Link href="/contact" className="font-medium text-lapis hover:underline">
           {s.navContact}
         </Link>{" "}
         ·{" "}
         <a
           href={`mailto:${SITE.contactEmail}`}
           dir="ltr"
-          className="font-medium text-cobalt hover:underline"
+          className="font-medium text-lapis hover:underline"
         >
           {SITE.contactEmail}
         </a>

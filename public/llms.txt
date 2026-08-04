@@ -1,6 +1,6 @@
-# RM JEWEL
+# Aperta
 
-> RM JEWEL is a Hebrew-language platform for designing open brass bracelets and
+> Aperta is a Hebrew-language platform for designing open brass bracelets and
 > rings from a plain-language description. You describe a cutout pattern in
 > words; an AI generates it, automatically checks it is manufacturable
 > (bridge widths, hole sizes, margins, roll-forming survivability), and
@@ -13,7 +13,7 @@
 - Made to order, 10–14 working days.
 
 ## Key pages
-- [Home](https://aperta-designs.com/): what RM JEWEL is and how to start.
+- [Home](https://aperta-designs.com/): what Aperta is and how to start.
 - [Design](https://aperta-designs.com/design): the guided client journey — product, sizes, idea & upload, AI chat, design suggestions, edit, and final visualization & price.
 - [How it works](https://aperta-designs.com/how-it-works): the four steps — describe, generate, production check, export.
 - [Gallery](https://aperta-designs.com/gallery): illustrative pattern styles.
