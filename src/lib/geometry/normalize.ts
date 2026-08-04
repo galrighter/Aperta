@@ -234,6 +234,9 @@ export function polygonToPathD(poly: Polygon): string {
   return poly.map((ring) => ringToPathD(ring)).join("");
 }
 
+/** פקודות עקומה. הן חוקיות ב-SVG ואינן חוקיות במסגור — ראה `normalizeSvg`. */
+const CURVE_CMD = /[CcSsQqTtAa]/;
+
 /**
  * הנרמול המלא. rawSvg — פלט ה-LLM (אחרי המרת text-request אם היו).
  * זורק ContractViolation על כל סטייה מהחוזה.
@@ -271,7 +274,24 @@ export function normalizeSvg(rawSvg: string, lengthMm: number, widthMm: number):
     pathEls = cutUnion.map((poly) => `<path d="${polygonToPathD(poly)}" fill="black"/>`);
     outCutouts = cutUnion.map((poly) => [poly]);
   } else {
-    pathEls = ds.map((d) => `<path d="${normalizeD(d)}" fill="black"/>`);
+    // ה-`d` המקורי נשמר — אבל רק כשהוא כבר בפורמט שהמסגור יודע לקרוא.
+    //
+    // `normalizeD` מעגל מספרים ולא נוגע בפקודות, ואילו `rescaleCutoutsSvg`
+    // (frame.ts) **זורק** על כל מה שאינו M/L/Z. שני חצאים של אותה מערכת חלוקים
+    // על מה נחשב "קנוני", והמחיר משולם מאוחר ורחוק: נתיב עם עקומה נשמר בשקט
+    // כגרסה, ואז מפיל את הקריאה כולה ברגע שהגרסה חוזרת למסגור — עריכה, או
+    // אימוץ של שיתוף.
+    //
+    // מי שנושא עקומה נפלט כפוליגונים הדגומים שלו — בדיוק אלה שהוולידציה מדדה,
+    // כך שמה שנשמר הוא מה שנבדק. `rawCutouts` ולא `cutouts` כי הוא מיושר
+    // לאינדקס של `ds` (השני מדלג על שטח אפסי).
+    //
+    // הווקטורייזר שלנו פולט M/L/Z בלבד (`core/svg_builder.py`), ולכן בצינור
+    // החי השורה הזו לא משנה דבר — היא מכסה SVG שלא אנחנו ייצרנו.
+    pathEls = ds.map(
+      (d, i) =>
+        `<path d="${CURVE_CMD.test(d) ? rawCutouts[i].map(polygonToPathD).join("") : normalizeD(d)}" fill="black"/>`,
+    );
     outCutouts = cutouts;
   }
 
