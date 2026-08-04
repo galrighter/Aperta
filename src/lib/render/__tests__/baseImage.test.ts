@@ -115,6 +115,70 @@ describe("buildRenderPrompt in edit mode", () => {
   });
 });
 
+// הצללית. עיצובים חזרו עם שוליים ישרים גם אחרי שהוסרו המילים שכפו מלבן, כי מה
+// שנשאר היה אילוצים בניסוח חיובי מול היתרים בניסוח שלילי. הבדיקות כאן נועלות
+// את ההפרדה: ביצירה הצללית היא הוראה, בעריכה היא נשמרת.
+describe("buildRenderPrompt — הצללית", () => {
+  const dims = { lengthMm: 140, widthMm: 15, thicknessMm: 1.5 };
+
+  it("makes the outer edge an instruction, not a permission — when generating", () => {
+    const p = buildRenderPrompt("עלים", "bracelet", dims, 1);
+    expect(p).toContain("THE OUTER EDGE IS PART OF THE DESIGN");
+    // וצמוד לבריף, לא ארבעה משפטים לפניו
+    expect(p.indexOf("THE OUTER EDGE")).toBeLessThan(p.indexOf("Design intent for the piece"));
+  });
+
+  // ההפך הגמור ממה שעריכה אמורה לעשות: משפט שמזמין לצייר מתאר חדש, מול הוראה
+  // לשמר את הקיים.
+  it("says nothing of the kind when editing", () => {
+    expect(buildRenderPrompt("לדלל", "bracelet", dims, 1, true)).not.toContain("THE OUTER EDGE");
+  });
+
+  // הבקשה קודמת, השימור אחריה כסייג. קודם היה הפוך, ולכן "קצה גלי" הגיע אחרי
+  // משפט שאוסר לגעת בצללית.
+  it("puts the change request before the sentence that preserves the piece", () => {
+    const p = buildRenderPrompt("קצה גלי", "bracelet", dims, 1, true);
+    expect(p.indexOf("CHANGE REQUEST")).toBeLessThan(p.indexOf("The attached image is the CURRENT piece"));
+    // המילה שזזה עם המשפט — היא מצביעה על הבקשה
+    expect(p).toContain("what the change request above asks for");
+    expect(p).not.toContain("change request below");
+  });
+
+  // "cuff" הוא מה ש-strip/band היו לפניו. הוא נשאר במשפט אחד בלבד, זה שבו הוא
+  // נושא משמעות ולא צורה.
+  it("keeps the band noun out of the object description", () => {
+    const p = buildRenderPrompt("עלים", "bracelet", dims, 1);
+    expect(p).toContain("a laser-cut matte black metal piece worn around the wrist");
+    expect(p.match(/cuff/g)).toHaveLength(1);
+    expect(p).toContain("CLOSURE: the cuff is closed by bending it");
+  });
+
+  it("lets the ends be shaped, while still refusing fastening hardware", () => {
+    for (const product of ["bracelet", "ring"] as const) {
+      const p = buildRenderPrompt("עלים", product, dims, 1);
+      expect(p).toContain("do not add slots, loops, fastening holes or tabs at either end");
+      expect(p).toContain("The ends themselves may be rounded, pointed or shaped as the design asks");
+    }
+  });
+
+  // 2.25 (minBridgeBend) חל על כל המתכת שנשארת, כלומר גם על הצללית — וכל
+  // התחדדות אסורה תחתיו. הוא גם המספר שהוולידציה כבר לא אוכפת.
+  it("states the floor validation actually enforces, not the one that was removed", () => {
+    const p = buildRenderPrompt("עלים", "bracelet", dims, 1);
+    expect(p).toContain("no part of the remaining metal may be thinner than 0.75mm across");
+    expect(p).not.toContain("2.25mm across");
+  });
+
+  // המדידה חלה על השטח שהפריט תופס, לא על קצותיו: "נמתח מקצה לקצה" הוא מלבן.
+  it("spans the width with the bounding box, not with the piece itself", () => {
+    expect(buildRenderPrompt("עלים", "bracelet", dims, 3)).toContain(
+      "its bounding box spanning almost the full width of the image",
+    );
+    expect(buildRenderPrompt("עלים", "ring", { lengthMm: 55.5, widthMm: 12, thicknessMm: 1.5 }, 2, false, false, 2))
+      .toContain("its bounding box spanning almost the full width of its own column");
+  });
+});
+
 // הכיתוב מגיע מהפונט כתמונה מצורפת, ולכן ההוראה לשמר אותו נכונה רק כשיש מה
 // לשמר. בקריאה בלי תמונה כזו היא מפנה את המודל לקובץ שאינו קיים.
 describe("lettering reference", () => {

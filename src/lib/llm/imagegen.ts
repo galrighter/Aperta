@@ -79,13 +79,14 @@ const WORD: Record<number, string> = {
  *     שעל מתכת שחורה מחזיר אפס).
  * מה שאינו אחד מהשלושה הוא החלטת עיצוב ושייך ללקוחה, לא לפרומפט.
  *
- * ומה שבכוונה *לא* נאמר כאן: הצללית. הפרומפט קרא למוצר "strip" שמונה פעמים,
- * ביקש לצייר "exactly that proportion", ותיאר את בקשת הלקוחה כ"design intent
- * for the cut-out pattern" — שלושתם אומרים "מלבן עם חורים", ומשפט היתר היחיד
- * ("the outline can wave, taper or be scalloped") לא שרד מולם. שם עצם חוזר
- * גובר על היתר חד-פעמי, ולכן המילה הוסרה במקום להוסיף עוד הנחיה: הפרופורציה
- * מדברת על ה-bounding box, והבריף הוא לפריט כולו — הצללית בכלל זה.
- * הרישום המלא: docs/REMOVED_CONSTRAINTS.md.
+ * **הצללית.** בסבב הראשון הוסרו המילים שכפו מלבן — "strip" שמונה פעמים,
+ * "exactly that proportion", "design intent for the cut-out pattern" — ולא
+ * נוספה שום הנחיה במקומן: הפרופורציה מדברת על ה-bounding box, והבריף הוא לפריט
+ * כולו. זה לא הספיק, והעיצובים המשיכו לחזור עם שוליים ישרים. מה שנשאר היה
+ * **אילוצים בניסוח חיובי מול היתרים בניסוח שלילי**: "no part of the metal
+ * thinner than 2.25mm", "spanning almost the full width", "cuff", "do not add
+ * … at either end" מול "Nothing here fixes the outline". הסבב השני מטפל בדיוק
+ * בזה — ראה את ההערות בגוף הפונקציה, ואת הטבלה ב-docs/REMOVED_CONSTRAINTS.md.
  *
  * במצב `editing` הפרומפט מדבר על התמונה המצורפת ("שנה רק את X") במקום לתאר פריט
  * חדש. בלי זה בקשת שינוי הגיעה למודל כתיאור עצמאי על קנבס ריק, והתשובה הייתה
@@ -145,31 +146,41 @@ export function buildRenderPrompt(
             : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
           `stacked one above another as ${word} evenly spaced horizontal rows, with plain white space between them ` +
           "and no line, frame, divider or caption of any kind. Each row is a complete piece on its own, taking up the " +
-          "same overall extent as above, spanning almost the full width of the image with a thin white margin at each " +
-          `end. ${piecesAre} Show every piece whole and unclipped.`
+          "same overall extent as above, its bounding box spanning almost the full width of the image with a thin " +
+          `white margin at each end. ${piecesAre} Show every piece whole and unclipped.`
         : (editing
             ? ` LAYOUT: the attached image shows the piece once; this image contains exactly ${word} copies of it, `
             : ` LAYOUT: the image contains exactly ${word} separate pieces, `) +
           `laid out as a grid of ${rowWord} evenly spaced horizontal rows by ${colWord} evenly spaced vertical ` +
           "columns, with plain white space between every piece and no line, frame, divider, grid line or caption of " +
-          "any kind. Each cell holds one complete piece on its own, taking up the same overall extent as above, " +
-          "spanning almost the full width of its own column with a thin white margin at each end — a piece never " +
-          `runs across the full width of the image. ${piecesAre} Show every piece whole and unclipped.`;
+          "any kind. Each cell holds one complete piece on its own, taking up the same overall extent as above, its " +
+          "bounding box spanning almost the full width of its own column with a thin white margin at each end — a " +
+          `piece never runs across the full width of the image. ${piecesAre} Show every piece whole and unclipped.`;
 
+  // שם העצם של המוצר. `cuff` הוא מה ש-`strip`/`band` היו לפניו: "צמיד קשיח
+  // שטוח" הוא מחלקת תמונות שכולה מלבנים עם קצוות מעוגלים, ולכן המילה מציירת
+  // צללית עוד לפני שהבריף נקרא. היא נשארת במשפט ה-CLOSURE בלבד — שם היא נושאת
+  // משמעות (נסגר בכיפוף, בלי אבזם) ולא צורה.
   const object =
     productType === "ring"
       ? "a laser-cut matte black metal ring, opened out and lying completely flat (this is the flat blank that gets rolled into a ring)"
-      : "a laser-cut matte black metal bracelet cuff, opened out and lying completely flat";
+      : "a laser-cut matte black metal piece worn around the wrist, opened out and lying completely flat";
 
   // הפריט נסגר בכיפוף, ואין לו אבזם. בלי המשפט הזה המודל הוסיף לשני הקצוות
   // חריצים, לולאות ולשוניות — בכל הרצה, בכל שם, בשתי הפולריות. "צמיד שטוח
   // לחיתוך" הוא מחלקת תמונות שכמעט תמיד יש בה סגירה, והוא השלים אותה. החריצים
   // אוכלים בדיוק את הקצוות שבהם endMargin דורש מתכת מלאה, והווקטורייזר מתרגם
   // אותם לחורים אמיתיים ב-DXF.
+  //
+  // ארבע השלילות אומרות מה אסור *על* הקצה, והדרך הפשוטה ביותר לציית להן היא לא
+  // לגעת בקצה בכלל — כלומר להשאיר אותו חתוך ישר. המשפט השני הוא ההיתר החיובי
+  // שמפריד בין השניים: הצורה של הקצה שייכת לעיצוב, החומרה של הסגירה לא קיימת.
+  const ends =
+    " The ends themselves may be rounded, pointed or shaped as the design asks — what they may not carry is fastening hardware.";
   const closure =
     productType === "ring"
-      ? "CLOSURE: the band is rolled into a ring and has no clasp or fastening — do not add slots, loops, fastening holes or tabs at either end."
-      : "CLOSURE: the cuff is closed by bending it around the wrist and has no buckle or fastening — do not add slots, loops, fastening holes or tabs at either end.";
+      ? "CLOSURE: the band is rolled into a ring and has no clasp or fastening — do not add slots, loops, fastening holes or tabs at either end." + ends
+      : "CLOSURE: the cuff is closed by bending it around the wrist and has no buckle or fastening — do not add slots, loops, fastening holes or tabs at either end." + ends;
 
   // הכיתוב מגיע מהפונט, לא מהמודל — הוא כבר חתוך בתמונה המצורפת, וכל מה שנדרש
   // כאן הוא שהמודל לא יגע בו. אין מסלול שבו המודל ממציא אותיות בעצמו.
@@ -197,12 +208,32 @@ export function buildRenderPrompt(
   // עריכה מול יצירה — ההבדל היחיד בין השניים הוא שתי הפסקאות האלה. כל השאר
   // (פרופורציה, ייצור, רנדור) הוא מה שהצינור צריך מהתמונה ולא תלוי בשאלה אם
   // מדובר בפריט חדש או בשינוי על קיים.
+  // **הסדר הוא ההוראה.** הניסוח לא השתנה, המיקום כן: הבקשה של הלקוחה קודמת,
+  // והשימור בא אחריה כסייג. קודם המודל קרא "שמור על הצללית, הפרופורציות וכל
+  // דוגמת החיתוך" ורק אז מה התבקש לשנות — כלומר בקשה שנוגעת בדיוק באחד
+  // השלושה (״קצה גלי״) הגיעה אחרי משפט שאוסר עליה. זהו הסגנון הכללי: קודם
+  // לעשות את מה שהתבקש, ואז לא לגעת במה שלא התבקש.
+  //
+  // המילה היחידה שזזה איתם היא `below` → `above`, כי היא מצביעה על הבקשה.
   const intent = editing
     ? [
-        "The attached image is the CURRENT piece — the one being edited. Keep it: its outline, its proportions and its whole cut pattern stay exactly as they are in the attached image, and only what the change request below asks for changes. Anything the request does not mention stays identical to the attached image. This is an edit of an existing design, not a new design.",
         "CHANGE REQUEST (apply only this): " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+        "The attached image is the CURRENT piece — the one being edited. Keep it: its outline, its proportions and its whole cut pattern stay exactly as they are in the attached image, and only what the change request above asks for changes. Anything the request does not mention stays identical to the attached image. This is an edit of an existing design, not a new design.",
       ]
-    : ["Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + "."];
+    : [
+        // הצללית כנושא של משפט עם פועל, וצמוד לבריף.
+        //
+        // עד כה כל מה שנאמר עליה היה **שלילת אילוץ** — "Nothing here fixes the
+        // outline", "what its outline does within that room is the design's",
+        // "along its edges alike". שלושה משפטים, ואף אחד מהם אינו הוראה: מודל
+        // תמונה פועל על שמות עצם ופעלים חיוביים, ו"לא אסרנו עליך X" אינו כזה.
+        // זה אותו כשל שכבר תועד ב-REMOVED_CONSTRAINTS — ההיתר שוכתב ונשאר היתר.
+        //
+        // **ביצירה בלבד.** בעריכה זה יסתור את השימור שלמעלה, וזה בדיוק ההפך
+        // ממה שעריכה אמורה לעשות.
+        "THE OUTER EDGE IS PART OF THE DESIGN, not a given frame: it rises and falls, narrows and swells, tapers or scallops along the length exactly as the design intent asks.",
+        "Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+      ];
 
   return [
     `A flat, top-down, orthographic product image of ${object}, on a completely flat pure #FFFFFF white background.`,
@@ -219,7 +250,14 @@ export function buildRenderPrompt(
     ...(lettering ? [lettering] : []),
 
     // ייצור: אילוץ פיזי, לא כלל סגנון. חלק מתכת מנותק פשוט נופל מהגיליון.
-    `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(fab.minBridgeBend)}mm across, or it will not survive being rolled. Within those limits the design is free to be whatever the design intent asks.`,
+    //
+    // **הרצפה היא `minLetterBridgeMm` (0.75) ולא `minBridgeBend` (2.25).**
+    // הכלל חל כאן על *כל* המתכת שנשארת, כלומר גם על הצללית: ב-2.25 מ"מ כל
+    // התחדדות, כל קצה שמתעגל וכל שן בקצה גלי אסורים, ופס ברוחב אחיד הוא
+    // התשובה הבטוחה היחידה. 2.25 הוא גם המספר ש**הוולידציה כבר לא אוכפת** —
+    // V4-ערגול הוסר (docs/REMOVED_CONSTRAINTS.md), ומה שנאכף בפועל הוא בדיוק
+    // הרצפה שנכתבת כאן. הפרומפט הפסיק לאכוף מה שהמנוע ויתר עליו.
+    `MANUFACTURING (physical constraint): the piece is cut from one sheet of ${d.thicknessMm}mm metal with a laser, so all the metal must remain a single connected piece — every part of the metal is joined to the rest, with no detached island that would simply fall out of the sheet once the cutting is done. At this scale nothing can be cut finer than ${round2(fab.minHole)}mm, and no part of the remaining metal may be thinner than ${round2(FAB.minLetterBridgeMm)}mm across, or it will break as it is cut. Within those limits the design is free to be whatever the design intent asks.`,
 
     "CRITICAL: absolutely NO drop shadow, NO cast shadow, NO ambient occlusion, NO reflection, NO gradient — the background is one uniform flat white with zero shading, and the metal sits flush like a flat vector illustration.",
     "Perfectly even flat lighting, straight overhead orthographic view, no perspective, no bevel, no depth, no hands, no props. Nothing may be added around the piece: no caption, no label, no watermark, no dimension annotation and no frame around the image — but lettering that is itself part of the cut pattern is welcome when the design asks for it.",
