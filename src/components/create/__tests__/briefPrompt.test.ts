@@ -31,7 +31,8 @@ describe("buildPrompt — מאפיינים", () => {
 
   it("שומר על תיאור הפריט עצמו בשני המצבים", () => {
     for (const attrsAuto of [false, true]) {
-      expect(buildPrompt(state({ attrsAuto }))).toContain("שנחתך בלייזר מפס מתכת שטוח");
+      // "פח" ולא "פס": חומר הגלם, לא צורה. ראה את ההערה ב-buildPrompt.
+      expect(buildPrompt(state({ attrsAuto }))).toContain("שנחתך בלייזר מפח מתכת שטוח");
     }
   });
 });
