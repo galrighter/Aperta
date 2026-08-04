@@ -1,4 +1,5 @@
 import { supabaseAdmin, ensureBucket, STORAGE_BUCKET } from "./supabase";
+import { base64ToBytes } from "../base64";
 
 // Storage: bucket יחיד "studio" עם תיקיות annotations/, exports/, uploads/.
 
@@ -47,9 +48,28 @@ export async function signedUploadUrl(path: string): Promise<string> {
   return data.signedUrl;
 }
 
-export function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; mediaType: string } {
-  const m = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl.trim());
+/** הכותרת של data URL בבסיס64. המטען נלקח כ-slice אחריה. */
+const DATA_URL_HEAD = /^\s*data:([^;,]+);base64,/;
+
+/**
+ * סוג המדיה בלבד — בלי לפענח את המטען.
+ *
+ * הוא יושב בעשרים התווים הראשונים של המחרוזת, אבל הדרך היחידה שהייתה לקרוא
+ * אותו הייתה `decodeDataUrl`, שמפענחת הכול. `/api/generate` שאל אותו **פעמיים**
+ * על כל תמונה מצורפת — פעם בשער ופעם בצינור — וזרק את הבייטים מיד בשתיהן.
+ * שני פענוחים מלאים של מגה־בייטים כדי לקרוא כותרת.
+ */
+export function dataUrlMediaType(dataUrl: string): string {
+  const m = DATA_URL_HEAD.exec(dataUrl);
   if (!m) throw new Error("Invalid data URL");
-  const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
-  return { bytes, mediaType: m[1] };
+  return m[1];
+}
+
+export function decodeDataUrl(dataUrl: string): { bytes: Uint8Array; mediaType: string } {
+  const m = DATA_URL_HEAD.exec(dataUrl);
+  // `slice` ולא קבוצת לכידה: V8 מחזירה מחרוזת-נתח שמצביעה על המקור, בלי
+  // להעתיק את המטען. `exec` על תבנית שנעצרת בפסיק גם לא סורקת אותו כלל.
+  const b64 = m ? dataUrl.slice(m[0].length) : "";
+  if (!m || !b64.trim()) throw new Error("Invalid data URL");
+  return { bytes: base64ToBytes(b64), mediaType: m[1] };
 }

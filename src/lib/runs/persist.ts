@@ -1,4 +1,5 @@
 import { uploadFile } from "@/lib/db/storage";
+import { base64ToBytes } from "@/lib/base64";
 import {
   insertRun,
   type RunSource,
@@ -38,9 +39,6 @@ interface VectorizerPayload {
   [k: string]: unknown;
 }
 
-function b64ToBytes(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-}
 
 const STAGE_KEYS: (keyof VectorizerImages)[] = ["conditioned", "overlay", "difference", "rendered"];
 
@@ -66,8 +64,14 @@ export interface PersistRunInput {
   renderPrompt?: string | null;
   /** המאפיינים שקבעו את ההרצה (מוצר, מידות, תכנון, מפתח צבע). */
   inputs?: RunInputs | null;
-  /** קובץ ההשראה שהמשתמש צירף. נשמר כדי שאפשר יהיה לראות מה הוא נתן. */
-  inputImage?: { bytes: Uint8Array; mediaType?: string } | null;
+  /**
+   * קובץ ההשראה שהמשתמש צירף. נשמר כדי שאפשר יהיה לראות מה הוא נתן.
+   *
+   * base64 ולא בייטים: המחרוזת מוחזקת ממילא לכל אורך ההרצה — היא מה שנשלח
+   * לקופסה — ובייטים כאן היו עותק שני שלה בייצוג אחר, מוחזק לרוחב כל הצינור
+   * כולל שיא הזיכרון. הפענוח נדחה לרגע ההעלאה, שם הוא באמת נדרש.
+   */
+  inputImage?: { base64: string; mediaType?: string } | null;
 }
 
 /** מוריד את ה-SVG של כל מועמד ומשאיר את המדדים. אותו קילוף שהרשימה עשתה
@@ -102,7 +106,7 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
       if (!b64) continue;
       try {
         const path = `runs/${id}/${key}.png`;
-        await uploadFile(path, b64ToBytes(b64), "image/png");
+        await uploadFile(path, base64ToBytes(b64), "image/png");
         stagePaths[key] = path;
       } catch {
         // דילוג על שלב בודד שנכשל בהעלאה — לא מפיל את שאר השמירה.
@@ -112,10 +116,14 @@ export async function persistRun(input: PersistRunInput): Promise<void> {
     // 2ב) קובץ ההשראה שהמשתמש צירף. עד עכשיו הוא נכנס לקריאה למודל ונעלם,
     // ואז "ההדמיה לא דומה למה ששלחתי" הייתה טענה שאין מולה מה להעמיד.
     let inputImagePath: string | null = null;
-    if (input.inputImage?.bytes) {
+    if (input.inputImage?.base64) {
       try {
         inputImagePath = `runs/${id}/input.png`;
-        await uploadFile(inputImagePath, input.inputImage.bytes, input.inputImage.mediaType ?? "image/png");
+        await uploadFile(
+          inputImagePath,
+          base64ToBytes(input.inputImage.base64),
+          input.inputImage.mediaType ?? "image/png",
+        );
       } catch {
         // תמונת קלט היא תיעוד, לא תנאי לשורה.
         inputImagePath = null;

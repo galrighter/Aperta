@@ -5,7 +5,7 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
-import { decodeDataUrl, signedUrl } from "@/lib/db/storage";
+import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
@@ -123,7 +123,7 @@ export async function POST(req: Request) {
     const design = await requireDesignAccess(req, body.designId);
     assertBuildableDims(design);
     for (const img of body.images) {
-      const { mediaType } = decodeDataUrl(img.dataUrl);
+      const mediaType = dataUrlMediaType(img.dataUrl);
       if (!ALLOWED_MEDIA.has(mediaType)) {
         throw new ApiError("bad_image", `Unsupported image type ${mediaType}`, 400);
       }
@@ -324,16 +324,18 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     designRef = designCode(design.serial);
 
     // תמונת השראה (אם צורפה) משמשת רפרנס למודל התמונה. סוג המדיה כבר אומת ב-POST.
-    let inspiration: LlmImage | null = null;
-    for (const img of body.images) {
-      const { mediaType } = decodeDataUrl(img.dataUrl);
-      if (img.kind === "inspiration" && !inspiration) {
-        inspiration = {
-          mediaType: mediaType as LlmImage["mediaType"],
-          base64: img.dataUrl.slice(img.dataUrl.indexOf(",") + 1),
-        };
-      }
-    }
+    //
+    // הראשונה בלבד, ורק `inspiration`: למודל התמונה יש מקום לתמונת ייחוס אחת,
+    // ותמונת `annotation` נבדקת ונזרקת (ראה AnnotationToolbar — השכבה מוסתרת עד
+    // שתחובר). הלולאה שהייתה כאן עברה על **כל** התמונות ופענחה כל אחת מהן
+    // במלואה כדי לקרוא את סוג המדיה שלה — כולל אלה שממילא לא ייקראו.
+    const first = body.images.find((img) => img.kind === "inspiration");
+    let inspiration: LlmImage | null = first
+      ? {
+          mediaType: dataUrlMediaType(first.dataUrl) as LlmImage["mediaType"],
+          base64: first.dataUrl.slice(first.dataUrl.indexOf(",") + 1),
+        }
+      : null;
 
     // 1) התכנון. כמה הדמיות, ובאיזו פריסה, נגזר מהיחס שהוזמן: מודל התמונה לא
     // מצייר יחס שמבקשים ממנו אלא נמשך ליחס נוח לו, וצורת הקנבס היא מה שמזיז
@@ -469,9 +471,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
         promptOverride: Boolean(body.promptOverride?.trim()),
       },
+      // ה-base64 שכבר בידנו, לא בייטים: כאן נבנה קודם data URL חדש בשרשור
+      // (עותק שלישי של המטען) רק כדי לפרק אותו מיד, והבייטים שיצאו הוחזקו עד
+      // סוף ההרצה למרות ש-`persistRun` צריכה אותם לרגע ההעלאה בלבד.
       inputImage: inspiration
-        ? { bytes: decodeDataUrl(`data:${inspiration.mediaType};base64,${inspiration.base64}`).bytes,
-            mediaType: inspiration.mediaType }
+        ? { base64: inspiration.base64, mediaType: inspiration.mediaType }
         : null,
     };
 

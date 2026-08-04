@@ -1,4 +1,5 @@
 import opentype from "opentype.js";
+import { base64ToBytes } from "@/lib/base64";
 
 // מאגר הפונטים של הכיתוב על התכשיט.
 //
@@ -75,8 +76,7 @@ export async function loadFace(id: FontId): Promise<opentype.Font> {
   const hit = cache.get(id);
   if (hit) return hit;
   const { DATA } = await LOADERS[id]();
-  const bin = Uint8Array.from(atob(DATA), (c) => c.charCodeAt(0));
-  const font = opentype.parse(bin.buffer);
+  const font = opentype.parse(base64ToBytes(DATA).buffer);
   cache.set(id, font);
   return font;
 }
