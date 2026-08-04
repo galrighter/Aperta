@@ -98,6 +98,13 @@ class Settings:
     # render — so it is capped here rather than by whatever forme asks for.
     openai_key: str = os.environ.get("OPENAI_KEY", "") or os.environ.get("OPENAI_API_KEY", "")
     generate_concurrency: int = _i("GENERATE_CONCURRENCY", 4)
+    # How many whole generations may be in flight at once. `generate_concurrency`
+    # bounds the traces *within* one run; this bounds the runs. Without it N
+    # simultaneous customers each hold their decoded renders and open their own
+    # pool of traces, so the memory ceiling is set by whoever happens to press
+    # the button together — and the OOM killer takes the container down with
+    # every run in it, including the ones already paid for.
+    max_concurrent_generations: int = _i("MAX_CONCURRENT_GENERATIONS", 3)
 
 
 SETTINGS = Settings()

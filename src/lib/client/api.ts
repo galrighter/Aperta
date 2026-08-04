@@ -58,6 +58,9 @@ function messageFor(code: string): string {
   // תקציב שנגמר אצל ספק התמונות: לא באג ולא משהו שהלקוחה יכולה לתקן בניסוח
   // אחר. "משהו השתבש. נסו שוב" שולח אותה לנסות שוב לתוך אותו קיר בדיוק.
   if (code === "quota_exhausted") return he.errQuotaExhausted;
+  // הקופסה מלאה — לא כשל אלא תור. זו אחת השגיאות הבודדות שבהן ניסיון חוזר
+  // מיידי הוא באמת מה שצריך לעשות, ולכן היא לא נבלעת ב"משהו השתבש".
+  if (code === "render_busy") return he.errRenderBusy;
   // מיגרציה שלא רצה. נוסח משלה, כי "משהו השתבש" שולח לחפש באג בקוד בזמן
   // שמה שצריך הוא להריץ את המיגרציה בייצור.
   if (code === "schema_outdated") return he.errSchemaOutdated;

@@ -124,7 +124,22 @@ export function SummaryScreen({
                 {s.terms ? "✓" : ""}
               </span>
               <span className="text-sm leading-relaxed text-ink80" style={{ textWrap: "pretty" }}>
-                {d.termsLabel}
+                {d.termsLabel}{" "}
+                {/* הקישור יושב *בתוך* התווית ולכן מקונן בכפתור התיבה. `stopPropagation`
+                    הוא מה שמפריד ביניהם: בלעדיו לחיצה על "תנאי השימוש" גם פותחת את
+                    התנאים וגם מסמנת את התיבה — כלומר אישור שהלקוחה לא נתנה.
+                    `target="_blank"` כדי שקריאה בהם לא תזרוק אותה מהסיכום שמילאה. */}
+                <a
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="underline underline-offset-4"
+                  style={{ color: COBALT }}
+                >
+                  {d.termsLink}
+                </a>
+                .
               </span>
             </button>
 

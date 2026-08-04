@@ -68,3 +68,38 @@ describe("כפתור ההזמנה", () => {
     expect(RESULT).toContain("d.resultOrderBusy");
   });
 });
+
+describe("ניווט במשפך", () => {
+  const PAGE = read("src/app/(site)/design/page.tsx");
+
+  it("כל מעבר מסך נכנס להיסטוריה", () => {
+    // שמונת המסכים חיים על כתובת אחת ובמצב בזיכרון. בלי הדחיפה, Back בנייד
+    // יוצא מ-/design לגמרי — כתובת המשלוח, אישור התנאים וטקסט העריכה ביחד.
+    expect(PAGE).toContain("window.history.pushState({ screen }, \"\")");
+    expect(PAGE).toContain("prev.screen !== screen");
+  });
+
+  it("Back חוזר מסך אחורה במקום לצאת", () => {
+    expect(PAGE).toContain('window.addEventListener("popstate", onPop)');
+  });
+
+  it("Back לא מחזיר למסך ההמתנה", () => {
+    // חזרה ל-processing הייתה מציגה ספינר של הרצה שכבר הסתיימה.
+    expect(PAGE).toContain('screen === "processing"');
+  });
+});
+
+describe("אישור התנאים", () => {
+  const SUMMARY = read("src/components/create/SummaryScreen.tsx");
+
+  it("יש קישור לתנאים מתוך התיבה", () => {
+    // מבקשים לאשר תנאים — חייבת להיות דרך לקרוא אותם.
+    expect(SUMMARY).toContain('href="/terms"');
+  });
+
+  it("לחיצה על הקישור לא מסמנת את התיבה", () => {
+    // הקישור מקונן בתוך כפתור התיבה; בלי עצירת ההתפשטות, קריאה בתנאים גם
+    // מאשרת אותם — אישור שהלקוחה לא נתנה.
+    expect(SUMMARY).toContain("onClick={(e) => e.stopPropagation()}");
+  });
+});

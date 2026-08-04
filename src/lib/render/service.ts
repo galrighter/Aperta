@@ -257,6 +257,10 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     const code =
       detail?.error_code === "QUOTA_EXHAUSTED"
         ? "quota_exhausted"
+        // הקופסה מלאה. שום דבר לא נשבר ושום דבר לא שולם — ולכן זו לא "היצירה
+        // נכשלה" אלא בקשה לנסות עוד רגע, וזה מה שהלקוחה צריכה לקרוא.
+        : detail?.error_code === "BUSY"
+          ? "render_busy"
         : detail?.error_code === "RENDER_FAILED"
           ? isContentBlock(message) ? "content_blocked" : "llm_error"
           : "render_failed";

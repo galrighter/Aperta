@@ -22,7 +22,9 @@ from .. import generate, imagegen, pipeline
 from ..config import SETTINGS
 from ..core.renderer import RenderError
 from ..core.validation import InputError
-from ..storage.generation_store import DONE, ERROR, GENERATIONS, Failure, GenerationRecord, valid_id
+from ..storage.generation_store import (
+    DONE, ERROR, GENERATIONS, Busy, Failure, GenerationRecord, valid_id,
+)
 from ..storage.job_storage import STORE
 
 log = logging.getLogger(__name__)
@@ -249,7 +251,13 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
 
     if not valid_id(body.job_id):
         raise HTTPException(400, detail={"error_code": "BAD_JOB_ID", "message": "job_id must be a UUID"})
-    rec, _started = GENERATIONS.start(body.job_id, work)
+    try:
+        rec, _started = GENERATIONS.start(body.job_id, work)
+    except Busy as exc:
+        # 429 and not 503: nothing is broken, there is simply no room right now.
+        # 422/429 both survive the Cloudflare edge intact (see the note on the
+        # image-model failure above), which a 5xx body does not.
+        raise HTTPException(429, detail={"error_code": "BUSY", "message": str(exc)}) from exc
     return _generation_response(rec)
 
 

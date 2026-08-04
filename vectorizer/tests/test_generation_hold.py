@@ -218,3 +218,61 @@ def test_the_result_file_is_written_whole_or_not_at_all(tmp_path) -> None:
     assert os.listdir(directory) == ["generation.json"]
     with open(os.path.join(directory, "generation.json")) as f:
         assert json.load(f)["result"] == {"status": "approved"}
+
+
+def test_the_box_refuses_a_new_run_when_it_is_full(tmp_path) -> None:
+    """`generate_concurrency` bounds the traces *within* a run; nothing bounded
+    the runs. N customers pressing together each hold their decoded renders and
+    open their own trace pool, and the OOM killer takes the container down with
+    every run in it — including the ones already paid for."""
+    store = GenerationStore(str(tmp_path / "gen"), ttl_minutes=60, max_running=2)
+    gate = asyncio.Event()
+
+    async def work() -> dict:
+        await gate.wait()
+        return {"status": "approved"}
+
+    async def scenario() -> None:
+        a, _ = store.start(ID, work)
+        b, _ = store.start(OTHER, work)
+
+        with pytest.raises(generation_store.Busy):
+            store.start("22222222-3333-4444-5555-666666666666", work)
+
+        # A repeat POST for a run already in flight is NOT refused — it is
+        # already counted, and turning it away would strand a live run.
+        again, started = store.start(ID, work)
+        assert started is False
+        assert again is a
+
+        # Held before awaiting: `finish()` clears `task`, and awaiting one lets
+        # the loop finish the other — so the second handle is already gone.
+        tasks = [a.task, b.task]
+        gate.set()
+        for t in tasks:
+            await t
+
+        # And once there is room, the next one gets in.
+        third, started = store.start("22222222-3333-4444-5555-666666666666", work)
+        assert started is True
+        await third.task
+
+    asyncio.run(scenario())
+
+
+def test_no_cap_means_no_cap(store: GenerationStore) -> None:
+    """The default store is unbounded — a test that is not about the cap should
+    not have to know it exists."""
+    gate = asyncio.Event()
+
+    async def work() -> dict:
+        await gate.wait()
+        return {}
+
+    async def scenario() -> None:
+        tasks = [store.start(f"{i:08d}-0000-4000-8000-000000000000", work)[0].task for i in range(8)]
+        gate.set()
+        for t in tasks:
+            await t
+
+    asyncio.run(scenario())
