@@ -18,7 +18,25 @@
 >
 > | # | נושא | חומרה | הערה |
 > |---|------|-------|------|
-> | O4 | `npm audit` — 8 פגיעויות | 🟢 נמוך | 4 high + 4 moderate (מדוד 4.8), אף אחת בקוד שאנחנו כתבנו: `postcss` ו-`sharp`/libvips דרך `next`, `undici` דרך `miniflare`→`wrangler`, ו-`fast-xml-parser`. רק `undici` נסגר ב-`npm audit fix`; השאר דורש `next@16` — שדרוג major |
+> | O4 | `npm audit` — 8 פגיעויות | 🟢 נמוך | 4 high + 4 moderate, אף אחת בקוד שאנחנו כתבנו. **נמדד מחדש 4.8 (ראו *נבדק ולא מוזג* למטה) — התיאור הקודם כאן היה שגוי בשתי נקודות:** `npm audit fix` אינו סוגר את `undici`, ו-`next@16` עובר. |
+>
+> ### נבדק ולא מוזג — `next@16` (4.8)
+>
+> גל ביקש לבדוק בלי להתחייב. הועלה בענף מקומי, נמדד, ולא נדחף. השורה הזו קיימת
+> כדי שהבדיקה לא תיעשה פעמיים — ומפני ששתי עובדות שהיו רשומות ב-O4 הופרכו.
+>
+> | מה נבדק | התוצאה |
+> |---|---|
+> | `npm audit fix` על `undici` | **לא סוגר כלום.** `wrangler@4.118.0` הוא כבר האחרון, והוא מושך `miniflare@5.…-alpha` → `undici@7.28.0`; טווח ההתראה הוא `7.0.0 - 7.28.0`. אין גרסה למעלה שאפשר לעלות אליה — התיקון חסום על Cloudflare |
+> | `overrides: { undici: "^7.29.0" }` | **סוגר 4 מתוך 8** (כל ה-high של `undici`), ו-typecheck + 601 טסטים + `next build` נשארו ירוקים. שינוי של שורה אחת ב-package.json |
+> | `next@16.3.0` + `eslint-config-next@16` | typecheck נקי, 601 טסטים עוברים, `next build` עובר, **ו-`cf:build` של OpenNext מייצר Worker בהצלחה** — כלומר מסלול הפריסה עצמו לא נשבר |
+> | `npm run lint` תחת 16 | **נשבר.** `FlatCompat` מתפוצץ (`Converting circular structure to JSON`) כי `eslint-config-next@16` כבר פלאט. המיגרציה היא 4 שורות ב-`eslint.config.mjs` (ייבוא `eslint-config-next/core-web-vitals` ו-`/typescript` ישירות) — ואחריה צצים **20 שגיאות + 3 אזהרות** מכללי React Compiler החדשים: 17 `set-state-in-effect`, 3 `refs`, 3 `no-location-assign-relative-destination`, 1 `exhaustive-deps` |
+> | `middleware.ts` | **הוצא משימוש** ב-16 לטובת `proxy.ts` (יש codemod). עדיין עובד. נוגע בקוד שמפנה `www` ל-apex ב-308, כלומר במקור היחיד — לא דבר לשנות באותה נשימה עם שדרוג major |
+> | `fast-xml-parser` (הפגיעות שנשארת אחרי הכול) | **לא נגישה אצלנו.** ההתראה היא על `XMLBuilder`, ואנחנו מייבאים `XMLParser` בלבד (`geometry/normalize.ts:1`) ולא בונים XML איתו |
+>
+> **המצב בשורה אחת:** override ל-`undici` לבדו מוריד 8→4 בלי סיכון. `next@16`
+> מוריד ל-1, בונה ונפרס — והמחיר האמיתי אינו ה-build אלא 20 שגיאות lint בקוד
+> קיים ו-`middleware`→`proxy`. הפגיעות היחידה שנשארת גם אז אינה נגישה בקוד שלנו.
 >
 > ### נדחה — ולמה
 >
