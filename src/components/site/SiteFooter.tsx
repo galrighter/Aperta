@@ -47,6 +47,11 @@ export default function SiteFooter() {
             <Link href="/privacy" className="text-ink60 transition-colors hover:text-lapis">
               {s.navPrivacy}
             </Link>
+            {/* התחזוקה יושבת כאן ולא בניווט העליון: היא נדרשת אחרי הקנייה, לא
+                לפניה, והיא הצד השני של סעיף האחריות בתנאי השימוש. */}
+            <Link href="/care" className="text-ink60 transition-colors hover:text-lapis">
+              {s.navCare}
+            </Link>
           </nav>
         </div>
 
