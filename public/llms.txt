@@ -2,25 +2,25 @@
 
 > Aperta is a Hebrew-language platform for designing open brass bracelets and
 > rings from a plain-language description. You describe a cutout pattern in
-> words; an AI generates it, automatically checks it is manufacturable
-> (bridge widths, hole sizes, margins, roll-forming survivability), and
-> exports a laser-cutting file (DXF in millimetres). Precision jewelry,
-> formed around you.
+> words; an AI generates it and automatically checks it is manufacturable
+> (bridge widths, hole sizes, margins, roll-forming survivability). Once you
+> approve it, we laser-cut, roll-form and finish the piece by hand and ship
+> it to you. Precision jewelry, formed around you.
 
 ## Product
 - Material: C260 brass, 1.5 mm, fiber-laser cut, roll-formed into an open arc.
-- Products: open bracelet (from ₪320), open ring (from ₪240).
+- Products: open bracelet (from ₪399), open ring (from ₪299), VAT included.
 - Made to order, 10–14 working days.
 
 ## Key pages
 - [Home](https://aperta-designs.com/): what Aperta is and how to start.
 - [Design](https://aperta-designs.com/design): the guided client journey — product, sizes, idea & upload, AI chat, design suggestions, edit, and final visualization & price.
-- [How it works](https://aperta-designs.com/how-it-works): the four steps — describe, generate, production check, export.
+- [How it works](https://aperta-designs.com/how-it-works): the four steps — describe, generate, production check, and we make and ship it.
 - [Gallery](https://aperta-designs.com/gallery): illustrative pattern styles.
 - [Sizing guide](https://aperta-designs.com/sizing): how to measure a ring size and a wrist at home, US ring size conversion table, and what each cuff fit style adds.
 - [FAQ](https://aperta-designs.com/faq): material, sizes, ordering.
 - [Contact](https://aperta-designs.com/contact): reach the team.
 
 ## Notes
-- Pricing and lead time are quoted per design on request.
+- Pricing is shown on the order page and follows the product, size and design; lead time is 10-14 working days.
 - Gallery images are decorative illustrations, not products for sale.

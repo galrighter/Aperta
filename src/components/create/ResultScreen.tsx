@@ -69,7 +69,10 @@ export function ResultScreen({
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
       <Eyebrow>{d.resultEyebrow}</Eyebrow>
-      <ScreenTitle>{s.imageRole === "ready" ? d.resultTitleReady : d.resultTitle}</ScreenTitle>
+      {/* פעם היו כאן שתי כותרות, ו"קובץ מוכן לחיתוך" קיבל "הקובץ שלך מוכן".
+          מרגע שהמילה "קובץ" ירדה מהאתר, שני הענפים אמרו את אותו הדבר —
+          והלקוחה מקבלת את אותה כותרת בלי קשר למאיפה הגיע העיצוב. */}
+      <ScreenTitle>{d.resultTitle}</ScreenTitle>
 
       {/* המספר הסידורי, ליד העיצוב עצמו — זה מה שמוסרים כשמדברים עליו.
           לצידו השיתוף: שתי הדרכים למסור את העיצוב הזה למישהו אחר, באותה שורה,
