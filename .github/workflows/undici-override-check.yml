@@ -1,0 +1,118 @@
+name: Can the undici override go?
+
+# ה-override על `undici` ב-package.json הוא זמני, והוא נועד להיעלם.
+#
+# הרקע: ארבע התראות אבטחה (high) הגיעו דרך `wrangler` → `miniflare` →
+# `undici@7.28.0`, ו-`npm audit fix` לא סגר אותן — `wrangler` כבר הייתה בגרסה
+# האחרונה שפורסמה, כלומר לא היה לאן לעלות. `overrides` כופה את הגרסה המתוקנת
+# על כל העץ וסוגר את הארבע.
+#
+# **למה זה חייב תזכורת אוטומטית.** `overrides` הוא כלי גס: הוא כופה את הגרסה
+# בלי קשר למה שהחבילות מעליו מבקשות. היום זה מה שרצינו. ביום שבו `miniflare`
+# תעבור ל-undici 8, השורה הזו תמשיך לכפות 7 בשקט — והיא נראית כמו שורת תחזוקה
+# תמימה, כלומר אף אחד לא יחשוד בה. פין נשכח לא נשאר ניטרלי; הוא הופך למקור
+# באגים שקשה לאתר.
+#
+# מה שרץ כאן פעם בחודש: מסירים את השורה, מחשבים עץ תלויות מחדש, ושואלים את
+# `npm audit` אם `undici` עדיין מופיע. אם לא — Cloudflare תיקנה, ה-override
+# מיותר, ונפתח issue שאומר בדיוק מה למחוק.
+#
+# שום דבר כאן לא נדחף. הבדיקה קוראת בלבד ופותחת issue.
+
+on:
+  schedule:
+    # פעם בחודש, ב-1 בחודש. דקה לא עגולה בכוונה — לא להצטרף לגל של :00.
+    - cron: "23 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Drop the override and recompute the tree
+        id: probe
+        run: |
+          set -euo pipefail
+          # יציאה מוקדמת אם השורה כבר לא קיימת — מישהו הקדים אותנו.
+          if ! node -e "process.exit(require('./package.json').overrides?.undici ? 0 : 1)"; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "ה-override כבר לא קיים. אין מה לבדוק."
+            exit 0
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            delete p.overrides.undici;
+            if (Object.keys(p.overrides).length === 0) delete p.overrides;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+
+          # `--package-lock-only` מחשב את העץ בלי להוריד חבילות: הרבה יותר מהיר,
+          # וזה כל מה שצריך כדי לשאול איזו גרסת undici הייתה נבחרת.
+          npm install --package-lock-only --silent
+
+          # `npm audit` מחזיר קוד יציאה שאינו 0 כשיש ממצאים, ולכן `|| true`:
+          # הממצאים הם הנתון כאן, לא כישלון של הצעד.
+          npm audit --json > audit.json || true
+
+          if node -e "
+            const a = JSON.parse(require('fs').readFileSync('audit.json', 'utf8'));
+            process.exit(a.vulnerabilities?.undici ? 1 : 0);
+          "; then
+            echo "clear=true" >> "$GITHUB_OUTPUT"
+            echo "undici נקי בלי ה-override — אפשר להסיר."
+          else
+            echo "clear=false" >> "$GITHUB_OUTPUT"
+            node -e "
+              const a = JSON.parse(require('fs').readFileSync('audit.json', 'utf8'));
+              console.log('undici עדיין פגיע בטווח: ' + a.vulnerabilities.undici.range);
+            "
+          fi
+
+      - name: Open an issue when it can go
+        if: steps.probe.outputs.present == 'true' && steps.probe.outputs.clear == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TITLE="אפשר להסיר את ה-override על undici"
+          # לא לפתוח את אותו issue כל חודש מחדש.
+          if [ -n "$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[].number')" ]; then
+            echo "כבר פתוח. לא פותחים שוב."
+            exit 0
+          fi
+          gh issue create --title "$TITLE" --body "$(cat <<'BODY'
+`wrangler`/`miniflare` כבר מושכים גרסת `undici` מתוקנת, ולכן ה-override
+ב-`package.json` כבר לא עושה כלום — והוא מסוכן להשאיר.
+
+**מה למחוק:**
+
+```json
+"overrides": {
+  "undici": "^7.29.0"
+}
+```
+
+ואז `npm install` ו-`npm audit`, כדי לוודא ש-`undici` באמת לא חוזר.
+
+**למה זה לא סתם ניקיון.** `overrides` כופה גרסה על כל עץ התלויות, בלי קשר
+למה שהחבילות מעליו מבקשות. כל עוד הוא שם, המעבר של `miniflare` ל-undici
+מהדור הבא ייחסם בשקט — והשורה נראית תמימה, כלומר אף אחד לא יחשוד בה.
+
+הרקע המלא בשורת O4 ב-`docs/SITE_AUDIT_2026-08.md`.
+
+---
+נפתח אוטומטית ע"י `.github/workflows/undici-override-check.yml`.
+BODY
+)"
