@@ -1,0 +1,32 @@
+# Aperta — גרפיקות לרשתות חברתיות
+
+שבעה קבצים מוכנים להעלאה, בנויים מאותה גאומטריה של הסימן והמילולוגו שמשמשת
+את האתר (`src/components/site/BrandMark.tsx`, `Wordmark.tsx`) ומתצלומי המוצר
+ב-`public/`. ראו `../README.md` למערכת המותג המלאה (צבעים, גופנים, יחסי נעילה).
+
+| קובץ | מידות | שימוש |
+| --- | --- | --- |
+| `profile-picture.png` | 1000×1000 | תמונת פרופיל — Instagram, Facebook, X, LinkedIn, TikTok. הפלטפורמות חותכות לעיגול בעצמן. |
+| `cover-facebook.jpg` | 820×312 | תמונת נושא בפייסבוק |
+| `cover-x-twitter.jpg` | 1500×500 | תמונת הדר ב-X (Twitter) |
+| `post-brand-intro.jpg` | 1080×1080 | פוסט פתיחה — טבעת + טאגליין + תקציר |
+| `post-product-bracelet.jpg` | 1080×1080 | פוסט מוצר — צמיד פתוח, שם ומחיר |
+| `post-how-it-works.png` | 1080×1080 | פוסט תהליך — ארבעת השלבים |
+| `story-cta.jpg` | 1080×1920 | סטורי (Instagram/Facebook) — קריאה לפעולה |
+
+פורמט: PNG לגרפיקה שטוחה (הסימן, פוסט התהליך), JPG איכות 90 לתצלומים —
+כדי שהקבצים יישארו קלים בלי אובדן איכות נראה לעין.
+
+## בנייה מחדש
+
+```
+python3 docs/brand/social/build-social-assets.py
+```
+
+דורש Chromium מקומי (בדיפולט מחפש בנתיב הידוע של Playwright, `CHROME_BIN`,
+או `--chrome <path>`) וגישת רשת ל-`fonts.googleapis.com` לאותם גופנים
+שהאתר טוען (Archivo + Assistant). השינוי היחיד שהסקריפט עושה הוא דריסת
+קובצי ה-PNG/JPG בתיקייה הזו — הוא לא נוגע ב-`public/` או בקוד האתר.
+
+לשינוי טקסט, מידות או פריסה — כל נכס בנוי מפונקציית HTML קטנה בתוך
+`build-social-assets.py`; אין קבצי עיצוב חיצוניים.
