@@ -50,6 +50,9 @@ export async function sendMail(input: {
   to: string;
   subject: string;
   text: string;
+  /** גרסת HTML מעוצבת, כשיש. `text` תמיד נשלח לצידה — לקוח מייל שלא מציג HTML
+   *  (או משתמשת שכיבתה את זה) מקבלת עדיין הודעה קריאה. */
+  html?: string;
   replyTo?: string;
 }): Promise<MailResult> {
   const key = apiKey();
@@ -64,6 +67,7 @@ export async function sendMail(input: {
         to: [input.to],
         subject: input.subject,
         text: input.text,
+        ...(input.html ? { html: input.html } : {}),
         ...(input.replyTo ? { reply_to: input.replyTo } : {}),
       }),
     });

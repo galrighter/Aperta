@@ -106,7 +106,7 @@ async function notify(q: InquiryMail): Promise<void> {
 
   if (q.kind !== "order") return;
   const ack = orderAckMail(q);
-  const ackRes = await sendMail({ to: q.email, subject: ack.subject, text: ack.text });
+  const ackRes = await sendMail({ to: q.email, subject: ack.subject, text: ack.text, html: ack.html });
   if (!ackRes.ok) console.error("order acknowledgement failed:", ackRes.error);
 }
 

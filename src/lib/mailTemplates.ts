@@ -1,6 +1,7 @@
 import { he } from "@/i18n/he";
 import { SITE } from "./site.config";
-import { orderSummaryText } from "./orderSummary";
+import { orderSummaryText, orderSummaryHtml } from "./orderSummary";
+import { mailShell, paragraph, refLine, button, note, textBlockHtml } from "./mailLayout";
 import type { OrderRow, OrderStatus } from "./db/orders";
 
 const m = he.mail;
@@ -51,7 +52,7 @@ export function notifyMail(q: InquiryMail): { subject: string; text: string } {
  * צריכה לאמת הוא שמה שקיבלנו זה מה שהיא ביקשה, ושתי גרסאות של אותו סיכום הן
  * שתי הזדמנויות להיבדל.
  */
-export function orderAckMail(q: InquiryMail): { subject: string; text: string } {
+export function orderAckMail(q: InquiryMail): { subject: string; text: string; html: string } {
   const ref = q.orderRef ? ` ${q.orderRef}` : "";
   const subject = `${he.site.brand} — ${m.orderAckSubject}${ref}`;
 
@@ -72,7 +73,17 @@ export function orderAckMail(q: InquiryMail): { subject: string; text: string } 
     .filter((line): line is string => line !== null)
     .join("\n");
 
-  return { subject, text };
+  const html = mailShell(
+    [
+      paragraph(`${m.orderAckHello} ${q.name},`),
+      paragraph(m.orderAckIntro),
+      q.orderRef ? refLine(m.orderAckRef, q.orderRef) : "",
+      textBlockHtml(q.message),
+      paragraph(m.orderAckNext),
+    ].join(""),
+  );
+
+  return { subject, text, html };
 }
 
 /**
@@ -91,7 +102,7 @@ export function designReadyMail(input: {
   code: string | null;
   /** הקישור שפותח בדיוק את העיצוב הזה. */
   url: string;
-}): { subject: string; text: string } {
+}): { subject: string; text: string; html: string } {
   const ref = input.code ? ` ${input.code}` : "";
   const subject = `${he.site.brand} — ${m.readySubject}${ref}`;
 
@@ -111,7 +122,19 @@ export function designReadyMail(input: {
     .filter((line): line is string => line !== null)
     .join("\n");
 
-  return { subject, text };
+  const html = mailShell(
+    [
+      paragraph(`${m.readyHello} ${input.name},`),
+      paragraph(m.readyIntro),
+      input.code ? refLine(m.readyRef, input.code) : "",
+      // `m.readyCta` נושא נקודתיים בשביל הטקסט הרגיל ("... : https://...") —
+      // על כפתור זה נראה כמו שגיאת ניסוח, ולכן מוסר כאן בלבד.
+      button(m.readyCta.replace(/[:\s]+$/, ""), input.url),
+      note(m.readyNote),
+    ].join(""),
+  );
+
+  return { subject, text, html };
 }
 
 /**
@@ -178,7 +201,7 @@ export function orderNotifyMail(o: OrderRow): { subject: string; text: string } 
 }
 
 /** האישור ללקוחה. אותו סיכום בדיוק — שתי גרסאות הן שתי הזדמנויות להיבדל. */
-export function orderCustomerAckMail(o: OrderRow): { subject: string; text: string } {
+export function orderCustomerAckMail(o: OrderRow): { subject: string; text: string; html: string } {
   const ref = o.ref ? ` ${o.ref}` : "";
   const subject = `${he.site.brand} — ${m.orderAckSubject}${ref}`;
 
@@ -199,7 +222,17 @@ export function orderCustomerAckMail(o: OrderRow): { subject: string; text: stri
     .filter((line): line is string => line !== null)
     .join("\n");
 
-  return { subject, text };
+  const html = mailShell(
+    [
+      paragraph(`${m.orderAckHello} ${o.name},`),
+      paragraph(m.orderAckIntro),
+      o.ref ? refLine(m.orderAckRef, o.ref) : "",
+      orderSummaryHtml(o),
+      paragraph(m.orderAckNext),
+    ].join(""),
+  );
+
+  return { subject, text, html };
 }
 
 /**
@@ -221,7 +254,7 @@ export function orderCustomerAckMail(o: OrderRow): { subject: string; text: stri
 export function orderStatusMail(
   o: OrderRow,
   status: OrderStatus,
-): { subject: string; text: string } | null {
+): { subject: string; text: string; html: string } | null {
   const copy: Partial<Record<OrderStatus, { subject: string; body: string }>> = {
     approved: { subject: m.statusSubjectApproved, body: m.statusBodyApproved },
     in_production: { subject: m.statusSubjectProduction, body: m.statusBodyProduction },
@@ -246,5 +279,12 @@ export function orderStatusMail(
     ]
       .filter((line): line is string => line !== null)
       .join("\n"),
+    html: mailShell(
+      [
+        paragraph(`${m.orderAckHello} ${o.name},`),
+        paragraph(c.body),
+        o.ref ? refLine(m.orderAckRef, o.ref) : "",
+      ].join(""),
+    ),
   };
 }

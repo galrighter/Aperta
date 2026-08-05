@@ -85,7 +85,7 @@ async function notifyCustomer(order: OrderRow): Promise<{ sent: boolean; error: 
     console.error("order status mail skipped: no mail provider configured");
     return { sent: false, error: "mail_not_configured" };
   }
-  const res = await sendMail({ to: order.email, subject: mail.subject, text: mail.text });
+  const res = await sendMail({ to: order.email, subject: mail.subject, text: mail.text, html: mail.html });
   if (!res.ok) console.error("order status mail failed:", res.error);
   return { sent: res.ok, error: res.ok ? null : res.error };
 }
