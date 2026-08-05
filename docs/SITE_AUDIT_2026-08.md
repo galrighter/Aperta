@@ -18,7 +18,7 @@
 >
 > | # | נושא | חומרה | הערה |
 > |---|------|-------|------|
-> | O4 | `npm audit` — 8 פגיעויות | 🟢 נמוך | 4 high + 4 moderate, אף אחת בקוד שאנחנו כתבנו. **נמדד מחדש 4.8 (ראו *נבדק ולא מוזג* למטה) — התיאור הקודם כאן היה שגוי בשתי נקודות:** `npm audit fix` אינו סוגר את `undici`, ו-`next@16` עובר. |
+> | O4 | `npm audit` — **4 פגיעויות** (היו 8) | 🟢 נמוך | אף אחת בקוד שאנחנו כתבנו. ארבע ה-high של `undici` נסגרו ב-`overrides: { "undici": "^7.29.0" }` — **אל תסירו את השורה הזו** בלי לבדוק ש-`wrangler`/`miniflare` כבר מושכים `undici` מתוקן; `npm audit fix` אינו סוגר אותן (ראו *נבדק ולא מוזג*). הארבע שנשארו — `next`+`postcss`+`sharp` (דורשות `next@16`) ו-`fast-xml-parser` (על `XMLBuilder`, שאנחנו לא משתמשים בו) |
 >
 > ### נבדק ולא מוזג — `next@16` (4.8)
 >
@@ -28,7 +28,7 @@
 > | מה נבדק | התוצאה |
 > |---|---|
 > | `npm audit fix` על `undici` | **לא סוגר כלום.** `wrangler@4.118.0` הוא כבר האחרון, והוא מושך `miniflare@5.…-alpha` → `undici@7.28.0`; טווח ההתראה הוא `7.0.0 - 7.28.0`. אין גרסה למעלה שאפשר לעלות אליה — התיקון חסום על Cloudflare |
-> | `overrides: { undici: "^7.29.0" }` | **סוגר 4 מתוך 8** (כל ה-high של `undici`), ו-typecheck + 601 טסטים + `next build` נשארו ירוקים. שינוי של שורה אחת ב-package.json |
+> | `overrides: { undici: "^7.29.0" }` | **סוגר 4 מתוך 8** (כל ה-high של `undici`), ו-typecheck + הטסטים + `next build` נשארו ירוקים. **הוחל** — זה מה שמוריד את O4 מ-8 ל-4 |
 > | `next@16.3.0` + `eslint-config-next@16` | typecheck נקי, 601 טסטים עוברים, `next build` עובר, **ו-`cf:build` של OpenNext מייצר Worker בהצלחה** — כלומר מסלול הפריסה עצמו לא נשבר |
 > | `npm run lint` תחת 16 | **נשבר.** `FlatCompat` מתפוצץ (`Converting circular structure to JSON`) כי `eslint-config-next@16` כבר פלאט. המיגרציה היא 4 שורות ב-`eslint.config.mjs` (ייבוא `eslint-config-next/core-web-vitals` ו-`/typescript` ישירות) — ואחריה צצים **20 שגיאות + 3 אזהרות** מכללי React Compiler החדשים: 17 `set-state-in-effect`, 3 `refs`, 3 `no-location-assign-relative-destination`, 1 `exhaustive-deps` |
 > | `middleware.ts` | **הוצא משימוש** ב-16 לטובת `proxy.ts` (יש codemod). עדיין עובד. נוגע בקוד שמפנה `www` ל-apex ב-308, כלומר במקור היחיד — לא דבר לשנות באותה נשימה עם שדרוג major |
@@ -668,7 +668,7 @@ OpenNext, ולהסיר את כל ה-`|| 'rmjewel...'` defaults מה-workflows (�
 המעבר לדומיין כבר בוצע (ראו את הבלוק בראש המסמך), כך שאין כאן תלות בלוח זמנים.
 
 סדר מומלץ כשיתפנה זמן: **O5** (היחיד עם השלכת נכונות על גאומטריה שנחתכת) →
-**O6** (מה שהלקוחה רואה) → **O4** (`undici` לבדו נסגר ב-`npm audit fix`; השאר
+**O6** (מה שהלקוחה רואה) → **O4** (`undici` נסגר ב-`overrides` — לא ב-`npm audit fix`; השאר
 ממתין לשדרוג `next` ממילא) → **O7** (הערה).
 
 מה ש**לא** ברשימה, ולא במקרה: ה-windowing של `restoreBridges` (O2) — נמדד,
