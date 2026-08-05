@@ -1,6 +1,5 @@
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { FlatCompat } from "@eslint/eslintrc";
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
 // עד כאן `npm run lint` לא רץ בכלל: לא היה קובץ קונפיג, והפקודה נעצרה על שאלה
 // אינטראקטיבית. כלומר אף כלל לא נאכף, גם לא ב-CI, ו-`eslint-disable` שפזורים
@@ -10,21 +9,15 @@ import { FlatCompat } from "@eslint/eslintrc";
 // סגנון: מה שיש כאן לתפוס הוא באגים — תלות חסרה ב-hook, `<img>` במקום
 // `next/image`, entity לא מוברח — ולא ויכוח על נקודה-פסיק. הפורמט ממילא אחיד.
 //
-// **למה `eslint-plugin-react-hooks@7` יושב ב-devDependencies בלי שאיש מייבא
-// אותו כאן.** הוא לא מיותר, והוא לא ייבוא שנשכח: `FlatCompat` פותר שמות
-// תוספים מתיקיית השורש, ולכן ה-`react-hooks` ש-`next/core-web-vitals` מבקש
-// נפתר לגרסה שבשורש — ו-v7 מביאה איתה את כללי ה-React Compiler
-// (`set-state-in-effect`, `refs`) בתוך `recommended`.
+// **הייבוא ישיר ולא דרך `FlatCompat`.** `eslint-config-next@16` הוא כבר flat
+// config, ו-`FlatCompat` נועד לעטוף קונפיגים בפורמט הישן — הזנת קונפיג פלאט
+// לתוכו מתפוצצת ב-`Converting circular structure to JSON`. זה היה הדבר היחיד
+// ששבר את `npm run lint` בשדרוג ל-16.
 //
-// זה החוב של `next@16` ששולם מראש. הכללים האלה מגיעים ממילא עם
-// `eslint-config-next@16`, ובלעדיהם השדרוג נוחת בבת אחת עם major, עם עשרים
-// שגיאות בקוד קיים, ועם `middleware`→`proxy` שנוגע בהפניית www ל-apex. כאן הם
-// נאכפים על `next@15`, כך שלשדרוג עצמו נשארת רק החלפת הגרסה.
-//
-// והם שווים את זה גם אם `next@16` לעולם לא יקרה — אלה כללי **נכונות**, לא
-// סגנון: שניהם מתארים כתיבה בשלב שבו React לא מבטיח שתיראה.
-//
-// הורדת הגרסה בשורש מכבה אותם בשקט, בלי ששורה כאן תשתנה.
+// כללי ה-React Compiler (`set-state-in-effect`, `refs`) מגיעים עכשיו מכאן,
+// מ-`eslint-config-next` עצמו. `eslint-plugin-react-hooks@7` נשאר ב-
+// devDependencies כתלות ישירה מוצהרת: הוא זה שמספק את הכללים בפועל, והוא היה
+// מותקן ממילא כדי לאכוף אותם על `next@15` לפני השדרוג.
 //
 // ---------------------------------------------------------------------------
 // **מדיניות ה-`eslint-disable` על `set-state-in-effect`, ולמה יש כאלה בכלל.**
@@ -44,8 +37,6 @@ import { FlatCompat } from "@eslint/eslintrc";
 // שלו — כדי שהכלל יישאר דלוק על קוד חדש במקום להיכבות גורף על תיקייה.
 // ---------------------------------------------------------------------------
 
-const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
-
 export default [
   {
     ignores: [
@@ -61,7 +52,8 @@ export default [
       "src/lib/text/fontData.ts",
     ],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
     rules: {
       // משתנה שנזרק בכוונה מ-destructuring מסומן בקידומת קו תחתון. הכלל בלעדיו
