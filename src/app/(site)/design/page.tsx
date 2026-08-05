@@ -415,12 +415,18 @@ export default function DesignPage() {
         clearPendingJob();
         jobRef.current = null;
       }
+      // כשל שאינו תשובת שרת הוא חריגה בקוד הלקוחה, וההודעה שלה נכתבה למפתחים:
+      // "TypeError: Cannot read properties of undefined" על המסך לא אומר ללקוחה
+      // כלום, ויכול לגרור שם קובץ או פנימיות שאין להן מה לעשות שם. מה שנשאר
+      // בשורה הטכנית הוא **סוג** החריגה בלבד — מספיק כדי להבדיל בצילום מסך בין
+      // TypeError לבין תפוגה, בלי לדלוף את הנוסח. המלא הולך לקונסולה, שם מקומו.
+      if (!apiErr) console.error("generation failed:", e);
       setState((prev) => ({
         ...prev,
         procError: apiErr?.message ?? he.errGeneric,
         procErrorDetail: apiErr
           ? `${apiErr.code} · ${apiErr.status}`
-          : ((e as Error)?.message?.slice(0, 80) ?? null),
+          : `client · ${(e as Error)?.name || "Error"}`,
         procErrorCode: apiErr?.code ?? null,
       }));
     }

@@ -212,14 +212,37 @@ function pathToPolygons(d: string, index: number): MultiPolygon {
   for (let i = 1; i < areas.length; i++) if (Math.abs(areas[i]) > Math.abs(areas[maxIdx])) maxIdx = i;
   const dominantSign = Math.sign(areas[maxIdx]) || 1;
   const solids: Ring[] = [];
-  const holes: Ring[] = [];
+  const reversed: Ring[] = [];
   for (let i = 0; i < rings.length; i++) {
     if (Math.abs(areas[i]) < 1e-6) continue;
     if (Math.sign(areas[i]) === dominantSign) solids.push(rings[i]);
-    else holes.push(rings[i]);
+    else reversed.push(rings[i]);
   }
   if (solids.length === 0) throw new ContractViolation(`Cutout #${index + 1}: path encloses no area`);
-  const solidMp: MultiPolygon = union(...solids.map((r) => [[r]] as MultiPolygon));
+  let solidMp: MultiPolygon = union(...solids.map((r) => [[r]] as MultiPolygon));
+  if (reversed.length === 0) return solidMp;
+
+  // כיוון ליפוף הפוך אינו מספיק כדי להכריז על חור. חור הוא טבעת שיושבת **בתוך**
+  // חומר; טבעת הפוכה שאינה בתוך שום חומר היא צורה נפרדת — שתי צורות מנוגדות
+  // כיוון בנתיב אחד הן SVG חוקי לגמרי. עד כאן היא סווגה כחור, ו-`difference`
+  // מול חומר זר לה פשוט לא עשה כלום: הצורה נעלמה בשקט מהגאומטריה שנחתכת.
+  //
+  // ההכרעה בשטח ולא בנקודה: מרכז המסה של טבעת קעורה יכול ליפול מחוצה לה, ואילו
+  // חיתוך מול החומר עונה על "כמה ממני יושב בתוכו". חור אמיתי מכוסה כולו (יחס
+  // ~1) וצורה נפרדת אינה מכוסה כלל (0), כך שהחצי הוא סף רחב ולא כיול עדין.
+  //
+  // הצינור החי לא מגיע לכאן — `core/svg_builder.py` מפעיל `orient` מפורש ופולט
+  // מעטפת+חורים בכיוונים חד-משמעיים. זה מסלול הייבוא: SVG שלא אנחנו ייצרנו.
+  const holes: Ring[] = [];
+  const separate: Ring[] = [];
+  for (const ring of reversed) {
+    const own = Math.abs(ringArea(ring));
+    const covered = multiPolygonArea(intersection(solidMp, [[ring]] as MultiPolygon));
+    (covered >= own * 0.5 ? holes : separate).push(ring);
+  }
+  if (separate.length > 0) {
+    solidMp = union(solidMp, ...separate.map((r) => [[r]] as MultiPolygon));
+  }
   if (holes.length === 0) return solidMp;
   const holeMp: MultiPolygon = union(...holes.map((r) => [[r]] as MultiPolygon));
   return difference(solidMp, holeMp);

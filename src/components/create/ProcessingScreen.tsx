@@ -29,11 +29,21 @@ function shuffled<T>(items: readonly T[]): T[] {
  * `bad_size` — המידה נדחתה, והמקום לתקן אותה הוא מסך המידות.
  * `text_too_long` — הכיתוב לא נכנס לפריט, וזה נכון גם בהרצה הבאה.
  * `rate_limited` — המכסה היומית; מחר, לא עכשיו.
+ * `quota_exhausted` — התקציב אצל ספק התמונות נגמר. זה כשל **אצלנו**, שאף
+ * לחיצה של הלקוחה לא מקרבת את פתרונו: ההודעה עצמה אומרת "נסו שוב מאוחר
+ * יותר", ועד עכשיו היא הוצגה ליד כפתור "נסה שוב" שהזמין בדיוק את ההפך —
+ * לנסות עכשיו, לתוך אותו קיר, שוב ושוב.
  *
  * מה שאינו כאן הוא ברירת המחדל: כשל רנדר, ניתוק, דחיית ווקטורייזר — כולם
  * מקריים, ושם ניסיון חוזר הוא בדיוק הפעולה הנכונה.
  */
-const RETRY_POINTLESS = new Set(["content_blocked", "bad_size", "text_too_long", "rate_limited"]);
+const RETRY_POINTLESS = new Set([
+  "content_blocked",
+  "bad_size",
+  "text_too_long",
+  "rate_limited",
+  "quota_exhausted",
+]);
 
 export function ProcessingScreen({
   error, detail, code, onRetry, onBack,
