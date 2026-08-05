@@ -11,10 +11,11 @@
 //    ספינר.
 // 2. **אין כלי עריכה.** `FlatDrawing` נושא סימון אזורים וסימוני ולידציה; כאן
 //    מוצג `RolledPreview`, אותה פריסה בגוון הפליז ובלי מה שאין בו צורך.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
 import { he } from "@/i18n/he";
 import { RolledPreview } from "@/components/create/Artwork";
+import { useCoarsePointer } from "@/lib/client/useCoarsePointer";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 const t = he.share;
@@ -44,7 +45,7 @@ export default function SharedPiece(p: SharedPieceProps) {
    * הראשונה נשארת מיידית וההחלפה קורית מתחת ליד.
    */
   const [rolled, setRolled] = useState(true);
-  const [coarse, setCoarse] = useState(false);
+  const coarse = useCoarsePointer();
   /** הדפדפן לא נתן WebGL (קורה בכרום באנדרואיד בלי האצת חומרה). נופלים
    *  לפריסה במקום להשאיר מלבן ריק במקום התכשיט. */
   const [no3d, setNo3d] = useState(false);
@@ -52,10 +53,6 @@ export default function SharedPiece(p: SharedPieceProps) {
   /** הקנבס צייר פריים. עד אז הפריסה מכסה אותו — ראו ההערה על `rolled`. */
   const [live3d, setLive3d] = useState(false);
   const on3dReady = useCallback(() => setLive3d(true), []);
-
-  useEffect(() => {
-    setCoarse(window.matchMedia("(pointer: coarse)").matches);
-  }, []);
 
   const showRolled = rolled && has3d && !no3d;
 

@@ -56,14 +56,21 @@ export function AccountGate({
 
   // הטופס נפתח נקי בכל פעם. הרכיב נשאר מותקן כשהוא סגור, ובלי האיפוס הזה
   // "לא אתם?" היה מציג לחבר הבא את המייל של מי שהיה לפניו.
-  useEffect(() => {
-    if (!open) return;
-    setStep("choose");
-    setEmail("");
-    setCode("");
-    setError(null);
-    setBusy(false);
-  }, [open]);
+  //
+  // בגוף הרנדר ולא באפקט — שינוי prop והתאמת state אליו, התבנית של React.
+  // האפקט היה מאפס **אחרי** הצביעה, כלומר המייל הקודם הופיע לפריים אחד בכל
+  // פתיחה. זה בדיוק המידע שהאיפוס הזה נועד להסתיר.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setStep("choose");
+      setEmail("");
+      setCode("");
+      setError(null);
+      setBusy(false);
+    }
+  }
 
   // המיקוד נכנס לשדה ולא לכפתור הראשון: זה מה שמבקשים מהמשתמשת למלא.
   // רץ **אחרי** useDialog (סדר ה-hooks), ולכן גובר על המיקוד הכללי שלו.

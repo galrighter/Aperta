@@ -43,6 +43,7 @@
     "esbuild": "^0.25.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.22",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",

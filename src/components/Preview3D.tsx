@@ -64,11 +64,21 @@ export function Rolled3D({
    * ולכן כישלון שלה חייב להיות נפילה חיננית לתצוגה השטוחה ולא מסך לבן.
    */
   const [unavailable, setUnavailable] = useState(false);
-  /** ברפ כדי שהאפקט יישאר חד-פעמי גם כשהקורא מעביר פונקציה חדשה בכל רנדר. */
+  /**
+   * ברפ כדי שהאפקט יישאר חד-פעמי גם כשהקורא מעביר פונקציה חדשה בכל רנדר —
+   * הקמת הסצנה היא בנייה של WebGL context, ובנייה מחדש שלה בכל רנדר מבזבזת
+   * את מה שכל הרכיב הזה נועד לחסוך.
+   *
+   * העדכון באפקט ולא בגוף הרנדר: כתיבה ל-ref במהלך רנדר נעשית בשלב שבו React
+   * לא מבטיח שהיא תישמר. אפקט בלי מערך תלויות רץ אחרי כל commit — אותה תדירות,
+   * רק ממה שבאמת נצבע. שני ה-callbacks נקראים מתוך אפקטים שרצים אחרי ה-commit.
+   */
   const unavailableCb = useRef(onUnavailable);
-  unavailableCb.current = onUnavailable;
   const readyCb = useRef(onReady);
-  readyCb.current = onReady;
+  useEffect(() => {
+    unavailableCb.current = onUnavailable;
+    readyCb.current = onReady;
+  });
 
   const giveUp = useCallback(() => {
     setUnavailable(true);
@@ -93,6 +103,7 @@ export function Rolled3D({
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- כשל בבניית WebGL מתגלה רק בניסיון, והניסיון חייב לרוץ באפקט. הנפילה החיננית לתצוגה השטוחה היא state — אין דרך לדעת מראש.
       giveUp();
       return;
     }
@@ -286,6 +297,7 @@ export function Rolled3D({
     try {
       geo = buildBentGeometry(material, L, W, gap, t, k);
     } catch {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- כשל בבניית הגאומטריה, אותו נימוק: מתגלה רק בבנייה, והחלופה היא נפילה חיננית ולא מסך ריק.
       giveUp();
       return;
     }
