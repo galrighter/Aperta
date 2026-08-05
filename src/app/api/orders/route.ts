@@ -146,7 +146,7 @@ async function notify(order: OrderRow): Promise<void> {
   if (!res.ok) console.error("order notification failed:", res.error);
 
   const ack = orderCustomerAckMail(order);
-  const ackRes = await sendMail({ to: order.email, subject: ack.subject, text: ack.text });
+  const ackRes = await sendMail({ to: order.email, subject: ack.subject, text: ack.text, html: ack.html });
   if (!ackRes.ok) console.error("order acknowledgement failed:", ackRes.error);
 }
 

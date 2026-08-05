@@ -32,7 +32,7 @@ export async function notifyDesignReady(design: DesignRow, isFirstVersion: boole
       code: designCode(design.serial),
       url: `${SITE.url}/design?resume=${design.id}`,
     });
-    const res = await sendMail({ to: owner.email, subject: mail.subject, text: mail.text });
+    const res = await sendMail({ to: owner.email, subject: mail.subject, text: mail.text, html: mail.html });
     if (!res.ok) console.error("design-ready mail failed:", res.error);
   } catch (e) {
     console.error("design-ready mail failed:", (e as Error).message);
