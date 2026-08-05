@@ -4,11 +4,12 @@
 // שהסטודיו מציג, מוזנת מהגאומטריה של הגרסה הפעילה.
 // אם אין גאומטריה (גרסה שחזרה בלי material) נופלים לתצוגה השטוחה עם גרדיאנט
 // של הפליז, כדי שלעולם לא יוצג מסך ריק במקום המוצר.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import dynamic from "next/dynamic";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { RolledPreview } from "./Artwork";
+import { useCoarsePointer } from "@/lib/client/useCoarsePointer";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 const d = he.design;
@@ -40,7 +41,7 @@ export function RolledStage({
    * Preview3D), שמשאיר את הגלילה האנכית לדפדפן ואת הגרירה הצידה לסיבוב.
    * הרמז מתחלף לפי סוג המצביע — במגע ובעכבר לא עושים את אותה תנועה.
    */
-  const [coarse, setCoarse] = useState(false);
+  const coarse = useCoarsePointer();
   /**
    * הדפדפן לא נתן WebGL. קורה בכרום באנדרואיד עם הרבה לשוניות פתוחות, ובלי
    * האצת חומרה — ועד שההדמיה למדה ליפול חיננית זה הפיל את העמוד כולו. אותה
@@ -48,10 +49,6 @@ export function RolledStage({
    */
   const [no3d, setNo3d] = useState(false);
   const on3dUnavailable = useCallback(() => setNo3d(true), []);
-
-  useEffect(() => {
-    setCoarse(window.matchMedia("(pointer: coarse)").matches);
-  }, []);
 
   if (no3d || !material || material.length === 0) {
     return <RolledPreview cutouts={cutouts} lengthMm={lengthMm} widthMm={widthMm} />;

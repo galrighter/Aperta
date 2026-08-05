@@ -46,13 +46,20 @@ export function ProgressBar({
 }) {
   const [progress, setProgress] = useState(START);
 
-  useEffect(() => {
-    if (!active) {
-      setProgress(START);
-      return;
-    }
-    const t0 = Date.now();
+  // האיפוס בגוף הרנדר, לא באפקט: מעבר של `active` הוא שינוי prop, וההתאמה
+  // אליו היא בדיוק התבנית ש-React מגדירה לכך. כשהוא היה באפקט, הפס נצבע פעם
+  // אחת עם ההתקדמות של ההרצה **הקודמת** ורק אחר כך התאפס — כלומר הרצה חדשה
+  // נפתחה לרגע על 90% ואז קפצה אחורה.
+  const [wasActive, setWasActive] = useState(active);
+  if (active !== wasActive) {
+    setWasActive(active);
     setProgress(START);
+  }
+
+  // רק השעון נשאר אפקט — הוא סנכרון מול מערכת חיצונית, וזה מה שאפקט נועד לו.
+  useEffect(() => {
+    if (!active) return;
+    const t0 = Date.now();
     const t = setInterval(() => {
       const elapsed = Date.now() - t0;
       setProgress(progressAt(elapsed));

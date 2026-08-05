@@ -19,7 +19,7 @@
 // שניהם הרשאת משתמש פעילה, וזו פגה כשממתינים לתשובת רשת בין הלחיצה לקריאה.
 // בלעדיו לחיצה על "שיתוף" באותם דפדפנים הייתה מייצרת לינק תקין בשרת ולא מראה
 // אותו לאיש.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { he } from "@/i18n/he";
 import { api, ClientApiError } from "@/lib/client/api";
 import { capturePreview } from "@/lib/client/previewCapture";
@@ -27,6 +27,11 @@ import { composeShareImage, type FlatSource } from "@/lib/client/shareImage";
 import { designCode } from "@/lib/designCode";
 
 const t = he.share;
+
+/** היכולת אינה משתנה לאורך חיי העמוד, ולכן אין למה להירשם. מוגדר ברמת המודול
+ *  כדי שהזהות תישאר יציבה — הרשמה חדשה בכל רנדר הייתה מבטלת את הנקודה. */
+const subscribeNever = () => () => {};
+const hasNativeShare = () => typeof navigator !== "undefined" && typeof navigator.share === "function";
 
 export function ShareButton({
   designId, versionId, serial, flat, className = "", compact,
@@ -48,13 +53,16 @@ export function ShareButton({
   const [error, setError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   /**
-   * האם יש גיליון שיתוף מערכתי. נקבע אחרי ההרכבה ולא בזמן הרנדר: `navigator`
+   * האם יש גיליון שיתוף מערכתי. נקרא אחרי ההרכבה ולא בזמן הרנדר: `navigator`
    * אינו קיים בשרת, והשוואה בין השניים הייתה מייצרת אי-התאמת hydration.
+   *
+   * `useSyncExternalStore` ולא `useState`+`useEffect`: שניהם פותרים את
+   * ה-hydration, אבל השני עושה זאת דרך רנדר שני בכל טעינה — לקבוע ערך שהיה
+   * ידוע כבר בצביעה הראשונה בדפדפן. כאן `getServerSnapshot` מחזיר `false`
+   * (בשרת אין `navigator`, ולכן גם אין גיליון שיתוף), והדפדפן קורא את האמת
+   * שלו מיד. ההרשמה ריקה כי היכולת אינה משתנה לאורך חיי העמוד.
    */
-  const [canNativeShare, setCanNativeShare] = useState(false);
-  useEffect(() => {
-    setCanNativeShare(typeof navigator !== "undefined" && typeof navigator.share === "function");
-  }, []);
+  const canNativeShare = useSyncExternalStore(subscribeNever, hasNativeShare, () => false);
 
   // הפאנל נסגר בלחיצה בחוץ וב-Escape — ציפייה בסיסית מכל דבר שנפתח מעל התוכן.
   useEffect(() => {

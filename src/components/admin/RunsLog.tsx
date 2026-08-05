@@ -403,6 +403,7 @@ export default function RunsLog({
 
   // שינוי סינון הוא שאילתה חדשה בשרת, ולכן טעינה מהתחלה ולא סינון של הטעון.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
     void loadLog(null);
   }, [loadLog]);
 
@@ -416,6 +417,7 @@ export default function RunsLog({
   }, [statusFilter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
     void loadCounts();
   }, [loadCounts]);
 

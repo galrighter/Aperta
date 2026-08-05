@@ -19,8 +19,20 @@ import { useEffect, useRef } from "react";
  */
 export function useDialog(open: boolean, onClose?: () => void) {
   const ref = useRef<HTMLDivElement>(null);
+  // הרפרנס קיים כדי שאפקט המיקוד לא ייבנה מחדש בכל רנדר רק מפני שהקורא מעביר
+  // `onClose` חדש — בנייה מחדש שלו פירושה שהמיקוד קופץ בחזרה לתחילת הדיאלוג.
+  //
+  // העדכון באפקט ולא בגוף הרנדר: כתיבה ל-ref במהלך רנדר היא כתיבה בשלב שבו
+  // React לא מבטיח שהיא תישמר — רנדר יכול להיזרק ולהתחיל מחדש, ואז נשמר ערך של
+  // ניסיון שלא הגיע למסך. אפקט בלי מערך תלויות רץ אחרי **כל** commit, כלומר
+  // הערך מתעדכן באותה תדירות בדיוק, אבל רק ממה שבאמת נצבע.
+  //
+  // אין כאן מרוץ: `closeRef` נקרא רק מתוך מאזין מקלדת, כלומר הרבה אחרי ה-commit
+  // הראשון.
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => {
+    closeRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!open) return;

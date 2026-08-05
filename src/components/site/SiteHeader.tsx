@@ -36,7 +36,16 @@ export default function SiteHeader() {
   }, []);
 
   // סגירה במעבר עמוד — לא להסתמך על onClick בלבד (ניווט אחורה/קדימה בדפדפן).
-  useEffect(() => setOpen(false), [pathname]);
+  //
+  // בגוף הרנדר ולא באפקט. זו התבנית ש-React מגדירה ל"התאמת state כשמשתנה
+  // prop": האפקט היה רץ **אחרי** הצביעה, כלומר התפריט היה נצבע פתוח על העמוד
+  // החדש ורק אז נסגר — הבהוב שנראה בניווט אחורה בטלפון. כאן React זורק את
+  // הרנדר ומתחיל מחדש עם `open=false` לפני שמשהו מגיע למסך.
+  const [seenPath, setSeenPath] = useState(pathname);
+  if (pathname !== seenPath) {
+    setSeenPath(pathname);
+    setOpen(false);
+  }
 
   // Escape סוגר את התפריט — ציפייה בסיסית מכל תפריט נפתח.
   useEffect(() => {
