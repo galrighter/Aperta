@@ -9,6 +9,7 @@ import {
   ORDER_STATUSES,
   type OrderRow,
 } from "@/lib/db/orders";
+import { orderedDesignInfo } from "@/lib/orders/production";
 import { sendMail, mailConfigured } from "@/lib/mail";
 import { orderStatusMail } from "@/lib/mailTemplates";
 
@@ -37,7 +38,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     requireAdmin(req);
     const { id } = await params;
-    return NextResponse.json({ order: await getOrder(id) });
+    const order = await getOrder(id);
+    const production = await orderedDesignInfo(order);
+    return NextResponse.json({ order, production });
   } catch (err) {
     return handleRouteError(err);
   }

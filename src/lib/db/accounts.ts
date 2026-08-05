@@ -185,6 +185,9 @@ export async function updateAccountDetails(
 export interface AdminDesignRow {
   id: string;
   serial: number | null;
+  /** 0018 — ראו designSampleCode(). מלאים רק כשהעיצוב הוא דוגמה שנוצרה בשכפול. */
+  root_serial: number | null;
+  sample_no: number | null;
   name: string;
   product_type: ProductType;
   length_mm: number;
@@ -220,7 +223,7 @@ export async function listDesignsForAdmin(
   const { data, error, count } = await sb
     .from("designs")
     .select(
-      "id, serial, name, product_type, length_mm, width_mm, gap_mm, created_at, updated_at, current_version_id, profiles(id, name, color, kind, email, phone)",
+      "id, serial, root_serial, sample_no, name, product_type, length_mm, width_mm, gap_mm, created_at, updated_at, current_version_id, profiles(id, name, color, kind, email, phone)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
@@ -259,6 +262,8 @@ export async function listDesignsForAdmin(
     designs: rows.map((r) => ({
       id: r.id,
       serial: r.serial,
+      root_serial: r.root_serial,
+      sample_no: r.sample_no,
       name: r.name,
       product_type: r.product_type,
       length_mm: Number(r.length_mm),

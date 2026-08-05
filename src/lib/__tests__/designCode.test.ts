@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { designCode } from "../designCode";
+import { designCode, designSampleCode, designSampleDigits } from "../designCode";
 
 describe("designCode", () => {
   it("pads to four digits", () => {
@@ -18,5 +18,30 @@ describe("designCode", () => {
     expect(designCode(undefined)).toBeNull();
     expect(designCode(0)).toBeNull();
     expect(designCode(Number.NaN)).toBeNull();
+  });
+});
+
+describe("designSampleCode", () => {
+  it("is the plain design code for a design that isn't a sample of anything", () => {
+    expect(designSampleCode({ serial: 85 })).toBe("AP-0085");
+    expect(designSampleCode({ serial: 85, root_serial: null, sample_no: null })).toBe("AP-0085");
+  });
+
+  it("is the root's serial with the sample number, not the sample's own serial (0018)", () => {
+    // הדוגמה השנייה משכפול של AP-0085 — גם אם השורה עצמה קיבלה serial=86.
+    expect(designSampleCode({ serial: 86, root_serial: 85, sample_no: 2 })).toBe("AP-0085.2");
+  });
+
+  it("falls back to the design's own serial when the sample fields are incomplete", () => {
+    // מצב שלא אמור לקרות (האילוץ במיגרציה 0018 אוכף שניהם-או-כלום), אבל
+    // נפילה בטוחה חשובה יותר מלהניח שהיא לא תקרה.
+    expect(designSampleCode({ serial: 86, root_serial: null, sample_no: 2 })).toBe("AP-0086");
+  });
+});
+
+describe("designSampleDigits", () => {
+  it("has no AP- prefix, for use in file names", () => {
+    expect(designSampleDigits({ serial: 85 })).toBe("0085");
+    expect(designSampleDigits({ serial: 86, root_serial: 85, sample_no: 2 })).toBe("0085.2");
   });
 });

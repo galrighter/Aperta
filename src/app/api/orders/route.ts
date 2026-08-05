@@ -11,7 +11,7 @@ import {
   type OrderStatus,
 } from "@/lib/db/orders";
 import { getDesign, getVersion } from "@/lib/db/designs";
-import { designCode } from "@/lib/designCode";
+import { designSampleCode } from "@/lib/designCode";
 import { priceFor } from "@/lib/pricing";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     let versionId: string | null = null;
     if (body.designId) {
       const design = await getDesign(body.designId);
-      ref = designCode(design.serial ?? null);
+      ref = designSampleCode(design);
       profileId = design.profile_id;
       // הגרסה שהוזמנה. אם לא נמסרה — הנוכחית. אם נמסרה גרסה של עיצוב אחר, היא
       // נזרקת: קובץ חיתוך של מישהו אחר הוא הטעות היקרה ביותר כאן.

@@ -9,6 +9,11 @@ export interface DesignRow {
   /** המספר הסידורי (0008) — הרפרנס האנושי (`AP-0047`). null בעיצוב שנוצר
    *  לפני המיגרציה, ו-undefined במסד שעוד לא קיבל אותה. */
   serial: number | null;
+  /** 0018 — כשהעיצוב הוא דוגמה (שכפול), שלושתם מלאים ומצביעים על עיצוב-האב:
+   *  `root_design_id` למעקב, `root_serial`+`sample_no` לתצוגה (designSampleCode). */
+  root_design_id: string | null;
+  root_serial: number | null;
+  sample_no: number | null;
   name: string;
   product_type: ProductType;
   length_mm: number;

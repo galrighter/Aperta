@@ -44,7 +44,7 @@ export async function buildVersionExport(
   // `0075-120-12` — הסידורי והמידות שהוזמנו, ולא המידות שנמדדו מהמסגרת: הרוחב
   // עשוי להיבדל מהן בשבריר שנבלע במתיחה, ושם קובץ שאומר 11.7 במקום 12 מתאר
   // פריט שאיש לא הזמין.
-  const fileBase = exportFileBase(design.serial, Number(design.length_mm), Number(design.width_mm));
+  const fileBase = exportFileBase(design, Number(design.length_mm), Number(design.width_mm));
   // הגרסה נשארת בנתיב האחסון (ולא בשם ההורדה): שני ייצואים של אותו עיצוב הם
   // שני אובייקטים, ורשומות `exports` מצביעות על שניהם.
   const storedBase = `${fileBase}_v${version.version_no}`;

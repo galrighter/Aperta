@@ -18,7 +18,7 @@ import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
 import { startJob, failJob, finishJob, setJobStage, JobConflictError } from "@/lib/db/jobs";
-import { designCode } from "@/lib/designCode";
+import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
@@ -292,7 +292,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     designId = body.designId;
     userPrompt = body.userPrompt;
     const design = await getDesign(body.designId);
-    designRef = designCode(design.serial);
+    designRef = designSampleCode(design);
 
     // תמונת השראה (אם צורפה) משמשת רפרנס למודל התמונה. סוג המדיה כבר אומת ב-POST.
     //
