@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Aperta — כרטיס תחזוקה לפליז (A6, דו-צדדי)</title>
+<!--
+  כרטיס התחזוקה שנשלח עם פריט פליז.
+
+  למה קובץ להדפסה ולא עמוד באתר: תנאי השימוש מטילים חובת תחזוקה "כמפורט
+  בכרטיס הנלווה לתכשיט ובעמוד התחזוקה באתר" (he.site.terms). האתר מכסה את
+  החצי השני; זה החצי שנכנס לקופסה. לקוחה שפותחת את הקופסה חצי שנה אחרי
+  הקנייה לא תחפש עמוד — היא תקרא את מה שמונח מול העיניים.
+
+  התוכן נגזר מ-he.site.care (סעיף הפליז + הכללים הכלליים + העדינות), ובכוונה
+  קצר ממנו: הכרטיס נושא את מה שמונע נזק, והפירוט נשאר באתר. אם משנים את
+  שגרת התחזוקה — לשנות בשני המקומות.
+
+  הדפסה:
+  · A6 (105×148 מ"מ), דו-צדדי, היפוך על הצד הארוך.
+  · לבחור "Print backgrounds / הדפסת גרפיקה ורקעים" — בלעדיה הצד הקדמי יוצא לבן.
+  · שוליים ב-0; שטח הבטיחות הוא 10 מ"מ מכל צד וכבר מובנה כאן.
+  · לדפוס מסחרי: לייצא PDF ולהוסיף בליד 3 מ"מ בקובץ הדפוס.
+  · הגופנים הם Assistant ו-Archivo (אותם גופנים של האתר). אם אינם מותקנים
+    במחשב שממנו מדפיסים, הדפדפן ייפול לגופן מערכת והכרטיס עדיין תקין.
+
+  קוד ה-QR מוטמע כנתיב SVG (segno, גרסה 3, תיקון שגיאות M, אזור שקט 4) ומצביע על
+  https://aperta-designs.com/care — בלי תלות בשירות חיצוני שיפול ביום שבו
+  מדפיסים 500 כרטיסים.
+-->
+<style>
+  :root {
+    --porcelain: #f4f1eb;
+    --porcelain-slab: #e7e1d6;
+    --graphite: #202326;
+    --ink80: #3d4145;
+    --ink60: #6a6e72;
+    --mist: #667074;
+    --lapis: #3f6297;
+    --body: "Assistant", "Heebo", system-ui, sans-serif;
+    --display: "Archivo", "Assistant", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { background: #8d8a84; }
+
+  body {
+    font-family: var(--body);
+    color: var(--graphite);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* מסך: שני הצדדים זה לצד זה, כדי לבדוק את הכרטיס בלי להדפיס. */
+  @media screen {
+    body {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      justify-content: center;
+      padding: 32px 16px 48px;
+    }
+    .card { box-shadow: 0 12px 40px rgba(0,0,0,0.28); }
+  }
+
+  @page { size: 105mm 148mm; margin: 0; }
+
+  .card {
+    position: relative;
+    width: 105mm;
+    height: 148mm;
+    padding: 10mm;
+    background: var(--porcelain);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .card + .card { page-break-before: always; }
+
+  /* ---------- צד א' ---------- */
+
+  .side-a { background: var(--graphite); color: var(--porcelain); }
+
+  .lockup { text-align: center; }
+  .lockup .mark { display: block; margin: 0 auto 3mm; }
+  .lockup .name {
+    font-family: var(--display);
+    font-size: 15pt;
+    font-weight: 600;
+    letter-spacing: 0.34em;
+    /* letter-spacing מוסיף רווח גם אחרי האות האחרונה, ובטקסט ממורכז הוא
+       מסיט את המילה שמאלה בחצי רווח. ה-margin מחזיר אותה למרכז. */
+    margin-inline-start: 0.34em;
+  }
+  .lockup .sub {
+    font-family: var(--display);
+    font-size: 6.5pt;
+    letter-spacing: 0.42em;
+    margin-inline-start: 0.42em;
+    color: #a8a29a;
+    margin-top: 1.5mm;
+  }
+
+  .side-a .eyebrow {
+    margin-top: 8mm;
+    font-family: var(--display);
+    font-size: 6.5pt;
+    letter-spacing: 0.26em;
+    color: #a8a29a;
+    text-align: center;
+  }
+
+  .side-a h1 {
+    margin-top: 2.5mm;
+    font-family: var(--display);
+    font-size: 15.5pt;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: center;
+    letter-spacing: -0.01em;
+  }
+
+  .rule {
+    width: 14mm;
+    height: 1px;
+    /* הלפיס של האתר מכויל מול porcelain; על גרפיט הוא כמעט נעלם. */
+    background: #5c7fb4;
+    margin: 4mm auto;
+  }
+
+  .side-a .lede {
+    font-size: 8.5pt;
+    line-height: 1.6;
+    color: #d9d4cb;
+    text-align: center;
+    text-wrap: pretty;
+  }
+
+  .habits { margin-top: auto; padding-top: 5mm; }
+  .habits h2 {
+    font-family: var(--display);
+    font-size: 7pt;
+    letter-spacing: 0.2em;
+    color: #a8a29a;
+    font-weight: 500;
+    margin-bottom: 2.5mm;
+  }
+  .habits ol { list-style: none; counter-reset: h; }
+  .habits li {
+    counter-increment: h;
+    display: flex;
+    gap: 3mm;
+    font-size: 8pt;
+    line-height: 1.45;
+    color: #ece8e1;
+    padding: 1.8mm 0;
+    border-top: 1px solid rgba(244,241,235,0.14);
+  }
+  .habits li::before {
+    content: counter(h, decimal-leading-zero);
+    font-family: var(--display);
+    font-size: 7pt;
+    color: var(--lapis);
+    /* הספרה על מונח כהה: הלפיס של האתר מכויל מול porcelain, וכאן הוא יושב
+       הפוך. מבהירים אותו כדי שיישאר קריא ולא ייבלע בגרפיט. */
+    filter: brightness(1.55);
+    padding-top: 0.6mm;
+    flex: none;
+  }
+
+  /* ---------- צד ב' ---------- */
+
+  .side-b h2 {
+    font-family: var(--display);
+    font-size: 12pt;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .side-b .sub {
+    margin-top: 1mm;
+    font-size: 7.5pt;
+    color: var(--mist);
+  }
+
+  .block { margin-top: 3mm; }
+  .block h3 {
+    font-family: var(--display);
+    font-size: 8pt;
+    font-weight: 600;
+    color: var(--graphite);
+  }
+  .block p {
+    margin-top: 1mm;
+    font-size: 7.8pt;
+    line-height: 1.5;
+    color: var(--ink80);
+    text-wrap: pretty;
+  }
+  .block.warn {
+    border-inline-start: 1.5pt solid var(--lapis);
+    background: var(--porcelain-slab);
+    padding: 2.5mm 3mm;
+  }
+
+  .foot {
+    margin-top: auto;
+    padding-top: 3.5mm;
+    border-top: 1px solid rgba(32,35,38,0.15);
+    display: flex;
+    align-items: center;
+    gap: 4mm;
+  }
+  /* 19 מ"מ ל-37 מודולים (29 + אזור שקט של 4 מכל צד) ≈ 0.51 מ"מ למודול —
+     מעל הסף שסורק טלפון קורא בביטחון בהדפסת לייזר. */
+  .foot .qr { width: 19mm; height: 19mm; flex: none; margin-inline-start: -2mm; }
+  .foot .txt { font-size: 7pt; line-height: 1.45; color: var(--ink60); }
+  .foot .txt strong {
+    display: block;
+    font-family: var(--display);
+    font-size: 8pt;
+    font-weight: 600;
+    color: var(--graphite);
+    margin-bottom: 0.8mm;
+  }
+  .foot .txt a { color: var(--lapis); text-decoration: none; }
+  .foot bdi { unicode-bidi: isolate; }
+</style>
+</head>
+<body>
+
+<!-- ============ צד א' — מה זה, ומה שומר עליו ============ -->
+<section class="card side-a">
+  <div class="lockup">
+    <!-- סימן הקשת הפתוחה: אותה צורה של הפריט עצמו — רצועה מעורגלת שאינה
+         נסגרת. נשען על stroke ולא על fill, כדי שיישאר נקי בהדפסה קטנה. -->
+    <svg class="mark" width="34" height="20" viewBox="0 0 34 20" fill="none" aria-hidden="true">
+      <path d="M2 18.5A15 15 0 0 1 32 18.5" stroke="#f4f1eb" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M7.5 18.5A9.5 9.5 0 0 1 26.5 18.5" stroke="#5c7fb4" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    <span class="name">APERTA</span>
+    <span class="sub">DESIGNS</span>
+  </div>
+
+  <p class="eyebrow">תחזוקה · פליז</p>
+  <h1>התכשיט שלך<br>עשוי פליז</h1>
+  <div class="rule"></div>
+  <p class="lede">
+    פליז הוא סגסוגת של נחושת ואבץ. הוא מתכהה עם הזמן לגוון חם ועמוק יותר —
+    פטינה טבעית, לא פגם. אפשר להשאיר אותה, ואפשר להחזיר את הברק בכמה דקות
+    של ניקוי. מה שאינו הפיך הוא הצורה.
+  </p>
+
+  <div class="habits">
+    <h2>ארבעה הרגלים</h2>
+    <ol>
+      <li>להוריד לפני מקלחת, ים, בריכה וספורט — כלור, מלח וסבון מאיצים כל תהליך שהמתכת עוברת ממילא.</li>
+      <li>אחרון בהתלבשות, ראשון בהסרה: בושם, דאודורנט וקרם גוף אינם צריכים לפגוש אותו.</li>
+      <li>לנגב במטלית רכה ויבשה אחרי כל לבישה — זיעה שנשארת לילה שלם היא תחילת ההשחרה.</li>
+      <li>לאחסן יבש וסגור, ולא במגע עם תכשיטים אחרים — מתכת משריטה מתכת.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ צד ב' — ניקוי, סייגים, ועדינות ============ -->
+<section class="card side-b">
+  <h2>ניקוי, ומה שלא כדאי</h2>
+  <p class="sub">שתי דקות עבודה, אחת לכמה שבועות.</p>
+
+  <div class="block">
+    <h3>ניקוי שוטף</h3>
+    <p>מים פושרים עם טיפת סבון כלים, ומברשת שיניים רכה מאוד לתוך החיתוכים. לשטוף, ולייבש עד הסוף — לחות שנשארת מזרזת חמצון.</p>
+  </div>
+
+  <div class="block">
+    <h3>להחזרת הברק</h3>
+    <p>מטלית פוליש לפליז, או משחה של מיץ לימון וסודה לשתייה במריחה עדינה, ואז שטיפה וייבוש מלא. על גשרים דקים — לחץ קל בלבד.</p>
+  </div>
+
+  <div class="block warn">
+    <h3>ממה להימנע</h3>
+    <p>מנקים על בסיס אמוניה: היא גורמת לפליז סדיקת קורוזיה במאמץ — סדק שמתפתח בתוך פריט שנראה שלם. גם אקונומיקה, ספוגית שוחקת וליטוש חזק.</p>
+  </div>
+
+  <div class="block">
+    <h3>סימן ירקרק על העור</h3>
+    <p>תגובה של הנחושת עם חומציות הזיעה. אינו מזיק, אינו פגם, ויורד במים וסבון.</p>
+  </div>
+
+  <div class="block">
+    <h3>עדינות</h3>
+    <p>צמיד פותחים ביד אחת על כל קצה, בתנועה קטנה, ומרכיבים מהצד — לא בלחיצה על המרכז, ולא שוב ושוב באותו יום: כל כיפוף מקשה את המתכת, ומתכת שהוקשתה נסדקת במקום להתכופף. טבעת מיוצרת למידה מדויקת ואינה לכוונון ביד. חשד לסדק — להסיר ולכתוב לנו.</p>
+  </div>
+
+  <div class="foot">
+    <svg class="qr" viewBox="0 0 37 37" shape-rendering="crispEdges" aria-label="קוד QR למדריך התחזוקה המלא">
+      <rect width="37" height="37" fill="#f4f1eb"/>
+      <path stroke="#202326" d="M4 4.5h7m2 0h2m1 0h1m1 0h1m1 0h1m1 0h1m3 0h7m-29 1h1m5 0h1m3 0h1m1 0h2m1 0h1m3 0h1m2 0h1m5 0h1m-29 1h1m1 0h3m1 0h1m1 0h1m3 0h1m4 0h4m1 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m2 0h1m3 0h2m1 0h1m1 0h2m2 0h1m1 0h3m1 0h1m-29 1h1m1 0h3m1 0h1m1 0h1m3 0h1m1 0h2m6 0h1m1 0h3m1 0h1m-29 1h1m5 0h1m1 0h1m3 0h1m1 0h2m1 0h4m1 0h1m5 0h1m-29 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-19 1h1m2 0h1m1 0h4m-18 1h1m2 0h1m1 0h1m1 0h3m1 0h6m1 0h3m1 0h2m1 0h1m-27 1h1m1 0h3m2 0h4m1 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h5m-28 1h2m1 0h5m11 0h2m2 0h3m1 0h1m-29 1h1m3 0h2m1 0h4m4 0h3m2 0h2m1 0h1m1 0h1m1 0h2m-29 1h1m2 0h2m1 0h3m1 0h1m3 0h1m2 0h1m5 0h1m1 0h1m2 0h1m-28 1h5m6 0h1m1 0h3m5 0h1m1 0h1m1 0h3m-29 1h1m5 0h1m2 0h1m1 0h1m1 0h5m2 0h1m3 0h1m3 0h1m-28 1h2m5 0h1m1 0h1m1 0h2m2 0h3m2 0h1m1 0h1m1 0h1m2 0h1m-28 1h1m1 0h4m2 0h2m1 0h1m2 0h1m1 0h1m1 0h3m1 0h1m3 0h1m-28 1h6m1 0h1m3 0h4m7 0h4m2 0h1m-27 1h1m2 0h2m1 0h5m1 0h5m1 0h1m2 0h3m2 0h1m-26 1h1m3 0h1m2 0h2m1 0h5m1 0h2m3 0h2m-26 1h2m1 0h2m1 0h1m2 0h3m2 0h1m2 0h1m2 0h6m1 0h2m-21 1h2m1 0h1m1 0h4m1 0h3m3 0h1m1 0h1m1 0h1m-29 1h7m2 0h4m2 0h1m3 0h2m1 0h1m1 0h1m3 0h1m-29 1h1m5 0h1m2 0h1m3 0h1m1 0h1m1 0h1m1 0h2m3 0h2m1 0h2m-29 1h1m1 0h3m1 0h1m1 0h3m1 0h2m1 0h1m1 0h1m1 0h6m2 0h1m-28 1h1m1 0h3m1 0h1m2 0h1m2 0h3m3 0h1m4 0h1m2 0h2m-28 1h1m1 0h3m1 0h1m2 0h1m1 0h3m1 0h1m1 0h1m1 0h3m3 0h4m-29 1h1m5 0h1m1 0h1m1 0h1m2 0h3m1 0h2m1 0h4m1 0h1m1 0h2m-29 1h7m3 0h2m1 0h2m2 0h2m1 0h3m1 0h2m1 0h1"/>
+    </svg>
+    <div class="txt">
+      <strong>מדריך התחזוקה המלא</strong>
+      <bdi>aperta-designs.com/care</bdi><br>
+      שאלה או תקלה: <bdi>info@aperta-designs.com</bdi>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
