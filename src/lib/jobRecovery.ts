@@ -7,7 +7,7 @@ import type { VersionRow } from "./db/designs";
  * הגרסה נכתבת בסוף `ingestCutouts`, ו-`finishJob` הוא הפעולה שמיד אחריה. בין
  * השתיים ה-isolate יכול להיהרג (`exceededResources`, ראו
  * docs/worker-memory-diagnosis.md) — ואז העיצוב שמור והשורה נשארת 'running'.
- * נמדד ב-3.8 על RM-0084: הרצה `approved`, גרסה שנשמרה, job תקוע ב-`saving`,
+ * נמדד ב-3.8 על AP-0084: הרצה `approved`, גרסה שנשמרה, job תקוע ב-`saving`,
  * והלקוחה קיבלה "היצירה נכשלה" על עיצוב שקיים.
  *
  * שתי הפונקציות כאן הן ההכרעה בלבד, בלי גישה למסד, כדי שאפשר יהיה לבדוק אותן.

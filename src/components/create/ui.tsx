@@ -7,7 +7,7 @@ import { RAIL, type Screen } from "./model";
 
 const d = he.design;
 
-export const COBALT = "#315bff";
+export const LAPIS = "#3f6297";
 export const GRAPHITE = "#202326";
 export const PORCELAIN = "#f4f1eb";
 
@@ -101,8 +101,8 @@ export function OptionBtn({
       aria-pressed={on}
       className="flex-1 rounded-[2px] p-[15px] text-center transition-colors disabled:cursor-not-allowed"
       style={{
-        border: `1.5px solid ${on ? COBALT : "rgba(32,35,38,0.2)"}`,
-        background: on ? "rgba(49,91,255,0.06)" : "#fff",
+        border: `1.5px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
+        background: on ? "rgba(63,98,151,0.06)" : "#fff",
       }}
     >
       {children}
@@ -124,8 +124,8 @@ export function Chip({
       aria-pressed={on}
       className="flex-1 rounded-[2px] p-[9px] text-center text-[13px] transition-colors disabled:cursor-not-allowed"
       style={{
-        border: `1px solid ${on ? COBALT : "rgba(32,35,38,0.2)"}`,
-        background: on ? COBALT : "#fff",
+        border: `1px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
+        background: on ? LAPIS : "#fff",
         color: on ? "#fff" : GRAPHITE,
       }}
     >
@@ -165,7 +165,7 @@ export function Slider({
         value={value}
         onChange={(e) => onChange(+e.target.value)}
         className="mb-1 w-full"
-        style={{ accentColor: COBALT }}
+        style={{ accentColor: LAPIS }}
         aria-label={label}
       />
       <div className="flex justify-between font-mono text-[11px] text-mist">
@@ -189,7 +189,7 @@ export function TextInput({
     <label className="block">
       <span className="mb-2 block text-[13px] font-semibold text-ink60">
         {label}
-        {required && <span className="text-cobalt"> *</span>}
+        {required && <span className="text-lapis"> *</span>}
       </span>
       <input
         type={type}
@@ -198,7 +198,7 @@ export function TextInput({
         placeholder={placeholder}
         inputMode={inputMode}
         dir={dir}
-        className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-base transition-colors focus:border-cobalt focus:outline-none"
+        className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-base transition-colors focus:border-lapis focus:outline-none"
       />
     </label>
   );
@@ -218,7 +218,7 @@ export function StepRail({
       // נעצר מתחת לכותרת ולא מאחוריה: שתיהן היו sticky top-0, וברגע שגללו
       // הסרגל נעלם מתחת לכותרת השקופה למחצה — שתי שורות במקום אחת, ואף אחת
       // מהן לא קריאה. הגובה מגיע כמשתנה שהכותרת מודדת על עצמה.
-      style={{ top: "var(--rm-header-h, 0px)" }}
+      style={{ top: "var(--ap-header-h, 0px)" }}
       className="sticky z-10 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur sm:px-10"
     >
       {RAIL.map((r, i) => {
@@ -239,8 +239,8 @@ export function StepRail({
               <span
                 className="flex h-[22px] w-[22px] items-center justify-center rounded-full font-display text-xs font-semibold"
                 style={{
-                  border: `1.5px solid ${active ? COBALT : done ? GRAPHITE : "#aab4b8"}`,
-                  background: active ? COBALT : done ? GRAPHITE : "transparent",
+                  border: `1.5px solid ${active ? LAPIS : done ? GRAPHITE : "#aab4b8"}`,
+                  background: active ? LAPIS : done ? GRAPHITE : "transparent",
                   color: active || done ? PORCELAIN : "#aab4b8",
                 }}
               >

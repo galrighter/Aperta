@@ -13,7 +13,7 @@ export default function HomePage() {
       <section className="mx-auto max-w-[1240px] px-5 pt-14 pb-12 sm:px-10 sm:pt-[84px] sm:pb-[72px]">
         <div className="grid items-center gap-12 md:grid-cols-[1.2fr_1fr] md:gap-[72px]">
           <div>
-            <div className="mb-5 font-display text-xs tracking-[0.42em] text-cobalt sm:mb-7">
+            <div className="mb-5 font-display text-xs tracking-[0.42em] text-lapis sm:mb-7">
               {s.heroEyebrow}
             </div>
             <h1
@@ -44,10 +44,10 @@ export default function HomePage() {
           </div>
 
           <div className="relative">
-            {/* מסגרת קובלט מוסטת — דקורטיבית בלבד */}
+            {/* מסגרת לאפיס מוסטת — דקורטיבית בלבד */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute -top-5 -left-5 h-full w-full border-[1.5px] border-cobalt/40"
+              className="pointer-events-none absolute -top-5 -left-5 h-full w-full border-[1.5px] border-lapis/40"
             />
             <div
               className="relative overflow-hidden border border-graphite/10"

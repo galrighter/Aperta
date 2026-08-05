@@ -36,7 +36,7 @@ export default function SiteError({
         >
           {he.retry}
         </button>
-        <Link href="/" className="text-[13px] text-cobalt underline-offset-4 hover:underline">
+        <Link href="/" className="text-[13px] text-lapis underline-offset-4 hover:underline">
           {he.errBoundaryHome}
         </Link>
       </div>

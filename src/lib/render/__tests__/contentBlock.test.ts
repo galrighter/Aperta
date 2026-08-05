@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { isContentBlock } from "../service";
 import { he } from "@/i18n/he";
 
-// RM-0077 (3.8.26): ארבע הרצות של "עיטורי מיקי מאוס" חזרו מ-OpenAI כ-400
+// AP-0077 (3.8.26): ארבע הרצות של "עיטורי מיקי מאוס" חזרו מ-OpenAI כ-400
 // `rejected by the safety system`, והלקוח קיבל בכל אחת מהן "ה-AI החזיר פלט
 // שאינו עיצוב תקין. נסו שוב" — הזמנה לחזור על דחייה דטרמיניסטית. ההודעה גם לא
 // תיארה את מה שקרה: המודל לא החזיר פלט פגום, הוא סירב.
@@ -15,7 +15,7 @@ const REAL_MESSAGE =
   'rejected by the safety system. If you believe this is an error, contact us at help.openai.com';
 
 describe("isContentBlock", () => {
-  it("מזהה את הדחייה של RM-0077", () => {
+  it("מזהה את הדחייה של AP-0077", () => {
     expect(isContentBlock(REAL_MESSAGE)).toBe(true);
   });
 

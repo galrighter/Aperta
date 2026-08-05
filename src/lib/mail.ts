@@ -37,8 +37,8 @@ export function mailConfigured(): boolean {
  */
 function from(): string {
   // הכתובת חייבת לשבת על הדומיין המאומת ב-Resend. שם התצוגה נשאר שם המותג
-  // ("RM JEWEL") — הוא אינו חלק מהחלפת הדומיין, וישתנה בנפרד אם המותג ישתנה.
-  return process.env.MAIL_FROM || `RM JEWEL <noreply@aperta-designs.com>`;
+  // ("Aperta") — הוא אינו חלק מהחלפת הדומיין, וישתנה בנפרד אם המותג ישתנה.
+  return process.env.MAIL_FROM || `Aperta <noreply@aperta-designs.com>`;
 }
 
 /** לאן נשלחות ההתראות הפנימיות. */

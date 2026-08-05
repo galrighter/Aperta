@@ -2,7 +2,7 @@
 
 // handoff §7 — סקיצה פרוסה, מפרט, דיסקליימרים, מחיר, וצ'קבוקס תנאים חוסם.
 import { he } from "@/i18n/he";
-import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, COBALT } from "./ui";
+import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, LAPIS } from "./ui";
 import {
   activeEntry, circumferenceMm, countCuts, cutoutsInner, frameLengthMm,
   frameWidthMm, mmLabel, priceOf, type CreateState,
@@ -49,7 +49,7 @@ export function SummaryScreen({
                 />
                 {cutouts && (
                   <g
-                    fill="none" stroke={COBALT}
+                    fill="none" stroke={LAPIS}
                     strokeWidth={Math.max(0.2, W / 110)} strokeLinejoin="round"
                     dangerouslySetInnerHTML={{ __html: cutouts }}
                   />
@@ -117,8 +117,8 @@ export function SummaryScreen({
               <span
                 className="mt-0.5 flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[2px] text-[13px] text-white"
                 style={{
-                  border: `1.5px solid ${s.terms ? COBALT : "rgba(32,35,38,0.3)"}`,
-                  background: s.terms ? COBALT : "#fff",
+                  border: `1.5px solid ${s.terms ? LAPIS : "rgba(32,35,38,0.3)"}`,
+                  background: s.terms ? LAPIS : "#fff",
                 }}
               >
                 {s.terms ? "✓" : ""}
@@ -135,7 +135,7 @@ export function SummaryScreen({
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   className="underline underline-offset-4"
-                  style={{ color: COBALT }}
+                  style={{ color: LAPIS }}
                 >
                   {d.termsLink}
                 </a>

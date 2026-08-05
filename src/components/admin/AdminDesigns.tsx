@@ -115,7 +115,7 @@ export default function AdminDesigns({
 
             <div className="flex flex-1 flex-col gap-2 p-4">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="font-display text-[13px] font-bold tracking-[0.14em] text-cobalt" dir="ltr">
+                <span className="font-display text-[13px] font-bold tracking-[0.14em] text-lapis" dir="ltr">
                   {designCode(r.serial) ?? "—"}
                 </span>
                 <span className="text-[12px] text-mist">

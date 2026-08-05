@@ -20,7 +20,7 @@ export const statusLabel: Record<OrderStatus, string> = {
 };
 
 export const statusColor: Record<OrderStatus, string> = {
-  sent: "bg-[#315bff]/20 text-[#204acc]",
+  sent: "bg-[#3f6297]/20 text-[#2c4a76]",
   approved: "bg-blue-100 text-blue-700",
   in_production: "bg-amber-100 text-amber-800",
   shipped: "bg-green-100 text-green-800",

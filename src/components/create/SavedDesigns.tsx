@@ -7,7 +7,7 @@
 import { useEffect, useId, useState } from "react";
 import { he } from "@/i18n/he";
 import { designCode } from "@/lib/designCode";
-import { COBALT } from "./ui";
+import { LAPIS } from "./ui";
 import type { SavedDesign } from "@/lib/client/myDesigns";
 
 const d = he.design;
@@ -41,7 +41,7 @@ export function SavedDesigns({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={listId}
-        className="flex w-full items-center gap-3 border-s-2 border-s-cobalt px-5 py-3.5 text-start transition-colors hover:bg-porcelain"
+        className="flex w-full items-center gap-3 border-s-2 border-s-lapis px-5 py-3.5 text-start transition-colors hover:bg-porcelain"
       >
         <span className="font-display text-xs tracking-[0.15em] text-graphite">
           {d.savedTitle}
@@ -49,7 +49,7 @@ export function SavedDesigns({
         <span className="text-[13px] text-ink60">
           {items.length === 1 ? d.savedCountOne : `${items.length} ${d.savedCountMany}`}
         </span>
-        <span className="ms-auto flex items-center gap-1.5 text-[13px] font-semibold text-cobalt">
+        <span className="ms-auto flex items-center gap-1.5 text-[13px] font-semibold text-lapis">
           {open ? d.savedHide : d.savedShow}
           <svg
             viewBox="0 0 12 12"
@@ -93,7 +93,7 @@ export function SavedDesigns({
                       />
                       <path
                         d={it.path} fillRule="evenodd" fill="none"
-                        stroke={COBALT} strokeWidth={Math.max(0.2, it.widthMm / 110)}
+                        stroke={LAPIS} strokeWidth={Math.max(0.2, it.widthMm / 110)}
                       />
                     </svg>
                   ) : (
@@ -123,7 +123,7 @@ export function SavedDesigns({
                         />
                         <path
                           d={r.path} fillRule="evenodd" fill="none"
-                          stroke={COBALT} strokeWidth={Math.max(0.3, it.widthMm / 70)}
+                          stroke={LAPIS} strokeWidth={Math.max(0.3, it.widthMm / 70)}
                         />
                       </svg>
                     ))}
@@ -136,7 +136,7 @@ export function SavedDesigns({
                 <div className="flex flex-1 flex-col p-3.5">
                   {/* המספר הסידורי קודם לשם: הוא מה שאומרים כשמדברים על העיצוב */}
                   {designCode(it.serial) && (
-                    <div className="mb-1 font-display text-[11px] tracking-[0.14em] text-cobalt" dir="ltr">
+                    <div className="mb-1 font-display text-[11px] tracking-[0.14em] text-lapis" dir="ltr">
                       {designCode(it.serial)}
                     </div>
                   )}
@@ -153,7 +153,7 @@ export function SavedDesigns({
                       type="button"
                       onClick={() => onResume(it)}
                       disabled={loadingId === it.id}
-                      className="text-[13px] font-semibold text-cobalt underline-offset-4 hover:underline disabled:opacity-60"
+                      className="text-[13px] font-semibold text-lapis underline-offset-4 hover:underline disabled:opacity-60"
                     >
                       {loadingId === it.id ? d.savedLoading : it.pending ? d.savedFinish : d.savedResume}
                     </button>

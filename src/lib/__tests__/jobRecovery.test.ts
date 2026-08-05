@@ -3,7 +3,7 @@ import { mayHaveFinished, resultFromVersion, isFirstVersion } from "../jobRecove
 import { JOB_STALE_MS } from "../db/jobs";
 import type { VersionRow } from "../db/designs";
 
-// ה-isolate נהרג בין שמירת הגרסה לסגירת ה-job (RM-0084, 3.8): העיצוב שמור,
+// ה-isolate נהרג בין שמירת הגרסה לסגירת ה-job (AP-0084, 3.8): העיצוב שמור,
 // השורה תקועה ב-running, והלקוחה רואה "היצירה נכשלה". מה שנבדק כאן הוא ההכרעה
 // שמאפשרת להתאושש מזה בקריאה.
 

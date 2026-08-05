@@ -7,7 +7,7 @@ import {
 import { FAB } from "@/lib/fabrication.config";
 import { US_RING_SIZES } from "@/lib/sizing";
 
-// RM-0077 (3.8.26): הוזמן צמיד ב"היקף מדויק" 10 — עשרה מילימטרים, כלומר
+// AP-0077 (3.8.26): הוזמן צמיד ב"היקף מדויק" 10 — עשרה מילימטרים, כלומר
 // סנטימטרים בשדה שמבקש מ"מ. החישוב נתן פריסה של 15.8 מ"מ על רוחב 18, הפרומפט
 // ביקש ממודל התמונה פריט "0.9 times longer than it is wide", המודל צייר ריבוע,
 // והווקטורייזר עקב אחריו ב-IoU 0.93. ההרצה נרשמה `approved` — ובצדק, לפי כל
@@ -17,7 +17,7 @@ const bracelet = (circ: string): CreateState => ({ ...INITIAL, product: "bracele
 const ring = (ringSize: string): CreateState => ({ ...INITIAL, product: "ring", ringSize });
 
 describe("sizeIssue", () => {
-  it("תופס את המידה של RM-0077", () => {
+  it("תופס את המידה של AP-0077", () => {
     const issue = sizeIssue(bracelet("10"));
     expect(issue).toEqual({
       kind: "circumference",
@@ -115,7 +115,7 @@ describe("הגבולות מסכימים עם שער השרת", () => {
     }
   });
 
-  it("המידה של RM-0077 נדחית גם בשרת, לא רק במסך", () => {
+  it("המידה של AP-0077 נדחית גם בשרת, לא רק במסך", () => {
     expect(stripLengthMm(bracelet("10"))).toBeLessThan(FAB.products.bracelet.lengthLimitMm[0]);
   });
 });

@@ -151,7 +151,7 @@ export function ShareButton({
         aria-label={t.shareBtn}
         className={
           className ||
-          "inline-flex items-center gap-1.5 rounded-[2px] border border-graphite/25 px-3 py-1.5 text-[13px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt disabled:cursor-not-allowed disabled:opacity-50"
+          "inline-flex items-center gap-1.5 rounded-[2px] border border-graphite/25 px-3 py-1.5 text-[13px] text-graphite transition-colors hover:border-lapis hover:text-lapis disabled:cursor-not-allowed disabled:opacity-50"
         }
       >
         <ShareIcon />
@@ -187,7 +187,7 @@ export function ShareButton({
                 <button
                   type="button"
                   onClick={() => void onCopy(url)}
-                  className="flex-1 rounded-[2px] border border-graphite/25 px-3 py-2 text-[13px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt"
+                  className="flex-1 rounded-[2px] border border-graphite/25 px-3 py-2 text-[13px] text-graphite transition-colors hover:border-lapis hover:text-lapis"
                 >
                   {copied ? t.shareCopied : t.shareCopy}
                 </button>
@@ -197,7 +197,7 @@ export function ShareButton({
                   <button
                     type="button"
                     onClick={() => void onNativeShare(url)}
-                    className="flex-1 rounded-[2px] border border-graphite/25 px-3 py-2 text-[13px] text-graphite transition-colors hover:border-cobalt hover:text-cobalt"
+                    className="flex-1 rounded-[2px] border border-graphite/25 px-3 py-2 text-[13px] text-graphite transition-colors hover:border-lapis hover:text-lapis"
                   >
                     {t.shareMore}
                   </button>

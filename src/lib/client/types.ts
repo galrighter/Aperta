@@ -17,7 +17,7 @@ export interface Account {
 export interface Design {
   id: string;
   profile_id?: string;
-  /** המספר הסידורי הרץ. designCode() הופך אותו ל-"RM-0007". */
+  /** המספר הסידורי הרץ. designCode() הופך אותו ל-"AP-0007". */
   serial?: number | null;
   name: string;
   product_type: ProductType;

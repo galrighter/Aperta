@@ -252,7 +252,7 @@ export function AccountGate({
                 type="button"
                 onClick={() => void sendCode()}
                 disabled={busy}
-                className="text-cobalt underline-offset-4 hover:underline disabled:opacity-50"
+                className="text-lapis underline-offset-4 hover:underline disabled:opacity-50"
               >
                 {d.acctCodeResend}
               </button>
@@ -306,7 +306,7 @@ export function AccountBar({ name, onSwitch }: { name: string; onSwitch: () => v
       <button
         type="button"
         onClick={onSwitch}
-        className="text-cobalt underline-offset-4 hover:underline"
+        className="text-lapis underline-offset-4 hover:underline"
       >
         {d.acctSwitch}
       </button>
