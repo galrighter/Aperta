@@ -100,10 +100,11 @@ write("profile.html", profile, size=(1000, 1000))
 
 # ---------------------------------------------------------------- 2/3. Covers
 def cover_html(w, h, mark_h):
+    panel_w = w * 0.6
     return f'''<!doctype html><html><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
 html,body{{width:{w}px;height:{h}px;background:var(--porcelain);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
-.photo{{position:absolute;top:0;bottom:0;right:0;width:{h*1.05:.0f}px;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:38% 30%;}}
-.fade{{position:absolute;top:0;bottom:0;right:0;width:{h*1.05:.0f}px;background:linear-gradient(to right, var(--porcelain) 0%, rgba(244,241,235,0) 46%);}}
+.photo{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:60% 60%;}}
+.fade{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background:linear-gradient(to right, var(--porcelain) 0%, rgba(244,241,235,0) 45%);}}
 .content{{position:absolute;top:0;bottom:0;left:{h*0.14:.0f}px;display:flex;flex-direction:column;justify-content:center;gap:{h*0.09:.0f}px;}}
 .tagline{{font-size:{h*0.088:.0f}px;color:var(--graphite);font-weight:600;letter-spacing:-0.01em;}}
 .tagline .accent{{color:var(--lapis-ink);}}
@@ -145,7 +146,7 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 .card{{position:absolute;bottom:80px;left:80px;right:80px;background:rgba(244,241,235,0.92);backdrop-filter:blur(6px);border-radius:28px;padding:44px 52px;display:flex;align-items:center;justify-content:space-between;}}
 .name{{font-family:'Archivo',sans-serif;font-weight:700;font-size:46px;color:var(--graphite);}}
 .desc{{font-size:26px;color:var(--graphite);opacity:0.7;margin-top:10px;font-weight:400;}}
-.price{{font-family:'Archivo',sans-serif;font-weight:700;font-size:40px;color:var(--lapis-ink);white-space:nowrap;}}
+.cta{{font-family:'Archivo',sans-serif;font-weight:700;font-size:32px;color:var(--lapis-ink);white-space:nowrap;}}
 </style></head><body>
 <div class="photo"></div>
 <div class="top">{mark_svg(70)}</div>
@@ -154,7 +155,7 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 <div class="name">צמיד פתוח</div>
 <div class="desc">פליז 1.5 מ״מ, חיתוך לייזר, עיצוב שלך</div>
 </div>
-<div class="price">מ-₪399</div>
+<div class="cta">לעצב עכשיו ←</div>
 </div>
 </body></html>'''
 write("post-product.html", post_product, size=(1080, 1080))
