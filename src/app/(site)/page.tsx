@@ -1,8 +1,23 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 
 const s = he.site;
+
+// עד עכשיו לדף הבית לא היה `metadata` משלו כלל — הוא ירש את של השורש, ולכן
+// חלק את התיאור עם `/design`, `/terms`, `/privacy` ו-`/studio`. העמוד החשוב
+// באתר היה גם היחיד בלי כותרת ותיאור שנכתבו בשבילו.
+export const metadata: Metadata = {
+  title: s.titleHe,
+  description: s.homeMetaDescription,
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: s.titleHe,
+    description: s.homeMetaDescription,
+    url: "/",
+  },
+};
 
 // handoff v3 §בית — הצהרת מותג רגשית, CTA יחיד, ורצועת מניפסט.
 // הסברי התהליך ("איך מתחילים" / רצועת השלבים) הוסרו במכוון: הם חיים ב-/how-it-works.

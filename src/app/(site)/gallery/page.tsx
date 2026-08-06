@@ -9,6 +9,7 @@ const s = he.site;
 export const metadata: Metadata = {
   title: `${s.galleryTitle} — ${s.brand}`,
   description: s.gallerySubtitle,
+  alternates: { canonical: "/gallery" },
 };
 
 const VARIANTS: PatternVariant[] = [

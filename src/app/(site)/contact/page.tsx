@@ -8,6 +8,7 @@ const s = he.site;
 export const metadata: Metadata = {
   title: `${s.contactTitle} — ${s.brand}`,
   description: s.contactSubtitle,
+  alternates: { canonical: "/contact" },
 };
 
 export default function ContactPage() {

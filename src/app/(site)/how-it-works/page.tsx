@@ -8,6 +8,7 @@ const s = he.site;
 export const metadata: Metadata = {
   title: `${s.howTitle} — ${s.brand}`,
   description: s.howSubtitle,
+  alternates: { canonical: "/how-it-works" },
 };
 
 const STEPS: { t: string; b: string; v: PatternVariant }[] = [
@@ -41,6 +42,15 @@ export default function HowItWorksPage() {
           </li>
         ))}
       </ol>
+
+      {/* מסלול הזחילה היחיד אל `/design-rules` שאינו עובר בתוך המשפך. */}
+      <p className="mt-10 text-sm leading-relaxed text-ink60">
+        {s.howRulesLead}{" "}
+        <Link href="/design-rules" className="font-medium text-lapis hover:underline">
+          {s.howRulesLink}
+        </Link>
+        {s.howRulesEnd}
+      </p>
 
       <div className="mt-14 text-center">
         <Link

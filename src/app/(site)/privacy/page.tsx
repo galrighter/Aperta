@@ -6,6 +6,8 @@ const pr = he.site.privacy;
 
 export const metadata: Metadata = {
   title: `${pr.title} — ${he.site.brand}`,
+  description: he.site.privacyMetaDescription,
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

@@ -11,6 +11,7 @@ const g = s.sizing;
 export const metadata: Metadata = {
   title: `${g.title} — ${s.brand}`,
   description: g.subtitle,
+  alternates: { canonical: "/sizing" },
 };
 
 const r1 = (v: number) => Math.round(v * 10) / 10;

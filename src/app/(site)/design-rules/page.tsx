@@ -19,6 +19,7 @@ const g = s.designRules;
 export const metadata: Metadata = {
   title: `${g.title} — ${s.brand}`,
   description: g.subtitle,
+  alternates: { canonical: "/design-rules" },
 };
 
 export default function DesignRulesPage() {
