@@ -35,6 +35,12 @@ export type AuthLost = (state: "out" | "disabled") => void;
  */
 export class SchemaOutdatedError extends Error {}
 
+/**
+ * הפריט אינו קיים. מצב תצוגה בפני עצמו ולא כשל טעינה — מסך פירוט שנפתח על
+ * מזהה שנמחק צריך לומר "לא נמצא", לא "הטעינה נכשלה".
+ */
+export class NotFoundError extends Error {}
+
 /** אין הרשאה. נזרק כדי לצאת מה-fetcher, ומטופל ב-`onError` ולא במסך. */
 class AuthLostError extends Error {
   constructor(readonly state: "out" | "disabled") {
@@ -45,6 +51,7 @@ class AuthLostError extends Error {
 async function adminFetch<T>(url: string): Promise<T> {
   const res = await fetch(url);
   if (res.status === 401) throw new AuthLostError("out");
+  if (res.status === 404) throw new NotFoundError();
   if (res.status === 503) {
     const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
     if (body?.error?.code === "schema_outdated") throw new SchemaOutdatedError();
@@ -93,6 +100,8 @@ export function useAdminData<T>(key: string | null, opts: AdminDataOptions = {})
     error: error instanceof AuthLostError ? undefined : (error as Error | undefined),
     /** האם זו מיגרציה חסרה — נוסח משלה בכל מסך. */
     schemaOutdated: error instanceof SchemaOutdatedError,
+    /** האם הפריט אינו קיים. מצב תצוגה, לא כשל טעינה. */
+    notFound: error instanceof NotFoundError,
     isLoading,
     /** לקרוא אחרי מוטציה: מושך מחדש ומעדכן כל מי שמאזין לאותו מפתח. */
     refresh: mutate,

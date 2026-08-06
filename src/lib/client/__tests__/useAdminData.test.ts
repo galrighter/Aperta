@@ -19,6 +19,12 @@ describe("סולם התגובות של הבק־אופיס", () => {
     expect(src).toContain('new AuthLostError("out")');
   });
 
+  it("404 הוא מצב תצוגה ולא כשל טעינה", () => {
+    // מסך פירוט שנפתח על מזהה שנמחק צריך לומר "לא נמצא", לא "הטעינה נכשלה".
+    expect(src).toContain("res.status === 404");
+    expect(src).toContain("NotFoundError");
+  });
+
   it("503 מבדיל בין מיגרציה חסרה לבין פאנל מכובה", () => {
     // שני מצבים שונים לגמרי מאחורי אותו סטטוס. ההבחנה היא לפי הקוד בגוף,
     // ואיחוד שלהם היה מציג "הפאנל מכובה" על מיגרציה שלא רצה.
@@ -56,6 +62,7 @@ describe("המסכים שהומרו", () => {
     "src/components/admin/AdminGate.tsx",
     "src/components/admin/AdminOrders.tsx",
     "src/components/admin/AdminInquiries.tsx",
+    "src/components/admin/OrderDetail.tsx",
   ];
 
   for (const path of CONVERTED) {
@@ -67,9 +74,14 @@ describe("המסכים שהומרו", () => {
     });
 
     it(`${name} לא מחזיק עותק משלו של סולם התגובות`, () => {
-      // אלה היו השורות שחזרו בכל מסך. חזרתן פירושה שהעותק חזר.
-      expect(s).not.toContain('res.status === 401');
+      // הסימן המבחין של הטוען הוא ענף ה-503, שרק הוא היה צריך אותו.
+      //
+      // **לא** נבדק כאן `res.status === 401` לבדו: מוטציות (PATCH של הערה
+      // ב-`OrderDetail`, למשל) עדיין מטפלות בו בעצמן, וזה לגיטימי — ההוק הוא
+      // שכבת **קריאה**. איחוד גם של מסלול הכתיבה הוא מעבר נפרד; איסור גורף
+      // כאן היה מסמן קוד תקין.
       expect(s).not.toContain('onAuthLost("disabled")');
+      expect(s).not.toContain('code === "schema_outdated"');
     });
   }
 

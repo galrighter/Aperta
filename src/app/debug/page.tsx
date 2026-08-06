@@ -114,7 +114,7 @@ function PromptLab() {
   );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- **לא** מקרה של שכבת נתונים, בניגוד לשאר: זו אינה משיכת משאב לפי כתובת אלא חישוב מחדש של תוכנית דרך POST על מצב הטופס, והוא קשור ל-`dirty`/`keepPrompt` (הפרומפט שנערך ביד לא נדרס). כלי כיול פנימי; המרה ל-SWR כאן הייתה עיוות ולא שיפור.
     void loadPlan({ keepPrompt: dirty });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productType, lengthMm, widthMm, thicknessMm, editing, rows]);
