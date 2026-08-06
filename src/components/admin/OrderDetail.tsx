@@ -10,7 +10,9 @@ import Link from "next/link";
 import { he } from "@/i18n/he";
 import { ORDER_STATUSES, type OrderRow, type OrderStatus } from "@/lib/db/orders";
 import { daysInStatus } from "@/lib/orders/queue";
+import type { OrderProductionInfo } from "@/lib/orders/production";
 import StatusMoveDialog from "./StatusMoveDialog";
+import { svgThumbnailSrc } from "./svgThumbnail";
 import {
   AgeChip,
   OrderFiles,
@@ -40,6 +42,7 @@ export default function OrderDetail({
   onAuthLost: (state: "out" | "disabled") => void;
 }) {
   const [order, setOrder] = useState<OrderRow | null>(null);
+  const [production, setProduction] = useState<OrderProductionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [target, setTarget] = useState<OrderStatus | null>(null);
@@ -55,8 +58,9 @@ export default function OrderDetail({
       return onAuthLost("disabled");
     }
     if (!res.ok) return setError(s.adminOrderLoadError);
-    const body = (await res.json()) as { order: OrderRow };
+    const body = (await res.json()) as { order: OrderRow; production: OrderProductionInfo | null };
     setOrder(body.order);
+    setProduction(body.production);
     setError(null);
   }, [id, onAuthLost]);
 
@@ -187,22 +191,18 @@ export default function OrderDetail({
         <div className="mt-1">
           {order.design_id ? (
             <>
+              {/* אישור ויזואלי לעיצוב שהוזמן, ישירות כאן — בלי קישור לעמוד
+                  העיצוב, שמצפה לחשבון הלקוחה ולא לאדמין. */}
+              <DesignPreview production={production} />
               <OrderFiles designId={order.design_id} versionId={order.version_id} />
-              {/* ההדמיה שהלקוחה רואה — מה שצריך כדי לענות על "זה לא מה שהזמנתי". */}
-              <a
-                href={`/design?resume=${order.design_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-[13px] text-lapis hover:underline"
-              >
-                {s.adminOrderDesignLink}
-              </a>
             </>
           ) : (
             <span className="text-[13px] text-mist">{s.adminOrderNoDesign}</span>
           )}
         </div>
       </section>
+
+      {order.design_id && <ProductionSection production={production} />}
 
       <NoteEditor order={order} onSaved={setOrder} onAuthLost={onAuthLost} />
 
@@ -220,6 +220,91 @@ export default function OrderDetail({
           onClose={() => setTarget(null)}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * אישור ויזואלי לעיצוב שהוזמן — תמונת ה-SVG של **הגרסה שהוזמנה**, לא הנוכחית.
+ * זה מה שעונה על "זה לא מה שהזמנתי" בלי לצאת מעמוד ההזמנה (5.8.26).
+ */
+function DesignPreview({ production }: { production: OrderProductionInfo | null }) {
+  if (!production) return null;
+  return (
+    <div className="mb-3 flex items-center gap-3">
+      <div className="flex h-[90px] w-[90px] shrink-0 items-center justify-center overflow-hidden border border-graphite/20 bg-white p-2">
+        {production.svg ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={svgThumbnailSrc(production.svg)}
+            alt={s.adminOrderDesignPreviewAlt}
+            className="max-h-full max-w-full object-contain"
+          />
+        ) : (
+          <span className="text-center text-[11px] text-mist">{s.adminOrderNoDesignPreview}</span>
+        )}
+      </div>
+      <div>
+        {production.code && (
+          <p className="font-display text-[13px] font-bold tracking-[0.1em] text-lapis" dir="ltr">
+            {production.code}
+          </p>
+        )}
+        <p className="text-[13px] text-graphite">{production.name}</p>
+        {!production.isCurrentVersion && (
+          <p className="text-[12px] text-mist">{s.adminOrderVersionOrdered}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** גרם, מעוגל לעשירית — כמו mm(), כי משקל משוער מתחת לזה הוא רעש. */
+const grams = (n: number) => `${Math.round(n * 10) / 10} ג׳`;
+
+/**
+ * סקשן הייצור: הנתונים שהלקוחה לא רואה ושצריך לבדוק מולם ביד — לא קובץ
+ * החיתוך עצמו, אלא מה שאפשר למדוד על הפריט אחרי שהוא נחתך (5.8.26).
+ */
+function ProductionSection({ production }: { production: OrderProductionInfo | null }) {
+  return (
+    <section className="mt-6 border-t border-graphite/10 pt-4">
+      <h2 className="text-[12px] text-mist">{s.adminOrderProduction}</h2>
+      {!production ? (
+        <p className="mt-1 text-[13px] text-mist">{s.adminOrderProductionNone}</p>
+      ) : (
+        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+          <Field label={s.adminOrderProductionLength} value={`${mm(production.lengthMm)} ${d.mm}`} />
+          <Field label={s.adminOrderProductionWidth} value={`${mm(production.widthMm)} ${d.mm}`} />
+          <Field label={s.adminOrderProductionId} value={`${mm(production.nominalIdMm)} ${d.mm}`} />
+          <Field label={s.adminOrderProductionGapArc} value={`${mm(production.gapArcMm)} ${d.mm}`} />
+          <Field
+            label={s.adminOrderProductionThickness}
+            value={`${mm(production.thicknessMm)} ${d.mm}`}
+            note={s.adminOrderProductionSingleOption}
+          />
+          <Field
+            label={s.adminOrderProductionMaterial}
+            value={production.material}
+            note={s.adminOrderProductionSingleOption}
+          />
+          {production.estWeightGrams != null && (
+            <Field label={s.adminOrderProductionWeight} value={grams(production.estWeightGrams)} />
+          )}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+function Field({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div>
+      <dt className="text-[12px] text-mist">{label}</dt>
+      <dd className="text-sm font-medium text-graphite" dir="ltr">
+        {value}
+      </dd>
+      {note && <p className="text-[11px] text-mist" dir="rtl">{note}</p>}
     </div>
   );
 }

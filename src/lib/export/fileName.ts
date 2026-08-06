@@ -8,7 +8,7 @@
 //
 // חסר תלויות בכוונה, כמו designCode: נקרא מהשרת ובר־בדיקה בלי מסד.
 
-import { designSerialDigits } from "@/lib/designCode";
+import { designSampleDigits, type DesignSampleFields } from "@/lib/designCode";
 
 /** מ"מ בשם קובץ: `120`, `104.4`. עיגול לעשירית — מתחת לזה זה רעש ייצור. */
 function mm(value: number): string {
@@ -17,17 +17,15 @@ function mm(value: number): string {
 }
 
 /**
- * `0075-120-12` — הבסיס לשם הקובץ, בלי הסיומת.
+ * `0075-120-12` — הבסיס לשם הקובץ, בלי הסיומת. עיצוב שהוא דוגמה של עיצוב אחר
+ * (0018) מקבל את מספר הדוגמה: `0085.2-120-12`, לא את ה-`serial` העצמאי שלו —
+ * בבית המלאכה רוצים לדעת שזו הדוגמה השנייה מ-0085, לא שיש עיצוב 0086.
  *
  * בלי סידורי (עיצוב מלפני מיגרציה 0008) נשארות המידות בלבד: אין לנו רפרנס
  * אנושי להציג, ו-uuid בשם הקובץ לא עוזר לאף אחד בבית המלאכה.
  */
-export function exportFileBase(
-  serial: number | null | undefined,
-  lengthMm: number,
-  widthMm: number,
-): string {
+export function exportFileBase(design: DesignSampleFields, lengthMm: number, widthMm: number): string {
   const dims = `${mm(lengthMm)}-${mm(widthMm)}`;
-  const digits = designSerialDigits(serial);
+  const digits = designSampleDigits(design);
   return digits ? `${digits}-${dims}` : dims;
 }

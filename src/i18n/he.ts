@@ -775,7 +775,6 @@ export const he = {
     adminOrderStatusLabel: "סטטוס",
     adminOrderAddress: "כתובת למשלוח",
     adminOrderNoAddress: "לא נמסרה כתובת.",
-    adminOrderDesignLink: "העיצוב שהוזמן",
     adminOrderHistory: "מסלול ההזמנה",
     adminOrderCreated: "נשלחה",
     adminOrderNote: "הערה פנימית",
@@ -816,6 +815,23 @@ export const he = {
     adminOrderBrief: "תיאור הלקוחה",
     adminOrderVersionOrdered: "הגרסה שהוזמנה",
     adminOrderVat: "מזה מע״מ",
+
+    // אישור ויזואלי לעיצוב שהוזמן, בעמוד ההזמנה עצמו — בלי לעבור דרך עמוד
+    // העיצוב, שמצפה לחשבון הלקוחה (5.8.26).
+    adminOrderDesignPreviewAlt: "העיצוב שהוזמן",
+    adminOrderNoDesignPreview: "אין תצוגה מקדימה לגרסה שהוזמנה.",
+
+    // סקשן הייצור: הנתונים לבדיקה עצמית מול הפריט שנחתך.
+    adminOrderProduction: "ייצור",
+    adminOrderProductionLength: "אורך",
+    adminOrderProductionWidth: "רוחב",
+    adminOrderProductionId: "קוטר פנימי",
+    adminOrderProductionGapArc: "אורך הרווח המחושב",
+    adminOrderProductionThickness: "עובי",
+    adminOrderProductionMaterial: "חומר",
+    adminOrderProductionWeight: "משקל משוער",
+    adminOrderProductionSingleOption: "אין עדיין בחירה — כל העיצובים מיוצרים כך",
+    adminOrderProductionNone: "אין גרסה מוזמנת לבדוק נתוני ייצור מולה.",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====

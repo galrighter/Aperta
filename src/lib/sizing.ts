@@ -207,3 +207,37 @@ export function neutralRadiusFromBlank(blankLengthMm: number, gapChordMm: number
   }
   return r;
 }
+
+export interface ProductionMetrics {
+  /** ה-ID הנומינלי שהוזמן, נגזר מהמידות שנשמרו על הגרסה — לבדיקה מול הפריט
+   *  שנחתך, לא לחיתוך עצמו. */
+  nominalIdMm: number;
+  /** אורך קשת הפער על הציר הניטרלי — הפער-מיתר (`gap_mm`) הוא מה שהלקוחה
+   *  רואה ומה שקליבר מודד, וזה מה שנחתך בפועל לאורך ההיקף. */
+  gapArcMm: number;
+}
+
+/**
+ * נתוני ייצור לתצוגה בעמוד ההזמנה — לא לחיתוך. `neutralRadiusFromBlank` לא
+ * תלוי בעובי או ב-K, ולכן אורך הקשת מחושב ישירות ממנו, בלי לעבור דרך
+ * `computeSizing`/`sizeFromBlank` שמניחים כיוון הפוך (מידה → פריסה).
+ */
+export function productionMetrics(input: {
+  product: ProductType;
+  thicknessMm: number;
+  widthMm: number;
+  gapMm: number;
+  lengthMm: number;
+}): ProductionMetrics {
+  const derived = sizeFromBlank(input.lengthMm, {
+    product: input.product,
+    thicknessMm: input.thicknessMm,
+    widthMm: input.widthMm,
+    gapChordMm: input.gapMm,
+  });
+  const neutralDiameterMm = 2 * neutralRadiusFromBlank(input.lengthMm, input.gapMm);
+  return {
+    nominalIdMm: derived.nominalIdMm,
+    gapArcMm: gapChordToArc(input.gapMm, neutralDiameterMm),
+  };
+}
