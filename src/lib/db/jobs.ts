@@ -37,8 +37,17 @@ export const JOB_STALE_MS = 6 * 60_000;
  * ה-jobId מגיע מהלקוחה, ולכן התנגשות על מפתח קיים היא או חידוש לגיטימי או
  * ניסיון לדרוס job של מישהו אחר. הזורק הזה מסמן את המקרה השני, ומבדיל אותו
  * משגיאה חולפת (טבלה חסרה בחלון מיגרציה) שאותה עדיין מותר לבלוע ולהמשיך.
+ *
+ * השורה שנמצאה נוסעת עם החריגה. לא כדי לחסוך שאילתה אלא כי בלעדיה הקורא יודע
+ * רק ש"היה משהו" — והוא צריך לדעת **מה**: job שהסתיים על אותו עיצוב מחזיק את
+ * התשובה שהלקוחה חיכתה לה, ו-409 עליו הוא בדיוק הכשל שתועד ב-AP-0090. `null`
+ * = השורה נעלמה בין ה-insert לקריאה, ואז אין מה להציע מלבד ההתנגשות עצמה.
  */
-export class JobConflictError extends Error {}
+export class JobConflictError extends Error {
+  constructor(message: string, readonly job: GenerationJobRow | null = null) {
+    super(message);
+  }
+}
 
 /**
  * פותח את ה-job, או **מחדש** אחד שעדיין רץ.
@@ -67,7 +76,7 @@ export async function startJob(
 
   const existing = await getJob(input.id);
   if (!existing || existing.design_id !== input.designId || existing.status !== "running") {
-    throw new JobConflictError(`job ${input.id} already exists`);
+    throw new JobConflictError(`job ${input.id} already exists`, existing);
   }
   // `updated_at` נדחף קדימה כדי שהשעון של "תקוע" (JOB_STALE_MS) יימדד מהחידוש
   // ולא מהניסיון שנקטע — אחרת הלקוחה תראה "נכשל" בזמן שההרצה בדיוק חזרה לחיים.
