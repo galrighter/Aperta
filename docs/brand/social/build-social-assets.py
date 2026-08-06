@@ -101,12 +101,22 @@ write("profile.html", profile, size=(1000, 1000))
 # ---------------------------------------------------------------- 2/3. Covers
 def cover_html(w, h, mark_h):
     panel_w = w * 0.6
+    # `.content` is centered via an explicit integer `top` rather than
+    # `justify-content:center`: that combination (absolute + shrink-to-fit flex
+    # column + justify-content:center) hits a headless-Chromium paint bug where
+    # the trailing punctuation span in the last flex item silently fails to
+    # render. Pre-computing the offset in Python sidesteps it entirely.
+    mark_size = h * 0.30 * 1.106
+    gap = h * 0.09
+    tagline_font = max(h * 0.088, 32)
+    tagline_height = tagline_font * 1.25
+    content_top = round((h - (mark_size + gap + tagline_height)) / 2)
     return f'''<!doctype html><html><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
 html,body{{width:{w}px;height:{h}px;background:var(--porcelain);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
 .photo{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:60% 60%;}}
 .fade{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background:linear-gradient(to right, var(--porcelain) 0%, rgba(244,241,235,0) 45%);}}
-.content{{position:absolute;top:0;bottom:0;left:{h*0.14:.0f}px;display:flex;flex-direction:column;justify-content:center;gap:{h*0.09:.0f}px;}}
-.tagline{{font-size:{h*0.088:.0f}px;color:var(--graphite);font-weight:600;letter-spacing:-0.01em;}}
+.content{{position:absolute;top:{content_top}px;left:{w*0.115:.0f}px;display:flex;flex-direction:column;gap:{gap:.0f}px;}}
+.tagline{{font-size:{max(h*0.088, 32):.0f}px;color:var(--graphite);font-weight:700;letter-spacing:-0.01em;}}
 .tagline .accent{{color:var(--lapis-ink);}}
 </style></head><body>
 <div class="photo"></div>
