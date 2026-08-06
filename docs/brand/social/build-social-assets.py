@@ -145,16 +145,12 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 .top{{position:absolute;top:80px;left:80px;}}
 .card{{position:absolute;bottom:80px;left:80px;right:80px;background:rgba(244,241,235,0.92);backdrop-filter:blur(6px);border-radius:28px;padding:44px 52px;display:flex;align-items:center;justify-content:space-between;}}
 .name{{font-family:'Archivo',sans-serif;font-weight:700;font-size:46px;color:var(--graphite);}}
-.desc{{font-size:26px;color:var(--graphite);opacity:0.7;margin-top:10px;font-weight:400;}}
 .cta{{font-family:'Archivo',sans-serif;font-weight:700;font-size:32px;color:var(--lapis-ink);white-space:nowrap;}}
 </style></head><body>
 <div class="photo"></div>
 <div class="top">{mark_svg(70)}</div>
 <div class="card">
-<div>
 <div class="name">צמיד פתוח</div>
-<div class="desc">פליז 1.5 מ״מ, חיתוך לייזר, עיצוב שלך</div>
-</div>
 <div class="cta">לעצב עכשיו ←</div>
 </div>
 </body></html>'''
