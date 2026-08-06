@@ -108,7 +108,9 @@ describe("הכללת המתכנן לקנבס", () => {
     const land = planRender({ ratio, ...BRACELET, canvas: LANDSCAPE });
     const port = planRender({ ratio, ...BRACELET, canvas: PORTRAIT });
     expect(land.candidates).toBe(2);
-    expect(port.candidates).toBe(4);
+    // ארבע מהיחס (7.5 → 7.52), וחמישית מהסטייה המותרת: 8.08 רחוק 7.8% מ-7.5,
+    // בתוך RATIO_SLACK. השישית (8.63) כבר 15% ואינה נלקחת.
+    expect(port.candidates).toBe(5);
     expect(port.canvas).toBe(PORTRAIT);
   });
 
@@ -139,6 +141,60 @@ describe("הכללת המתכנן לקנבס", () => {
     const input = { ratio: 12.5, widthMm: 10, minHoleMm: 0.5 };
     expect(planRender({ ...input, canvas: LANDSCAPE }).candidates).toBeLessThanOrEqual(6);
     expect(planRender({ ...input, canvas: PORTRAIT }).candidates).toBeLessThanOrEqual(6);
+  });
+
+  /* ===== הסטייה המותרת ביחס (RATIO_SLACK) =====
+     עיצוב 90: קנבס לאורך, חלופה אחת, ושאר הקנבס לבן. מספר השורות היה `round`
+     של מה שהיחס דורש, ולכן פריט שנפל בין שתי שורות קיבל את התחתונה ולא יותר —
+     גם כשהשורה הבאה נשארה בתוך אותו טווח טעות שהעיגול ממילא מרשה. */
+  describe("שורות מעל מה שהיחס דרש", () => {
+    /** היחס החזוי לכל מספר שורות בקנבס נתון — מה שהסטייה נמדדת מולו. */
+    const off = (rows: number, ratio: number, canvas: typeof PORTRAIT) =>
+      Math.abs(NATURAL_RATIO(rows, 1, canvas) - ratio) / ratio;
+
+    it("120×20 עולה מחלופה אחת לשתיים — וזה המקרה של עיצוב 90", () => {
+      const input = { ratio: 6, widthMm: 20, minHoleMm: 0.5, canvas: PORTRAIT };
+      expect(planRender(input).candidates).toBe(2);
+      // השנייה בתוך הטווח (6.41 מול 6.0), השלישית מחוצה לו (6.97).
+      expect(off(2, 6, PORTRAIT)).toBeLessThanOrEqual(0.1);
+      expect(off(3, 6, PORTRAIT)).toBeGreaterThan(0.1);
+    });
+
+    it("כל חלופה שנוספה נשארת בתוך הסטייה המוצהרת", () => {
+      // הבדיקה האמיתית: לא כמה יצא אלא שמה שיצא לא חורג. 10% הוא מספר שמישהו
+      // בחר, והוא צריך להיות ניתן לשינוי בלי שהבדיקות יתחילו לשקר.
+      for (const [L, W] of [[120, 20], [130, 18], [135, 18], [140, 18], [150, 18], [110, 18]]) {
+        const ratio = L / W;
+        const p = planRender({ ratio, widthMm: W, minHoleMm: 0.5, canvas: PORTRAIT });
+        if (ratio < 5.3) continue; // מתחת למחובר אין יחס להגן עליו
+        expect(off(p.rows / p.cols, ratio, PORTRAIT)).toBeLessThanOrEqual(0.1);
+      }
+    });
+
+    it("שורה שעולה ברזולוציה אינה נלקחת גם כשהיחס מרשה אותה", () => {
+      // 104.4×40 לאורך: `freeRows` הוא 2 (השלישית מורידה את קנה המידה
+      // מ-8.83 ל-6.40 px/mm). היחס נמוך מהמחובר, ולכן הסטייה כלל לא נכנסת —
+      // מה שעוצר כאן הוא הרזולוציה, ובכוונה.
+      const p = planRender({ ratio: 104.4 / 40, widthMm: 40, minHoleMm: 0.5, canvas: PORTRAIT });
+      expect(p.rows).toBe(2);
+      expect(maxRows(40, 0.5, PORTRAIT)).toBe(3);
+    });
+
+    it("לרוחב שום דבר לא זז — שם שורה עולה 1.25 ביחס", () => {
+      // זו הבטחת אי-הרגרסיה של השינוי: הקנבס שרוב הפריטים רצים עליו מתוכנן
+      // בדיוק כמו קודם, כי צעד של 1.25 חורג מ-10% כמעט בכל יחס.
+      for (const [ratio, rows] of [[6.4, 1], [7.5, 2], [8.9, 3], [11.3, 5], [12.5, 6]]) {
+        expect(planRender({ ratio, widthMm: 18, minHoleMm: 0.5, canvas: LANDSCAPE }).rows)
+          .toBe(Math.min(rows, maxRows(18, 0.5, LANDSCAPE)));
+      }
+    });
+
+    it("התקרות עדיין חוסמות — הסטייה אינה רשות לפרוץ אותן", () => {
+      // פס צר מאוד: היחס מרשה עוד ועוד שורות, MAX_CANDIDATES עוצר ב-6.
+      const p = planRender({ ratio: 20, widthMm: 8, minHoleMm: 0.5, canvas: PORTRAIT });
+      expect(p.candidates).toBeLessThanOrEqual(6);
+      expect(p.rows).toBeLessThanOrEqual(maxRows(8, 0.5, PORTRAIT));
+    });
   });
 
   it("ברירת המחדל של planRender היא לרוחב", () => {
