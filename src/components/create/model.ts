@@ -152,6 +152,14 @@ export interface CreateState {
    * ראו `RETRY_POINTLESS` ב-ProcessingScreen.
    */
   procErrorCode: string | null;
+  /**
+   * מה שקורה בהמתנה, כפי שהלקוחה צריכה לדעת עליו. `rendering`/`saving` מגיעים
+   * מהשרת; `disconnected` נכתב בדפדפן כשהבקשה נקטעה וההמתנה עברה לשורת ה-job.
+   *
+   * המצב האחרון הוא הסיבה שהשדה קיים: בלעדיו ניתוק נראה בדיוק כמו המתנה
+   * רגילה — או, עד AP-0090, כמו כישלון.
+   */
+  procStage: string | null;
   /** כשל במעבר בין הצעות. procError מוצג רק במסך העיבוד, ולכן לא היה למי
    *  לספר שהלחיצה נכשלה — היא פשוט לא עשתה כלום. */
   chooseError: string | null;
@@ -207,6 +215,7 @@ export const INITIAL: CreateState = {
   procError: null,
   procErrorDetail: null,
   procErrorCode: null,
+  procStage: null,
   chooseError: null,
   editError: null,
   applying: false,
@@ -327,6 +336,7 @@ export function invalidateDesign(): Partial<CreateState> {
     procError: null,
     procErrorDetail: null,
     procErrorCode: null,
+    procStage: null,
     chooseError: null,
     editError: null,
     resultMode: "render",
