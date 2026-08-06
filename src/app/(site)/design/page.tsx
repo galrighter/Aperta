@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
-import { api, ClientApiError } from "@/lib/client/api";
+import { api, ClientApiError, DISCONNECTED_STAGE } from "@/lib/client/api";
 import {
   clearMyDesigns, listMyDesigns, mergeMyDesign, removeMyDesign, saveMyDesign,
   setMyDesignPreview,
@@ -338,6 +338,7 @@ export default function DesignPage() {
       procError: null,
       procErrorDetail: null,
       procErrorCode: null,
+      procStage: null,
     };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
@@ -393,7 +394,9 @@ export default function DesignPage() {
                 // שהשתנה מקבל ממילא הרצה חדשה (השרת גוזר גם מהבקשה).
                 jobId: jobRef.current ?? undefined,
               },
-              undefined,
+              // מה שקורה בהמתנה. הערך שמעניין את המסך הוא `disconnected`:
+              // הבקשה נקטעה וההמתנה עברה לשורת ה-job, וזו לא שגיאה אלא מצב.
+              (stage) => setState((prev) => ({ ...prev, procStage: stage })),
               // רושמים את ההרצה לפני שהיא מסתיימת: זה מה שמאפשר לחלון "העיצוב
               // מוכן" למצוא אותה אם הלקוחה יצאה מהמסך באמצע.
               (jobId) => {
@@ -404,6 +407,7 @@ export default function DesignPage() {
 
       clearPendingJob();
       jobRef.current = null;
+      setState((prev) => ({ ...prev, procStage: null }));
       pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
       go("result");
     } catch (e) {
@@ -428,6 +432,9 @@ export default function DesignPage() {
           ? `${apiErr.code} · ${apiErr.status}`
           : `client · ${(e as Error)?.name || "Error"}`,
         procErrorCode: apiErr?.code ?? null,
+        // ההמתנה נגמרה, ולכן גם החיווי עליה. בלי זה "החיבור נקטע" היה נשאר
+        // תלוי מעל מסך השגיאה שבא אחריו.
+        procStage: null,
       }));
     }
   }, [account, go, pushEntry, remember]);
@@ -1088,9 +1095,10 @@ export default function DesignPage() {
             error={s.procError}
             detail={s.procErrorDetail}
             code={s.procErrorCode}
+            disconnected={s.procStage === DISCONNECTED_STAGE}
             onRetry={() => void startGeneration()}
             onBack={() => {
-              set({ procError: null, procErrorDetail: null, procErrorCode: null });
+              set({ procError: null, procErrorDetail: null, procErrorCode: null, procStage: null });
               go("brief");
             }}
           />

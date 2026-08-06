@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { api, ClientApiError } from "../api";
+import { he } from "@/i18n/he";
 
 // היצירה נפתחת כבקשה קצרה וממשיכה ברקע; הלקוחה מושכת את המצב. הערך של זה הוא
 // שניתוק באמצע הוא הפסקה במשיכה ולא אובדן — וזה בדיוק מה שנבדק כאן.
@@ -158,5 +159,53 @@ describe("generate — a connection that drops mid-request", () => {
     const err = await withTimers(api.generate(INPUT)).catch((e) => e);
     expect((err as ClientApiError).code).toBe("rate_limited");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /* AP-0090: ההמתנה אחרי ניתוק הייתה 12 שניות, וההרצה לוקחת 30–90. הלקוחה
+     ויתרה באמצע וקיבלה "היצירה נכשלה" על הרצה שהצליחה. */
+
+  it("waits for the run to finish instead of giving up after a few seconds", async () => {
+    // עשרים משיכות של `running` — הרבה מעבר לחלון הישן — ואז התוצאה.
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    for (let i = 0; i < 20; i++) fetchMock.mockResolvedValueOnce(json({ status: "running", stage: "rendering" }));
+    fetchMock.mockResolvedValueOnce(json({ status: "done", result: RESULT }));
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+  });
+
+  it("says it is disconnected, so the screen is not a silent spinner", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json({ status: "running", stage: "rendering" }))
+      .mockResolvedValueOnce(json({ status: "done", result: RESULT }));
+
+    const stages: Array<string | null> = [];
+    await withTimers(api.generate(INPUT, (s) => stages.push(s)));
+    // ראשון — כי הוא נכתב לפני המשיכה הראשונה; ואז מצב השרת חוזר להיות המקור,
+    // כי אם המשיכה הצליחה החיבור חזר.
+    expect(stages).toEqual(["disconnected", "rendering", null]);
+  });
+
+  it("prefers the job's verdict over the disconnection that preceded it", async () => {
+    // הניתוק הוא איך שאיבדנו את החוט; דחיית הווקטורייזר היא מה שבאמת קרה.
+    // עד כאן הוצגה השגיאה המוקדמת יותר, שהיא הפחות נכונה מהשתיים.
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json({ status: "error", error: { code: "vectorize_failed" } }));
+
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).code).toBe("vectorize_failed");
+  });
+
+  it("surfaces a stalled run as itself, not as a network error", async () => {
+    // ה-isolate מת בלי לכתוב כלום; השרת מכריז על השורה כתקועה. זה המסלול
+    // שהחלון הקצר הסתיר — הוא החזיר "אובדן תקשורת" לפני שהשרת הספיק להכריע.
+    fetchMock
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(json({ status: "error", error: { code: "job_stalled" } }));
+
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).code).toBe("job_stalled");
+    expect((err as ClientApiError).message).not.toBe(he.errNetwork);
   });
 });

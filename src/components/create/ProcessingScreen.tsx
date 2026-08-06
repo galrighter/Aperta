@@ -46,13 +46,21 @@ const RETRY_POINTLESS = new Set([
 ]);
 
 export function ProcessingScreen({
-  error, detail, code, onRetry, onBack,
+  error, detail, code, disconnected, onRetry, onBack,
 }: {
   error: string | null;
   /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
   detail?: string | null;
   /** קוד הכשל — קובע אם "נסה שוב" הוא בכלל פעולה. */
   code?: string | null;
+  /**
+   * החיבור לבקשה נקטע וההרצה ממשיכה בשרת — הלקוחה מחכה לשורה, לא לבקשה.
+   *
+   * זהו מצב שלישי בין ספינר לשגיאה, והוא נוסף כי לא היה כזה: ניתוק הוצג
+   * כ"היצירה נכשלה" (AP-0090). ההמתנה נמשכת עד להכרעה של השרת, ולכן היא
+   * יכולה להתארך — ומסך שמסתובב בשקט דקות ארוכות הוא בדיוק מה שנראה שבור.
+   */
+  disconnected?: boolean;
   onRetry: () => void;
   onBack: () => void;
 }) {
@@ -133,14 +141,15 @@ export function ProcessingScreen({
   return (
     <section className="mx-auto flex max-w-[620px] flex-col items-center px-5 py-24 text-center sm:px-10">
       <h1 className="mb-4 text-[26px] font-semibold tracking-tight text-graphite sm:text-[32px]">
-        {d.procTitle}
+        {disconnected ? d.procDisconnected : d.procTitle}
       </h1>
       <p className="mb-10 text-[16px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
-        {d.procBody}
+        {disconnected ? d.procDisconnectedBody : d.procBody}
       </p>
 
-      {/* פס התקדמות */}
-      <ProgressBar active label={d.procTitle} className="mb-12" />
+      {/* פס התקדמות. הוא נשאר פעיל גם בניתוק — ההרצה באמת ממשיכה, ומסך קפוא
+          היה אומר את ההפך מהכותרת שמעליו. */}
+      <ProgressBar active label={disconnected ? d.procDisconnected : d.procTitle} className="mb-12" />
 
       {/* ציטוט מתחלף */}
       <blockquote
