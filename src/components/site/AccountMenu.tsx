@@ -92,6 +92,7 @@ export default function AccountMenu({
     await signOutEverywhere();
     // טעינה מלאה ולא ניווט פנימי: מסכים אחרים מחזיקים את החשבון ב-state שלהם,
     // ורענון הוא הדרך היחידה שבה כולם רואים את אותו דבר.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- טעינה מלאה במכוון — מסכים אחרים מחזיקים את החשבון ב-state שלהם, וניווט פנימי לא היה מנקה אותם.
     window.location.assign("/");
   }, []);
 

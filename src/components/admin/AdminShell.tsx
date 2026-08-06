@@ -38,6 +38,7 @@ function AdminNav() {
     await fetch("/api/admin/session", { method: "DELETE" });
     // רענון ולא ניקוי state: השער יושב מעל כל העמוד, וטעינה מחדש היא הדרך
     // הקצרה להחזיר אותו למסך הכניסה בלי שני מקורות אמת למי מחובר.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- טעינה מלאה במכוון — השער יושב מעל כל העמוד, וניווט פנימי היה משאיר אותו במצב 'מחובר'. ראו ההערה למעלה.
     window.location.assign("/admin");
   }
 

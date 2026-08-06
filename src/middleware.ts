@@ -11,6 +11,29 @@ import { SITE } from "@/lib/site.config";
 // בדיוק הפרופיל שמסווג ההונאה מחפש, ואף לקוחה לא אמורה לנחות שם. שתי ההקשחות
 // כאן לא יבטלו פסק שכבר ניתן (זה מול Google, לא מול הקוד) — הן מונעות את הבא.
 
+// ---------------------------------------------------------------------------
+// **אל תריצו את ה-codemod ש-`next build` מציע כאן.**
+//
+// מ-`next@16` הבנייה מדפיסה בכל פעם: «The "middleware" file convention is
+// deprecated. Please use "proxy" instead» ומציעה
+// `npx @next/codemod middleware-to-proxy`. ההצעה הזו **שוברת את הפריסה**, וזה
+// נבדק ולא נוחש (5.8):
+//
+// 1. `proxy.ts` ב-16 רץ **תמיד** על Node. זו לא ברירת מחדל שאפשר לשנות —
+//    `export const runtime = "edge"` נדחה בבנייה עצמה: «Route segment config is
+//    not allowed in Proxy file. Proxy always runs on Node.js runtime».
+// 2. `@opennextjs/cloudflare` (עד 1.20.2) לא תומך ב-proxy של Node ונופל:
+//    «Node.js middleware is not currently supported». כלומר `cf:build` — מסלול
+//    הפריסה שלנו — לא מייצר Worker בכלל.
+//
+// `middleware.ts` לעומת זאת עדיין נבנה כ-**Edge** ב-16 (נבדק מול
+// `middleware-manifest.json`), ולכן הפריסה ממשיכה לעבוד. האזהרה היא הודעת
+// deprecation, לא תקלה.
+//
+// מתי כן לעבור: כשגרסה של `@opennextjs/cloudflare` תתמוך ב-proxy של Node.
+// עד אז השורה הזו היא מה שמפריד בין אתר חי לבין פריסה שלא נבנית.
+// ---------------------------------------------------------------------------
+
 const NO_INDEX = "noindex, nofollow, noarchive";
 /** העצים שאין להם מה לחפש במנוע חיפוש. שאר האתר עובר כאן ואינו מסומן. */
 const NO_INDEX_TREES = ["/api", "/admin", "/debug"];

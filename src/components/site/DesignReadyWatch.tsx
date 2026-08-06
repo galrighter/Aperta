@@ -112,6 +112,7 @@ export default function DesignReadyWatch() {
               //
               // טעינה מלאה ולא ניווט פנימי: הפרמטר נקרא בעליית המסך, וניווט
               // מ-/design אל /design?resume=… לא מרנדר אותו מחדש.
+              // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- טעינה מלאה במכוון — `?resume=` נקרא בעליית המסך, וניווט מ-/design אל /design?resume= לא מרנדר אותו מחדש.
               window.location.assign(`/design?resume=${outcome.job.designId}`);
             }}
             className="rounded-[2px] bg-graphite px-6 py-3 text-[15px] font-semibold text-porcelain transition-colors hover:bg-graphite/90"
