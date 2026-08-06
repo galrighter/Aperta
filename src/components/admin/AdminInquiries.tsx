@@ -6,7 +6,8 @@
 //
 // הוצא מ-`AdminDashboard` כשהלשוניות הפכו לכתובות. הרכיב מנהל את הטעינה שלו
 // בעצמו, כמו `AdminOrders` ו-`AdminDesigns`.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useAdminData } from "@/lib/client/useAdminData";
 import { he } from "@/i18n/he";
 import type { Inquiry, InquiryKind, InquiryStatus } from "@/lib/db/inquiries";
 
@@ -29,38 +30,19 @@ export default function AdminInquiries({
 }: {
   onAuthLost: (state: "out" | "disabled") => void;
 }) {
-  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<InquiryStatus | "">("");
   const [kind, setKind] = useState<InquiryKind | "">("");
-  const [listError, setListError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(
-    async (status: InquiryStatus | "", k: InquiryKind | "") => {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      if (k) params.set("kind", k);
-      const qs = params.toString();
-      const res = await fetch(`/api/inquiries${qs ? `?${qs}` : ""}`);
-      setLoading(false);
-      if (res.status === 401) return onAuthLost("out");
-      if (res.status === 503) return onAuthLost("disabled");
-      if (!res.ok) {
-        setListError(s.adminLoadError);
-        return;
-      }
-      const body = (await res.json()) as { inquiries: Inquiry[] };
-      setInquiries(body.inquiries);
-      setListError(null);
-    },
-    [onAuthLost],
+  // המפתח נגזר משני המסננים, ולכן שינוי של אחד מהם הוא הטעינה מחדש.
+  const params = new URLSearchParams();
+  if (filter) params.set("status", filter);
+  if (kind) params.set("kind", kind);
+  const qs = params.toString();
+  const { data, error, schemaOutdated, isLoading, refresh } = useAdminData<{ inquiries: Inquiry[] }>(
+    `/api/inquiries${qs ? `?${qs}` : ""}`,
+    { onAuthLost },
   );
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
-    void load("", "");
-  }, [load]);
+  const inquiries = data?.inquiries ?? [];
 
   async function changeStatus(id: string, status: InquiryStatus) {
     const res = await fetch(`/api/inquiries/${id}`, {
@@ -68,9 +50,13 @@ export default function AdminInquiries({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    if (res.ok) {
-      setInquiries((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)));
-    }
+    if (!res.ok) return;
+    // עדכון אופטימי ואז אימות מול השרת: המסך מגיב מיד, כמו קודם, אבל הרשימה
+    // מיישרת קו עם מה שנשמר בפועל במקום להישאר על ההנחה המקומית.
+    await refresh(
+      (cur) => (cur ? { inquiries: cur.inquiries.map((q) => (q.id === id ? { ...q, status } : q)) } : cur),
+      { revalidate: true },
+    );
   }
 
   return (
@@ -83,7 +69,6 @@ export default function AdminInquiries({
               key={k || "all"}
               onClick={() => {
                 setKind(k);
-                void load(filter, k);
               }}
               aria-pressed={kind === k}
               className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
@@ -102,7 +87,6 @@ export default function AdminInquiries({
             key={f || "all"}
             onClick={() => {
               setFilter(f);
-              void load(f, kind);
             }}
             className={`rounded-[2px] px-3 py-1.5 text-sm transition-colors ${
               filter === f ? "bg-graphite text-porcelain" : "bg-porcelain text-ink60 hover:bg-stonesoft"
@@ -113,9 +97,13 @@ export default function AdminInquiries({
         ))}
       </div>
 
-      {listError && <p className="mb-4 text-sm text-red-600">{listError}</p>}
+      {(error || schemaOutdated) && (
+        <p className="mb-4 text-sm text-red-600">
+          {s.adminLoadError}
+        </p>
+      )}
 
-      {loading && inquiries.length === 0 ? (
+      {isLoading && inquiries.length === 0 ? (
         <p className="text-ink60">{he.loading}</p>
       ) : inquiries.length === 0 ? (
         <p className="text-ink60">{s.adminEmpty}</p>

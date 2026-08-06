@@ -80,9 +80,6 @@ describe("השתקות set-state-in-effect", () => {
       "src/app/debug/page.tsx",
       "src/components/Preview3D.tsx",
       "src/components/admin/AdminDesigns.tsx",
-      "src/components/admin/AdminGate.tsx",
-      "src/components/admin/AdminInquiries.tsx",
-      "src/components/admin/AdminOrders.tsx",
       "src/components/admin/OrderDetail.tsx",
       "src/components/admin/RunsLog.tsx",
       "src/components/site/DesignReadyWatch.tsx",
@@ -96,6 +93,7 @@ describe("השתקות set-state-in-effect", () => {
       }
     }
     // אם המספר יורד, מישהו פתר אחת מהן — וזו בשורה טובה שצריכה לעדכן את הדוח.
-    expect(seen).toBe(11);
+    // 11 → 8 ב-6.8: `AdminGate`/`AdminOrders`/`AdminInquiries` עברו ל-SWR.
+    expect(seen).toBe(8);
   });
 });

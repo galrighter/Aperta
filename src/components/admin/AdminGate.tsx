@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { he } from "@/i18n/he";
+import { useAdminData } from "@/lib/client/useAdminData";
 
 const s = he.site;
 
@@ -81,21 +82,19 @@ export function AdminLogin({
 export function AdminGate({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<AdminAuth>("checking");
 
-  const check = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/session");
-      setAuth(res.ok ? "in" : res.status === 503 ? "disabled" : "out");
-    } catch {
-      // כשל רשת אינו "אין הרשאה". טופס כניסה הוא המסך הנכון גם כאן, כי הוא
-      // ניתן לניסיון חוזר, בעוד מסך שגיאה הוא מבוי סתום.
-      setAuth("out");
-    }
-  }, []);
+  // שלושת המצבים נגזרים מאותה קריאה: הצלחה = בפנים, 401/503 מגיעים דרך
+  // `onAuthLost` עם ההבחנה ביניהם, וכל השאר — כולל כשל רשת — הוא "בחוץ".
+  // כשל רשת אינו "אין הרשאה", אבל טופס הכניסה הוא המסך הנכון גם עבורו: הוא
+  // ניתן לניסיון חוזר, בעוד מסך שגיאה הוא מבוי סתום.
+  const { refresh } = useAdminData<unknown>("/api/admin/session", {
+    onSuccess: () => setAuth("in"),
+    onAuthLost: setAuth,
+    onError: () => setAuth("out"),
+  });
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
-    void check();
-  }, [check]);
+  const check = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
 
   if (auth === "in") return <>{children}</>;
   return (
