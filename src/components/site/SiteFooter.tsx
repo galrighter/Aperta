@@ -28,6 +28,15 @@ export default function SiteFooter() {
                 {s[item.key]}
               </Link>
             ))}
+            {/* `/design-rules` יושב כאן ולא בניווט העליון: הוא מדריך ולא שלב
+                במסע, אבל בלי הקישור הזה לא היה אליו שום מסלול מדף הבית — רק
+                מסכים בתוך המשפך, שנוצרים אחרי ניסיון יצירה. */}
+            <Link
+              href="/design-rules"
+              className="text-ink60 transition-colors hover:text-lapis"
+            >
+              {s.navDesignRules}
+            </Link>
             {/* bdi ולא dir="ltr": dir על האלמנט הופך גם את text-align:start שלו,
                 והמייל היה נצמד לשמאל בזמן ששאר העמודה ימנית. bdi מבודד את
                 הכיווניות של הטקסט בלבד ומשאיר את היישור של העמודה. */}

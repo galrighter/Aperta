@@ -6,6 +6,8 @@ const t = he.site.terms;
 
 export const metadata: Metadata = {
   title: `${t.title} — ${he.site.brand}`,
+  description: he.site.termsMetaDescription,
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

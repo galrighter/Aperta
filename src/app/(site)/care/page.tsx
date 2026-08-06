@@ -18,6 +18,7 @@ const g = s.care;
 export const metadata: Metadata = {
   title: `${g.title} — ${s.brand}`,
   description: g.subtitle,
+  alternates: { canonical: "/care" },
 };
 
 export default function CarePage() {

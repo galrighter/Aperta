@@ -35,8 +35,15 @@ import { SITE } from "@/lib/site.config";
 // ---------------------------------------------------------------------------
 
 const NO_INDEX = "noindex, nofollow, noarchive";
-/** העצים שאין להם מה לחפש במנוע חיפוש. שאר האתר עובר כאן ואינו מסומן. */
-const NO_INDEX_TREES = ["/api", "/admin", "/debug"];
+/**
+ * העצים שאין להם מה לחפש במנוע חיפוש. שאר האתר עובר כאן ואינו מסומן.
+ *
+ * `/studio` הוא כלי הבודקים מאחורי שער האדמין. הוא הוסר מה-sitemap אבל מעולם
+ * לא נחסם — `GET /studio` החזיר 200 בלי `X-Robots-Tag` ובלי `<meta robots>`,
+ * תחת הכותרת והתיאור של דף הבית. הכותרת כאן נוסעת עם כל תגובה, גם כשמגיעים
+ * מלינק חיצוני שלא עבר ב-robots.txt.
+ */
+const NO_INDEX_TREES = ["/api", "/admin", "/debug", "/studio"];
 
 const CANONICAL_HOST = new URL(SITE.url).host;
 
