@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { handleRouteError, parseBody, ApiError } from "@/lib/api";
+import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
@@ -156,10 +156,13 @@ export async function POST(req: Request) {
     try {
       await startJob({ id: jobId, designId: design.id, runId });
     } catch (e) {
-      // job שכבר הסתיים, או של עיצוב אחר, אינו חלון מיגרציה — דוחים במקום
-      // להריץ בשקט ולתת ל-finishJob לכתוב על שורה זרה. חידוש של הרצה שעדיין
-      // רצה על אותו עיצוב כן מותר, ו-startJob מבדיל ביניהם.
+      // job של עיצוב אחר אינו חלון מיגרציה — דוחים במקום להריץ בשקט ולתת
+      // ל-finishJob לכתוב על שורה זרה. חידוש של הרצה שעדיין רצה על אותו עיצוב
+      // כן מותר, ו-startJob מבדיל ביניהם. job שהסתיים על אותו עיצוב מקבל את
+      // התשובה שלו — ראה `replayFinishedJob`.
       if (e instanceof JobConflictError) {
+        const replay = replayFinishedJob(e, design.id);
+        if (replay) return replay;
         throw new ApiError("job_conflict", "This job id is already in use", 409);
       }
       console.error("job row unavailable, running without it:", (e as Error).message);
@@ -205,6 +208,61 @@ export async function POST(req: Request) {
   }
 }
 
+
+/**
+ * הסטטוס שהכשל היה מחזיר בהרצה שבה הוא קרה. `failJob` שומר קוד והודעה בלבד,
+ * ולכן הוא נבנה כאן מחדש. ברירת המחדל 500 — מה ש-`handleRouteError` נותן לכל
+ * מה שאינו `ApiError`, וזה בדיוק מה ש-`internal` הוא.
+ *
+ * שום קוד כאן אינו 5xx-בלי-קוד, ולכן שידור חוזר של כשל לא מפעיל בטעות את מסלול
+ * ההתאוששות בלקוחה (`mayHaveSurvived`) — הוא נשען על היעדר קוד.
+ */
+const REPLAY_STATUS: Record<string, number> = {
+  bad_size: 400,
+  bad_image: 400,
+  text_too_long: 400,
+  invalid_input: 400,
+  content_blocked: 422,
+  vectorize_failed: 422,
+  rate_limited: 429,
+  render_busy: 503,
+  quota_exhausted: 503,
+};
+
+/**
+ * התשובה של job שכבר הסתיים — במקום 409 על התנגשות מזהה.
+ *
+ * **מה נשבר בלעדיה (AP-0090).** ה-`jobId` נוצר בלקוחה, והיא ממחזרת אותו
+ * בכוונה: ניסיון חוזר על אותו קלט חוזר לאותה הרצה בקופסה במקום לקנות שנייה
+ * (`docs/C2_RESILIENT_GENERATION.md`). היא שומרת אותו בדיוק כשהבקשה נקטעה בלי
+ * תשובת שרת — ניתוק, מסך שננעל — כלומר בדיוק כשהשרת ממשיך לרוץ ומסיים לכתוב
+ * `done`/`error` על אותה שורה. הניסיון החוזר נחת אז על 409 גנרי: "משהו
+ * השתבש", בזמן שהתוצאה ששולמה כבר ישבה בטבלה. הלחיצה הבאה — שקיבלה מזהה חדש,
+ * כי 409 היא תשובת שרת ולכן מנקה את המזהה — הריצה את הכול מחדש: עוד קריאה
+ * למודל, עוד יחידת מכסה, ועוד גרסה על אותו עיצוב.
+ *
+ * המסמך תמיד אמר "התוצאה שם, שיקרא אותה" — פשוט לא היה מי שיקרא. זה הקורא.
+ *
+ * הבעלות כבר נבדקה: `designId` הוא העיצוב ש-`requireDesignAccess` עבר עליו,
+ * ושורה של עיצוב אחר נופלת מכאן החוצה ל-409 — שם ההגנה באמת נחוצה.
+ *
+ * `null` = לא שידור חוזר אלא התנגשות אמיתית, והקורא זורק 409.
+ */
+function replayFinishedJob(err: JobConflictError, designId: string): NextResponse | null {
+  const job = err.job;
+  if (!job || job.design_id !== designId) return null;
+  // התוצאה השמורה, מילה במילה. `notifyDesignReady` **לא** נשלח כאן: מי שכתב
+  // את `done` כבר שלח אותו, ושליחה שנייה היא מייל שני על אותו עיצוב.
+  if (job.status === "done" && job.result) return NextResponse.json(job.result);
+  // הכשל המקורי, עם הקוד שלו. 409 במקומו הסתיר מהלקוחה סיבה שכן היה לה נוסח
+  // משלה — `content_blocked` שולח לנסח מחדש, `bad_size` שולח למסך המידות —
+  // והציג במקומה "משהו השתבש", שהוא בדיוק העצה הלא נכונה.
+  if (job.status === "error" && job.error) {
+    const { code, message } = job.error;
+    return jsonError(code, message, REPLAY_STATUS[code] ?? 500);
+  }
+  return null;
+}
 
 /**
  * שער השפיות על מידות העיצוב, לפני שיוצאת קריאה שעולה כסף.
