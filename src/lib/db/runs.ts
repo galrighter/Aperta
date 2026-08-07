@@ -53,6 +53,14 @@ export interface RunInputs {
    */
   plannedCandidates?: number;
   deliveredPanels?: number;
+  /**
+   * ההרצה הושלמה בלי הבקשה שפתחה אותה — נאספה מהקופסה מתוך ההקשר שנשמר בשורה
+   * (`lib/runs/complete.ts`).
+   *
+   * ביומן שתי ההרצות נראות זהות בכל שדה אחר, וההבדל ביניהן הוא בדיוק מה
+   * שרוצים למדוד: כמה יצירות ניצלו בזכות המנגנון הזה, במקום להיתקע.
+   */
+  completedDetached?: boolean;
   minHoleMm?: number;
   colorKey?: string;
   /** כמה קבצים המשתמש צירף (השראה/סימון). */

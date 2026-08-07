@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
-import { getJob, claimJobDone, JOB_STALE_MS } from "@/lib/db/jobs";
+import { getJob, claimJobDone, failJob, JOB_STALE_MS } from "@/lib/db/jobs";
 import { versionForGeneration, getDesign } from "@/lib/db/designs";
 import { mayHaveFinished, resultFromVersion, isFirstVersion } from "@/lib/jobRecovery";
+import { completeFromContext, type JobContext } from "@/lib/runs/complete";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { requireDesignAccess } from "@/lib/designAccess";
 
@@ -74,10 +75,30 @@ export async function GET(req: Request, { params }: Params) {
       }
     }
 
+    // אין גרסה, אבל ההרצה אולי סיימה בקופסה ורק לא היה מי שיאסוף אותה: הבקשה
+    // שפתחה אותה מתה **לפני** השמירה. עד כאן זה היה סוף הסיפור — היא הוכרזה
+    // תקועה, וההדמיה ששולמה נזרקה. עכשיו ההקשר יושב בשורה, וכל פנייה יכולה
+    // לסיים ממנו (0019, `runs/complete.ts`).
+    //
+    // רק אחרי סף ה"תקוע": כל עוד ההרצה בזמנים סבירים, מי שפתח אותה עדיין
+    // עשוי לסיים אותה בעצמו, ושתי השלמות במקביל הן בזבוז — לא נזק, כי הסגירה
+    // מותנית ב-`running`, אבל בזבוז.
+    const stalled = Date.now() - new Date(job.updated_at).getTime() > JOB_STALE_MS;
+    if (stalled && job.design_id && job.run_id && job.context) {
+      const outcome = await completeFromContext(jobId, job.run_id, job.context as JobContext);
+      if (outcome.kind === "done") return NextResponse.json({ status: "done", result: outcome.result });
+      if (outcome.kind === "rejected") {
+        const error = { code: "vectorize_failed", message: `Vectorizer did not approve any panel: ${outcome.status}` };
+        await failJob(jobId, job.run_id, error);
+        return NextResponse.json({ status: "error", error });
+      }
+      // "אבודה" נופלת להכרזת התקיעה למטה — זו בדיוק המשמעות שלה.
+    }
+
     // ה-isolate שהריץ את העבודה יכול למות בלי לכתוב כלום, ואז השורה נשארת
     // 'running' לנצח. עדיף להודות בכישלון מאשר להשאיר את הלקוחה מול ספינר
     // שלא ייגמר — היא יכולה לנסות שוב.
-    if (Date.now() - new Date(job.updated_at).getTime() > JOB_STALE_MS) {
+    if (stalled) {
       return NextResponse.json({
         status: "error",
         error: { code: "job_stalled", message: "Generation stopped responding" },

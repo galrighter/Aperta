@@ -23,6 +23,15 @@ export interface GenerationJobRow {
   stage: JobStage | null;
   result: unknown;
   error: JobError | null;
+  /**
+   * מה שנדרש כדי לסיים את ההרצה **בלי** הבקשה שפתחה אותה (`runs/complete.ts`,
+   * מיגרציה 0019). `null` = הרצה שנפתחה לפני המיגרציה, או שנפלה לפני שההקשר
+   * היה ידוע; שתיהן מתנהגות כמו קודם.
+   *
+   * `unknown` ולא הטיפוס עצמו, כמו `result`: הטבלה היא רישום, והפירוש שייך
+   * למי שקורא אותו.
+   */
+  context: unknown;
 }
 
 /**
@@ -105,6 +114,16 @@ async function patch(id: string, runId: string, fields: Record<string, unknown>)
 }
 
 export const setJobStage = (id: string, runId: string, stage: JobStage) => patch(id, runId, { stage });
+
+/**
+ * ההקשר שיאפשר לסיים את ההרצה בלי הבקשה שפתחה אותה.
+ *
+ * נכתב **בזמן** שהרנדר רץ ולא אחריו — זו כל הנקודה: הבקשה יכולה למות באמצע
+ * הדקה וחצי, ומי שיגיע לשורה אחר כך צריך למצוא שם את מה שדרוש כדי להרים את
+ * החוט. כמו כל כתיבת מצב כאן, כישלון אינו מפיל את ההרצה.
+ */
+export const setJobContext = (id: string, runId: string, context: unknown) =>
+  patch(id, runId, { context });
 export const finishJob = (id: string, runId: string, result: unknown) =>
   patch(id, runId, { status: "done", stage: null, result });
 
@@ -140,8 +159,9 @@ export async function claimJobDone(id: string, runId: string, result: unknown): 
 export const failJob = (id: string, runId: string, error: JobError) =>
   patch(id, runId, { status: "error", stage: null, error });
 
-/** בקשת יצירה כפי שהיומן צריך אותה — בלי `result`, שנושא את ה-SVG של כל מועמד. */
-export type JobListRow = Omit<GenerationJobRow, "result">;
+/** בקשת יצירה כפי שהיומן צריך אותה — בלי `result` (שנושא את ה-SVG של כל מועמד)
+ *  ובלי `context` (שנושא את התיאור והגשרים). היומן מציג שורות, לא מטענים. */
+export type JobListRow = Omit<GenerationJobRow, "result" | "context">;
 
 /**
  * בקשות היצירה האחרונות. היומן מצליב אותן מול ההרצות כדי למצוא ניסיון שלא

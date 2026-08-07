@@ -65,6 +65,17 @@ export interface RenderJob {
   stagePaths: RunStagePaths;
   /** התשובה הגולמית של הפאנל שנבחר (status/metrics/debug) — כמו שהיומן מצפה. */
   raw: Record<string, unknown>;
+  /**
+   * המזהה שתחתיו הקופסה מחזיקה את ההרצה הזו.
+   *
+   * הוא נגזר מהבקשה **ומתוכנה** (ראה `deriveRenderJobId`), ולכן אי אפשר לחשב
+   * אותו מחדש בלי לשחזר את הבקשה בייט-בייט — כולל תמונת ההשראה, שאינה נשמרת
+   * אצלנו בגודלה. לכן הוא מוחזר: מי שרוצה לאסוף את ההרצה אחר כך שומר אותו,
+   * וזה כל מה שהוא צריך (`collectRenderJob`).
+   *
+   * `null` במסלול הישן, שבו הקופסה מריצה בתוך הבקשה ולא מחזיקה כלום.
+   */
+  boxJobId: string | null;
 }
 
 interface RawCandidate {
@@ -137,6 +148,16 @@ export interface RenderJobInput {
    * להזמין רנדר שני; בלעדיו הקופסה מריצה בתוך הבקשה כמו קודם.
    */
   jobId?: string;
+  /**
+   * נקרא ברגע שהקופסה קיבלה את ההרצה והחלה לעבוד, עם המזהה שתחתיו היא מחזיקה
+   * אותה.
+   *
+   * **למה כאן ולא בתשובה.** המזהה חוזר גם ב-`RenderJob`, אבל זה מאוחר מדי לצורך
+   * שבשבילו הוא נשמר: רנדר לוקח 30–90 שניות, וה-isolate יכול למות באמצעם. מי
+   * שרוצה שההרצה תהיה ניתנת לאיסוף גם אז חייב את המזהה **בזמן** שהיא רצה, לא
+   * אחריה. כשל בשמירה אינו מפיל את ההרצה — היא ממשיכה, פשוט בלי רשת.
+   */
+  onOpen?: (boxJobId: string) => Promise<void> | void;
 }
 
 const STAGE_KEYS = ["reference", "conditioned", "overlay", "difference", "rendered"] as const;
@@ -221,6 +242,15 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   // 202 = הקופסה קיבלה את ההרצה ומחזיקה אותה. מכאן זו סקירה, וניתוק כאן כבר
   // לא מאבד את העבודה: היא ממשיכה שם, והבקשה הבאה עם אותו jobId תאסוף אותה.
   if (boxJobId && resp.status === 202) {
+    // ההרצה בידי הקופסה, והמזהה שלה ידוע — מכאן היא ניתנת לאיסוף גם אם מי
+    // שפתח אותה ימות בדקה הבאה. הכשלה כאן לא מפילה את ההרצה עצמה.
+    if (input.onOpen) {
+      try {
+        await input.onOpen(boxJobId);
+      } catch (e) {
+        console.error("could not record the render job id:", (e as Error).message);
+      }
+    }
     const deadline = sentAt + RENDER_TIMEOUT_MS;
     const statusUrl = `${vectorizerUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
     while (body.state === "running") {
@@ -271,19 +301,72 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   // תוצאה בדיוק — הקורא לא אמור לדעת באיזה מסלול היא הגיעה.
   if (body.state === "done" && body.result) body = body.result as RawJob;
 
+  return toRenderJob(body, input.renderPaths, input.stagePaths, boxJobId);
+}
+
+/**
+ * ההרצה שהקופסה כבר סיימה, לפי המזהה שלה בלבד.
+ *
+ * זה הצד השני של C2 (docs/C2_RESILIENT_GENERATION.md): הבקשה שפתחה את ההרצה
+ * יכולה למות, והעבודה היקרה — שכבר שולמה — ממשיכה ונשמרת שם. `runRenderJob`
+ * אוסף אותה בדרך אחת בלבד: לשלוח שוב את **אותה בקשה בדיוק**, כי המזהה נגזר
+ * מתוכנה. זה מתאים למי שהגוף עדיין בידה, ולא למי שמסיימת הרצה של מישהי אחרת
+ * — שם תמונת ההשראה כבר לא קיימת בשום מקום שאפשר לשחזר ממנו בייט-בייט.
+ *
+ * כאן ההצבעה ישירה: המזהה נשמר בשורת ההרצה, ואיתו נאספת התוצאה בלי הבקשה.
+ *
+ * `null` = הקופסה לא מכירה את המזהה. זה קורה כשהיא קמה מחדש (התוצאה נכתבת
+ * לדיסק בסיום, והרצה שהייתה באוויר נעלמת) או אחרי ה-TTL. לא שגיאה — תשובה.
+ */
+export async function collectRenderJob(
+  boxJobId: string,
+  renderPaths: string[],
+  stagePaths: RunStagePaths,
+): Promise<RenderJob | null> {
+  const headers: Record<string, string> = {};
+  if (process.env.VECTORIZER_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_TOKEN}`;
+  const url = `${vectorizerUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
+
+  let resp: Response;
+  try {
+    resp = await fetch(url, { headers, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) });
+  } catch (e) {
+    throw new ApiError("render_unreachable", `Could not reach the render service: ${(e as Error).message}`, 502);
+  }
+  // 404 = נשכחה. אין מה לאסוף, ואין כאן שגיאה לדווח עליה — הקורא יחליט אם
+  // להריץ מחדש. כל שאר הכשלים הם תקלה שכן צריך לראות.
+  if (resp.status === 404) return null;
+  const body = await readBody(resp);
+  if (!resp.ok) {
+    const detail = (body as { detail?: { message?: string } }).detail;
+    throw new ApiError("render_failed", detail?.message ?? `Render service failed (${resp.status})`, 502);
+  }
+  // עדיין רצה — לא נשלים אותה עכשיו, וגם לא נכריז עליה כאבודה.
+  if (body.state === "running") return null;
+  const done = body.state === "done" && body.result ? (body.result as RawJob) : body;
+  return toRenderJob(done, renderPaths, stagePaths, boxJobId);
+}
+
+/** התשובה הגולמית של הקופסה → `RenderJob`. משותפת לפתיחה ולאיסוף. */
+function toRenderJob(
+  body: RawJob,
+  renderPaths: string[],
+  stagePaths: RunStagePaths,
+  boxJobId: string | null,
+): RenderJob {
   const uploadedRenders = new Set(body.uploaded_renders ?? []);
   const uploadedStages = new Set(body.uploaded_stages ?? []);
-  const stagePaths: RunStagePaths = {};
+  const uploaded: RunStagePaths = {};
   for (const key of STAGE_KEYS) {
-    const path = input.stagePaths[key];
-    if (path && uploadedStages.has(key)) stagePaths[key] = path;
+    const path = stagePaths[key];
+    if (path && uploadedStages.has(key)) uploaded[key] = path;
   }
 
   return {
     model: body.model ?? "unknown",
     panels: body.panels ?? 0,
-    renderPaths: input.renderPaths.filter((_, i) => uploadedRenders.has(i)),
-    stagePaths,
+    renderPaths: renderPaths.filter((_, i) => uploadedRenders.has(i)),
+    stagePaths: uploaded,
     candidates: (body.candidates ?? []).map((c, i) => ({
       panel: c.panel ?? i,
       status: c.status ?? "unknown",
@@ -291,5 +374,6 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
       widthMm: Number(c.width_mm ?? 0),
     })),
     raw: body as Record<string, unknown>,
+    boxJobId,
   };
 }
