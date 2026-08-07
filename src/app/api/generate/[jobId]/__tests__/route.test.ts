@@ -13,11 +13,17 @@ const versionForGeneration = vi.fn();
 const getDesign = vi.fn();
 const notifyDesignReady = vi.fn();
 const requireDesignAccess = vi.fn();
+const failJob = vi.fn();
+const completeFromContext = vi.fn();
 
 vi.mock("@/lib/db/jobs", async (orig) => ({
   ...(await orig<typeof import("@/lib/db/jobs")>()),
   getJob: (...a: unknown[]) => getJob(...a),
   claimJobDone: (...a: unknown[]) => claimJobDone(...a),
+  failJob: (...a: unknown[]) => failJob(...a),
+}));
+vi.mock("@/lib/runs/complete", () => ({
+  completeFromContext: (...a: unknown[]) => completeFromContext(...a),
 }));
 vi.mock("@/lib/db/designs", () => ({
   versionForGeneration: (...a: unknown[]) => versionForGeneration(...a),
@@ -67,6 +73,7 @@ beforeEach(() => {
   getDesign.mockResolvedValue(design);
   claimJobDone.mockResolvedValue(true);
   requireDesignAccess.mockResolvedValue(design);
+  completeFromContext.mockResolvedValue({ kind: "lost" });
 });
 
 describe("GET /api/generate/[jobId] — recovery", () => {
@@ -135,5 +142,60 @@ describe("GET /api/generate/[jobId] — recovery", () => {
     await call();
     expect(notifyDesignReady).not.toHaveBeenCalled();
     expect(claimJobDone).not.toHaveBeenCalled();
+  });
+});
+
+/* ===== סיום הרצה שאיבדה את מי שפתח אותה =====
+   הגרסה **לא** נשמרה — הבקשה מתה לפני כן — אבל ההדמיה ששולמה יושבת בקופסה,
+   וההקשר שנשמר בשורה מספיק כדי לסיים ממנו (0019). עד כאן זה הוכרז כתקוע
+   וההדמיה נזרקה. */
+
+const STALE = new Date(Date.now() - 7 * 60_000).toISOString();
+const lostJob = { ...stuckJob, updated_at: STALE, context: { boxJobId: "b-1" } } as unknown as GenerationJobRow;
+
+describe("GET /api/generate/[jobId] — finishing a run nobody was left to finish", () => {
+  beforeEach(() => {
+    // אין גרסה: זה מה שמבדיל את המסלול הזה מההתאוששות שלמעלה.
+    versionForGeneration.mockResolvedValue(null);
+    getJob.mockResolvedValue(lostJob);
+  });
+
+  it("collects the paid render and answers with the result", async () => {
+    completeFromContext.mockResolvedValue({ kind: "done", result: { version: { id: "v-9" } } });
+    const body = await (await call()).json();
+    expect(body.status).toBe("done");
+    expect(body.result.version.id).toBe("v-9");
+  });
+
+  it("reports a vectorizer rejection as itself, and closes the job", async () => {
+    // דחייה היא תוצאה ולא תקלה — ואם לא נסגור את השורה, הסקר הבא ינסה לסיים
+    // שוב את אותה הרצה שכבר ידוע שנדחתה.
+    completeFromContext.mockResolvedValue({ kind: "rejected", status: "no candidate" });
+    const body = await (await call()).json();
+    expect(body.status).toBe("error");
+    expect(body.error.code).toBe("vectorize_failed");
+    expect(failJob).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to 'stalled' when the box no longer has the run", async () => {
+    completeFromContext.mockResolvedValue({ kind: "lost" });
+    const body = await (await call()).json();
+    expect(body.status).toBe("error");
+    expect(body.error.code).toBe("job_stalled");
+  });
+
+  it("does not try to finish a run that is still within its normal time", async () => {
+    // הבקשה שפתחה אותה עדיין עשויה לסיים בעצמה; שתי השלמות במקביל הן בזבוז.
+    getJob.mockResolvedValue({ ...lostJob, updated_at: new Date().toISOString() });
+    const body = await (await call()).json();
+    expect(completeFromContext).not.toHaveBeenCalled();
+    expect(body.status).toBe("running");
+  });
+
+  it("does not try to finish a run that has no context — it predates the column", async () => {
+    getJob.mockResolvedValue({ ...lostJob, context: null });
+    const body = await (await call()).json();
+    expect(completeFromContext).not.toHaveBeenCalled();
+    expect(body.error.code).toBe("job_stalled");
   });
 });

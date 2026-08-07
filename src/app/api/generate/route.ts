@@ -17,13 +17,12 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { startJob, failJob, finishJob, setJobStage, JobConflictError } from "@/lib/db/jobs";
+import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
+import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
-import type { CheckResult } from "@/lib/geometry/types";
-import { he } from "@/i18n/he";
 
 // יצירה במסלול ה-AI (מסלול 2): טקסט/השראה → מודל תמונה (רנדר של התכשיט) →
 // קונדישנינג + vectorizer → cutouts SVG → צינור הוולידציה הקיים → גרסה.
@@ -295,44 +294,6 @@ function toJobError(err: unknown) {
   return { code: "internal", message: err instanceof Error ? err.message : String(err) };
 }
 
-/**
- * מאיזה נתח מהחלל הגשר מצדיק התראה. 50% (החלטת גל).
- *
- * עד כאן ההתראה נדלקה על **כל** גשר שנגע ברצפה, וזה כמעט כל כיתוב: נמדד על
- * "Jewel שלום" — אות 6 מ"מ נותנת 43%, וזה בערך `BRIDGE_COUNTER_RATIO` עצמו,
- * כלומר המקרה המתוכנן. התראה שנדלקת על הנורמלי היא לא התראה, היא רעש שמאמן
- * להתעלם. מ-50% ומעלה זה 5 מ"מ (53%) ו-4 מ"מ (67%) — שם הגשר באמת אוכל את
- * החלל ויש מה לאשר.
- */
-const LETTERING_BRIDGE_SHARE = 0.5;
-
-/**
- * ההתראה על גשר צר.
- *
- * הגשר שמחזיק את החלל הסגור של אות נגזר מגובה החלל (lib/text/stencil.ts), כי
- * גשר ברוחב המינימום לייצור בולע חלל של `e` בגובה 6 מ"מ במקום לגשר אותו. מה
- * שנחתך שם דק מכפי שהמינימום מבטיח, ולכן זו לא החלטה שאפשר לקבל בשקט בשם
- * הלקוחה: היא רואה שהפריט דורש בדיקה הנדסית, עם המספרים.
- *
- * אזהרה ולא כשל: הפריט ניתן לייצור, השאלה היא באיזו רזרבה — וזו שאלה שנפתרת
- * בבדיקה, לא בסירוב.
- */
-function letteringBridgeCheck(tightShare: number | null): CheckResult[] {
-  if (tightShare === null || tightShare < LETTERING_BRIDGE_SHARE) return [];
-  const pct = Math.round(tightShare * 100);
-  const min = FAB.minLetterBridgeMm;
-  return [{
-    check: "LETTERING_BRIDGE",
-    status: "warn",
-    message: `${he.checks.LETTERING_BRIDGE} (${pct}% מהחלל)`,
-    details:
-      `A letter counter is too small to hold a proportional bridge, so the bridge stays at the ` +
-      `${min}mm letter minimum and takes ${pct}% of the counter. Manufacturable; what needs ` +
-      "confirming is whether the lettering still looks right.",
-    locations: [],
-  }];
-}
-
 type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
 
 /** העבודה עצמה. זורק ApiError/LlmError; הקורא כותב את התוצאה ל-job. */
@@ -534,6 +495,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הראיות של הראשון), והוא **יציב** בין בקשה לבקשה. בקשה שמתחדשת אחרי
       // ניתוק מצביעה בזכות זה על ההדמיות שכבר הועלו, במקום להעלות עותק שני
       // לצד שם שאיש כבר לא יידע לקשר.
+      const renderPaths = Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${attemptId}-${i}.png`);
+      const stagePaths = {
+        // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
+        reference: `runs/${attemptId}/reference.png`,
+        conditioned: `runs/${attemptId}/conditioned.png`,
+        overlay: `runs/${attemptId}/overlay.png`,
+        difference: `runs/${attemptId}/difference.png`,
+        rendered: `runs/${attemptId}/rendered.png`,
+      };
       const job = await runRenderJob({
         jobId: attemptId,
         prompt,
@@ -552,15 +522,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
         // נשארות על ברירת המחדל הזולה.
         model: lettering ? LETTERING_MODEL : undefined,
-        renderPaths: Array.from({ length: plan.calls }, (_, i) => `renders/${design.id}/${attemptId}-${i}.png`),
-        stagePaths: {
-          // מה שהמודל באמת ראה. בלי זה אפשר רק לשחזר אותו מהקוד, וזו טענה אחרת.
-          reference: `runs/${attemptId}/reference.png`,
-          conditioned: `runs/${attemptId}/conditioned.png`,
-          overlay: `runs/${attemptId}/overlay.png`,
-          difference: `runs/${attemptId}/difference.png`,
-          rendered: `runs/${attemptId}/rendered.png`,
-        },
+        renderPaths,
+        stagePaths,
+        // הרגע שבו ההרצה מפסיקה להיות תלויה בבקשה הזו: הקופסה קיבלה אותה,
+        // המזהה שלה ידוע, ומכאן היא ניתנת לאיסוף גם אם ה-isolate ימות בדקה
+        // הבאה. מה שנשמר הוא כל מה שדרוש כדי **לסיים** — ראה runs/complete.
+        onOpen: (boxJobId) =>
+          setJobContext(jobId, runId, {
+            boxJobId,
+            attemptId,
+            designId: design.id,
+            renderPaths,
+            stagePaths,
+            userPrompt: body.userPrompt,
+            renderPrompt: prompt,
+            inputs: { ...log.inputs, plannedCandidates: plan.candidates, attempt: attemptNo },
+            bridges: bridgePlan.letterBridges ?? [],
+            tightShare: lettering?.tightShare ?? null,
+            startedAt,
+          } satisfies JobContext),
       });
       const renderPngPath = job.renderPaths[0] ?? null;
 
