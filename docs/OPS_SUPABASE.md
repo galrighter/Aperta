@@ -224,13 +224,67 @@ q() {
 לוגים של שירות האימות, 24 שעות אחרונות:
 
 ```bash
-curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/analytics/endpoints/logs.all?sql=$(python3 -c "import urllib.parse;print(urllib.parse.quote(\"select timestamp, event_message from auth_logs order by timestamp desc limit 50\"))")" \
+START=$(python3 -c "import datetime;print((datetime.datetime.utcnow()-datetime.timedelta(hours=23,minutes=55)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+END=$(python3 -c "import datetime;print(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'))")
+SQL=$(python3 -c "import urllib.parse;print(urllib.parse.quote('select timestamp, event_message from auth_logs order by timestamp desc limit 200'))")
+curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/analytics/endpoints/logs.all?sql=$SQL&iso_timestamp_start=$START&iso_timestamp_end=$END" \
   -H "Authorization: Bearer $FORME_SUPABASE_KEY"
 ```
 
+> **`iso_timestamp_start` הוא חובה ולא קישוט.** בלעדיו הנקודה מחזירה
+> `{"result":[],"error":null}` — לא שגיאה, אלא חלון ריק שנראה בדיוק כמו "אין
+> תקלות". הגרסה הקודמת של הפקודה כאן נכתבה בלי הפרמטרים, ולכן הטעתה: היא אמרה
+> "שקט" בזמן שהשירות החזיר 500 על כל בקשה. גם `count(*) from auth_logs` מחזיר
+> `0` באותו חלון — כלומר אין בדיקת שפיות שמסגירה את הטעות.
+
 סדר החשודים כשקוד לא מגיע: **SMTP** (Authentication → Emails) לפני התבנית,
 והתבנית לפני הקוד. ה-SMTP המובנה של Supabase מוגבל לכמה מיילים בשעה ואינו
-מיועד לייצור — כאן הוא מוגדר מול Resend, ו-`rmjewel.com` מאומת שם.
+מיועד לייצור — כאן הוא מוגדר מול Resend.
+
+---
+
+## תקלה — 7.8: `535 Authentication credentials invalid`
+
+**מה נראה מבחוץ:** לחיצה על "שליחת קוד" ב-`/design` החזירה "הזיהוי נכשל. נסו
+שוב", בלי שאף מייל יצא.
+
+**מה הלוג אמר** — שלוש בקשות רצופות, אותה כתובת, אותה שגיאה:
+
+```
+POST /otp  status 500  error_code unexpected_failure
+error: 535 "Authentication credentials invalid"
+auth_event.action: user_confirmation_requested   traits.provider: email
+```
+
+`535` הוא תשובת SMTP, לא תשובת Supabase: השרת של Resend דחה את שם המשתמש והסיסמה
+ש-`smtp_user` / `smtp_pass` נושאים בקונפיגורציית ה-Auth. כלומר **המפתח שמוגדר שם
+אינו תקף יותר** — נמחק, סובב, או שייך לחשבון Resend אחר. שאר הקונפיגורציה תקינה:
+`external_email_enabled = true`, `disable_signup = false`, `mailer_otp_length = 6`,
+התבניות עם `{{ .Token }}`, ו-`uri_allow_list` כולל את `aperta-designs.com`.
+
+**מה זה לא היה** — כדי לא לחפש שם בפעם הבאה: לא הרשמה סגורה, לא תבנית, לא מגבלת
+קצב (`rate_limit_email_sent = 30`), ולא הקוד באתר. כניסת גוגל עבדה כל אותו הזמן,
+וזה מה שהופך את התסמין למטעה: "הזיהוי" לא נכשל, רק המייל.
+
+**נזק נלווה: אין.** Supabase מגלגל לאחור את יצירת המשתמש כשהשליחה נופלת —
+ה-`actor_id` שבלוג אינו קיים ב-`auth.users`, ולא נוצרו כפילויות. כניסות המייל
+האחרונות שהצליחו הן מ-31.7, כלומר המפתח היה תקף אז ופג בין לבין.
+
+**התיקון (דורש את גל — מפתח Resend אינו בסביבה הזאת):**
+
+1. ב-Resend של החשבון שמחזיק את `aperta-designs.com` — לוודא שהדומיין `verified`,
+   וליצור מפתח API חדש.
+2. להזין אותו כ-`smtp_pass` (`smtp_user` נשאר `resend`), בדשבורד תחת
+   Authentication → Emails, או ב-`PATCH /config/auth`. **לכתוב את הערך רק שם —
+   לא לקובץ בריפו ולא לפלט.**
+3. לאמת בשליחה אמיתית מ-`/design`: פעם עם מייל שכבר קיים ופעם עם מייל חדש
+   (ההבחנה של משימה A), ולוודא בלוג ש-`POST /otp` מחזיר `200`.
+
+**מה נסגר בצד שלנו:** `AccountGate` הפריד בין המקרים במקום להציג משפט אחד לכולם —
+תקלת שרת אומרת שהיא אצלנו ומפנה לגוגל, מגבלת קצב מבקשת להמתין, ואובדן רשת נאמר
+בשמו. השגיאה האמיתית (`status`, `code`, `message`) נרשמת לקונסולה, כדי שהאבחון הבא
+לא יתחיל בטוקן ניהול. הסיווג יושב ב-`src/lib/client/authFailure.ts` ומכוסה
+ב-`src/lib/__tests__/authFailure.test.ts`.
 
 ---
 
