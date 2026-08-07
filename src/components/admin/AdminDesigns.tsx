@@ -1,7 +1,8 @@
 "use client";
 
 // "מי עיצב מה" — הלשונית שהופכת רישום משתמשים למשהו שאפשר להסתכל עליו.
-import { useCallback, useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useAdminPages } from "@/lib/client/useAdminData";
 import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
 import type { AdminDesignRow } from "@/lib/db/accounts";
@@ -17,46 +18,22 @@ export default function AdminDesigns({
 }: {
   onAuthLost: (state: "out" | "disabled") => void;
 }) {
-  const [rows, setRows] = useState<AdminDesignRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const load = useCallback(
-    async (offset: number) => {
-      setLoading(true);
-      const res = await fetch(`/api/admin/designs?limit=${PAGE}&offset=${offset}`);
-      setLoading(false);
-      if (res.status === 401) return onAuthLost("out");
-      if (res.status === 503) {
-        // 503 כאן הוא או "אין ADMIN_TOKEN" או "המיגרציה לא רצה" — שני מצבים
-        // שונים לגמרי, ולכן מפרידים לפי הקוד ולא לפי הסטטוס.
-        const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
-        if (body?.error?.code === "schema_outdated") {
-          setError(s.adminDesignsSchema);
-          return;
-        }
-        return onAuthLost("disabled");
-      }
-      if (!res.ok) {
-        setError(s.adminDesignsError);
-        return;
-      }
-      const body = (await res.json()) as { designs: AdminDesignRow[]; total: number };
-      setRows((prev) => (offset === 0 ? body.designs : [...prev, ...body.designs]));
-      setTotal(body.total);
-      setError(null);
-    },
-    [onAuthLost],
-  );
+  // עימוד לפי `offset`: כל עמוד הוא מפתח משלו, ו-"עוד" מוסיף עמוד במקום
+  // להחליף רשימה. ההצטברות היא של SWR — אין כאן `setRows(prev => [...])`
+  // שצריך לדעת אם זו טעינה ראשונה או המשך.
+  const { pages, error, schemaOutdated, isLoading, isValidating, loadMore } =
+    useAdminPages<{ designs: AdminDesignRow[]; total: number }>(
+      (index) => `/api/admin/designs?limit=${PAGE}&offset=${index * PAGE}`,
+      { onAuthLost },
+    );
+  const rows = useMemo(() => pages?.flatMap((p) => p.designs) ?? [], [pages]);
+  // הסך־הכול מגיע בכל עמוד; הראשון מספיק.
+  const total = pages?.[0]?.total ?? 0;
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
-    void load(0);
-  }, [load]);
-
-  if (error) return <p className="text-sm text-[#c0413b]">{error}</p>;
-  if (loading && rows.length === 0) return <p className="text-ink60">{he.loading}</p>;
+  if (schemaOutdated) return <p className="text-sm text-[#c0413b]">{s.adminDesignsSchema}</p>;
+  if (error) return <p className="text-sm text-[#c0413b]">{s.adminDesignsError}</p>;
+  if (isLoading && rows.length === 0) return <p className="text-ink60">{he.loading}</p>;
   if (rows.length === 0) return <p className="text-ink60">{s.adminDesignsEmpty}</p>;
 
   return (
@@ -153,11 +130,11 @@ export default function AdminDesigns({
       {rows.length < total && (
         <button
           type="button"
-          onClick={() => void load(rows.length)}
-          disabled={loading}
+          onClick={() => void loadMore()}
+          disabled={isValidating}
           className="mt-6 rounded-[2px] border border-graphite/25 px-6 py-3 text-sm text-graphite transition-colors hover:bg-porcelain disabled:opacity-50"
         >
-          {loading ? he.loading : s.adminMore}
+          {isValidating ? he.loading : s.adminMore}
         </button>
       )}
     </div>

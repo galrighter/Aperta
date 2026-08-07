@@ -55,6 +55,35 @@ describe("סולם התגובות של הבק־אופיס", () => {
   it("חזרה ללשונית מרעננת — בק־אופיס נשאר פתוח שעות", () => {
     expect(src).toContain("revalidateOnFocus: true");
   });
+
+  /**
+   * מלכודת שהתגלתה כשהגעתי ל-`RunsLog`: הוא יושב מאחורי שער משלו ואינו מוסר
+   * `onAuthLost`. אילו אובדן הרשאה היה מסונן תמיד, 401 שם היה נעלם לגמרי —
+   * לא מטופל, וגם לא מוצג. הסינון מותנה בכך שמישהו באמת מטפל.
+   */
+  it("אובדן הרשאה מסונן רק כשיש מי שמטפל בו", () => {
+    expect(src).toContain("error instanceof AuthLostError && onAuthLost");
+    expect(src).not.toMatch(/error instanceof AuthLostError \? undefined/);
+  });
+});
+
+describe("רשימה מעומדת", () => {
+  it("לא מושכת מחדש את העמוד הראשון בכל \"עוד\"", () => {
+    expect(src).toContain("revalidateFirstPage: false");
+  });
+
+  /**
+   * בניגוד ל-`useAdminData`. חזרה ללשונית עם עשרה עמודים טעונים הייתה מייצרת
+   * עשר בקשות בבת אחת, ובעימוד לפי `offset` גם מסכנת שכפול או דילוג.
+   */
+  it("לא מרעננת על focus — רשימה שמצטברת היא מקרה אחר", () => {
+    const paged = src.slice(src.indexOf("export function useAdminPages"));
+    expect(paged).toContain("revalidateOnFocus: false");
+  });
+
+  it("המפתח רואה את העמוד הקודם, כדי לתמוך גם בסמן וגם ב-offset", () => {
+    expect(src).toContain("getUrl: (index: number, prev: T | null) => string | null");
+  });
 });
 
 describe("המסכים שהומרו", () => {
@@ -63,6 +92,7 @@ describe("המסכים שהומרו", () => {
     "src/components/admin/AdminOrders.tsx",
     "src/components/admin/AdminInquiries.tsx",
     "src/components/admin/OrderDetail.tsx",
+    "src/components/admin/AdminDesigns.tsx",
   ];
 
   for (const path of CONVERTED) {

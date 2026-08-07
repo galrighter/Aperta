@@ -79,7 +79,6 @@ describe("השתקות set-state-in-effect", () => {
     const files = [
       "src/app/debug/page.tsx",
       "src/components/Preview3D.tsx",
-      "src/components/admin/AdminDesigns.tsx",
       "src/components/admin/RunsLog.tsx",
       "src/components/site/DesignReadyWatch.tsx",
     ];
@@ -92,8 +91,9 @@ describe("השתקות set-state-in-effect", () => {
       }
     }
     // אם המספר יורד, מישהו פתר אחת מהן — וזו בשורה טובה שצריכה לעדכן את הדוח.
-    // 11 → 8 → 7 ב-6.8: `AdminGate`/`AdminOrders`/`AdminInquiries`/`OrderDetail`
-    // עברו ל-SWR. `debug` ו-`Preview3D` לא ייספרו לרדת — הם אינם טעינת נתונים.
-    expect(seen).toBe(7);
+    // 11 → 6 ב-6.8: חמישה מסכים עברו ל-SWR. שלושת הנותרים שאינם טעינת נתונים
+    // (`debug`, `Preview3D` ×2) לא ייספרו לרדת לעולם, ו-`RunsLog` (×2) ממתין
+    // למעבר בפני עצמו.
+    expect(seen).toBe(6);
   });
 });

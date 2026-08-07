@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR, { type SWRConfiguration, useSWRConfig } from "swr";
+import useSWRInfinite from "swr/infinite";
 
 /**
  * טעינת נתונים במסכי הבק־אופיס, במקום אחד.
@@ -96,14 +97,77 @@ export function useAdminData<T>(key: string | null, opts: AdminDataOptions = {})
 
   return {
     data,
-    /** השגיאה שהמסך אמור להציג, אחרי שאובדן הרשאה סונן החוצה. */
-    error: error instanceof AuthLostError ? undefined : (error as Error | undefined),
+    /**
+     * השגיאה שהמסך אמור להציג.
+     *
+     * אובדן הרשאה מסונן החוצה **רק אם** הקורא מסר `onAuthLost` — כלומר רק אם
+     * מישהו באמת מטפל בו. קורא בלי המטפל (`RunsLog`, שיושב כבר מאחורי שער
+     * משלו) היה מקבל אחרת שקט מוחלט על 401: לא מטופל ולא מוצג.
+     */
+    error: error instanceof AuthLostError && onAuthLost ? undefined : (error as Error | undefined),
     /** האם זו מיגרציה חסרה — נוסח משלה בכל מסך. */
     schemaOutdated: error instanceof SchemaOutdatedError,
     /** האם הפריט אינו קיים. מצב תצוגה, לא כשל טעינה. */
     notFound: error instanceof NotFoundError,
     isLoading,
     /** לקרוא אחרי מוטציה: מושך מחדש ומעדכן כל מי שמאזין לאותו מפתח. */
+    refresh: mutate,
+  };
+}
+
+/**
+ * רשימה מעומדת — "עוד" שמוסיף עמוד, ולא מחליף.
+ *
+ * `getUrl` מקבל את מספר העמוד ואת העמוד הקודם, ומחזיר `null` כשנגמר. זה מכסה
+ * את שתי הצורות שיש כאן: עימוד לפי `offset` (`AdminDesigns`), ועימוד לפי סמן
+ * שמגיע מהעמוד הקודם (`RunsLog`).
+ *
+ * **שני דברים שהוגדרו במפורש, כי ברירת המחדל לא מתאימה לרשימה שמצטברת:**
+ *
+ * - `revalidateFirstPage: false` — אחרת כל לחיצה על "עוד" הייתה מושכת מחדש גם
+ *   את העמוד הראשון.
+ * - `revalidateOnFocus: false` — בניגוד ל-`useAdminData`. חזרה ללשונית עם עשרה
+ *   עמודים טעונים הייתה מייצרת עשר בקשות בבת אחת, ובעימוד לפי `offset` גם
+ *   מסכנת שכפול או דילוג אם משהו נוסף בינתיים. ביומן ההרצות יש כפתור רענון
+ *   מפורש, וזו הדרך הנכונה כאן.
+ */
+export function useAdminPages<T>(
+  getUrl: (index: number, prev: T | null) => string | null,
+  opts: AdminDataOptions = {},
+) {
+  const { onAuthLost, ...swr } = opts;
+  const { data, size, setSize, error, isLoading, isValidating, mutate } = useSWRInfinite<T>(
+    getUrl,
+    adminFetch,
+    {
+      revalidateFirstPage: false,
+      revalidateOnFocus: false,
+      shouldRetryOnError: false,
+      ...swr,
+      onError: (e, k, cfg) => {
+        if (e instanceof AuthLostError) {
+          onAuthLost?.(e.state);
+          return;
+        }
+        swr.onError?.(e, k, cfg);
+      },
+    },
+  );
+
+  return {
+    /** העמודים שנטענו, לפי סדר. הקורא משטח אותם לפי המבנה שלו. */
+    pages: data,
+    /** מסונן רק כשיש `onAuthLost` — ראו את ההסבר ב-`useAdminData`. */
+    error: error instanceof AuthLostError && onAuthLost ? undefined : (error as Error | undefined),
+    schemaOutdated: error instanceof SchemaOutdatedError,
+    isLoading,
+    /** נכון גם כשמושכים עמוד נוסף, ולא רק בטעינה הראשונה. */
+    isValidating,
+    /** מושך עמוד נוסף. */
+    loadMore: () => setSize(size + 1),
+    pageCount: size,
+    /** מאפס לעמוד אחד ומושך מחדש — לכפתור רענון מפורש. */
+    reload: () => setSize(1).then(() => mutate()),
     refresh: mutate,
   };
 }
