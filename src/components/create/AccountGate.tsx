@@ -13,6 +13,7 @@ import { he } from "@/i18n/he";
 import { useDialog } from "@/lib/client/useDialog";
 import { TextInput } from "./ui";
 import { supabaseBrowser, authConfigured } from "@/lib/client/supabaseBrowser";
+import { classifyAuthError } from "@/lib/client/authFailure";
 
 const d = he.design;
 
@@ -122,9 +123,25 @@ export function AccountGate({
           )}`,
         },
       });
-      if (e) throw new Error(e.message);
+      if (e) {
+        // הפרטים לקונסולה: השגיאה עצמה נראית רק בלוגים של שירות האימות, ומי
+        // שמדווח "לא עובד" לא יכול להביא אותם. שורה אחת כאן חוסכת את החפירה.
+        console.error("signInWithOtp failed", e.status, e.code, e.message);
+        const kind = classifyAuthError(e);
+        setError(
+          kind === "rate"
+            ? d.acctTooMany
+            : kind === "server"
+              ? d.acctMailDown
+              : kind === "network"
+                ? he.errNetwork
+                : d.acctError,
+        );
+        return;
+      }
       setStep("code");
-    } catch {
+    } catch (e) {
+      console.error("signInWithOtp threw", e);
       setError(d.acctError);
     } finally {
       setBusy(false);
@@ -140,9 +157,26 @@ export function AccountGate({
         token: code.trim(),
         type: "email",
       });
-      if (e) throw new Error(e.message);
+      if (e) {
+        // "הקוד שגוי" על תקלת שרת שולח את המשתמשת לבקש קוד חדש שגם הוא ייכשל,
+        // ומשאיר אותה בטוחה שהיא זו שהקלידה לא נכון.
+        console.error("verifyOtp failed", e.status, e.code, e.message);
+        const kind = classifyAuthError(e);
+        setError(
+          kind === "rate"
+            ? d.acctTooMany
+            : kind === "server"
+              ? d.acctServerDown
+              : kind === "network"
+                ? he.errNetwork
+                : d.acctCodeInvalid,
+        );
+        setBusy(false);
+        return;
+      }
       await onSignedIn();
-    } catch {
+    } catch (e) {
+      console.error("verifyOtp threw", e);
       setError(d.acctCodeInvalid);
       setBusy(false);
     }
