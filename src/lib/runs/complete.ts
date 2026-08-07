@@ -1,4 +1,4 @@
-import { collectRenderJob } from "@/lib/render/service";
+import { collectRenderJob, runRenderJob, type RenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
@@ -109,7 +109,21 @@ export async function completeFromContext(
   // ההבחנה נעשית על השעון של השורה, אצל הקורא: הרצה שעדיין בתוך חלון הזמן
   // הסביר תיקרא שוב, וזו שעברה אותו כבר לא תיאסף לעולם.
   if (!box) return { kind: "lost" };
+  return finishFromRender(jobId, runId, ctx, box);
+}
 
+/**
+ * מה שקורה אחרי שההדמיה בידנו: יומן, מסגור, ולידציה, גרסה, סגירה.
+ *
+ * מופרד מהאיסוף כי יש לו שני מקורות — הדמיה שנאספה מהקופסה, והדמיה שרונדרה
+ * מחדש כשהקופסה כבר לא הכירה את ההרצה. משם והלאה זה אותו דבר בדיוק.
+ */
+async function finishFromRender(
+  jobId: string,
+  runId: string,
+  ctx: JobContext,
+  box: RenderJob,
+): Promise<CompleteOutcome> {
   const design = await getDesign(ctx.designId);
   const renderPngPath = box.renderPaths[0] ?? null;
 
@@ -195,4 +209,60 @@ export async function completeFromContext(
     await notifyDesignReady(design, version.version_no === 1);
   }
   return { kind: "done", result };
+}
+
+/**
+ * האם אפשר לרנדר את ההרצה מחדש מתוך ההקשר בלבד — כלומר לקבל **את מה שהלקוחה
+ * ביקשה**, ולא משהו שדומה לו.
+ *
+ * הרצה שנשלחה עם תמונת ייחוס אינה כזו. תמונת ההשראה לא נשמרת אצלנו בגודלה,
+ * העיצוב הקיים שנשלח בעריכה אינו בהקשר, ותמונת הכיתוב נחתכת מהפונט בזמן
+ * הבקשה. רנדר חוזר בלעדיהם היה מחזיר פריט שמתעלם ממה שצורף — וזה גרוע יותר
+ * מלהודות שההרצה אבדה, כי הוא נראה כמו הצלחה.
+ *
+ * מה שכן: תיאור טקסטואלי. שם ההקשר מחזיק את הכול, והרנדר החוזר זהה למקורי.
+ */
+export function canRerun(ctx: JobContext): boolean {
+  const i = ctx.inputs ?? {};
+  if (i.editedFromCurrent) return false;
+  if (i.lettering) return false;
+  // תמונה שצורפה **ונשלחה**. אחת שנזרקה (`imageDropped`) לא השפיעה על הרנדר
+  // מלכתחילה, ולכן היעדרה עכשיו אינו משנה דבר.
+  if ((i.imageCount ?? 0) > 0 && !i.imageDropped) return false;
+  return true;
+}
+
+/**
+ * רנדר חוזר, כשהקופסה כבר לא מכירה את ההרצה.
+ *
+ * **זה עולה כסף** — קריאה נוספת למודל התמונה על בקשה שכבר שולמה פעם אחת.
+ * ההצדקה היא שהחלופה גרועה יותר: הלקוחה שילמה ביחידת מכסה ובהמתנה, ומה שהיא
+ * מקבלת בלי זה הוא "היצירה לא הושלמה" על משהו שהיא כבר לא נמצאת כאן כדי
+ * לנסות שוב. הסייג היחיד הוא נאמנות, לא מחיר — ראה `canRerun`.
+ *
+ * המזהה בקופסה נגזר מהבקשה, ולכן בקשה זהה מקבלת את אותו מזהה: אין כאן job
+ * שלישי שנפתח לצד השניים הקיימים, אלא אותו אחד שנפתח מחדש.
+ */
+export async function rerunFromContext(
+  jobId: string,
+  runId: string,
+  ctx: JobContext,
+): Promise<CompleteOutcome> {
+  const i = ctx.inputs ?? {};
+  const box = await runRenderJob({
+    jobId: ctx.attemptId,
+    prompt: ctx.renderPrompt,
+    calls: (i.calls ?? 1) as 1,
+    rows: i.rows ?? 1,
+    cols: i.cols ?? 1,
+    size: i.canvasSize,
+    heightMm: i.widthMm ?? 0,
+    colorKey: "coverage",
+    minHoleMm: i.minHoleMm ?? 0.5,
+    inspiration: null,
+    baseSvg: null,
+    renderPaths: ctx.renderPaths,
+    stagePaths: ctx.stagePaths,
+  });
+  return finishFromRender(jobId, runId, { ...ctx, boxJobId: box.boxJobId ?? ctx.boxJobId }, box);
 }
