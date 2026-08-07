@@ -10,7 +10,8 @@
 //
 // "כל ההזמנות" נשארה בלשונית שנייה: היא התשובה לשאלה אחרת — למצוא הזמנה
 // מסוימת, כולל מבוטלות, שאינן חלק מהתור.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useAdminData } from "@/lib/client/useAdminData";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import { ORDER_STATUSES, type OrderRow, type OrderStatus } from "@/lib/db/orders";
@@ -28,11 +29,8 @@ export default function AdminOrders({
 }: {
   onAuthLost: (state: "out" | "disabled") => void;
 }) {
-  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [view, setView] = useState<View>("queue");
   const [filter, setFilter] = useState<OrderStatus | "">("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   /** המסומנות לפעולה מרוכזת (D4.4). */
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -40,37 +38,17 @@ export default function AdminOrders({
   const [dialog, setDialog] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(
-    async (status: OrderStatus | "") => {
-      setLoading(true);
-      const res = await fetch(`/api/orders${status ? `?status=${status}` : ""}`);
-      setLoading(false);
-      if (res.status === 401) return onAuthLost("out");
-      if (res.status === 503) {
-        // 503 כאן הוא או "אין ADMIN_TOKEN" או "המיגרציה לא רצה" — שני מצבים
-        // שונים לגמרי, ולכן מפרידים לפי הקוד ולא לפי הסטטוס.
-        const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
-        if (body?.error?.code === "schema_outdated") {
-          setError(s.adminOrdersSchema);
-          return;
-        }
-        return onAuthLost("disabled");
-      }
-      if (!res.ok) {
-        setError(s.adminOrdersError);
-        return;
-      }
-      const body = (await res.json()) as { orders: OrderRow[] };
-      setOrders(body.orders);
-      setError(null);
-    },
-    [onAuthLost],
+  // המפתח נגזר מהמצב, ולכן החלפת תצוגה או מסנן **היא** הטעינה מחדש — אין
+  // קריאה ידנית שצריך לזכור להוסיף בכל מקום שמשנה אותם. זה גם מה שמסלק את
+  // המרוץ: תשובה של מסנן קודם שחוזרת באיחור כבר לא שייכת למפתח הנוכחי.
+  const status = view === "all" ? filter : "";
+  const { data, error, schemaOutdated, isLoading, refresh } = useAdminData<{ orders: OrderRow[] }>(
+    `/api/orders${status ? `?status=${status}` : ""}`,
+    { onAuthLost },
   );
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
-    void load("");
-  }, [load]);
+  // `?? []` היה מייצר מערך חדש בכל רנדר, וכל `useMemo` שתלוי בו היה מחשב
+  // מחדש תמיד — כלומר המימואים שמתחתיו לא היו שווים כלום.
+  const orders = useMemo(() => data?.orders ?? [], [data]);
 
   const queue = useMemo(() => buildQueue(orders), [orders]);
   const pickedOrders = useMemo(() => orders.filter((o) => picked.has(o.id)), [orders, picked]);
@@ -88,16 +66,13 @@ export default function AdminOrders({
     setView(v);
     setPicked(new Set());
     setNotice(null);
-    if (v === "queue" && filter) {
-      setFilter("");
-      void load("");
-    }
+    // איפוס המסנן מספיק: המפתח משתנה, והטעינה יוצאת מעצמה.
+    if (v === "queue" && filter) setFilter("");
   }
 
   function applyFilter(f: OrderStatus | "") {
     setFilter(f);
     setPicked(new Set());
-    void load(f);
   }
 
   /**
@@ -142,11 +117,12 @@ export default function AdminOrders({
         .filter(Boolean)
         .join(" · "),
     );
-    await load(view === "all" ? filter : "");
+    await refresh();
   }
 
-  if (error) return <p className="text-sm text-[#c0413b]">{error}</p>;
-  if (loading && orders.length === 0) return <p className="text-ink60">{he.loading}</p>;
+  if (schemaOutdated) return <p className="text-sm text-[#c0413b]">{s.adminOrdersSchema}</p>;
+  if (error) return <p className="text-sm text-[#c0413b]">{s.adminOrdersError}</p>;
+  if (isLoading && orders.length === 0) return <p className="text-ink60">{he.loading}</p>;
 
   return (
     <div>

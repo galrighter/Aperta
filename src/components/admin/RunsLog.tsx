@@ -403,7 +403,7 @@ export default function RunsLog({
 
   // שינוי סינון הוא שאילתה חדשה בשרת, ולכן טעינה מהתחלה ולא סינון של הטעון.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט; שכבת הנתונים (`useAdminPages`) קיימת אבל המסך הזה טרם הומר, ובכוונה. הוא היחיד שמחזיק שלושה דברים בעצמו: הפרדה בין כשל בעמוד הראשון לכשל ב-"עוד" (ההודעה חייבת לשבת ליד הכפתור שנלחץ, לא עשרים שורות מעליו), דה-דופליקציה לפי מזהה בין עמודים, וסמן אטום שמגיע מהעמוד הקודם. המרה כאן היא מעבר בפני עצמו, לא שינוי מכני.
     void loadLog(null);
   }, [loadLog]);
 
@@ -417,7 +417,7 @@ export default function RunsLog({
   }, [statusFilter]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- הספירה נטענת בנפרד ובכוונה: היא לא משתנה בין עמוד לעמוד, וכשל בה לא אמור להפיל את היומן. תומר יחד עם `loadLog` במעבר שלו.
     void loadCounts();
   }, [loadCounts]);
 

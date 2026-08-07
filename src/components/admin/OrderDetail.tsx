@@ -5,7 +5,8 @@
 // עד עכשיו כל מה שידוע על הזמנה היה דחוס לכרטיס ברשימה: כדי לראות הזמנה אחת
 // היה צריך לקרוא את כולן, ולא היה קישור שאפשר לשמור או לשלוח. כאן הכול במקום
 // אחד עם כתובת — הפרטים, מסלול הסטטוסים, ההערה הפנימית וקבצי החיתוך.
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useAdminData, useInvalidate } from "@/lib/client/useAdminData";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import { ORDER_STATUSES, type OrderRow, type OrderStatus } from "@/lib/db/orders";
@@ -41,33 +42,21 @@ export default function OrderDetail({
   id: string;
   onAuthLost: (state: "out" | "disabled") => void;
 }) {
-  const [order, setOrder] = useState<OrderRow | null>(null);
-  const [production, setProduction] = useState<OrderProductionInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [target, setTarget] = useState<OrderStatus | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    const res = await fetch(`/api/orders/${id}`);
-    if (res.status === 401) return onAuthLost("out");
-    if (res.status === 404) return setError(s.adminOrderNotFound);
-    if (res.status === 503) {
-      const body = (await res.json().catch(() => null)) as { error?: { code?: string } } | null;
-      if (body?.error?.code === "schema_outdated") return setError(s.adminOrdersSchema);
-      return onAuthLost("disabled");
-    }
-    if (!res.ok) return setError(s.adminOrderLoadError);
-    const body = (await res.json()) as { order: OrderRow; production: OrderProductionInfo | null };
-    setOrder(body.order);
-    setProduction(body.production);
-    setError(null);
-  }, [id, onAuthLost]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- טעינת נתונים באפקט. הכלל מסמן את **הקריאה**, לא setState סינכרוני — הטוען פותח ב-await; התיקון האמיתי הוא שכבת נתונים, לא שינוי מקומי. ראו eslint.config.mjs.
-    void load();
-  }, [load]);
+  // הזמנה אחת. `notFound` הוא מצב תצוגה ולא כשל טעינה — מזהה שנמחק צריך לומר
+  // "לא נמצא", לא "הטעינה נכשלה".
+  const { data, error, schemaOutdated, notFound, refresh } = useAdminData<{
+    order: OrderRow;
+    production: OrderProductionInfo | null;
+  }>(`/api/orders/${id}`, { onAuthLost });
+  const order = data?.order ?? null;
+  const production = data?.production ?? null;
+  // רשימת ההזמנות מציגה את אותו סטטוס. בלי הביטול הזה היא הייתה נשארת על
+  // הישן עד שמישהו מרענן — שני מסכים שחלוקים על אותה הזמנה.
+  const invalidate = useInvalidate();
 
   /** מעבר סטטוס אחרי אישור בדיאלוג. `notify` מגיע משם ולא מכאן. */
   async function move(notify: boolean) {
@@ -86,7 +75,9 @@ export default function OrderDetail({
       return;
     }
     const body = (await res.json()) as PatchResult;
-    setOrder(body.order);
+    // התשובה כבר נושאת את ההזמנה המעודכנת, ולכן אין טעם למשוך אותה שוב.
+    await refresh((cur) => (cur ? { ...cur, order: body.order } : cur), { revalidate: false });
+    void invalidate("/api/orders");
     setNotice(
       !body.changed
         ? s.adminOrderNoChange
@@ -98,7 +89,9 @@ export default function OrderDetail({
     );
   }
 
-  if (error) return <ErrorBlock message={error} />;
+  if (notFound) return <ErrorBlock message={s.adminOrderNotFound} />;
+  if (schemaOutdated) return <ErrorBlock message={s.adminOrdersSchema} />;
+  if (error) return <ErrorBlock message={s.adminOrderLoadError} />;
   if (!order) return <p className="text-ink60">{he.loading}</p>;
 
   const ring = order.product_type === "ring";
@@ -204,7 +197,15 @@ export default function OrderDetail({
 
       {order.design_id && <ProductionSection production={production} />}
 
-      <NoteEditor order={order} onSaved={setOrder} onAuthLost={onAuthLost} />
+      {/* ההערה חוזרת מהשרת עם ההזמנה המעודכנת — נכתבת ישירות למטמון, בלי
+          משיכה נוספת ובלי עותק מקומי שיכול להיפרד ממנו. */}
+      <NoteEditor
+        order={order}
+        onSaved={(next) => {
+          void refresh((cur) => (cur ? { ...cur, order: next } : cur), { revalidate: false });
+        }}
+        onAuthLost={onAuthLost}
+      />
 
       <History order={order} />
 
