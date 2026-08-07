@@ -37,8 +37,38 @@ GRAPHITE = "#202326"
 LAPIS = "#3f6297"
 LAPIS_INK = "#2c4a76"
 
-FONTS_LINK = '''<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Assistant:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">'''
+# Fonts are self-hosted (docs/brand/social/fonts/*.woff2) rather than fetched
+# from fonts.googleapis.com at render time. A live fetch raced the headless
+# screenshot against the network: `font-display:swap` renders a fallback
+# immediately and swaps in the webfont whenever it lands, but the screenshot
+# doesn't wait for that swap — under any network hiccup (seen repeatedly here
+# as SSL handshake failures to Google Fonts) this silently dropped or
+# malformed Hebrew glyphs, which is what earlier looked like a Chromium flex
+# layout bug. Self-hosting removes the race entirely, matching why the site
+# itself self-hosts via next/font (see src/app/layout.tsx).
+FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+
+def font_url(name):
+    return "file://" + os.path.join(FONTS_DIR, name)
+
+FONTS_LINK = f'''<style>
+@font-face {{
+  font-family: 'Archivo';
+  font-weight: 700;
+  src: url('{font_url("archivo-700-latin.woff2")}') format('woff2');
+}}
+@font-face {{
+  font-family: 'Assistant';
+  font-weight: 300 800;
+  unicode-range: U+0590-05FF, U+FB1D-FB4F, U+200C-200F, U+20AA;
+  src: url('{font_url("assistant-hebrew.woff2")}') format('woff2');
+}}
+@font-face {{
+  font-family: 'Assistant';
+  font-weight: 300 800;
+  src: url('{font_url("assistant-latin.woff2")}') format('woff2');
+}}
+</style>'''
 
 BASE_CSS = f'''
 *{{margin:0;padding:0;box-sizing:border-box;}}
@@ -101,19 +131,31 @@ write("profile.html", profile, size=(1000, 1000))
 # ---------------------------------------------------------------- 2/3. Covers
 def cover_html(w, h, mark_h):
     panel_w = w * 0.6
+    # The tagline is split into two short lines instead of one long line: a
+    # single line at this width runs into the photo panel (`panel_w` is wide
+    # here specifically so the whole bracelet shows, per the earlier crop fix),
+    # and Hebrew text sitting half on porcelain and half on a busy product photo
+    # reads as broken/illegible. Two lines comfortably clear the photo on both
+    # cover sizes.
+    gap = h * 0.09
+    tagline_font = max(h * 0.088, 32)
     return f'''<!doctype html><html><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
 html,body{{width:{w}px;height:{h}px;background:var(--porcelain);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
 .photo{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:60% 60%;}}
 .fade{{position:absolute;top:0;bottom:0;right:0;width:{panel_w:.0f}px;background:linear-gradient(to right, var(--porcelain) 0%, rgba(244,241,235,0) 45%);}}
-.content{{position:absolute;top:0;bottom:0;left:{h*0.14:.0f}px;display:flex;flex-direction:column;justify-content:center;gap:{h*0.09:.0f}px;}}
-.tagline{{font-size:{h*0.088:.0f}px;color:var(--graphite);font-weight:600;letter-spacing:-0.01em;}}
-.tagline .accent{{color:var(--lapis-ink);}}
+.content{{position:absolute;top:0;bottom:0;left:{w*0.115:.0f}px;display:flex;flex-direction:column;justify-content:center;gap:{gap:.0f}px;}}
+.tagline{{font-size:{tagline_font:.0f}px;color:var(--graphite);font-weight:700;letter-spacing:-0.01em;white-space:nowrap;}}
+.tagline-lines{{display:flex;flex-direction:column;gap:{tagline_font*0.15:.0f}px;}}
+.accent{{color:var(--lapis-ink);}}
 </style></head><body>
 <div class="photo"></div>
 <div class="fade"></div>
 <div class="content">
 {lockup(h*0.30)}
-<div class="tagline">אינסוף צורות<span class="accent">.</span> אחת שלך<span class="accent">.</span></div>
+<div class="tagline-lines">
+<div class="tagline">אינסוף צורות<span class="accent">.</span></div>
+<div class="tagline">אחת שלך<span class="accent">.</span></div>
+</div>
 </div>
 </body></html>'''
 
@@ -235,20 +277,34 @@ def find_chrome(explicit):
         "Could not find a Chromium/Chrome binary. Pass --chrome <path> or set CHROME_BIN."
     )
 
+# This headless Chromium build has a genuine rendering bug at short viewport
+# heights: some text elements silently fail to paint (or paint garbled/
+# overlapping) below roughly this height, independent of width, DPI, or page
+# content — reproduced and confirmed with minimal repros across several
+# unrelated layouts. Any page shorter than this renders into a taller window
+# instead, and the result is cropped back down to the real target size.
+MIN_SAFE_RENDER_HEIGHT = 450
+
 def render(chrome, html_name, w, h):
     src = os.path.join(BUILD_DIR, html_name)
     png_name = html_name.replace(".html", ".png")
     dst = os.path.join(BUILD_DIR, png_name)
+    render_h = max(h, MIN_SAFE_RENDER_HEIGHT)
     subprocess.run(
         [
             chrome, "--headless=new", "--no-sandbox", "--disable-gpu",
             "--hide-scrollbars", "--force-device-scale-factor=1",
-            f"--window-size={w},{h}", f"--screenshot={dst}", f"file://{src}",
+            f"--window-size={w},{render_h}", f"--screenshot={dst}", f"file://{src}",
         ],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    if render_h != h:
+        from PIL import Image
+
+        im = Image.open(dst)
+        im.crop((0, 0, w, h)).save(dst)
     return dst
 
 def export(png_path, stem, fmt):
