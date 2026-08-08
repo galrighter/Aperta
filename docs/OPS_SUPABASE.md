@@ -9,14 +9,18 @@
 
 | | |
 |---|---|
-| משתנה | `FORME_SUPABASE_KEY` — טוקן אישי (`sbp_…`) של החשבון שמחזיק את Forme |
+| משתנה | `APERTA_SUPABASE_KEY` — טוקן אישי (`sbp_…`) של החשבון שמחזיק את Aperta |
+| מפתח Resend | `APERTA_RESEND_KEY` — לקריאת לוגי המסירה של `aperta-designs.com` |
 | מזהה הפרויקט | `yyonyypptptqznjepytg` |
 | בסיס | `https://api.supabase.com/v1/projects/yyonyypptptqznjepytg` |
 
-> **שם המשתנה נמדד ולא הונח.** המסמך נכתב מול `SUPABASE_PAT`; בסביבת ההרצה
-> בפועל הוא `FORME_SUPABASE_KEY` (לצד `AUTORIGHTEK_SUPABASE_KEY` של פרויקט אחר —
-> שני חשבונות בסביבה אחת, ולכן השם צריך לשאת את שם הפרויקט). לפני הרצה: לוודא
-> `env | grep -o '^[A-Z_]*SUPABASE[A-Z_]*'` — לא להדפיס את הערך.
+> **שם המשתנה נמדד ולא הונח — וגם המדידה מתיישנת.** המסמך נכתב מול
+> `SUPABASE_PAT`, תוקן ל-`FORME_SUPABASE_KEY`, ו-**ב-8.8 נמדד כ-
+> `APERTA_SUPABASE_KEY`**: המיתוג הדביק גם את שם המשתנה. לצדו יושב
+> `AUTORIGHTEK_SUPABASE_KEY` של פרויקט אחר — שני חשבונות בסביבה אחת, ולכן השם
+> נושא את שם הפרויקט. **לפני כל הרצה, לא פעם אחת:**
+> `env | grep -o '^[A-Z_]*\(SUPABASE\|RESEND\)[A-Z_]*'` — לא להדפיס את הערך.
+> שם משתנה הוא בדיוק סוג הפרט שמשתנה בשקט ומחזיר `401` שנראה כמו טוקן פגום.
 
 הטוקן נוצר ב-https://supabase.com/dashboard/account/tokens. הוא **אינו צר**:
 הוא נותן שליטה על כל הפרויקטים בחשבון. לכן —
@@ -61,7 +65,7 @@ Magic Link" בלי להבחין בין השניים.
 ```bash
 curl -sS -X PATCH \
   "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/config/auth" \
-  -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
+  -H "Authorization: Bearer $APERTA_SUPABASE_KEY" \
   -H "Content-Type: application/json" \
   --data-binary @- <<'JSON'
 {
@@ -100,7 +104,7 @@ JSON
 
 ```bash
 curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/config/auth" \
-  -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
+  -H "Authorization: Bearer $APERTA_SUPABASE_KEY" \
   | python3 -c "
 import json,sys
 c = json.load(sys.stdin)
@@ -180,7 +184,7 @@ Aperta, והייצור שלח תבניות שאומרות RM JEWEL — כלומ�
 q() {
   curl -sS -X POST \
     "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/database/query/read-only" \
-    -H "Authorization: Bearer $FORME_SUPABASE_KEY" \
+    -H "Authorization: Bearer $APERTA_SUPABASE_KEY" \
     -H "Content-Type: application/json" \
     -d "{\"query\": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")}"
 }
@@ -254,7 +258,7 @@ START=$(python3 -c "import datetime;print((datetime.datetime.utcnow()-datetime.t
 END=$(python3 -c "import datetime;print(datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'))")
 SQL=$(python3 -c "import urllib.parse;print(urllib.parse.quote('select timestamp, event_message from auth_logs order by timestamp desc limit 200'))")
 curl -sS "https://api.supabase.com/v1/projects/yyonyypptptqznjepytg/analytics/endpoints/logs.all?sql=$SQL&iso_timestamp_start=$START&iso_timestamp_end=$END" \
-  -H "Authorization: Bearer $FORME_SUPABASE_KEY"
+  -H "Authorization: Bearer $APERTA_SUPABASE_KEY"
 ```
 
 > **`iso_timestamp_start` הוא חובה ולא קישוט.** בלעדיו הנקודה מחזירה
@@ -292,11 +296,31 @@ select split_part(lower(email),'@',2) as domain, count(*) as users,
 from auth.users group by 1 order by users desc;
 ```
 
-> **מה שאי אפשר לאבחן מסשן של הסוכן:** לוגי המסירה של Resend. חשבון ה-Resend
-> שמחזיק את `aperta-designs.com` **אינו** החשבון שמחובר ל-MCP בסשנים (שם יושב
-> `willit.news` בלבד). כלומר `get-suppression` שמחזיר 404 בסשן כזה אינו אומר
-> "הכתובת לא חסומה" אלא "שאלתי את החשבון הלא נכון" — 404 כזה הוא **לא ראיה**.
-> את הצד הזה בודקים בדשבורד של Resend הנכון.
+**את הצד של Resend בודקים ישירות, עם `APERTA_RESEND_KEY`** — זה המדד שמכריע
+בין "walla חסמה" לבין "walla קיבלה והמשתמש לא מצא":
+
+```bash
+curl -sS "https://api.resend.com/emails?limit=20" \
+  -H "Authorization: Bearer $APERTA_RESEND_KEY" \
+  | python3 -c "
+import json,sys
+for e in json.load(sys.stdin)['data']:
+    print(e['created_at'], '|', e['last_event'], '|', e['to'], '|', e['subject'])
+"
+```
+
+`last_event` הוא התשובה: `delivered` = השרת המקבל **אישר קבלה**, ואז הבעיה היא
+בתוך תיבת הדואר (ספאם/סינון) ולא אצלנו. `bounced` = נדחה, ואז הכתובת כנראה גם
+נכנסה ל-suppression list ותצטרך הסרה. `sent` בלי `delivered` = נמסר לשרת ועדיין
+לא אושר — **לא** הוכחה שהגיע. לפרטי הודעה בודדת (כולל הגוף שנשלח בפועל):
+`curl -sS https://api.resend.com/emails/<id> -H "Authorization: Bearer $APERTA_RESEND_KEY"`.
+
+> **ההיסטוריה של השורה הזאת היא האזהרה.** עד 8.8 עמד כאן שחשבון ה-Resend של
+> `aperta-designs.com` אינו נגיש מסשן של הסוכן, ושיש לבדוק בדשבורד. זה היה נכון
+> באותו רגע — ה-MCP המחובר מחזיק `willit.news` בלבד, ו-`get-suppression` שם
+> מחזיר `404` שנקרא כמו "הכתובת לא חסומה" ופירושו "החשבון הלא נכון". מה שהשתנה
+> הוא שהסביבה קיבלה `APERTA_RESEND_KEY`. **המסקנה הכללית:** "אין גישה" הוא מצב
+> של הסביבה ברגע מסוים, לא תכונה קבועה — לבדוק `env` לפני שמוותרים על מדידה.
 
 ---
 
@@ -417,6 +441,41 @@ auth_event.action: user_confirmation_requested   traits.provider: email
 בין השניים יש ספק מייל שיכול להשתיק את המייל בלי להחזיר שום שגיאה לשום מקום
 שאנחנו רואים — ולכן `confirmation_sent_at` מלא מול `email_confirmed_at` ריק הוא
 התסמין, והחתך לפי דומיין הוא האבחנה.
+
+### נסגר — 8.8, נמדד מול Resend
+
+הסביבה קיבלה `APERTA_RESEND_KEY` (לא היה בה קודם), וזה איפשר למדוד את הצד שנשאר
+פתוח. **המייל נמסר.**
+
+| שדה | ערך |
+|---|---|
+| `last_event` | **`delivered`** — השרת של walla אישר קבלה |
+| `created_at` | `2026-08-08 14:23:43.859Z` |
+| `from` | `"Aperta" <info@aperta-designs.com>` |
+| נושא | `קוד הכניסה שלך ל-Aperta` |
+| גוף | HTML **וגם** `text/plain`, קוד תקין בן שש ספרות, מיתוג Aperta |
+
+כלומר הצד שלנו נקי מקצה לקצה: Supabase שלח, Resend מסר, walla קיבלה, והתוכן היה
+נכון. מה שנשאר הוא **בתוך תיבת הדואר** — סינון לספאם, או שהמשתמש לא מצא. שתי
+ההשערות שהסעיף שלמעלה הציע נשללו: לא bounce, ולא suppression.
+
+**שתי הצעות שהסעיף הזה העלה — ובוטלו אחרי מדידה:**
+
+- *"להוסיף גוף טקסט רגיל לצד ה-HTML"* — **כבר קיים.** Supabase שולח multipart,
+  ושדה `text` בתשובת Resend מכיל את הגרסה המלאה. ההצעה נכתבה מתוך הנחה על מבנה
+  המייל בלי לפתוח אותו; פתיחה אחת של ההודעה ב-API הייתה חוסכת אותה.
+- *"לבדוק אם `info@aperta-designs.com` מקבלת דואר"* — נשארת רלוונטית לתשובות
+  לקוח, אבל אינה קשורה לתקלה הזאת: המייל נמסר בלעדיה.
+
+**מה שכן פתוח, ובסדר עדיפות:** אם walla מסננת שיטתית — `DMARC` על הדומיין (SPF
+ו-DKIM כבר עובדים, אחרת walla לא הייתה מקבלת). ושיקול שני: `mailer_otp_exp` הוא
+600 שניות. מי שמוצא את המייל בספאם רבע שעה אחרי שנשלח מקבל קוד **מת**, ומדווח
+"הקוד לא עובד" — תסמין שנראה כמו באג ואינו. הארכה דורשת עדכון מקביל של הטקסט
+בשלוש התבניות ("עשר דקות") ואישור של גל.
+
+> **הלקח שחוזר בסעיף הזה בשלישית:** גם ההסבר שנשמע הכי סביר הוא השערה עד שמודדים
+> אותו. "walla חסמה" ו-"חסר טקסט רגיל" היו שניהם קוהרנטיים, שניהם התאימו לראיות
+> שהיו ביד, ושניהם היו לא נכונים. ההבדל בין השערה למסקנה הוא קריאת API אחת.
 
 ---
 
