@@ -10,9 +10,14 @@ name: Sweep stalled generations
 # תקלה אצל GitHub הוא פשוט לא רץ. אף אחד מהשניים אינו מסוכן — הסבב הבא יאסוף
 # את מה שהקודם החמיץ, ובינתיים מי שכן פותחת את האתר מפעילה את אותו מסלול.
 #
-# דורש שני secrets: SITE_URL (למשל https://aperta-designs.com) ו-ADMIN_TOKEN,
-# אותו סוד ששומר על הבק־אופיס. בלי אחד מהם ה-workflow נכשל ואומר מה חסר —
-# ולא מדווח ירוק על סריקה שלא קרתה.
+# **מה נדרש להגדיר: כלום.** `ADMIN_TOKEN` הוא אותו secret שהפריסה כבר משתמשת
+# בו (deploy.yml דוחף אותו ל-Worker), והכתובת אינה סוד — היא הדומיין הקנוני,
+# שיושב בקוד (`SITE.url`) וב-wrangler.jsonc. לכן היא ברירת מחדל כאן, וניתנת
+# לדריסה דרך `vars.SITE_URL` אם אי פעם תרוץ סריקה מול סביבה אחרת.
+#
+# מה שכן נשאר קשיח: בלי `ADMIN_TOKEN` ה-workflow **נכשל** ואומר מה חסר. הוא
+# מריץ עבודה שעולה כסף, ו-check ירוק על סריקה שלא קרתה הוא בדיוק התשובה שאסור
+# לתת.
 
 on:
   schedule:
@@ -34,11 +39,11 @@ jobs:
     steps:
       - name: Trigger the sweep
         env:
-          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
-          if [ -z "$SITE_URL" ] || [ -z "$ADMIN_TOKEN" ]; then
-            echo "::error::SITE_URL and ADMIN_TOKEN secrets are required — nothing was swept."
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set — nothing was swept."
             exit 1
           fi
           code=$(curl -sS -o body.json -w '%{http_code}' -X POST \
