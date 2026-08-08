@@ -179,6 +179,30 @@ export async function listRecentJobs(limit = 80): Promise<JobListRow[]> {
   return (data ?? []) as unknown as JobListRow[];
 }
 
+/**
+ * ההרצות שנתקעו: `running` שאיש לא נגע בהן מעבר לסף, ושיש להן הקשר לסיים ממנו.
+ *
+ * מיון מהוותיקה לחדשה — מי שממתינה הכי הרבה זמן נענית ראשונה, וסריקה שנחתכת
+ * בתקרה לא מרעיבה אף אחת: הבאה בתור תיאסף בסבב הבא.
+ *
+ * שורה בלי `context` אינה נשלפת כלל. אין מה לעשות איתה, והיא רק הייתה תופסת
+ * מקום בתקרה על חשבון שורה שכן ניתן לסיים.
+ */
+export async function listStalledJobs(limit = 20): Promise<GenerationJobRow[]> {
+  const sb = supabaseAdmin();
+  const cutoff = new Date(Date.now() - JOB_STALE_MS).toISOString();
+  const { data, error } = await sb
+    .from("generation_jobs")
+    .select("*")
+    .eq("status", "running")
+    .lt("updated_at", cutoff)
+    .not("context", "is", null)
+    .order("updated_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as GenerationJobRow[];
+}
+
 export async function getJob(id: string): Promise<GenerationJobRow | null> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.from("generation_jobs").select("*").eq("id", id).maybeSingle();

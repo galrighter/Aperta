@@ -1,0 +1,53 @@
+name: Sweep stalled generations
+
+# מסיים הרצות יצירה שנתקעו — בלי שהלקוחה תמתין להן ובלי שדפדפן כלשהו יהיה
+# פתוח. ההחלטות כולן בשרת (`src/lib/runs/sweep.ts`); כאן רק הדק תקופתי.
+#
+# למה GitHub Actions ולא cron של Cloudflare: ה-Worker נבנה דרך OpenNext, שהכניסה
+# שלו מייצאת `fetch` בלבד — הוספת `scheduled` דורשת עטיפה של הכניסה המיוצרת.
+# זה אפשרי, והוא הצעד הנכון אם התדירות תהפוך לקריטית. כרגע ההרצה מתוזמנת כאן,
+# עם המחיר הידוע: `schedule` ב-Actions הוא best-effort ויכול לאחר בדקות, ובזמן
+# תקלה אצל GitHub הוא פשוט לא רץ. אף אחד מהשניים אינו מסוכן — הסבב הבא יאסוף
+# את מה שהקודם החמיץ, ובינתיים מי שכן פותחת את האתר מפעילה את אותו מסלול.
+#
+# דורש שני secrets: SITE_URL (למשל https://aperta-designs.com) ו-ADMIN_TOKEN,
+# אותו סוד ששומר על הבק־אופיס. בלי אחד מהם ה-workflow נכשל ואומר מה חסר —
+# ולא מדווח ירוק על סריקה שלא קרתה.
+
+on:
+  schedule:
+    # כל עשר דקות. סף ה"תקוע" בשרת הוא שש דקות, ולכן הרצה שנתקעה נאספת בתוך
+    # רבע שעה בערך — מהר מספיק כדי שהלקוחה תמצא את העיצוב כשתחזור, ורחוק
+    # מספיק כדי שלא נסרוק טבלה ריקה בלי הפסקה.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# סריקות במקביל היו נוגעות באותן שורות. אין בכך נזק — הסגירה מותנית ב-running,
+# ולכן רק אחת מסיימת כל הרצה — אבל זו עבודה כפולה שעולה כסף אצל ספק התמונות.
+concurrency:
+  group: sweep-stalled-generations
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the sweep
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ -z "$SITE_URL" ] || [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::SITE_URL and ADMIN_TOKEN secrets are required — nothing was swept."
+            exit 1
+          fi
+          code=$(curl -sS -o body.json -w '%{http_code}' -X POST \
+            -H "authorization: Bearer $ADMIN_TOKEN" \
+            --max-time 300 \
+            "$SITE_URL/api/jobs/sweep")
+          cat body.json
+          echo
+          if [ "$code" != "200" ]; then
+            echo "::error::Sweep returned HTTP $code"
+            exit 1
+          fi
