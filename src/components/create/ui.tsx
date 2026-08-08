@@ -233,6 +233,39 @@ export function TextInput({
   );
 }
 
+/**
+ * תיבת סימון.
+ *
+ * `<button aria-pressed>` ולא `<input type=checkbox>` מעוצב: הריבוע כאן הוא
+ * 20px עם סימן שמצויר בתוכו, ו-input אמיתי היה דורש להסתיר אותו ולצייר מעליו —
+ * כלומר בדיוק אותו אלמנט, עם עוד שכבה שיכולה להתפרק. התווית לחיצה יחד איתו,
+ * ומכילה קישורים (התנאים) — ולכן היא ליד הכפתור ולא בתוכו.
+ */
+export function CheckBox({
+  on, onChange, children,
+}: {
+  on: boolean; onChange: (v: boolean) => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        onClick={() => onChange(!on)}
+        className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-[2px] text-xs text-porcelain transition-colors"
+        style={{
+          border: `1.5px solid ${on ? LAPIS : "rgba(32,35,38,0.3)"}`,
+          background: on ? LAPIS : "#fff",
+        }}
+      >
+        {on ? "✓" : ""}
+      </button>
+      <span className="text-[13px] leading-relaxed text-ink80">{children}</span>
+    </div>
+  );
+}
+
 /* ===== סרגל שלבים (handoff §1) ===== */
 
 export function StepRail({

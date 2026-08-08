@@ -29,6 +29,7 @@ import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
+import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import {
   beatPendingJob, clearPendingJob, setPendingJob,
 } from "@/lib/client/pendingJob";
@@ -37,7 +38,7 @@ import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryFromGeneration,
   canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
-  sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
+  newOrderKey, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
@@ -209,10 +210,31 @@ export default function DesignPage() {
         patch.name = account.name;
       }
       if (!prev.addr.phone.trim() && account.phone) patch.phone = account.phone;
+      // הכתובת מההזמנה הקודמת (0020). אותו כלל בדיוק: רק שדות ריקים.
+      if (!prev.addr.street.trim() && account.street) patch.street = account.street;
+      if (!prev.addr.city.trim() && account.city) patch.city = account.city;
+      if (!prev.addr.zip.trim() && account.zip) patch.zip = account.zip;
       if (!Object.keys(patch).length) return prev;
       return { ...prev, addr: { ...prev.addr, ...patch } };
     });
   }, [account]);
+
+  /**
+   * הטיוטה שבדפדפן — מה שהוקלד עכשיו, לפני שהייתה הזמנה שתשמור אותו.
+   *
+   * נטענת פעם אחת בעלייה, ולפני שהחשבון חוזר מהשרת: היא הספציפית מבין השתיים,
+   * ומה שהוקלד גובר על מה שנשמר בפעם הקודמת. הכתיבה חלה על כל שינוי בטופס —
+   * זול, ומכסה גם את מי שסוגרת את הלשונית באמצע.
+   */
+  useEffect(() => {
+    const draft = loadAddrDraft();
+    if (!draft) return;
+    setState((prev) => ({ ...prev, addr: { ...prev.addr, ...draft } }));
+  }, []);
+
+  useEffect(() => {
+    saveAddrDraft(s.addr);
+  }, [s.addr]);
 
   const go = useCallback((screen: Screen) => {
     setState((prev) => {
@@ -759,6 +781,10 @@ export default function DesignPage() {
     }
     clearCreateState();
     clearMyDesigns();
+    // הכתובת השמורה יוצאת עם המשתמשת. מחשב משותף אינו מקרה קצה בסדנה, וכתובת
+    // מלאה של אדם אחר בטופס היא בדיוק מה שאסור שהמסך הבא יראה.
+    clearAddrDraft();
+    setState((prev) => ({ ...prev, addr: INITIAL.addr }));
     setSaved([]);
     setAccount(null);
     setGateError(null);
@@ -931,7 +957,11 @@ export default function DesignPage() {
 
   /* ===== שליחת ההזמנה ===== */
   const submitOrder = useCallback(async () => {
-    set({ sending: true, sendError: null, sendMailto: null });
+    // המפתח של ניסיון השליחה. נוצר פעם אחת ונשמר במצב: ניסיון שני אחרי רשת
+    // שנתקעה נושא אותו מפתח, והשרת מחזיר את ההזמנה שכבר נשמרה במקום לפתוח
+    // שנייה. **לפני** ה-await, כי שני קליקים מהירים הם שני מסלולים.
+    const orderKey = s.orderKey ?? newOrderKey();
+    set({ sending: true, sendError: null, sendMailto: null, orderKey });
     const p = priceOf(s);
     const entry = activeEntry(s);
     // הסיכום הזה משמש **רק** את מסלול הגיבוי ב-mailto. מה שנשמר ונשלח במסלול
@@ -960,6 +990,14 @@ export default function DesignPage() {
           // הגרסה שהיא רואה על המסך ברגע ההזמנה — לא "האחרונה שנוצרה". אחרי
           // ההזמנה אפשר להמשיך לערוך, ומה שנחתך חייב להיות מה שהיא אישרה.
           versionId: entry?.versionId ?? null,
+          idempotencyKey: orderKey,
+          termsAccepted: s.terms,
+          marketingOptIn: s.marketing,
+          // הסכום שעל המסך, לבדיקת התאמה מול מה שהשרת מחשב. פער פירושו מסך
+          // ישן, וההזמנה נעצרת במקום להישמר בסכום שהלקוחה לא ראתה.
+          displayedTotal: p.total,
+          // מלכודת הבוטים. אצל אדם היא תמיד ריקה — השדה מוסתר מהעין ומהמקלדת.
+          company: s.company,
           name: s.addr.name.trim(),
           email: s.addr.email.trim(),
           // צורה אחת לכל דרכי ההקלדה: כך `tel:` בבק־אופיס עובד, וכך אותה
@@ -985,21 +1023,41 @@ export default function DesignPage() {
           ].filter(Boolean).join(" · ") || undefined,
         }),
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        // המחירון התעדכן בזמן שהמסך היה פתוח. זו התשובה היחידה שאין להציע
+        // עליה `mailto:` — הודעה עם הסכום הישן היא בדיוק מה שאסור שיישלח.
+        const code = await res
+          .json()
+          .then((b) => (b as { error?: { code?: string } })?.error?.code)
+          .catch(() => undefined);
+        if (code === "price_changed") {
+          set({ sending: false, sendError: d.checkoutPriceChanged, orderKey: null });
+          return;
+        }
+        throw new Error("failed");
+      }
 
       // מסלול המייל נכנס בלי שם — הפרופיל נוצר עם החלק שלפני ה-@, ובבק־אופיס
       // הוא נראה כמו "dana" ולא כמו דנה. הצ'קאאוט הוא המקום היחיד שבו השם
-      // האמיתי והטלפון כבר נמסרו, ולכן משלימים אותם כאן. best-effort: זו
-      // תוספת לתצוגה, ולא סיבה להיכשל על הזמנה שכבר נשמרה.
+      // האמיתי והטלפון כבר נמסרו, ולכן משלימים אותם כאן — יחד עם הכתובת, כדי
+      // שההזמנה הבאה תתחיל ממה שכבר נמסר. best-effort: זו תוספת לתצוגה, ולא
+      // סיבה להיכשל על הזמנה שכבר נשמרה.
       void api
-        .updateAccount({ name: s.addr.name.trim(), phone: formatPhone(s.addr.phone) || undefined })
+        .updateAccount({
+          name: s.addr.name.trim(),
+          phone: formatPhone(s.addr.phone) || undefined,
+          street: s.addr.street.trim() || undefined,
+          city: s.addr.city.trim() || undefined,
+          zip: s.addr.zip.trim() || undefined,
+        })
         .then(({ account: a }) => setAccount(a))
         .catch(() => {});
       // מספר ההזמנה הוא מספר העיצוב. עד כה הוא נגזר מחיתוך של uuid — מחרוזת
       // אקראית שאי אפשר להקריא בטלפון, ושלא הצביעה על שום דבר שאפשר לחפש.
       const orderNo =
         designCode(s.designSerial) ?? ((s.designId ?? "").slice(0, 8).toUpperCase() || "—");
-      setState((prev) => ({ ...prev, sending: false, orderNo, screen: "done" }));
+      // המפתח מתאפס: ההזמנה הזאת נקלטה, והבאה היא הזמנה חדשה ולא ניסיון חוזר.
+      setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
       setMaxReached(5);
       if (typeof window !== "undefined") window.scrollTo(0, 0);
     } catch {

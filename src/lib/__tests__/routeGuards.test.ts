@@ -88,6 +88,33 @@ describe("order routes", () => {
     expect(post).toContain("countRecentOrdersFromEmail");
     expect(post).toContain("body.company");
   });
+
+  it("has a honeypot field that actually exists in the form", () => {
+    // ה-honeypot ישב בסכימת השרת מאז ההתחלה — ומעולם לא הוצג. שדה שאינו
+    // ב-HTML הוא שדה שאף בוט לא ימלא, כלומר מלכודת שנראית כמו הגנה ואינה
+    // תופסת דבר. הבדיקה היא על שני הקצוות יחד, כי כל אחד לבדו נראה תקין.
+    const screen = readFileSync(
+      join(process.cwd(), "src/components/create/CheckoutScreen.tsx"),
+      "utf8",
+    );
+    expect(screen).toContain('name="company"');
+    expect(readFileSync(join(process.cwd(), "src/app/(site)/design/page.tsx"), "utf8")).toContain(
+      "company: s.company",
+    );
+  });
+
+  it("creates the order once per attempt, and mails only what it created", () => {
+    // המפתח לבדו אינו ההגנה: הוא מונע שורה שנייה, אבל אם ההתראה יוצאת בכל
+    // מקרה — "נסי שוב" עדיין שולח ללקוחה שני מיילים על אותה הזמנה.
+    const post = handlerBody(readFileSync(join(API, "orders/route.ts"), "utf8"), "POST");
+    expect(post).toContain("createOrderOnce");
+    expect(post).toContain("if (created) await notify(order);");
+  });
+
+  it("refuses to save a total the customer did not see", () => {
+    const post = handlerBody(readFileSync(join(API, "orders/route.ts"), "utf8"), "POST");
+    expect(post).toContain("price_changed");
+  });
 });
 
 /** מסלולים שמקבלים מזהה של עיצוב קיים (ישירות, או דרך גרסה/הרצה) ולכן חייבים
@@ -101,6 +128,10 @@ const OWNERSHIP_ROUTES = [
   "generate/[jobId]/route.ts",
   "vectorize/route.ts",
   "export/route.ts",
+  // ההזמנה. היא נכנסה לרשימה מאוחר מכולן, ובדיוק בגלל זה: המסלול נקרא
+  // `getDesign` ישירות, ולכן מי שהחזיק uuid זר יכול היה להזמין עליו — ולקבל
+  // את תיאור העיצוב במייל האישור, לכתובת שהוא עצמו מסר.
+  "orders/route.ts",
 ];
 
 describe("routes that take a design id", () => {

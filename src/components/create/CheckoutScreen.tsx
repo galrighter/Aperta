@@ -5,9 +5,11 @@
 // מחובר, ואיסוף מספרי כרטיס באתר חי הוא חשיפה אמיתית ללקוחה. במקומו —
 // שליחת ההזמנה ותיאום תשלום אישי (§12 ממילא מסמן תמחור/תשלום כפער פתוח).
 import { useState } from "react";
+import Link from "next/link";
 import { he } from "@/i18n/he";
 import { formatPhone, isValidPhone } from "@/lib/phone";
-import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, TextInput } from "./ui";
+import { addressLineValid, nameValid, zipValid } from "@/lib/address";
+import { Eyebrow, ScreenTitle, CardLabel, CheckBox, PrimaryBtn, TextInput } from "./ui";
 import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
 
 const d = he.design;
@@ -19,6 +21,10 @@ export const emailValid = (email: string): boolean =>
 
 export const addrValid = (a: Addr): boolean =>
   REQUIRED.every((k) => a[k].trim().length > 0) &&
+  nameValid(a.name) &&
+  addressLineValid(a.street) &&
+  addressLineValid(a.city) &&
+  zipValid(a.zip) &&
   emailValid(a.email) &&
   // הטלפון הוא הדרך לאשר שרטוט לפני ייצור. מספר שגוי אינו שדה ריק שרואים —
   // הוא נראה מלא ומתגלה רק כשאי אפשר להשיג את הלקוחה.
@@ -39,7 +45,9 @@ export function CheckoutScreen({
   const p = priceOf(s);
   const ring = s.product === "ring";
   const width = frameWidthMm(s, activeEntry(s));
-  const ok = addrValid(s.addr);
+  // התנאים נכללים בשער. הם אושרו במסך הסיכום, אבל האישור חי ב-state בזיכרון
+  // ומה שנשמר בשרת חייב עדות מהרגע שבו ההזמנה נשלחה — ראו את תיבת הסימון למטה.
+  const ok = addrValid(s.addr) && s.terms;
   const setAddr = (patch: Partial<Addr>) => set({ addr: { ...s.addr, ...patch } });
 
   // השגיאה נכתבת ביציאה מהשדה ולא בהקלדה: "מספר לא תקין" על התו הראשון הוא
@@ -53,6 +61,9 @@ export function CheckoutScreen({
     if (!v) return REQUIRED.includes(k) ? d.addrErrors.required : null;
     if (k === "phone" && !isValidPhone(v)) return d.addrErrors.phone;
     if (k === "email" && !emailValid(v)) return d.addrErrors.email;
+    if (k === "name" && !nameValid(v)) return d.addrErrors.name;
+    if ((k === "street" || k === "city") && !addressLineValid(v)) return d.addrErrors.line;
+    if (k === "zip" && !zipValid(v)) return d.addrErrors.zip;
     return null;
   };
 
@@ -100,6 +111,7 @@ export function CheckoutScreen({
               <TextInput
                 label={d.addrFields.zip} placeholder={d.addrPlaceholders.zip}
                 value={s.addr.zip} onChange={(v) => setAddr({ zip: v })}
+                onBlur={() => touch("zip")} error={errorFor("zip")}
                 inputMode="numeric" autoComplete="postal-code"
               />
               <TextInput
@@ -118,6 +130,42 @@ export function CheckoutScreen({
                 inputMode="email" dir="ltr" autoComplete="email"
               />
             </div>
+
+            {/* מלכודת הבוטים. השדה קיים בסכימת השרת מאז ההתחלה, אבל מעולם לא
+                הוצג — כלומר שום בוט לא יכול היה למלא אותו, והמלכודת הייתה
+                ריקה. מוסתר מהעין, מהמקלדת ומקורא־המסך; מה שממלא אותו הוא
+                סקריפט שקורא HTML, וההזמנה שלו נבלעת בשקט. */}
+            <div className="pointer-events-none absolute -left-[9999px] h-0 w-0 overflow-hidden" aria-hidden>
+              <input
+                type="text"
+                name="company"
+                tabIndex={-1}
+                autoComplete="off"
+                value={s.company}
+                onChange={(e) => set({ company: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* אישורים */}
+          <div className="mt-4 space-y-4 border border-graphite/10 bg-white p-6">
+            <CheckBox on={s.terms} onChange={(v) => set({ terms: v })}>
+              {d.termsLabel}{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-graphite underline underline-offset-4 hover:text-lapis"
+              >
+                {d.termsLink}
+              </Link>
+              <span className="text-lapis"> *</span>
+            </CheckBox>
+            {/* בנפרד, ולעולם לא מסומן מראש: מייל שנמסר כדי לקבל אישור הזמנה
+                אינו הסכמה לדבר פרסומת (חוק התקשורת, סעיף 30א). */}
+            <CheckBox on={s.marketing} onChange={(v) => set({ marketing: v })}>
+              {d.marketingLabel}
+            </CheckBox>
           </div>
 
           {/* תשלום */}

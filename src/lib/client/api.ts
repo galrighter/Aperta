@@ -234,9 +234,11 @@ export const api = {
   /** מי מחובר עכשיו בדפדפן הזה. null = טרם נרשם. */
   account: () => call<{ account: Account | null }>("/api/account"),
 
-  /** השלמת שם/טלפון אחרי הכניסה הראשונה. הזהות כבר מאומתת — אין כאן הרשמה.
-   *  (הכניסה עצמה עוברת ישירות מול Supabase Auth, ראו client/supabaseBrowser.) */
-  updateAccount: (input: { name?: string; phone?: string }) =>
+  /** השלמת שם/טלפון/כתובת — אחרי הכניסה הראשונה, ואחרי כל הזמנה. הזהות כבר
+   *  מאומתת ואין כאן הרשמה. (הכניסה עוברת ישירות מול Supabase Auth.) */
+  updateAccount: (input: {
+    name?: string; phone?: string; street?: string; city?: string; zip?: string;
+  }) =>
     call<{ account: Account }>("/api/account", { method: "PATCH", body: JSON.stringify(input) }),
 
   signOut: () => call<{ ok: true }>("/api/account", { method: "DELETE" }),

@@ -5,6 +5,7 @@ import { readAccountId, requireAccountId, clearLegacyCookieHeader } from "@/lib/
 import { authClientFor, authConfigured, applyCookies } from "@/lib/supabase/authClient";
 import { getAccount, updateAccountDetails, toPublic } from "@/lib/db/accounts";
 import { formatPhone, isValidPhone } from "@/lib/phone";
+import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 
 // החשבון של המבקר. GET = מי אני, PATCH = השלמת שם/טלפון, DELETE = יציאה.
 //
@@ -30,7 +31,22 @@ export async function GET(req: Request) {
 }
 
 const detailsSchema = z.object({
-  name: z.string().trim().min(2).max(120).optional(),
+  name: z.string().trim().min(2).max(120).refine(nameValid, { message: "invalid name" }).optional(),
+  // הכתובת האחרונה שנמסרה (0020), כדי שההזמנה הבאה תתחיל ממה שכבר הוקלד.
+  // אותן בדיקות כמו בצ'קאאוט: מה שנשמר כאן חוזר לטופס בפעם הבאה.
+  street: z
+    .string()
+    .trim()
+    .max(200)
+    .refine((v) => !v || addressLineValid(v), { message: "invalid street" })
+    .optional(),
+  city: z
+    .string()
+    .trim()
+    .max(120)
+    .refine((v) => !v || addressLineValid(v), { message: "invalid city" })
+    .optional(),
+  zip: z.string().trim().max(20).refine(zipValid, { message: "invalid zip" }).optional(),
   // אותה בדיקה כמו ב-`/api/orders`: הטלפון בפרופיל הוא זה שגל מחייג אליו
   // כשההזמנה כבר בייצור, ואין טעם לשמור בו מחרוזת שאי אפשר לחייג אליה.
   phone: z

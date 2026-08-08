@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { addrValid, emailValid } from "../CheckoutScreen";
 import type { Addr } from "../model";
 
@@ -39,6 +41,27 @@ describe("addrValid", () => {
     for (const phone of ["0501234567", "+972 50-123 4567", "03-5551234", "+1 415 555 2671"]) {
       expect(addrValid({ ...OK, phone })).toBe(true);
     }
+  });
+});
+
+describe("שער השליחה", () => {
+  const SCREEN = readFileSync(
+    join(process.cwd(), "src/components/create/CheckoutScreen.tsx"),
+    "utf8",
+  );
+
+  it("אישור התנאים הוא חלק מהשער, ולא רק ממסך הסיכום", () => {
+    // האישור ניתן במסך הסיכום, אבל הוא חי ב-state בזיכרון: לשונית שנטענה
+    // מחדש מגיעה לצ'קאאוט בלי אישור ועם טופס מלא. התיבה כאן היא גם הראיה
+    // שנשמרת בשרת (terms_accepted_at) וגם מה שמונע הזמנה בלעדיה.
+    expect(SCREEN).toContain("addrValid(s.addr) && s.terms");
+  });
+
+  it("הסכמת הדיוור נפרדת, ולא מסומנת מראש", () => {
+    // ברירת המחדל יושבת ב-INITIAL (`marketing: false`), והתיבה אינה נגזרת
+    // מ-`terms` בשום מקום — הסכמה לדבר פרסומת אינה נובעת מהזמנה.
+    expect(SCREEN).toContain("s.marketing");
+    expect(SCREEN).not.toContain("marketing: s.terms");
   });
 });
 
