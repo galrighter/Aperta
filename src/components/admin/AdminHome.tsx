@@ -24,9 +24,16 @@ type Counts = {
   inquiries: number | null;
   designs: number | null;
   failedRuns: number | null;
+  users: number | null;
 };
 
-const NO_COUNTS: Counts = { orders: null, inquiries: null, designs: null, failedRuns: null };
+const NO_COUNTS: Counts = {
+  orders: null,
+  inquiries: null,
+  designs: null,
+  failedRuns: null,
+  users: null,
+};
 
 export default function AdminHome() {
   const [counts, setCounts] = useState<Counts>(NO_COUNTS);
@@ -43,15 +50,18 @@ export default function AdminHome() {
     };
 
     void (async () => {
-      const [orders, inquiries, designs, failedRuns] = await Promise.all([
+      const [orders, inquiries, designs, failedRuns, users] = await Promise.all([
         num<{ orders: OrderRow[] }>("/api/orders", (b) =>
           b.orders.filter((o) => OPEN_ORDER.has(o.status)).length,
         ),
         num<{ inquiries: Inquiry[] }>("/api/inquiries?status=new", (b) => b.inquiries.length),
         num<{ total: number }>("/api/admin/designs?limit=1", (b) => b.total),
         num<{ failed: number }>("/api/debug/log/counts", (b) => b.failed),
+        // `kind=friend` — מי שנרשם באתר. ששת הבודקים של הסטודיו הם שורות
+        // באותה טבלה, וספירה שכוללת אותם אומרת "6 משתמשים" על אתר ריק.
+        num<{ total: number }>("/api/admin/users?kind=friend&limit=1", (b) => b.total),
       ]);
-      setCounts({ orders, inquiries, designs, failedRuns });
+      setCounts({ orders, inquiries, designs, failedRuns, users });
     })();
   }, []);
 
@@ -60,8 +70,9 @@ export default function AdminHome() {
       <h1 className="text-[26px] font-semibold tracking-tight text-graphite">{s.adminHomeTitle}</h1>
       <p className="mt-2 max-w-[620px] text-[15px] leading-relaxed text-ink60">{s.adminHomeSubtitle}</p>
 
-      <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label={s.adminStatOpenOrders} value={counts.orders} href="/admin/orders" />
+        <Stat label={s.adminStatUsers} value={counts.users} href="/admin/users?kind=friend" />
         <Stat label={s.adminStatNewInquiries} value={counts.inquiries} href="/admin/inquiries" />
         <Stat label={s.adminStatDesigns} value={counts.designs} href="/admin/designs" />
         {/* הסינון בכתובת, כדי שהלחיצה תגיע לשורות שהמספר מדבר עליהן. */}
@@ -74,6 +85,7 @@ export default function AdminHome() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Card href="/admin/orders" title={s.adminTabOrders} desc={s.adminCardOrdersDesc} />
+        <Card href="/admin/users" title={s.adminTabUsers} desc={s.adminCardUsersDesc} />
         <Card href="/admin/runs" title={s.adminNavRuns} desc={s.adminCardRunsDesc} />
         <Card href="/admin/designs" title={s.adminTabDesigns} desc={s.adminCardDesignsDesc} />
         <Card href="/admin/inquiries" title={s.adminTabInquiries} desc={s.adminCardInquiriesDesc} />

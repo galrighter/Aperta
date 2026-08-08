@@ -16,6 +16,7 @@ const s = he.site;
 const NAV = [
   { href: "/admin", label: s.adminNavHome },
   { href: "/admin/orders", label: s.adminTabOrders },
+  { href: "/admin/users", label: s.adminTabUsers },
   { href: "/admin/inquiries", label: s.adminTabInquiries },
   { href: "/admin/designs", label: s.adminTabDesigns },
   { href: "/admin/runs", label: s.adminNavRuns },
