@@ -13,6 +13,7 @@ import {
   type SavedDesign,
 } from "@/lib/client/myDesigns";
 import { designCode } from "@/lib/designCode";
+import { formatPhone } from "@/lib/phone";
 import { isShareToken } from "@/lib/shareToken";
 import { SITE } from "@/lib/site.config";
 import type { Account } from "@/lib/client/types";
@@ -183,6 +184,35 @@ export default function DesignPage() {
       // אין חשבון או שהבדיקה נכשלה — השער ייפתח בזמן היצירה ממילא.
       .catch(() => setAccount(null));
   }, []);
+
+  /**
+   * פרטי החשבון יורדים לטופס הכתובת.
+   *
+   * המייל כבר אומת בכניסה (קוד חד־פעמי / גוגל), ולבקש מהלקוחה להקליד אותו שוב
+   * בסוף המשפך זה לבקש ממנה להמציא הזדמנות לטעות — מייל שגוי כאן פירושו אישור
+   * הזמנה שלא מגיע. השדה נשאר רגיל וניתן לעריכה: יש מי שמזמינה לכתובת אחרת.
+   *
+   * **רק שדות ריקים.** הבדיקה חוזרת מהשרת אחרי כמה מאות מילישניות, ובזמן הזה
+   * אפשר כבר להקליד; דריסה של מה שהוקלד היא בדיוק הבאג שקשה לשחזר.
+   *
+   * השם מושלם רק כשהוא שם. מסלול המייל יוצר פרופיל עם החלק שלפני ה-@, ואז
+   * "שם מלא" היה מתמלא ב-`dana` — ערך שנראה מוכן ולכן לא מתוקן, ומגיע ככה
+   * לתווית המשלוח.
+   */
+  useEffect(() => {
+    if (!account) return;
+    setState((prev) => {
+      const patch: Partial<typeof prev.addr> = {};
+      const local = account.email.split("@")[0];
+      if (!prev.addr.email.trim() && account.email) patch.email = account.email;
+      if (!prev.addr.name.trim() && account.name && account.name !== local) {
+        patch.name = account.name;
+      }
+      if (!prev.addr.phone.trim() && account.phone) patch.phone = account.phone;
+      if (!Object.keys(patch).length) return prev;
+      return { ...prev, addr: { ...prev.addr, ...patch } };
+    });
+  }, [account]);
 
   const go = useCallback((screen: Screen) => {
     setState((prev) => {
@@ -932,7 +962,9 @@ export default function DesignPage() {
           versionId: entry?.versionId ?? null,
           name: s.addr.name.trim(),
           email: s.addr.email.trim(),
-          phone: s.addr.phone.trim(),
+          // צורה אחת לכל דרכי ההקלדה: כך `tel:` בבק־אופיס עובד, וכך אותה
+          // לקוחה אינה מופיעה כשתי רשומות שאי אפשר להצליב.
+          phone: formatPhone(s.addr.phone),
           street: s.addr.street.trim(),
           city: s.addr.city.trim(),
           zip: s.addr.zip.trim(),
@@ -960,7 +992,7 @@ export default function DesignPage() {
       // האמיתי והטלפון כבר נמסרו, ולכן משלימים אותם כאן. best-effort: זו
       // תוספת לתצוגה, ולא סיבה להיכשל על הזמנה שכבר נשמרה.
       void api
-        .updateAccount({ name: s.addr.name.trim(), phone: s.addr.phone.trim() || undefined })
+        .updateAccount({ name: s.addr.name.trim(), phone: formatPhone(s.addr.phone) || undefined })
         .then(({ account: a }) => setAccount(a))
         .catch(() => {});
       // מספר ההזמנה הוא מספר העיצוב. עד כה הוא נגזר מחיתוך של uuid — מחרוזת
@@ -1125,7 +1157,7 @@ export default function DesignPage() {
         )}
 
         {s.screen === "checkout" && (
-          <CheckoutScreen s={s} set={set} onSubmit={submitOrder} />
+          <CheckoutScreen s={s} set={set} onSubmit={submitOrder} accountEmail={account?.email ?? null} />
         )}
 
         {s.screen === "done" && <DoneScreen orderNo={s.orderNo ?? "—"} />}

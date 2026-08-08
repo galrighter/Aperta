@@ -1,6 +1,7 @@
 "use client";
 
 // פרימיטיבים משותפים למסע היצירה. טוקנים: handoff §10.
+import { useId } from "react";
 import { he } from "@/i18n/he";
 import { useDialog } from "@/lib/client/useDialog";
 import { RAIL, type Screen } from "./model";
@@ -178,13 +179,26 @@ export function Slider({
 
 export function TextInput({
   label, value, onChange, placeholder, type = "text", required, inputMode, dir,
+  onBlur, autoComplete, error, hint,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; required?: boolean;
   /** לקוד חד־פעמי: מקלדת ספרות בנייד, ומספרים שנקראים משמאל לימין. */
   inputMode?: "numeric" | "tel" | "email" | "text";
   dir?: "ltr" | "rtl";
+  onBlur?: () => void;
+  /** ערך `autocomplete` של HTML — מה שמאפשר לדפדפן למלא את השדה. */
+  autoComplete?: string;
+  /** שגיאת ולידציה על השדה הזה. מוצגת מתחתיו, ומסומנת גם לקורא־מסך. */
+  error?: string | null;
+  /** הסבר קבוע מתחת לשדה. נבלע כשיש שגיאה — שתי שורות אינן עוזרות לאף אחד. */
+  hint?: string | null;
 }) {
+  // מזהה יציב לקישור `aria-describedby`. השגיאה מוצגת ויזואלית מתחת לשדה,
+  // ובלי הקישור הזה קורא־מסך היה מקריא שדה "לא תקין" בלי לומר למה.
+  const id = useId();
+  const msg = error || hint || null;
+
   return (
     <label className="block">
       <span className="mb-2 block text-[13px] font-semibold text-ink60">
@@ -195,11 +209,26 @@ export function TextInput({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         inputMode={inputMode}
         dir={dir}
-        className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-base transition-colors focus:border-lapis focus:outline-none"
+        autoComplete={autoComplete}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={msg ? `${id}-msg` : undefined}
+        className={`w-full rounded-[2px] border bg-white px-4 py-3 text-base transition-colors focus:outline-none ${
+          error ? "border-[#c0413b] focus:border-[#c0413b]" : "border-graphite/20 focus:border-lapis"
+        }`}
       />
+      {msg && (
+        <span
+          id={`${id}-msg`}
+          role={error ? "alert" : undefined}
+          className={`mt-1.5 block text-[12px] ${error ? "text-[#c0413b]" : "text-ink60"}`}
+        >
+          {msg}
+        </span>
+      )}
     </label>
   );
 }

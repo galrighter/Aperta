@@ -4,6 +4,7 @@ import { parseBody, handleRouteError } from "@/lib/api";
 import { readAccountId, requireAccountId, clearLegacyCookieHeader } from "@/lib/account";
 import { authClientFor, authConfigured, applyCookies } from "@/lib/supabase/authClient";
 import { getAccount, updateAccountDetails, toPublic } from "@/lib/db/accounts";
+import { formatPhone, isValidPhone } from "@/lib/phone";
 
 // החשבון של המבקר. GET = מי אני, PATCH = השלמת שם/טלפון, DELETE = יציאה.
 //
@@ -30,7 +31,15 @@ export async function GET(req: Request) {
 
 const detailsSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
-  phone: z.string().trim().max(40).optional(),
+  // אותה בדיקה כמו ב-`/api/orders`: הטלפון בפרופיל הוא זה שגל מחייג אליו
+  // כשההזמנה כבר בייצור, ואין טעם לשמור בו מחרוזת שאי אפשר לחייג אליה.
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .refine((v) => !v || isValidPhone(v), { message: "invalid phone" })
+    .transform((v) => (v ? formatPhone(v) : v))
+    .optional(),
 });
 
 /** השלמת פרטים אחרי הכניסה הראשונה. הזהות כבר מאומתת — כאן רק שם וטלפון. */

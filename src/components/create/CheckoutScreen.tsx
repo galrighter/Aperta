@@ -4,7 +4,9 @@
 // שינוי מודע מול ה-handoff: לא נאספים פרטי כרטיס אשראי. אין ספק תשלומים
 // מחובר, ואיסוף מספרי כרטיס באתר חי הוא חשיפה אמיתית ללקוחה. במקומו —
 // שליחת ההזמנה ותיאום תשלום אישי (§12 ממילא מסמן תמחור/תשלום כפער פתוח).
+import { useState } from "react";
 import { he } from "@/i18n/he";
+import { formatPhone, isValidPhone } from "@/lib/phone";
 import { Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, TextInput } from "./ui";
 import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
 
@@ -12,21 +14,55 @@ const d = he.design;
 
 const REQUIRED: Array<keyof Addr> = ["name", "street", "city", "phone", "email"];
 
+export const emailValid = (email: string): boolean =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+
 export const addrValid = (a: Addr): boolean =>
-  REQUIRED.every((k) => a[k].trim().length > 0) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.email.trim());
+  REQUIRED.every((k) => a[k].trim().length > 0) &&
+  emailValid(a.email) &&
+  // הטלפון הוא הדרך לאשר שרטוט לפני ייצור. מספר שגוי אינו שדה ריק שרואים —
+  // הוא נראה מלא ומתגלה רק כשאי אפשר להשיג את הלקוחה.
+  isValidPhone(a.phone);
+
+/** אילו שדות המשתמשת כבר יצאה מהם. שגיאה מוצגת רק עליהם. */
+type Touched = Partial<Record<keyof Addr, boolean>>;
 
 export function CheckoutScreen({
-  s, set, onSubmit,
+  s, set, onSubmit, accountEmail,
 }: {
   s: CreateState;
   set: (patch: Partial<CreateState>) => void;
   onSubmit: () => void;
+  /** המייל של המחוברת — מוצג כהסבר מתחת לשדה כשהוא זה שמילא אותו. */
+  accountEmail?: string | null;
 }) {
   const p = priceOf(s);
   const ring = s.product === "ring";
   const width = frameWidthMm(s, activeEntry(s));
   const ok = addrValid(s.addr);
   const setAddr = (patch: Partial<Addr>) => set({ addr: { ...s.addr, ...patch } });
+
+  // השגיאה נכתבת ביציאה מהשדה ולא בהקלדה: "מספר לא תקין" על התו הראשון הוא
+  // נכון טכנית וטורדני בכל שאר המובנים — אף אחד לא מקליד טלפון תקין באות אחת.
+  const [touched, setTouched] = useState<Touched>({});
+  const touch = (k: keyof Addr) => setTouched((t) => ({ ...t, [k]: true }));
+
+  const errorFor = (k: keyof Addr): string | null => {
+    if (!touched[k]) return null;
+    const v = s.addr[k].trim();
+    if (!v) return REQUIRED.includes(k) ? d.addrErrors.required : null;
+    if (k === "phone" && !isValidPhone(v)) return d.addrErrors.phone;
+    if (k === "email" && !emailValid(v)) return d.addrErrors.email;
+    return null;
+  };
+
+  // יציאה משדה הטלפון מיישרת גם את הצורה: `+972 50 123 4567` ו-`0501234567`
+  // הם אותו מספר, ומי שרואה אותו חוזר כ-`050-1234567` יודע שהמספר נקלט.
+  const blurPhone = () => {
+    touch("phone");
+    const tidy = formatPhone(s.addr.phone);
+    if (tidy !== s.addr.phone) setAddr({ phone: tidy });
+  };
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
@@ -43,29 +79,43 @@ export function CheckoutScreen({
                 <TextInput
                   label={d.addrFields.name} required placeholder={d.addrPlaceholders.name}
                   value={s.addr.name} onChange={(v) => setAddr({ name: v })}
+                  onBlur={() => touch("name")} error={errorFor("name")}
+                  autoComplete="name"
                 />
               </div>
               <div className="sm:col-span-2">
                 <TextInput
                   label={d.addrFields.street} required placeholder={d.addrPlaceholders.street}
                   value={s.addr.street} onChange={(v) => setAddr({ street: v })}
+                  onBlur={() => touch("street")} error={errorFor("street")}
+                  autoComplete="street-address"
                 />
               </div>
               <TextInput
                 label={d.addrFields.city} required placeholder={d.addrPlaceholders.city}
                 value={s.addr.city} onChange={(v) => setAddr({ city: v })}
+                onBlur={() => touch("city")} error={errorFor("city")}
+                autoComplete="address-level2"
               />
               <TextInput
                 label={d.addrFields.zip} placeholder={d.addrPlaceholders.zip}
                 value={s.addr.zip} onChange={(v) => setAddr({ zip: v })}
+                inputMode="numeric" autoComplete="postal-code"
               />
               <TextInput
                 label={d.addrFields.phone} required type="tel" placeholder={d.addrPlaceholders.phone}
                 value={s.addr.phone} onChange={(v) => setAddr({ phone: v })}
+                onBlur={blurPhone} error={errorFor("phone")}
+                inputMode="tel" dir="ltr" autoComplete="tel"
               />
               <TextInput
                 label={d.addrFields.email} required type="email" placeholder={d.addrPlaceholders.email}
                 value={s.addr.email} onChange={(v) => setAddr({ email: v })}
+                onBlur={() => touch("email")} error={errorFor("email")}
+                hint={
+                  accountEmail && s.addr.email.trim() === accountEmail ? d.emailFromAccount : null
+                }
+                inputMode="email" dir="ltr" autoComplete="email"
               />
             </div>
           </div>
@@ -103,6 +153,11 @@ export function CheckoutScreen({
                 {s.sending ? d.checkoutSending : d.checkoutSubmit}
               </PrimaryBtn>
             </div>
+            {/* כפתור אפור בלי הסבר הוא מבוי סתום: הלקוחה מילאה הכול לתחושתה,
+                והמסך שותק. השורה הזאת אומרת מה חסר, והשגיאות למעלה מראות איפה. */}
+            {!ok && !s.sending && (
+              <p className="mt-2 text-center text-[12px] text-ink60">{d.checkoutIncomplete}</p>
+            )}
             {s.sendError && (
               <div className="mt-3 text-center text-[13px]">
                 <p className="text-[#c0413b]">{s.sendError}</p>

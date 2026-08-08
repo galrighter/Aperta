@@ -17,6 +17,7 @@ import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
+import { formatPhone, isValidPhone } from "@/lib/phone";
 
 // ההזמנה עצמה (docs/TODO.md B1–B3). מסלול ציבורי ליצירה, אדמין לקריאה.
 //
@@ -37,7 +38,15 @@ const createSchema = z.object({
   versionId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(1).max(120),
   email: z.string().trim().email().max(200),
-  phone: z.string().trim().max(40).optional(),
+  // הטלפון נבדק ונשמר בצורה אחת. הבדיקה בדפדפן היא שירות ללקוחה; זו כאן היא
+  // מה שקובע — מה שנשלח לשרת אינו בהכרח מה שהמסך הציג.
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .refine((v) => !v || isValidPhone(v), { message: "invalid phone" })
+    .transform((v) => (v ? formatPhone(v) : v))
+    .optional(),
   street: z.string().trim().max(200).optional(),
   city: z.string().trim().max(120).optional(),
   zip: z.string().trim().max(20).optional(),
