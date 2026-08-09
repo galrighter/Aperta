@@ -153,11 +153,22 @@ export function FlatDrawing({
             strokeDasharray={`${Math.max(0.6, widthMm / 30)} ${Math.max(0.4, widthMm / 45)}`}
           />
         ))}
-        {/* אזורים לחיצים */}
+        {/* אזורי הבחירה על השרטוט — קיצור דרך לעכבר, ולא הפקד עצמו.
+            הם היו `onClick` עם `cursor:pointer` ובלי שום מקבילה במקלדת. הבחירה
+            האמיתית חיה ב-`RegionChips` למטה — כפתורים עם `aria-pressed`,
+            באותו מסך, ולכן אין כאן פונקציונליות שאבודה למי שאינו בעכבר.
+            מה שכן היה אבוד הוא הבהירות: קורא מסך הכריז על שלוש קבוצות SVG
+            לחיצות שאין דרך להפעיל, ליד שלושה כפתורים שכן. `aria-hidden`
+            מוציא את הכפילות מעץ הנגישות ומשאיר את קיצור הדרך לעכבר. */}
         {ZONES.map((z) => {
           const on = region === z.id;
           return (
-            <g key={z.id} onClick={() => onRegion(z.id)} style={{ cursor: "pointer" }}>
+            <g
+              key={z.id}
+              onClick={() => onRegion(z.id)}
+              aria-hidden="true"
+              style={{ cursor: "pointer" }}
+            >
               <rect
                 x={lengthMm * z.from}
                 y={0}

@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 export default function CarePage() {
   return (
-    <div className="mx-auto max-w-3xl px-5 py-16 sm:px-10">
+    <div className="ap-surface mx-auto max-w-3xl px-5 py-16 sm:px-10">
       <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {g.title}
       </h1>

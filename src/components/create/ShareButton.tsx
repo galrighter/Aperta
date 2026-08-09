@@ -221,7 +221,7 @@ export function ShareButton({
               />
             </>
           ) : (
-            <p className="text-[13px]" style={{ color: "#c0413b" }}>{error}</p>
+            <p className="text-[13px]" style={{ color: "var(--color-failred)" }}>{error}</p>
           )}
         </div>
       )}

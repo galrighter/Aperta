@@ -20,7 +20,7 @@ const STEPS: { t: string; b: string; v: PatternVariant }[] = [
 
 export default function HowItWorksPage() {
   return (
-    <div className="mx-auto max-w-4xl px-5 py-16 sm:px-10">
+    <div className="ap-surface mx-auto max-w-4xl px-5 py-16 sm:px-10">
       <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {s.howTitle}
       </h1>

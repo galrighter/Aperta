@@ -79,7 +79,7 @@ export default function SiteHeader() {
       ref={ref}
       className="sticky top-0 z-20 border-b border-graphite/10 bg-porcelain/85 backdrop-blur-md"
     >
-      <nav className="flex items-center justify-between px-5 py-5 sm:px-10">
+      <nav aria-label={s.navPrimaryLabel} className="flex items-center justify-between px-5 py-5 sm:px-10">
         {/* לוגו */}
         {/* בלי שורת ה-DESIGNS: בהדר יש רוחב לנעילה, אבל השורה הזו במשקל הזה
             רק מוסיפה רעש מתחת לשם. היא חוזרת בפוטר ובתמונת השיתוף. */}

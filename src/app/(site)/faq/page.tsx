@@ -31,7 +31,7 @@ const faqJsonLd = {
 
 export default function FaqPage() {
   return (
-    <div className="mx-auto max-w-3xl px-5 py-16 sm:px-10">
+    <div className="ap-surface mx-auto max-w-3xl px-5 py-16 sm:px-10">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}

@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:a11y": "node scripts/a11y-scan.mjs",
     "build:geometry": "esbuild geometry-service/server.ts --bundle --platform=node --target=node22 --outfile=geometry-service/dist/server.js",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy": "opennextjs-cloudflare deploy",
@@ -32,6 +33,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/eslintrc": "^3.3.6",
     "@opennextjs/cloudflare": "^1.0.0",
     "@tailwindcss/postcss": "^4.0.0",
@@ -44,7 +46,9 @@
     "esbuild": "^0.25.4",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0",

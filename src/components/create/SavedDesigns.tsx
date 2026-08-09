@@ -69,7 +69,7 @@ export function SavedDesigns({
       </button>
 
       {/* מחוץ לאזור המתקפל: שגיאת טעינה חייבת להישאר גלויה */}
-      {error && <p className="border-t border-graphite/10 px-5 py-3 text-[13px] text-[#c0413b]">{error}</p>}
+      {error && <p className="border-t border-graphite/10 px-5 py-3 text-[13px] text-failred">{error}</p>}
 
       {open && (
         <div id={listId} className="border-t border-graphite/10 p-5">

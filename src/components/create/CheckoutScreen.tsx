@@ -208,7 +208,7 @@ export function CheckoutScreen({
             )}
             {s.sendError && (
               <div className="mt-3 text-center text-[13px]">
-                <p className="text-[#c0413b]">{s.sendError}</p>
+                <p className="text-failred">{s.sendError}</p>
                 {s.sendMailto && (
                   <>
                     <p className="mt-2 text-ink60">{d.checkoutMailtoNote}</p>

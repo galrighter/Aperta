@@ -29,6 +29,49 @@ describe("דיאלוגים", () => {
     // הוא קופץ מעצמו על עמוד שהמשתמשת באמצע. עד כאן היו רק שני כפתורים.
     expect(read("src/components/site/DesignReadyWatch.tsx")).toContain("onClick={dismiss}");
   });
+
+  it("role=dialog יושב על מכל התוכן ולא על הרקע", () => {
+    // כשהוא ישב על הרקע, מה שהוכרז כדיאלוג היה השכבה שפרושה על כל המסך —
+    // כלומר `aria-modal` חל על כל מה שמתחתיה, וגבול החלון שקורא-מסך מדווח
+    // עליו לא היה גבול החלון. הוא צריך לשבת על אותו אלמנט שנושא `ref={box}`.
+    const src = read("src/components/create/ui.tsx");
+    const at = src.indexOf("ref={box}");
+    expect(at, "ref={box} לא נמצא").toBeGreaterThan(-1);
+    // התגית הפותחת שנושאת את ה-ref: מתחילתה ועד ה-`>` הראשון שאחריו. חיפוש
+    // המחרוזת בקובץ כולו היה מוצא גם את ההערה שמסבירה את הכלל הזה.
+    const tag = src.slice(src.lastIndexOf("<", at), src.indexOf(">", at));
+    expect(tag).toContain('role="dialog"');
+    expect(tag).toContain('aria-modal="true"');
+  });
+});
+
+describe("קישור הדילוג ו-landmarks", () => {
+  it("קישור הדילוג הוא היעד הראשון ומצביע ל-main", () => {
+    // בלעדיו הגעה לתוכן דורשת תשע לחיצות Tab דרך הלוגו וכל שורת הניווט,
+    // בכל עמוד מחדש.
+    const layout = read("src/app/(site)/layout.tsx");
+    expect(layout).toContain('href="#main"');
+    expect(layout).toContain('id="main"');
+    // `tabIndex={-1}` — בלעדיו הדילוג גולל בלי להעביר את המיקוד בפועל.
+    expect(layout).toContain("tabIndex={-1}");
+    // הקישור לפני הכותרת בעץ, אחרת הוא אינו היעד הראשון של Tab.
+    expect(layout.indexOf('href="#main"')).toBeLessThan(layout.indexOf("<SiteHeader"));
+  });
+
+  it("לכל <nav> יש שם", () => {
+    // שלושה landmarks בלי שם נקראים "ניווט, ניווט, ניווט".
+    for (const p of ["src/components/site/SiteHeader.tsx", "src/components/site/SiteFooter.tsx"]) {
+      const src = read(p);
+      const navs = src.match(/<nav\b[^>]*/g) ?? [];
+      expect(navs.length).toBeGreaterThan(0);
+      for (const nav of navs) expect(nav).toContain("aria-label");
+    }
+  });
+
+  it("עמוד 404 עוטף את תוכנו ב-main", () => {
+    // הוא מרונדר מחוץ ל-(site)/layout ולכן אינו מקבל ממנו את ה-landmark.
+    expect(read("src/app/not-found.tsx")).toContain("<main");
+  });
 });
 
 describe("תיוג השדות במשפך", () => {

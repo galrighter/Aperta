@@ -1091,7 +1091,7 @@ export default function DesignPage() {
   return (
     // בלי ap-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
     // את הגריד ואת הזוהר הלאפיסי פעמיים זה על זה במסך המרכזי של המשפך.
-    <div className="min-h-screen">
+    <div className="ap-surface min-h-screen">
       {showRail && (
         <StepRail
           screen={s.screen}
@@ -1155,7 +1155,7 @@ export default function DesignPage() {
                     {he.share.adoptSizeNote}
                   </p>
                   {s.adoptError && (
-                    <p className="mt-2 text-[13px]" style={{ color: "#c0413b" }}>{s.adoptError}</p>
+                    <p className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>{s.adoptError}</p>
                   )}
                 </div>
               </div>

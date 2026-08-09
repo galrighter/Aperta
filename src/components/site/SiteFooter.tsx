@@ -18,7 +18,7 @@ export default function SiteFooter() {
             <p className="mt-4 text-sm text-mist"><bdi>{s.tagline}</bdi></p>
           </div>
 
-          <nav className="flex flex-col gap-2.5 text-sm">
+          <nav aria-label={s.navFooterLabel} className="flex flex-col gap-2.5 text-sm">
             {NAV.map((item) => (
               <Link
                 key={item.href}
@@ -48,8 +48,13 @@ export default function SiteFooter() {
             </a>
           </nav>
 
-          <nav className="flex flex-col gap-2.5 text-sm">
+          <nav aria-label={s.navLegalLabel} className="flex flex-col gap-2.5 text-sm">
             <span className="text-xs font-medium tracking-wide text-mist">{s.footerLegal}</span>
+            {/* הצהרת הנגישות ראשונה בעמודה, מעל התנאים: מי שמחפש אותה בדרך כלל
+                כבר נתקל במשהו שלא עבד, ותקנה 35ה דורשת שהיא תהיה "זמינה". */}
+            <Link href="/accessibility" className="text-ink60 transition-colors hover:text-lapis">
+              {s.navAccessibility}
+            </Link>
             <Link href="/terms" className="text-ink60 transition-colors hover:text-lapis">
               {s.navTerms}
             </Link>

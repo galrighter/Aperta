@@ -91,11 +91,11 @@ export function SizesScreen({
             placeholder={ring ? d.ringSizePlaceholder : d.circPlaceholder}
             aria-invalid={issue ? true : undefined}
             className={`w-full rounded-[2px] border bg-white px-4 py-3.5 text-base transition-colors focus:outline-none ${
-              issue ? "border-[#c0413b]" : "border-graphite/20 focus:border-lapis"
+              issue ? "border-failred" : "border-graphite/20 focus:border-lapis"
             }`}
           />
           {issue ? (
-            <p role="alert" className="mt-2 text-[13px] leading-relaxed" style={{ color: "#c0413b" }}>
+            <p role="alert" className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--color-failred)" }}>
               {issue.kind === "usSize"
                 ? d.sizeUsOutOfRange(issue.value, issue.lo, issue.hi)
                 : d.sizeOutOfRange(issue.value, issue.lo, issue.hi)}

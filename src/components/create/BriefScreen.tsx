@@ -131,7 +131,7 @@ export function BriefScreen({
               />
             </div>
             {letteringLocked ? (
-              <p className="mt-3 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+              <p className="mt-3 border-s-2 border-failred bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
                 {d.mixBlocked}
               </p>
             ) : (
@@ -171,7 +171,7 @@ export function BriefScreen({
                   {!imageLocked && <span className="text-[13px] text-mist">{d.imageFormats}</span>}
                 </div>
                 {imageLocked && (
-                  <p className="mt-3 border-s-2 border-[#c0413b] bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
+                  <p className="mt-3 border-s-2 border-failred bg-porcelain p-3 text-[13px] leading-relaxed text-ink80">
                     {d.mixBlocked}
                   </p>
                 )}
@@ -226,7 +226,7 @@ export function BriefScreen({
             )}
 
             {imageError && (
-              <p role="alert" className="mt-3 text-[13px] leading-relaxed text-red-600">
+              <p role="alert" className="mt-3 text-[13px] leading-relaxed text-failred">
                 {imageError}
               </p>
             )}
