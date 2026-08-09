@@ -42,8 +42,15 @@ const NO_INDEX = "noindex, nofollow, noarchive";
  * לא נחסם — `GET /studio` החזיר 200 בלי `X-Robots-Tag` ובלי `<meta robots>`,
  * תחת הכותרת והתיאור של דף הבית. הכותרת כאן נוסעת עם כל תגובה, גם כשמגיעים
  * מלינק חיצוני שלא עבר ב-robots.txt.
+ *
+ * `/auth` נוסף ב-9.8, אחרי הודעת Search Console על עמודים שלא נוספו לאינדקס
+ * מהסיבה «הדף מפנה לכתובת אתר אחרת». `/auth/callback` הוא מסלול שכל תפקידו
+ * להפנות: בלי `code` תקף הוא מחזיר `303 → /design?auth=failed`, וזה בדיוק מה
+ * שזחלן מקבל. הוא לא היה ב-sitemap אבל גם לא נחסם, וכתובת החזרה מ-OAuth נוסעת
+ * בשרשראות הפניה חיצוניות שמהן גוגל מגלה כתובות. עמוד שכל קיומו הוא הפניה אינו
+ * מועמד לאינדוקס בשום מצב — הוא רק רעש בדוח.
  */
-const NO_INDEX_TREES = ["/api", "/admin", "/debug", "/studio"];
+const NO_INDEX_TREES = ["/api", "/admin", "/debug", "/studio", "/auth"];
 
 const CANONICAL_HOST = new URL(SITE.url).host;
 

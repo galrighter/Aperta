@@ -12,8 +12,15 @@
   // דורש שה-CLOUDFLARE_API_TOKEN יכלול Zone·Workers-Routes·Edit + Zone·DNS·Edit
   // עבור aperta-designs.com. הקנוניקל הוא aperta-designs.com (SITE.url).
   //
-  // הדומיין הישן (rmjewel.com) אינו כאן במכוון: הוא ממשיך לחיות מחוץ ל-Worker
-  // עם 301 לחדש — קישורי שיתוף שנשלחו בוואטסאפ ומיילים שכבר יצאו מצביעים אליו.
+  // הדומיין הישן (rmjewel.com) אינו כאן במכוון: התוכנית הייתה שימשיך לחיות
+  // מחוץ ל-Worker עם 301 לחדש — קישורי שיתוף שנשלחו בוואטסאפ ומיילים שכבר יצאו
+  // מצביעים אליו.
+  //
+  // **נכון ל-9.8 זה לא קרה.** ה-zone עדיין על Cloudflare (`elias`/`shubhi`
+  // .ns.cloudflare.com) אבל אין בו רשומת A/AAAA: שאילתה מחזירה NOERROR עם
+  // תשובה ריקה. כלומר אין 301, יש דומיין שלא נפתר — וכל
+  // `rmjewel.com/d/<token>` שנשלח בוואטסאפ מת. זו פעולת DNS בלוח הבקרה, לא
+  // שורה בקובץ הזה (docs/SITE_AUDIT_2026-08.md §7, §10).
   "routes": [
     { "pattern": "aperta-designs.com", "custom_domain": true },
     { "pattern": "www.aperta-designs.com", "custom_domain": true }
