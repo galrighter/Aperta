@@ -47,10 +47,22 @@ describe("שער הגלישה למסלולי API", () => {
     }
   });
 
-  it.each(["/api/debug/log", "/admin", "/debug"])("מסמן %s כ-noindex", (path) => {
-    expect(middleware(req(path)).headers.get("X-Robots-Tag")).toBe(
-      "noindex, nofollow, noarchive",
-    );
+  it.each(["/api/debug/log", "/admin", "/debug", "/studio", "/auth/callback"])(
+    "מסמן %s כ-noindex",
+    (path) => {
+      expect(middleware(req(path)).headers.get("X-Robots-Tag")).toBe(
+        "noindex, nofollow, noarchive",
+      );
+    },
+  );
+
+  it("אינו מפנה את `/auth/callback` — רק מסמן אותו", () => {
+    // השער של `/api` מפנה ניווט דפדפן לדף הבית. אילו היה חל גם כאן, החזרה
+    // מגוגל הייתה נבלעת בדף הבית והכניסה לא הייתה נסגרת לעולם: `sec-fetch-mode`
+    // של החזרה מ-OAuth הוא בדיוק `navigate`.
+    const res = middleware(req("/auth/callback?code=abc", { "sec-fetch-mode": "navigate" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
   });
 
   it("אינו מסמן noindex על עמוד ציבורי, גם כשה-matcher מגיע אליו", () => {
