@@ -8,7 +8,7 @@ import earcut from "earcut";
 import { he } from "@/i18n/he";
 import { useStudio } from "@/lib/client/store";
 import { registerPreviewCapture } from "@/lib/client/previewCapture";
-import { resolveFab, type ProductType } from "@/lib/fabrication.config";
+import { FAB, resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { neutralRadiusFromBlank } from "@/lib/sizing";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
@@ -301,10 +301,13 @@ export function Rolled3D({
       giveUp();
       return;
     }
+    // roughness 0.3 ולא 0.22: הצמיד שיוצא הוא סאטן/מוברש, לא מראה. קצה מלוטש
+    // תופס הבזק ספקולרי מלא ונקרא כפס בהיר, ופס בהיר על רקע בהיר נראה רחב
+    // ממה שהוא — עוד מקור לתחושה שההדמיה עבה מהחלק. זה גם הערך שבמפרט.
     const mat = new THREE.MeshStandardMaterial({
       color: 0xd9b14c,
       metalness: 1.0,
-      roughness: 0.22,
+      roughness: 0.3,
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geo, mat);
@@ -382,8 +385,11 @@ export function Preview3D() {
  * הכיפוף מזיז רק קודקודים — משולש שמשתרע לאורך ציר X נשאר מיתר ישר ולכן
  * הקשת נראית מרובעת. לפני הכיפוף מפצלים כל משולש/דופן עד שטווח ה-X שלו
  * קטן מצעד הקשת (רק X משפיע על הכיפוף, אז משולשים צרים-גבוהים תקינים).
+ *
+ * מיוצא לצורך בדיקות בלבד — הנורמלים וה-winding נקבעים כאן ידנית, ורגרסיה
+ * בהם מתבטאת בהצללה הפוכה ולא בשגיאה, כלומר לא נתפסת בלי בדיקה מספרית.
  */
-function buildBentGeometry(
+export function buildBentGeometry(
   material: MultiPolygon,
   L: number,
   W: number,
@@ -392,10 +398,18 @@ function buildBentGeometry(
   kFactor: number,
 ): THREE.BufferGeometry {
   const positions: number[] = [];
+  // נורמל מיועד לכל קודקוד, במערכת שלפני הכיפוף: x משיקי, y לרוחב הפס,
+  // z רדיאלי (0 = פנים, thickness = חוץ). מסתובב יחד עם המיקומים בכיפוף.
+  const normals: number[] = [];
   // צעד הקשת: ~1.5° לפאה — חלק לעין גם בזום
   const step = Math.max(0.6, (L + gap) / 240);
 
   type V3 = [number, number, number];
+  const OUT: V3 = [0, 0, 1];
+  const IN: V3 = [0, 0, -1];
+  const pushN = (n: V3, times: number) => {
+    for (let i = 0; i < times; i++) normals.push(n[0], n[1], n[2]);
+  };
   const lerpAtX = (p: V3, q: V3, x: number): V3 => {
     const t = (x - p[0]) / (q[0] - p[0]);
     return [x, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
@@ -411,12 +425,21 @@ function buildBentGeometry(
     }
     return out;
   };
-  // חיתוך משולש לפרוסות X ברוחב step וטריאנגולציית מניפה של כל פרוסה
-  const pushTri = (a: V3, b: V3, c: V3) => {
+  // חיתוך משולש לפרוסות X ברוחב step וטריאנגולציית מניפה של כל פרוסה.
+  // ה-winding נגזר מהנורמל המבוקש ולא מהסדר ש-earcut החזיר, כדי שהצללת
+  // DoubleSide (שהופכת נורמל בפאה אחורית) לא תהפוך את מה שהקצינו כאן.
+  const pushTri = (a: V3, b: V3, c: V3, n: V3) => {
+    const up = n[2] > 0;
+    const emit = (p: V3, q: V3, r: V3) => {
+      const cross = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+      if ((cross > 0) === up) positions.push(...p, ...q, ...r);
+      else positions.push(...p, ...r, ...q);
+      pushN(n, 3);
+    };
     const minX = Math.min(a[0], b[0], c[0]);
     const maxX = Math.max(a[0], b[0], c[0]);
     if (maxX - minX <= step) {
-      positions.push(...a, ...b, ...c);
+      emit(a, b, c);
       return;
     }
     for (let lo = minX; lo < maxX - 1e-9; lo += step) {
@@ -425,7 +448,7 @@ function buildBentGeometry(
       poly = clipHalf(poly, (x) => x >= lo - 1e-9, lo);
       poly = clipHalf(poly, (x) => x <= hi + 1e-9, hi);
       for (let i = 1; i + 1 < poly.length; i++) {
-        positions.push(...poly[0], ...poly[i], ...poly[i + 1]);
+        emit(poly[0], poly[i], poly[i + 1]);
       }
     }
   };
@@ -440,30 +463,69 @@ function buildBentGeometry(
     }
     const tris = earcut(flat, holeIdx.length ? holeIdx : undefined);
     const v = (i: number, z: number): V3 => [flat[i * 2], flat[i * 2 + 1], z];
-    // משטח עליון (z=t) ותחתון (z=0), כיווני winding הפוכים
+    // משטח עליון (z=t, פונה החוצה) ותחתון (z=0, פונה פנימה)
     for (let i = 0; i < tris.length; i += 3) {
-      pushTri(v(tris[i], thickness), v(tris[i + 1], thickness), v(tris[i + 2], thickness));
-      pushTri(v(tris[i], 0), v(tris[i + 2], 0), v(tris[i + 1], 0));
+      pushTri(v(tris[i], thickness), v(tris[i + 1], thickness), v(tris[i + 2], thickness), OUT);
+      pushTri(v(tris[i], 0), v(tris[i + 2], 0), v(tris[i + 1], 0), IN);
     }
   }
-  // המשטחים העליון/תחתון מקבלים נורמלים רדיאליים אנליטיים אחרי הכיפוף
-  const faceVertexCount = positions.length / 3;
+
+  // דפנות. בחלק האמיתי יש שבירת קצה (FAB.edgeBreakRadiusMm) משני הצדדים.
+  // בצללית היא לא נראית — 0.2 מ"מ על קוטר ~55 הם תת-פיקסל — אבל היא זו
+  // שממיסה את המעבר בין הפאה לדופן. בלעדיה נשארת קפיצת הצללה חדה בקצה,
+  // העין קוראת את הדופן כפס נפרד, וההדמיה נראית עבה מהצמיד שיצא. לכן הדופן
+  // נבנית כאן בשלוש רצועות גובה — שבירה, דופן, שבירה — עם נורמל שמסתובב
+  // מהפאה אל הצד לאורך 0.2 מ"מ. העובי עצמו לא זז: z עדיין רץ מ-0 עד thickness.
+  const edge = Math.min(FAB.edgeBreakRadiusMm, thickness / 4);
+  const pushWall = (
+    x0: number, y0: number, x1: number, y1: number,
+    zLo: number, zHi: number, nLo: V3, nHi: V3, flip: boolean,
+  ) => {
+    if (zHi - zLo < 1e-9) return;
+    const a: V3 = [x0, y0, zLo], b: V3 = [x1, y1, zLo];
+    const a2: V3 = [x0, y0, zHi], b2: V3 = [x1, y1, zHi];
+    if (flip) {
+      positions.push(...a, ...b2, ...b);
+      normals.push(...nLo, ...nHi, ...nLo);
+      positions.push(...a, ...a2, ...b2);
+      normals.push(...nLo, ...nHi, ...nHi);
+    } else {
+      positions.push(...a, ...b, ...b2);
+      normals.push(...nLo, ...nLo, ...nHi);
+      positions.push(...a, ...b2, ...a2);
+      normals.push(...nLo, ...nHi, ...nHi);
+    }
+  };
 
   for (const poly of material) {
-    // דפנות — מחלקים כל קטע לפי טווח ה-X שלו
-    for (const ring of poly) {
+    for (const [ri, ring] of poly.entries()) {
+      // כיוון הטבעת נמדד משטח מסומן ולא מונח מסדר הנקודות. הנורמל צריך
+      // להצביע החוצה מהמתכת: בטבעת החיצונית אל מחוץ לקו, בחור אל תוכו.
+      let area2 = 0;
+      for (let i = 0; i < ring.length; i++) {
+        const p = ring[i], q = ring[(i + 1) % ring.length];
+        area2 += p[0] * q[1] - q[0] * p[1];
+      }
+      const m = (ri === 0 ? 1 : -1) * (area2 >= 0 ? 1 : -1);
+
+      // מחלקים כל קטע לפי טווח ה-X שלו
       for (let i = 0; i < ring.length; i++) {
         const p = ring[i];
         const q = ring[(i + 1) % ring.length];
-        const n = Math.max(1, Math.ceil(Math.abs(q[0] - p[0]) / step));
+        const ex = q[0] - p[0], ey = q[1] - p[1];
+        const elen = Math.hypot(ex, ey);
+        if (elen < 1e-9) continue;
+        // ‎[a,b,b2] נותן נורמל גיאומטרי בכיוון (ey,−ex); m אומר אם זה הכיוון הנכון
+        const lat: V3 = [(m * ey) / elen, (-m * ex) / elen, 0];
+        const flip = m < 0;
+        const n = Math.max(1, Math.ceil(Math.abs(ex) / step));
         for (let k = 0; k < n; k++) {
           const t0 = k / n, t1 = (k + 1) / n;
-          const x0 = p[0] + (q[0] - p[0]) * t0, y0 = p[1] + (q[1] - p[1]) * t0;
-          const x1 = p[0] + (q[0] - p[0]) * t1, y1 = p[1] + (q[1] - p[1]) * t1;
-          const a: V3 = [x0, y0, 0], b: V3 = [x1, y1, 0];
-          const a2: V3 = [x0, y0, thickness], b2: V3 = [x1, y1, thickness];
-          positions.push(...a, ...b, ...b2);
-          positions.push(...a, ...b2, ...a2);
+          const x0 = p[0] + ex * t0, y0 = p[1] + ey * t0;
+          const x1 = p[0] + ex * t1, y1 = p[1] + ey * t1;
+          pushWall(x0, y0, x1, y1, 0, edge, IN, lat, flip);
+          pushWall(x0, y0, x1, y1, edge, thickness - edge, lat, lat, flip);
+          pushWall(x0, y0, x1, y1, thickness - edge, thickness, lat, OUT, flip);
         }
       }
     }
@@ -474,28 +536,37 @@ function buildBentGeometry(
   // z רץ מ-0 (פנים) עד thickness (חוץ), והפנים יושבים ב-R_n − K·t.
   const Rn = neutralRadiusFromBlank(L, gap);
   const rInner = Rn - kFactor * thickness;
+  // הנורמלים מסתובבים באותו בסיס מקומי כמו המיקומים:
+  // x משיקי → (cosθ,0,−sinθ), y לרוחב → (0,−1,0), z רדיאלי → (sinθ,0,cosθ).
+  // הבסיס אורתונורמלי, ולכן אין צורך ב-inverse-transpose ולא בנרמול חוזר.
   for (let i = 0; i < positions.length; i += 3) {
     const x = positions[i], y = positions[i + 1], z = positions[i + 2];
     const theta = (x - L / 2) / Rn + Math.PI;
-    positions[i] = (rInner + z) * Math.sin(theta);
+    const sin = Math.sin(theta), cos = Math.cos(theta);
+    positions[i] = (rInner + z) * sin;
     positions[i + 1] = W / 2 - y; // ציר Y של SVG כלפי מטה → הפוך לתצוגה
-    positions[i + 2] = (rInner + z) * Math.cos(theta);
+    positions[i + 2] = (rInner + z) * cos;
+    const nx = normals[i], ny = normals[i + 1], nz = normals[i + 2];
+    normals[i] = nx * cos + nz * sin;
+    normals[i + 1] = -ny;
+    normals[i + 2] = -nx * sin + nz * cos;
+  }
+
+  // היפוך ציר ה-Y בכיפוף נותן det=−1, כלומר כל משולש מתהפך ביחס ל-winding
+  // שנקבע לפני הכיפוף. הסימן קבוע (rInner+z תמיד חיובי), אז די בהיפוך אחיד.
+  for (let i = 0; i < positions.length; i += 9) {
+    for (let c = 0; c < 3; c++) {
+      const p = positions[i + 3 + c];
+      positions[i + 3 + c] = positions[i + 6 + c];
+      positions[i + 6 + c] = p;
+      const n = normals[i + 3 + c];
+      normals[i + 3 + c] = normals[i + 6 + c];
+      normals[i + 6 + c] = n;
+    }
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geo.computeVertexNormals();
-
-  // נורמלים אנליטיים למשטחים הכפופים — פני מתכת חלקים במקום פאות שטוחות
-  const norm = geo.getAttribute("normal") as THREE.BufferAttribute;
-  const pos = geo.getAttribute("position") as THREE.BufferAttribute;
-  for (let i = 0; i < faceVertexCount; i++) {
-    const x = pos.getX(i), z = pos.getZ(i);
-    const len = Math.hypot(x, z) || 1;
-    const rx = x / len, rz = z / len;
-    const sign = Math.sign(norm.getX(i) * rx + norm.getZ(i) * rz) || 1;
-    norm.setXYZ(i, sign * rx, 0, sign * rz);
-  }
-  norm.needsUpdate = true;
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
   return geo;
 }
