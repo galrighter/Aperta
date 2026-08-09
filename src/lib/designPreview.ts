@@ -1,3 +1,4 @@
+import { svgFrame } from "@/lib/geometry/frame";
 import { normalizeSvg } from "@/lib/geometry/normalize";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
 import { countCuts, mpToPreviewPath } from "@/components/create/model";
@@ -24,13 +25,27 @@ export interface DesignPreview {
 /**
  * `null` על SVG שאינו עומד בחוזה. אין כאן טיפול בשגיאה: תצוגה מקדימה היא נוחות,
  * והכרטיס יודע להציג את עצמו בלעדיה — להפיל בגללה בקשה שלמה יהיה גרוע יותר.
+ *
+ * **המסגרת נקראת מה-SVG, לא משורת העיצוב** (`dims` הוא רק נפילה לאחור למקרה
+ * שאין viewBox). זו אותה הכרעה שמסך התוצאה, הייצוא וצילום השיתוף כבר עושים —
+ * ראו `lib/geometry/frame`: השורה שומרת את מה שהוזמן, וה-SVG את המסגרת שהגרסה
+ * באמת יושבת בה, והן נבדלות ברוחב כמעט תמיד. המסגור לוקח את הרוחב של קנה מידה
+ * אחיד כשהוא בטווח הסטייה (`WIDTH_TOLERANCE`), כלומר 8.03 מ"מ על 8 שהוזמנו.
+ *
+ * ובלי הקריאה הזאת זה לא היה "ציור מעט לא מדויק" אלא **בלי ציור בכלל**:
+ * `normalizeSvg` אוכף את ה-viewBox מול המידות שנמסרו לו בסטייה של 0.01 מ"מ,
+ * ולכן כל גרסה כזאת נפלה כאן על `ContractViolation` והוחזרה כ-null. הכרטיס
+ * הראה "בלי תצוגה מקדימה" ו-"0 חיתוכים" לכל עיצוב שנמשך מהשרת — כלומר לכל מה
+ * שהתיקון הזה נועד לצייר מלכתחילה.
  */
 export function previewOf(
   svg: string | null | undefined,
   dims: { lengthMm: number; widthMm: number },
 ): DesignPreview | null {
   if (!svg) return null;
-  const { lengthMm, widthMm } = dims;
+  const frame = svgFrame(svg);
+  const lengthMm = frame?.lengthMm ?? dims.lengthMm;
+  const widthMm = frame?.widthMm ?? dims.widthMm;
   if (!(lengthMm > 0) || !(widthMm > 0)) return null;
   try {
     const n = normalizeSvg(svg, lengthMm, widthMm);

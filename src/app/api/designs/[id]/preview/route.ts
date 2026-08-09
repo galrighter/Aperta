@@ -34,6 +34,8 @@ export async function GET(req: Request, { params }: Params) {
   try {
     const { id } = await params;
     const design = await requireDesignAccess(req, id);
+    // מה שהוזמן — נפילה לאחור בלבד. המסגרת שכל גרסה באמת יושבת בה נקראת
+    // מה-viewBox שלה, בתוך `previewOf`, ושם גם ההסבר למה זה קריטי כאן.
     const dims = { lengthMm: Number(design.length_mm), widthMm: Number(design.width_mm) };
 
     // החדשה ראשונה — זה הסדר שבו הכרטיס מציג, וזה גם מה שנשמר כשיש יותר
