@@ -31,13 +31,14 @@ const LAST_MODIFIED: Record<string, string> = {
   "/contact": "2026-08-04",
   "/terms": "2026-08-01",
   "/privacy": "2026-08-01",
+  "/accessibility": "2026-08-09",
 };
 
 export default function sitemap(): MetadataRoute.Sitemap {
   // `/studio` אינו כאן: הוא הכלי הפנימי, ומאז שהוא יושב מאחורי שער האדמין
   // אינדוקס שלו הוא אינדוקס של דף כניסה. גם קודם הוא לא היה שייך למפה —
   // לקוחה שנוחתת עליו מגוגל פוגשת ממשק בודקים ולא את המשפך.
-  const paths = ["", "/design", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy"];
+  const paths = ["", "/design", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy", "/accessibility"];
   return paths.map((p) => ({
     url: `${SITE.url}${p}`,
     lastModified: LAST_MODIFIED[p],

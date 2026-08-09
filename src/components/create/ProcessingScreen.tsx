@@ -140,12 +140,18 @@ export function ProcessingScreen({
 
   return (
     <section className="mx-auto flex max-w-[620px] flex-col items-center px-5 py-24 text-center sm:px-10">
-      <h1 className="mb-4 text-[26px] font-semibold tracking-tight text-graphite sm:text-[32px]">
-        {disconnected ? d.procDisconnected : d.procTitle}
-      </h1>
-      <p className="mb-10 text-[16px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
-        {disconnected ? d.procDisconnectedBody : d.procBody}
-      </p>
+      {/* `aria-live` על הכותרת והגוף בלבד, ובמכוון לא על הציטוט המתחלף למטה:
+          ההמתנה נמשכת דקות, ומי שאינו רואה את המסך צריך לדעת שני דברים —
+          שהיצירה רצה, וש"אבד החיבור" קרה. ציטוט שמתחלף כל שבע שניות בתוך
+          אזור חי היה מקריא ספרות מעל שורת המצב שוב ושוב. */}
+      <div aria-live="polite">
+        <h1 className="mb-4 text-[26px] font-semibold tracking-tight text-graphite sm:text-[32px]">
+          {disconnected ? d.procDisconnected : d.procTitle}
+        </h1>
+        <p className="mb-10 text-[16px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+          {disconnected ? d.procDisconnectedBody : d.procBody}
+        </p>
+      </div>
 
       {/* פס התקדמות. הוא נשאר פעיל גם בניתוק — ההרצה באמת ממשיכה, ומסך קפוא
           היה אומר את ההפך מהכותרת שמעליו. */}

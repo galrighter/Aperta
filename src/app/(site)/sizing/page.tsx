@@ -33,7 +33,7 @@ const FIT_ROWS = (["snug", "comfort", "loose"] as FitStyle[]).map((style) => ({
 
 export default function SizingPage() {
   return (
-    <div className="mx-auto max-w-3xl px-5 py-16 sm:px-10">
+    <div className="ap-surface mx-auto max-w-3xl px-5 py-16 sm:px-10">
       <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {g.title}
       </h1>
@@ -49,7 +49,15 @@ export default function SizingPage() {
         <Method title={g.ringMethod2Title} steps={g.ringMethod2Steps} className="mt-8" />
 
         <h3 className="mt-10 text-base font-semibold text-graphite">{g.ringTableTitle}</h3>
-        <div className="mt-3 overflow-x-auto">
+        {/* `tabIndex`+`role`+שם: אזור שגולל אופקית חייב להיות נגיש למקלדת. בנייד
+            הטבלה רחבה מהמסך ואין בתוכה אף אלמנט ממוקד, ולכן בלי השלושה האלה
+            העמודות הימניות פשוט אינן ניתנות להגעה בלי עכבר או מגע. */}
+        <div
+          className="mt-3 overflow-x-auto"
+          tabIndex={0}
+          role="region"
+          aria-label={g.ringTableTitle}
+        >
           <table className="w-full min-w-[320px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-graphite/20 text-right text-ink60">
@@ -80,7 +88,7 @@ export default function SizingPage() {
 
         <h3 className="mt-10 text-base font-semibold text-graphite">{g.fitTitle}</h3>
         <p className="mt-2 text-sm text-ink60">{g.fitIntro}</p>
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 overflow-x-auto" tabIndex={0} role="region" aria-label={g.fitTitle}>
           <table className="w-full min-w-[420px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-graphite/20 text-right text-ink60">

@@ -101,7 +101,7 @@ export default async function SharePage({ params }: Params) {
   const cutouts = cutoutsInner(share.svg);
 
   return (
-    <div className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
+    <div className="ap-surface mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
       <div className="mb-3 font-display text-xs tracking-[0.22em] text-mist">{t.eyebrow}</div>
       <h1 className="mb-2 text-[30px] font-semibold tracking-tight text-graphite sm:text-[38px]">
         {name}

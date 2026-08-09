@@ -86,7 +86,10 @@ export default function HomePage() {
       </section>
 
       {/* רצועת מניפסט */}
-      <section className="border-y border-graphite/10 bg-porcelain-slab/55">
+      {/* הרצועה אטומה ולא `/55`: שקיפות פירושה שהרקע בפועל הוא הצירוף של הלוח
+          הדקורטיבי עם מה שמתחתיו באותה נקודה, כלומר ערך שמשתנה עם הגלילה. כאן
+          הוא טוקן משטח ידוע, וחוזה הניגודיות ב-globals.css חל עליו. */}
+      <section className="relative z-[1] border-y border-graphite/10 bg-porcelain-slab">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-6 px-5 py-9 sm:px-10">
           <p className="text-[24px] font-light text-graphite" style={{ textWrap: "balance" }}>
             {s.manifestoLine}

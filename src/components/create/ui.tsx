@@ -1,6 +1,7 @@
 "use client";
 
 // פרימיטיבים משותפים למסע היצירה. טוקנים: handoff §10.
+import { useId } from "react";
 import { he } from "@/i18n/he";
 import { useDialog } from "@/lib/client/useDialog";
 import { RAIL, type Screen } from "./model";
@@ -236,12 +237,17 @@ export function StepRail({
               className="flex items-center gap-2 whitespace-nowrap disabled:cursor-not-allowed"
               style={{ opacity: locked ? 0.4 : 1 }}
             >
+              {/* מספר השלב. הצבע הממתין הוא `mist` ולא #aab4b8: הערך ההוא נפסל
+                  ב-globals.css על 1.88:1, והוא לא היה חל רק על שלבים נעולים —
+                  שלב שכבר נפתח ופשוט טרם בוצע קיבל אותו באטימות מלאה, כלומר
+                  ספרה אמיתית ב-12px שאי אפשר לקרוא. העמעום של הנעילה נשאר
+                  ב-`opacity` על הכפתור, ושם הוא פטור: הכפתור `disabled`. */}
               <span
                 className="flex h-[22px] w-[22px] items-center justify-center rounded-full font-display text-xs font-semibold"
                 style={{
-                  border: `1.5px solid ${active ? LAPIS : done ? GRAPHITE : "#aab4b8"}`,
+                  border: `1.5px solid ${active ? LAPIS : done ? GRAPHITE : "var(--color-mist)"}`,
                   background: active ? LAPIS : done ? GRAPHITE : "transparent",
-                  color: active || done ? PORCELAIN : "#aab4b8",
+                  color: active || done ? PORCELAIN : "var(--color-mist)",
                 }}
               >
                 {i + 1}
@@ -268,25 +274,34 @@ export function Modal({
 }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode;
 }) {
-  // Escape והמיקוד גם יחד — ראה useDialog. הכליאה חסרה כאן: Tab יצא מהחלון
-  // אל הטופס שמאחוריו, וקורא-מסך המשיך להקריא עמוד שכבר מכוסה.
+  // Escape, מיקוד שנכנס פנימה ונכלא, וחזרה לפותח — הכול מ-useDialog.
   const box = useDialog(open, onClose);
+  const titleId = useId();
 
   if (!open) return null;
   return (
+    // הרקע הוא רקע: הוא סוגר בלחיצה, ותו לא.
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-graphite/45 p-4"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
     >
+      {/* `role="dialog"` ו-`aria-modal` יושבים כאן ולא על הרקע. כשהם ישבו שם,
+          מה שהוכרז כדיאלוג היה השכבה שפרושה על כל המסך — כלומר "מודאלי" חל על
+          כל מה שמתחתיה, וגבול החלון שקורא-מסך מדווח עליו לא היה גבול החלון.
+          זה גם האלמנט ש-useDialog מחזיק, כך שהמיקוד והכריזה מדברים על אותו דבר.
+          `aria-labelledby` ולא `aria-label`: הכותרת ממילא על המסך, ושכפולה
+          כמחרוזת שנייה פירושו שתי גרסאות שיכולות להיפרד. */}
       <div
         ref={box}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-graphite/15 bg-white p-7"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-5 text-xl font-semibold text-graphite">{title}</h2>
+        <h2 id={titleId} className="mb-5 text-xl font-semibold text-graphite">
+          {title}
+        </h2>
         {children}
       </div>
     </div>

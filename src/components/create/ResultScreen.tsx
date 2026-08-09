@@ -21,7 +21,15 @@ import {
 
 const d = he.design;
 
-const STATUS_COLOR = { pass: "#4a8f5c", warn: "#b9762e", fail: "#c0413b" } as const;
+// שלושת הצבעים מגיעים מהטוקנים ב-globals.css ולא מעותק קשיח כאן. העותק שהיה
+// כאן נשא את #4a8f5c גם אחרי ש-globals.css פסל אותו על 3.47 והחליף אותו —
+// ומכיוון שהוא זה שצייר את שורת "ניתן לייצור", התיקון לא הגיע למסך שבו הוא
+// הכי נחוץ. `src/lib/__tests__/contrast.test.ts` שומר על השלושה.
+const STATUS_COLOR = {
+  pass: "var(--color-successgreen)",
+  warn: "var(--color-warnamber)",
+  fail: "var(--color-failred)",
+} as const;
 
 export function ResultScreen({
   s, set, onApply, onRestore, onOrder, onChooseCandidate,
@@ -298,10 +306,12 @@ export function ResultScreen({
                 ולכן אותו פס. עד כאן היה כאן משפט בלבד: הכפתור אמר "מחיל…",
                 הטקסט אמר "זה ייקח", ושום דבר על המסך לא זז בזמן שזה רץ. */}
             {s.applying && (
-              <>
+              // `role="status"` — בקשת השינוי לוקחת כדקה וחצי, ומי שאינו רואה
+              // את הפס אינו יודע שהיא התחילה בכלל.
+              <div role="status">
                 <ProgressBar active label={d.editApplying} className="mt-3.5" />
                 <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">{d.editApplyingNote}</p>
-              </>
+              </div>
             )}
             {s.editError && (
               <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail }}>
@@ -351,7 +361,7 @@ export function ResultScreen({
                   .filter((c) => c.status !== "pass")
                   .slice(0, 4)
                   .map((c, i) => (
-                    <li key={i} className="text-[13px] leading-snug" style={{ color: c.status === "fail" ? "#c0413b" : "#b9762e" }}>
+                    <li key={i} className="text-[13px] leading-snug" style={{ color: c.status === "fail" ? STATUS_COLOR.fail : STATUS_COLOR.warn }}>
                       {c.message}
                       {/* כמה, ולא רק מה. "פתח קטן מדי" על ממצא אחד ועל שמונה
                           הם שני מצבים שונים לגמרי מבחינת מה שצריך לעשות. */}

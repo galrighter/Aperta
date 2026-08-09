@@ -40,3 +40,11 @@ jobs:
         run: pip install ezdxf
       - run: npm test
       - run: npm run build
+      # שער הנגישות. הוא רץ אחרי ה-build כי הוא סורק את הבילד עצמו: מרים
+      # `next start`, קורא את רשימת הנתיבים מ-sitemap.xml ומריץ axe על כל אחד
+      # בשתי רזולוציות. עמוד ציבורי חדש נכנס לסריקה מרגע שהוא ב-sitemap, בלי
+      # שאיש יזכור לרשום אותו במקום שני.
+      #
+      - name: Install Chromium for the accessibility scan
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:a11y

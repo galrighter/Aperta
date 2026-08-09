@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { he } from "@/i18n/he";
 
 const s = he.site;
+
+const ERROR_ID = "contact-error";
 
 const inputCls =
   "w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-lapis focus:ring-2 focus:ring-lapis/20";
@@ -14,17 +16,31 @@ export default function ContactForm() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  // איזה שדה פסל את השליחה. בלי זה `aria-invalid` היה יושב על כל השדות או על
+  // אף אחד, ומי שמנווט ביניהם שומע "שגיאה" בלי לדעת איפה.
+  const [badField, setBadField] = useState<"name" | "email" | "message" | null>(null);
+  const sentRef = useRef<HTMLParagraphElement>(null);
+
+  // הודעת ההצלחה מחליפה את הטופס כולו, כלומר הכפתור שהיה במיקוד נמחק מה-DOM
+  // והמיקוד נופל לתחילת המסמך. משתמש מקלדת מאבד את מקומו, ומשתמש קורא-מסך
+  // אינו שומע דבר — הטופס פשוט נעלם. העברת המיקוד לפסקה היא ההודעה.
+  useEffect(() => {
+    if (status === "sent") sentRef.current?.focus();
+  }, [status]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !message.trim()) {
+      setBadField(!name.trim() ? "name" : !email.trim() ? "email" : "message");
       setError(s.contactErrorRequired);
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setBadField("email");
       setError(s.contactErrorEmail);
       return;
     }
+    setBadField(null);
     setError(null);
     setStatus("sending");
     // הטופס פונה ל-backend הפניות (kind="contact"): הפנייה נשמרת, מופיעה בלשונית
@@ -48,13 +64,19 @@ export default function ContactForm() {
       setMessage("");
     } catch {
       setStatus("idle");
+      setBadField(null);
       setError(s.contactErrorSend);
     }
   }
 
   if (status === "sent") {
     return (
-      <p className="rounded-[2px] border border-graphite/10 bg-white p-4 text-sm text-graphite">
+      <p
+        ref={sentRef}
+        tabIndex={-1}
+        role="status"
+        className="rounded-[2px] border border-graphite/10 bg-white p-4 text-sm text-graphite focus:outline-none"
+      >
         {s.contactSuccess}
       </p>
     );
@@ -73,6 +95,8 @@ export default function ContactForm() {
           placeholder={s.contactNamePlaceholder}
           className={inputCls}
           autoComplete="name"
+          aria-invalid={badField === "name" || undefined}
+          aria-describedby={badField === "name" ? ERROR_ID : undefined}
         />
       </div>
       <div>
@@ -88,6 +112,8 @@ export default function ContactForm() {
           className={inputCls}
           dir="ltr"
           autoComplete="email"
+          aria-invalid={badField === "email" || undefined}
+          aria-describedby={badField === "email" ? ERROR_ID : undefined}
         />
       </div>
       <div>
@@ -101,10 +127,18 @@ export default function ContactForm() {
           placeholder={s.contactMessagePlaceholder}
           rows={5}
           className={`${inputCls} resize-y`}
+          aria-invalid={badField === "message" || undefined}
+          aria-describedby={badField === "message" ? ERROR_ID : undefined}
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {/* `role="alert"` — השגיאה נכתבת אחרי לחיצה על "שליחה", כלומר היא חייבת
+          להיאמר. אותו דפוס כבר בשימוש ב-SizesScreen וב-BriefScreen. */}
+      {error && (
+        <p id={ERROR_ID} role="alert" className="text-sm text-failred">
+          {error}
+        </p>
+      )}
 
       <button
         type="submit"

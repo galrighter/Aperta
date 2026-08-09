@@ -1,5 +1,6 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 // עד כאן `npm run lint` לא רץ בכלל: לא היה קובץ קונפיג, והפקודה נעצרה על שאלה
 // אינטראקטיבית. כלומר אף כלל לא נאכף, גם לא ב-CI, ו-`eslint-disable` שפזורים
@@ -54,6 +55,64 @@ export default [
   },
   ...nextCoreWebVitals,
   ...nextTypescript,
+  // ---------------------------------------------------------------------------
+  // נגישות בזמן כתיבה. `eslint-config-next` כולל שישה כללי jsx-a11y בלבד (בעיקר
+  // `alt-text` ותקינות ARIA); ה-recommended המלא מוסיף את מה שתפס בפועל את
+  // הליקויים בסקירת אוגוסט — אלמנט לא-אינטראקטיבי שנושא `onClick` בלי מקבילה
+  // במקלדת, ותווית שאינה מקושרת לשדה (docs/ACCESSIBILITY_PLAN.md §B7, §B8).
+  //
+  // זו השכבה הזולה מבין השתיים: `npm run test:a11y` סורק את התוצאה ותופס גם
+  // ניגודיות ו-landmarks, אבל הוא דורש בילד ודפדפן ורץ ב-CI בלבד. הכללים כאן
+  // עולים אפס ורצים בעורך תוך כדי כתיבה, כלומר תופסים לפני הקומיט.
+  //
+  // **הכללים בלבד, בלי `plugins`.** `eslint-config-next` כבר רושם את
+  // `jsx-a11y` בעצמו, ורישום שני של אותו שם נופל על
+  // `Cannot redefine plugin "jsx-a11y"`. פריסת `flatConfigs.recommended`
+  // המלא נושאת את מפתח ה-`plugins` ולכן אינה אפשרית כאן.
+  { rules: jsxA11y.flatConfigs.recommended.rules },
+  {
+    rules: {
+      // `role="region"` + `tabIndex={0}` על מכל שגולל אופקית — הכלל הזה
+      // והכלל `scrollable-region-focusable` של axe סותרים זה את זה ישירות,
+      // ו-axe צודק: אזור שגולל ואין בתוכו אלמנט ממוקד אינו נגיש במקלדת בלי
+      // tabindex. זו הצורה שה-WAI מגדיר לתבנית הזו. `tabpanel` הוא ברירת
+      // המחדל של הכלל, ו-`region` מצטרף אליו מאותו נימוק בדיוק.
+      "jsx-a11y/no-noninteractive-tabindex": [
+        "error",
+        { tags: [], roles: ["tabpanel", "region"], allowExpressionValues: true },
+      ],
+      // `<label>` שעוטף `<input>` ואת הטקסט בתוך `<span><span>` — הקישור תקין
+      // לחלוטין, פשוט עמוק בשתי רמות מברירת המחדל של הכלל.
+      "jsx-a11y/label-has-associated-control": ["error", { depth: 3 }],
+    },
+  },
+  {
+    // ===== רקע של חלון קופץ שנסגר בלחיצה =====
+    //
+    // התבנית בכל הקבצים האלה זהה: `<div className="fixed inset-0" onClick=…>`
+    // שסוגר את החלון, ומעליו מכל התוכן עם `stopPropagation`. הכללים מבקשים
+    // מאזין מקלדת על אותו `<div>` — ומאזין כזה חסר משמעות: אין דבר כזה
+    // "להקיש Enter על הרקע".
+    //
+    // **המקבילה במקלדת קיימת, והיא Escape.** `useDialog` רושם אותה ברמת
+    // ה-window, מכניס את המיקוד לחלון, כולא אותו בפנים ומחזיר אותו לפותח.
+    // כלומר אין כאן פונקציונליות שאבודה למי שאינו בעכבר — יש דפוס שהכלל אינו
+    // יודע לזהות. הכיבוי מצומצם לקבצים שבהם התבנית הזו יושבת, כדי שהכללים
+    // יישארו דלוקים על כל השאר.
+    files: [
+      "src/components/Modal.tsx",
+      "src/components/DesignsDrawer.tsx",
+      "src/components/create/ui.tsx",
+      "src/components/site/DesignReadyWatch.tsx",
+      "src/components/admin/StatusMoveDialog.tsx",
+      "src/components/admin/RunsLog.tsx",
+    ],
+    rules: {
+      "jsx-a11y/click-events-have-key-events": "off",
+      "jsx-a11y/no-static-element-interactions": "off",
+      "jsx-a11y/no-noninteractive-element-interactions": "off",
+    },
+  },
   {
     rules: {
       // משתנה שנזרק בכוונה מ-destructuring מסומן בקידומת קו תחתון. הכלל בלעדיו

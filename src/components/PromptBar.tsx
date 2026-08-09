@@ -71,25 +71,35 @@ export function PromptBar() {
         </div>
       )}
       <div className="flex items-end gap-2">
-        <button
-          className={`relative h-10 w-10 shrink-0 rounded-[2px] border text-lg ${attachment ? "border-rose-400 bg-rose-50" : "border-graphite/10 hover:bg-porcelain"}`}
-          title={he.attachImage}
-          onClick={() => fileRef.current?.click()}
-        >
-          📎
+        {/* שני כפתורים אחים ולא `<span onClick>` בתוך כפתור.
+            הקודם היה שגוי בשתי דרכים: תוכן אינטראקטיבי מקונן בתוך `<button>`
+            אינו HTML חוקי, ו-`<span>` עם `onClick` אינו ניתן להגעה ב-Tab —
+            כלומר "הסרת הקובץ" הייתה פעולה שקיימת בעכבר בלבד. */}
+        <span className="relative shrink-0">
+          <button
+            type="button"
+            className={`h-10 w-10 rounded-[2px] border text-lg ${attachment ? "border-rose-400 bg-rose-50" : "border-graphite/10 hover:bg-porcelain"}`}
+            title={he.attachImage}
+            aria-label={he.attachImage}
+            onClick={() => fileRef.current?.click()}
+          >
+            📎
+          </button>
           {attachment && (
-            <span
+            <button
+              type="button"
+              aria-label={he.removeAttachment}
+              title={he.removeAttachment}
               className="absolute -end-1 -top-1 flex h-4 w-4 items-center justify-center rounded-[2px] bg-rose-600 text-[10px] text-white"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={() => {
                 setAttachment(null);
                 if (fileRef.current) fileRef.current.value = "";
               }}
             >
               ✕
-            </span>
+            </button>
           )}
-        </button>
+        </span>
         <input
           ref={fileRef}
           type="file"

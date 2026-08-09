@@ -22,7 +22,7 @@ export default function LegalPage({
   sections: readonly Section[];
 }) {
   return (
-    <div className="mx-auto max-w-2xl px-5 py-16 sm:px-10">
+    <div className="ap-surface mx-auto max-w-2xl px-5 py-16 sm:px-10">
       <h1 className="text-[32px] font-semibold tracking-tight text-graphite sm:text-[40px]">
         {title}
       </h1>

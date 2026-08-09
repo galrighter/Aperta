@@ -206,7 +206,7 @@ export function AccountGate({
         </p>
 
         {!authConfigured ? (
-          <p className="text-[13px] text-[#c0413b]">{d.acctUnavailable}</p>
+          <p className="text-[13px] text-failred">{d.acctUnavailable}</p>
         ) : step === "choose" ? (
           <>
             <button
@@ -302,7 +302,7 @@ export function AccountGate({
         )}
 
         {(error ?? externalError) && (
-          <p className="mt-4 text-[13px] text-[#c0413b]">{error ?? externalError}</p>
+          <p className="mt-4 text-[13px] text-failred">{error ?? externalError}</p>
         )}
 
         {step === "choose" && authConfigured && (

@@ -11,7 +11,7 @@ export function DoneScreen({ orderNo }: { orderNo: string }) {
     <section className="mx-auto flex max-w-[620px] flex-col items-center px-5 py-24 text-center sm:px-10">
       <div
         className="mb-7 flex h-14 w-14 items-center justify-center rounded-full text-xl text-white"
-        style={{ background: "#4a8f5c" }}
+        style={{ background: "var(--color-successgreen)" }}
         aria-hidden="true"
       >
         ✓
