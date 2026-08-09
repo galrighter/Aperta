@@ -2,21 +2,25 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseBody, handleRouteError, ApiError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
+import { readAccountId } from "@/lib/account";
+import { requireDesignAccess } from "@/lib/designAccess";
 import {
-  createOrder,
+  createOrderOnce,
   listOrders,
   countRecentOrdersFromEmail,
   ORDER_STATUSES,
   type OrderRow,
   type OrderStatus,
 } from "@/lib/db/orders";
-import { getDesign, getVersion } from "@/lib/db/designs";
+import { getVersion } from "@/lib/db/designs";
+import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { designSampleCode } from "@/lib/designCode";
 import { priceFor } from "@/lib/pricing";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
+import { formatPhone, isValidPhone } from "@/lib/phone";
 
 // ההזמנה עצמה (docs/TODO.md B1–B3). מסלול ציבורי ליצירה, אדמין לקריאה.
 //
@@ -35,12 +39,48 @@ const MAX_PER_EMAIL_PER_DAY = 10;
 const createSchema = z.object({
   designId: z.string().uuid().nullable().optional(),
   versionId: z.string().uuid().nullable().optional(),
-  name: z.string().trim().min(1).max(120),
+  /**
+   * מזהה ניסיון השליחה (0020). נוצר פעם אחת במסך הצ'קאאוט ונשלח בכל ניסיון,
+   * כך ש"נסי שוב" אחרי רשת שנתקעה אינו יוצר הזמנה שנייה.
+   */
+  idempotencyKey: z.string().uuid().optional(),
+  /**
+   * אישור התנאים, ברגע ההזמנה. `literal(true)` ולא boolean: ערך אחר אינו
+   * "לא אישרה" — הוא בקשה לשמור הזמנה בלי הדבר שנדרש כדי ליצור אותה.
+   */
+  termsAccepted: z.literal(true),
+  /** הסכמה לדבר פרסומת. נפרדת מההזמנה, וברירת המחדל שלה היא לא. */
+  marketingOptIn: z.boolean().optional(),
+  /**
+   * הסכום שהוצג על המסך. השרת מחשב את המחיר בעצמו ממילא — זה כאן אינו מקור
+   * אלא **בדיקת התאמה**: אם המחירון השתנה בזמן שהמסך היה פתוח, ההזמנה נעצרת
+   * במקום להישמר בסכום אחר מזה שהלקוחה אישרה.
+   */
+  displayedTotal: z.number().nonnegative().optional(),
+  name: z.string().trim().min(1).max(120).refine(nameValid, { message: "invalid name" }),
   email: z.string().trim().email().max(200),
-  phone: z.string().trim().max(40).optional(),
-  street: z.string().trim().max(200).optional(),
-  city: z.string().trim().max(120).optional(),
-  zip: z.string().trim().max(20).optional(),
+  // הטלפון נבדק ונשמר בצורה אחת. הבדיקה בדפדפן היא שירות ללקוחה; זו כאן היא
+  // מה שקובע — מה שנשלח לשרת אינו בהכרח מה שהמסך הציג.
+  phone: z
+    .string()
+    .trim()
+    .max(40)
+    .refine((v) => !v || isValidPhone(v), { message: "invalid phone" })
+    .transform((v) => (v ? formatPhone(v) : v))
+    .optional(),
+  street: z
+    .string()
+    .trim()
+    .max(200)
+    .refine((v) => !v || addressLineValid(v), { message: "invalid street" })
+    .optional(),
+  city: z
+    .string()
+    .trim()
+    .max(120)
+    .refine((v) => !v || addressLineValid(v), { message: "invalid city" })
+    .optional(),
+  zip: z.string().trim().max(20).refine(zipValid, { message: "invalid zip" }).optional(),
   productType: z.enum(["bracelet", "ring"]),
   circumferenceMm: z.number().positive().max(400),
   widthMm: z.number().positive().max(100),
@@ -69,15 +109,26 @@ export async function POST(req: Request) {
       throw new ApiError("rate_limited", "Too many orders from this email today", 429);
     }
 
+    // מי מזמינה, כשידוע. לא כל הזמנה חייבת חשבון — מסלול הגיבוי קיים — אבל
+    // הזמנה של מי שמחוברת נקשרת אליה, ולא רק לבעלים של העיצוב.
+    const accountId = await readAccountId(req);
+
     // העיצוב, אם נמסר. הזמנה בלי עיצוב עדיין נשמרת — הלקוחה השלימה משפך
     // והכסף אמיתי גם אם המזהה אבד — אבל מזהה **שגוי** לא נשמר כאילו הוא נכון.
     let ref: string | null = null;
-    let profileId: string | null = null;
+    let profileId: string | null = accountId;
     let versionId: string | null = null;
     if (body.designId) {
-      const design = await getDesign(body.designId);
+      // `requireDesignAccess` ולא `getDesign`: כאן ישבה הדלת האחרונה שנשארה
+      // פתוחה אחרי שכל שאר המסלולים נסגרו. מי שהחזיק uuid של עיצוב זר יכול היה
+      // ליצור עליו הזמנה — ומייל האישור, שנבנה מהשורה, היה מגיע לכתובת שהוא
+      // עצמו שלח, כלומר תיאור העיצוב של אדם אחר נשלח למי שביקש אותו.
+      // `known: accountId` — הזהות כבר נפתרה כאן למעלה, ופתירה שנייה באותה
+      // בקשה תיפול בדיוק כשהאסימון פג: הראשונה מסובבת את ה-refresh token,
+      // והשנייה קוראת את העוגייה כפי שהגיעה. ראו `designAccess`.
+      const design = await requireDesignAccess(req, body.designId, { known: accountId });
       ref = designSampleCode(design);
-      profileId = design.profile_id;
+      profileId = design.profile_id ?? accountId;
       // הגרסה שהוזמנה. אם לא נמסרה — הנוכחית. אם נמסרה גרסה של עיצוב אחר, היא
       // נזרקת: קובץ חיתוך של מישהו אחר הוא הטעות היקרה ביותר כאן.
       const candidate = body.versionId ?? design.current_version_id;
@@ -93,7 +144,18 @@ export async function POST(req: Request) {
       density: body.density,
     });
 
-    const order = await createOrder({
+    // המחיר שהוצג מול המחיר שנשמר. שניהם מחושבים מאותה פונקציה, ולכן פער כאן
+    // אינו זיוף אלא **מסך ישן**: מחירון שהתעדכן בזמן שהמשפך היה פתוח. הזמנה
+    // שנשמרת בסכום אחר מזה שהלקוחה ראתה היא בדיוק השיחה שאי אפשר לנצח בה.
+    if (body.displayedTotal != null && body.displayedTotal !== price.total) {
+      throw new ApiError(
+        "price_changed",
+        `Price changed while the page was open (shown ${body.displayedTotal}, now ${price.total})`,
+        409,
+      );
+    }
+
+    const { order, created } = await createOrderOnce({
       ref,
       design_id: body.designId ?? null,
       version_id: versionId,
@@ -111,13 +173,23 @@ export async function POST(req: Request) {
       cuts: body.cuts ?? null,
       brief: body.brief ?? null,
       price,
+      idempotency_key: body.idempotencyKey ?? null,
+      // החותמת נכתבת בשרת ולא מהדפדפן: "מתי אושרו התנאים" הוא הראיה עצמה.
+      terms_accepted_at: new Date().toISOString(),
+      marketing_opt_in: body.marketingOptIn ?? false,
     });
 
     // מכאן ההזמנה שמורה. שום כשל בדואר לא מחזיר שגיאה ללקוחה — מה שאבד הוא
     // ההתראה, לא ההזמנה; הכיוון ההפוך גורם לה לשלוח שוב.
-    await notify(order);
+    //
+    // ורק על הזמנה שנוצרה עכשיו: ניסיון שני עם אותו מפתח מחזיר את מה שכבר
+    // נשמר, ואין שום סיבה לשלוח את אותם שני מיילים פעם נוספת.
+    if (created) await notify(order);
 
-    return NextResponse.json({ ok: true, id: order.id, ref: order.ref, price }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, id: order.id, ref: order.ref, price: order.price ?? price, duplicate: !created },
+      { status: created ? 201 : 200 },
+    );
   } catch (err) {
     return handleRouteError(err);
   }

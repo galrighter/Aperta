@@ -12,6 +12,10 @@ export interface Account {
   name: string;
   email: string;
   phone: string | null;
+  /** הכתובת האחרונה שנמסרה (0020) — כדי שההזמנה הבאה תתחיל ממה שכבר הוקלד. */
+  street: string | null;
+  city: string | null;
+  zip: string | null;
 }
 
 export interface Design {

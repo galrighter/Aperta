@@ -157,6 +157,20 @@ export default function OrderDetail({
           )}
           <h2 className="mt-4 text-[12px] text-mist">{s.adminOrderAddress}</h2>
           <div className="text-[13px] text-ink80">{address || s.adminOrderNoAddress}</div>
+
+          {/* האישורים, כפי שנרשמו ברגע ההזמנה (0020). הם נשמרים כדי שאפשר
+              יהיה לענות עליהם — ולכן הם גם מוצגים: מה שאין דרך לראות אינו
+              ראיה. הסכמת דיוור מוצגת גם כשהיא שלילית, כי "לא הסכימה" היא
+              בדיוק התשובה שצריך לפני שליחת דיוור. */}
+          <h2 className="mt-4 text-[12px] text-mist">{s.adminOrderConsent}</h2>
+          <div className="text-[13px] text-ink80">
+            {order.terms_accepted_at
+              ? `${s.adminOrderTermsOk} · ${new Date(order.terms_accepted_at).toLocaleString("he-IL")}`
+              : s.adminOrderTermsMissing}
+          </div>
+          <div className="text-[13px] text-ink60">
+            {order.marketing_opt_in ? s.adminOrderMarketingYes : s.adminOrderMarketingNo}
+          </div>
         </section>
 
         <section>
