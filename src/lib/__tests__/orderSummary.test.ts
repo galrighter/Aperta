@@ -33,6 +33,9 @@ const ORDER: OrderRow = {
   status: "sent",
   status_history: [{ status: "sent", at: "2026-07-28T00:00:00.000Z" }],
   note: null,
+  idempotency_key: null,
+  terms_accepted_at: "2026-07-28T00:00:00.000Z",
+  marketing_opt_in: false,
   created_at: "2026-07-28T00:00:00.000Z",
   updated_at: "2026-07-28T00:00:00.000Z",
 };

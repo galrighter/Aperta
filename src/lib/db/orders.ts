@@ -37,6 +37,12 @@ export interface OrderRow {
   status: OrderStatus;
   status_history: Array<{ status: OrderStatus; at: string }>;
   note: string | null;
+  /** 0020 — המפתח שמזהה ניסיון שליחה אחד. ראו `createOrderOnce`. */
+  idempotency_key: string | null;
+  /** 0020 — מתי אושרו התנאים. "אישרה" בלי "מתי" אינו ראיה. */
+  terms_accepted_at: string | null;
+  /** 0020 — הסכמה לדיוור, בנפרד מההזמנה עצמה. */
+  marketing_opt_in: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +78,55 @@ export async function createOrder(input: NewOrder): Promise<OrderRow> {
     .single();
   if (error) fail(error);
   return data as OrderRow;
+}
+
+/**
+ * יצירה שרצה פעם אחת גם כשהיא נקראת פעמיים.
+ *
+ * הכפתור ננעל בזמן השליחה, וזה מטפל בלחיצה כפולה — אבל לא במה שקורה כשהתשובה
+ * לא חוזרת: הלקוחה מקבלת "אפשר לנסות שוב", לוחצת, וההזמנה נשמרת פעמיים. אחר
+ * כך אי אפשר לדעת מהשורות אם היא רצתה שתיים.
+ *
+ * המפתח נוצר פעם אחת למסך הצ'קאאוט ונשלח בכל ניסיון. שתי בדיקות ולא אחת:
+ * חיפוש לפני ההוספה תופס את המקרה הרגיל, והתנגשות על האינדקס הייחודי (23505)
+ * תופסת את שתי הבקשות שרצות ממש במקביל — שם החיפוש המקדים של שתיהן מחזיר
+ * ריק. `created` הוא מה שאומר לקורא אם יש מה להודיע עליו: הזמנה שהוחזרה
+ * מהמפתח כבר שלחה את המיילים שלה.
+ */
+export async function createOrderOnce(
+  input: NewOrder,
+): Promise<{ order: OrderRow; created: boolean }> {
+  const key = input.idempotency_key;
+  if (key) {
+    const existing = await findOrderByKey(key);
+    if (existing) return { order: existing, created: false };
+  }
+
+  try {
+    return { order: await createOrder(input), created: true };
+  } catch (err) {
+    if (key && isUniqueViolation(err)) {
+      const existing = await findOrderByKey(key);
+      if (existing) return { order: existing, created: false };
+    }
+    throw err;
+  }
+}
+
+async function findOrderByKey(key: string): Promise<OrderRow | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("orders")
+    .select("*")
+    .eq("idempotency_key", key)
+    .maybeSingle();
+  if (error) fail(error);
+  return (data as OrderRow) ?? null;
+}
+
+/** התנגשות על אינדקס ייחודי, כפי ש-PostgREST מנסח אותה. */
+function isUniqueViolation(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /duplicate key value|23505/i.test(message);
 }
 
 /** מספר ההזמנות מאותו מייל ב-24 השעות האחרונות (הגנת ספאם רכה, כמו בפניות). */

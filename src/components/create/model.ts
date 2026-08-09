@@ -175,7 +175,21 @@ export interface CreateState {
 
   // סיכום ותשלום
   terms: boolean;
+  /** הסכמה לדיוור. נפרדת מאישור התנאים, ולעולם לא מסומנת מראש. */
+  marketing: boolean;
+  /**
+   * מלכודת הבוטים. שדה מוסתר שאדם אינו רואה ואינו יכול למקד — ולכן כל ערך בו
+   * הוא סקריפט שמילא HTML. השרת בולע הזמנה כזאת בשקט מאז ההתחלה; מה שחסר היה
+   * השדה עצמו.
+   */
+  company: string;
   addr: Addr;
+  /**
+   * מזהה ניסיון השליחה. נוצר בלחיצה הראשונה ונשמר עד שההזמנה נקלטה, כך
+   * ש"נסי שוב" אחרי רשת שנתקעה מגיע לשרת עם אותו מפתח — ומחזיר את ההזמנה
+   * שכבר נשמרה במקום ליצור שנייה. מתאפס אחרי הצלחה: הזמנה הבאה היא הזמנה.
+   */
+  orderKey: string | null;
   sending: boolean;
   sendError: string | null;
   /** קישור `mailto:` עם ההזמנה המלאה, נבנה רק כשהשליחה נכשלה. בלעדיו הזמנה
@@ -223,12 +237,37 @@ export const INITIAL: CreateState = {
   region: "all",
   editReq: "",
   terms: false,
+  marketing: false,
+  company: "",
   addr: { name: "", street: "", city: "", zip: "", phone: "", email: "" },
+  orderKey: null,
   sending: false,
   sendError: null,
   sendMailto: null,
   orderNo: null,
 };
+
+/**
+ * מזהה ניסיון שליחה (uuid v4).
+ *
+ * `crypto.randomUUID` קיים בכל דפדפן עדכני, אבל **רק בהקשר מאובטח** — ובלעדיו
+ * הוא `undefined`, לא שגיאה. מפתח שאינו נוצר פירושו כפתור שזורק במקום לשלוח,
+ * ולכן יש כאן נפילה לאחור מלאה: getRandomValues, ורק אם גם הוא חסר — Math.random.
+ * האקראיות של השלב האחרון גרועה, וזה בסדר: תפקיד המפתח הוא להבחין בין שני
+ * ניסיונות של אותו אדם, לא להיות סוד.
+ */
+export function newOrderKey(): string {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+
+  const bytes = new Uint8Array(16);
+  if (c?.getRandomValues) c.getRandomValues(bytes);
+  else for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // גרסה 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** תשובת מנוע, במה שנדרש כדי לבנות ממנה גרסה. טיפוס מבני ולא הטיפוס של
  *  ה-client, כדי ששני מסלולי היצירה (גנרציה ווקטוריזציה) ייכנסו לאותה דלת. */

@@ -56,8 +56,25 @@ describe("previewOf", () => {
     expect(p!.path.match(/M/g)).toHaveLength(2);
   });
 
+  it("draws on the frame the version sits in, not on the ordered width", () => {
+    // המסגור לוקח את הרוחב של קנה מידה אחיד כשהוא בטווח הסטייה, ולכן ה-viewBox
+    // כמעט אף פעם אינו הרוחב שהוזמן. `normalizeSvg` אוכף התאמה של 0.01 מ"מ,
+    // וכך כל עיצוב שנמשך מהשרת חזר בלי ציור — הבאג שהמסלול הזה נועד לפתור.
+    const framed =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 10.34">` +
+      `<g id="cutouts"><rect x="10" y="3" width="6" height="4"/></g></svg>`;
+    const p = previewOf(framed, DIMS);
+    expect(p).not.toBeNull();
+    expect(p!.widthMm).toBe(10.34);
+    expect(p!.cuts).toBe(1);
+  });
+
   it("returns null without a version, and without dimensions", () => {
     expect(previewOf(null, DIMS)).toBeNull();
-    expect(previewOf(svg(""), { lengthMm: 0, widthMm: 10 })).toBeNull();
+    // בלי viewBox אין מסגרת לקרוא, והמידות שנמסרו הן מה שיש — כאן, אין.
+    const noViewBox =
+      `<svg xmlns="http://www.w3.org/2000/svg">` +
+      `<g id="cutouts"><rect x="10" y="3" width="6" height="4"/></g></svg>`;
+    expect(previewOf(noViewBox, { lengthMm: 0, widthMm: 10 })).toBeNull();
   });
 });

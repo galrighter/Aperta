@@ -23,6 +23,40 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest tests -q
 
+  # Workflow שאינו YAML תקין אינו נכשל — הוא **לא רץ**. GitHub פותח עליו ריצה
+  # ריקה (0 jobs) עם איקס אדום, וזה נראה כמו עוד check שנכשל ולא כמו workflow
+  # שאינו קיים. כך `undici-override-check` שתק שלושה חודשים: heredoc שגופו
+  # התחיל בעמודה 0 סגר את ה-block scalar של `run: |` בטרם עת, והבדיקה החודשית
+  # שהוא נועד להריץ פשוט לא רצה — כולל התזכורת שהיא הייתה אמורה לפתוח.
+  #
+  # הצעד הזה נותן לזה קול בתוך CI עצמו, שהוא **כן** נטען: הוא מדפיס את הקובץ
+  # ואת השורה, ולא איקס בלי גוף.
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # PyYAML אינו חלק מהפייתון של ה-runner. הבדיקה עברה במחשב שבו הוא מותקן
+      # ונפלה כאן על ImportError — כלומר בדיוק הרעש שהיא באה להסיר: איקס אדום
+      # שאינו אומר דבר על הקוד.
+      - run: pip install --quiet pyyaml
+      - name: Every workflow file parses
+        run: |
+          python - <<'PY'
+          import glob, sys, yaml
+          bad = []
+          for f in sorted(glob.glob(".github/workflows/*.y*ml")):
+              try:
+                  yaml.safe_load(open(f, encoding="utf-8"))
+              except yaml.YAMLError as e:
+                  bad.append(f"{f}: {e}")
+          for b in bad:
+              print(f"::error::{b}")
+          sys.exit(1 if bad else 0)
+          PY
+
   test:
     runs-on: ubuntu-latest
     steps:

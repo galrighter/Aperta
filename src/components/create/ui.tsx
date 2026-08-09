@@ -179,13 +179,26 @@ export function Slider({
 
 export function TextInput({
   label, value, onChange, placeholder, type = "text", required, inputMode, dir,
+  onBlur, autoComplete, error, hint,
 }: {
   label: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; required?: boolean;
   /** לקוד חד־פעמי: מקלדת ספרות בנייד, ומספרים שנקראים משמאל לימין. */
   inputMode?: "numeric" | "tel" | "email" | "text";
   dir?: "ltr" | "rtl";
+  onBlur?: () => void;
+  /** ערך `autocomplete` של HTML — מה שמאפשר לדפדפן למלא את השדה. */
+  autoComplete?: string;
+  /** שגיאת ולידציה על השדה הזה. מוצגת מתחתיו, ומסומנת גם לקורא־מסך. */
+  error?: string | null;
+  /** הסבר קבוע מתחת לשדה. נבלע כשיש שגיאה — שתי שורות אינן עוזרות לאף אחד. */
+  hint?: string | null;
 }) {
+  // מזהה יציב לקישור `aria-describedby`. השגיאה מוצגת ויזואלית מתחת לשדה,
+  // ובלי הקישור הזה קורא־מסך היה מקריא שדה "לא תקין" בלי לומר למה.
+  const id = useId();
+  const msg = error || hint || null;
+
   return (
     <label className="block">
       <span className="mb-2 block text-[13px] font-semibold text-ink60">
@@ -196,12 +209,60 @@ export function TextInput({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         placeholder={placeholder}
         inputMode={inputMode}
         dir={dir}
-        className="w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-base transition-colors focus:border-lapis focus:outline-none"
+        autoComplete={autoComplete}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={msg ? `${id}-msg` : undefined}
+        className={`w-full rounded-[2px] border bg-white px-4 py-3 text-base transition-colors focus:outline-none ${
+          error ? "border-[#c0413b] focus:border-[#c0413b]" : "border-graphite/20 focus:border-lapis"
+        }`}
       />
+      {msg && (
+        <span
+          id={`${id}-msg`}
+          role={error ? "alert" : undefined}
+          className={`mt-1.5 block text-[12px] ${error ? "text-[#c0413b]" : "text-ink60"}`}
+        >
+          {msg}
+        </span>
+      )}
     </label>
+  );
+}
+
+/**
+ * תיבת סימון.
+ *
+ * `<button aria-pressed>` ולא `<input type=checkbox>` מעוצב: הריבוע כאן הוא
+ * 20px עם סימן שמצויר בתוכו, ו-input אמיתי היה דורש להסתיר אותו ולצייר מעליו —
+ * כלומר בדיוק אותו אלמנט, עם עוד שכבה שיכולה להתפרק. התווית לחיצה יחד איתו,
+ * ומכילה קישורים (התנאים) — ולכן היא ליד הכפתור ולא בתוכו.
+ */
+export function CheckBox({
+  on, onChange, children,
+}: {
+  on: boolean; onChange: (v: boolean) => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        onClick={() => onChange(!on)}
+        className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-[2px] text-xs text-porcelain transition-colors"
+        style={{
+          border: `1.5px solid ${on ? LAPIS : "rgba(32,35,38,0.3)"}`,
+          background: on ? LAPIS : "#fff",
+        }}
+      >
+        {on ? "✓" : ""}
+      </button>
+      <span className="text-[13px] leading-relaxed text-ink80">{children}</span>
+    </div>
   );
 }
 

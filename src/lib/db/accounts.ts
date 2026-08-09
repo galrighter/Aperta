@@ -30,6 +30,14 @@ export interface AccountRow {
   kind: AccountKind;
   email: string | null;
   phone: string | null;
+  /**
+   * הכתובת האחרונה שנמסרה (0020). אופציונליות ולא `| null` בלבד: מסלול
+   * הכניסה (`linkAuthUser`) אינו שולף אותן, ומסד שעוד לא קיבל את 0020 אינו
+   * מחזיק אותן. `undefined` כאן פירושו "לא נשאלנו", ולא "אין כתובת".
+   */
+  street?: string | null;
+  city?: string | null;
+  zip?: string | null;
   created_at: string;
   last_seen_at: string;
 }
@@ -40,6 +48,9 @@ export interface PublicAccount {
   name: string;
   email: string;
   phone: string | null;
+  street: string | null;
+  city: string | null;
+  zip: string | null;
 }
 
 export const toPublic = (a: AccountRow): PublicAccount => ({
@@ -47,6 +58,9 @@ export const toPublic = (a: AccountRow): PublicAccount => ({
   name: a.name,
   email: a.email ?? "",
   phone: a.phone,
+  street: a.street ?? null,
+  city: a.city ?? null,
+  zip: a.zip ?? null,
 });
 
 // צבע לזיהוי מהיר ברשימת הבק־אופיס, נגזר מהמייל כדי שיהיה יציב בין הרצות.
@@ -61,18 +75,30 @@ function colorFor(email: string): string {
 /** נירמול המייל — הוא מפתח הזהות, ולכן חייב צורה אחת בלבד. */
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+/** 0008 ומעלה. הכתובת (0020) נוספת עליהן, ונשמטת אם המסד עוד לא קיבל אותה. */
+const ACCOUNT_COLS = "id, name, color, kind, email, phone, created_at, last_seen_at";
+const ACCOUNT_COLS_ADDR = `${ACCOUNT_COLS}, street, city, zip`;
+
+const missingColumn = (message: string) => /does not exist|schema cache/i.test(message);
+
 export async function getAccount(id: string): Promise<AccountRow | null> {
   const sb = supabaseAdmin();
-  const { data, error } = await sb
+  let { data, error } = await sb
     .from("profiles")
-    .select("id, name, color, kind, email, phone, created_at, last_seen_at")
+    .select(ACCOUNT_COLS_ADDR)
     .eq("id", id)
     .maybeSingle();
+
+  // מסד שעוד לא קיבל את 0020. הכתובת השמורה היא נוחות — היעדרה מחזיר טופס
+  // ריק, ולא מפיל את הזהות של מי שכבר מחובר. שאר החשבון נקרא כרגיל.
+  if (error && missingColumn(error.message)) {
+    ({ data, error } = await sb.from("profiles").select(ACCOUNT_COLS).eq("id", id).maybeSingle());
+  }
 
   // מסד שעוד לא קיבל את 0008. הסטודיו הפנימי לא תלוי בעמודות החדשות ואין
   // סיבה להפיל אותו: שם כל פרופיל הוא בודק, וזה מה שהיה נכון גם קודם.
   // ההרשמה עצמה כן נופלת — ובקול, עם schema_outdated ולא עם 500.
-  if (error && /does not exist|schema cache/i.test(error.message)) {
+  if (error && missingColumn(error.message)) {
     const legacy = await sb.from("profiles").select("id, name, color").eq("id", id).maybeSingle();
     if (legacy.error || !legacy.data) return null;
     const row = legacy.data as { id: string; name: string; color: string };
@@ -155,18 +181,27 @@ export async function linkAuthUser(input: {
   return data as AccountRow;
 }
 
-/** השלמת פרטים אחרי הכניסה הראשונה (שם/טלפון). */
+/**
+ * השלמת פרטים אחרי הכניסה הראשונה, ואחרי כל הזמנה: שם, טלפון וכתובת.
+ *
+ * הכתובת נשמרת כאן כדי שההזמנה הבאה תתחיל ממה שכבר נמסר. הצילום ב-`orders`
+ * נשאר בשלו — הוא של ההזמנה ההיא, ושינוי כאן אינו משנה לאן נשלח מה שכבר נשלח.
+ *
+ * שדה ריק אינו מוחק ערך קיים בשום מקרה: הטופס יכול להישלח חלקי, ו"לא נמסר
+ * הפעם" אינו "בטלי את מה שנמסר".
+ */
 export async function updateAccountDetails(
   id: string,
-  patch: { name?: string; phone?: string | null },
+  patch: { name?: string; phone?: string | null; street?: string; city?: string; zip?: string },
 ): Promise<AccountRow> {
-  const COLS = "id, name, color, kind, email, phone, created_at, last_seen_at";
   const update: Record<string, unknown> = {};
   if (patch.name) update.name = patch.name;
-  // טלפון ריק לא מוחק טלפון שכבר נמסר.
   if (patch.phone) update.phone = patch.phone;
+  const address = { street: patch.street, city: patch.city, zip: patch.zip };
+  for (const [k, v] of Object.entries(address)) if (v) update[k] = v;
+
   if (Object.keys(update).length === 0) {
-    const cur = await supabaseAdmin().from("profiles").select(COLS).eq("id", id).single();
+    const cur = await supabaseAdmin().from("profiles").select(ACCOUNT_COLS_ADDR).eq("id", id).single();
     if (cur.error) fail(cur.error);
     return cur.data as AccountRow;
   }
@@ -174,7 +209,7 @@ export async function updateAccountDetails(
     .from("profiles")
     .update(update)
     .eq("id", id)
-    .select(COLS)
+    .select(ACCOUNT_COLS_ADDR)
     .single();
   if (error) fail(error);
   return data as AccountRow;

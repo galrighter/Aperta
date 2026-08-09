@@ -27,7 +27,23 @@ import { getDesign, type DesignRow } from "./db/designs";
  * לפרופיל הראשון לפני שהיה רישום. הם נשארים נגישים דרך מסלול (1) — עכשיו מאחורי
  * שער האדמין — זו היסטוריה של גל עצמו, לא של לקוחות.
  */
-export async function assertDesignAccess(req: Request, ownerId: string | null): Promise<void> {
+/**
+ * `known` — הזהות, כשהמסלול כבר פתר אותה.
+ *
+ * לא אופטימיזציה. `readAccountId` מאמת את האסימון מול שרת האימות, ואימות של
+ * אסימון שפג **מסובב את ה-refresh token**: השני שירוץ באותה בקשה ייקח את
+ * העוגייה כפי שהגיעה, כלומר את הטוקן שכבר נשרף, וייכשל. מסלול שצריך גם את
+ * מזהה החשבון לעצמו וגם בדיקת בעלות חייב אפוא לפתור פעם אחת ולמסור לכאן.
+ *
+ * `undefined` = "לא נפתר, תפתור בעצמך". `null` = "נפתר, ואין אף אחד".
+ */
+type KnownAccount = { known?: string | null };
+
+export async function assertDesignAccess(
+  req: Request,
+  ownerId: string | null,
+  opts: KnownAccount = {},
+): Promise<void> {
   if (ownerId) {
     const owner = await getAccount(ownerId);
     if (owner?.kind === "tester") {
@@ -35,15 +51,26 @@ export async function assertDesignAccess(req: Request, ownerId: string | null): 
       return;
     }
   }
-  const accountId = await requireAccountId(req);
+  const accountId =
+    opts.known === undefined
+      ? await requireAccountId(req)
+      : (opts.known ?? throwAccountRequired());
   if (accountId !== ownerId) {
     throw new ApiError("forbidden", "This design belongs to another account", 403);
   }
 }
 
+function throwAccountRequired(): never {
+  throw new ApiError("account_required", "Sign in before designing", 401);
+}
+
 /** טוען עיצוב ומחזיר אותו רק אם הפונה רשאי לגעת בו. */
-export async function requireDesignAccess(req: Request, designId: string): Promise<DesignRow> {
+export async function requireDesignAccess(
+  req: Request,
+  designId: string,
+  opts: KnownAccount = {},
+): Promise<DesignRow> {
   const design = await getDesign(designId);
-  await assertDesignAccess(req, design.profile_id);
+  await assertDesignAccess(req, design.profile_id, opts);
   return design;
 }

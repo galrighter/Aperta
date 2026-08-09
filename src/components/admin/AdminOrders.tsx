@@ -332,6 +332,14 @@ function OrderLine({
       {order.price && <span className="text-[13px] text-ink80">{money(order.price.total)}</span>}
       {showStatus && <StatusPill status={order.status} />}
       <AgeChip order={order} />
+      {/* הזמנה בלי עיצוב מקושר. היא נשמרת בכוונה — הכסף אמיתי גם כשהמזהה אבד —
+          אבל אין ממה לייצר אותה, ובלי סימון היא נראית ברשימה כמו כל השאר עד
+          שמישהו פותח אותה ומגלה שאין קובץ. */}
+      {!order.design_id && (
+        <span className="rounded-[2px] bg-porcelain px-1.5 py-0.5 text-[11px] text-ink60">
+          {s.adminOrderNoDesign}
+        </span>
+      )}
       {order.note && (
         <span
           className="rounded-[2px] bg-porcelain px-1.5 py-0.5 text-[11px] text-ink60"
