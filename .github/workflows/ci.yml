@@ -38,6 +38,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # PyYAML אינו חלק מהפייתון של ה-runner. הבדיקה עברה במחשב שבו הוא מותקן
+      # ונפלה כאן על ImportError — כלומר בדיוק הרעש שהיא באה להסיר: איקס אדום
+      # שאינו אומר דבר על הקוד.
+      - run: pip install --quiet pyyaml
       - name: Every workflow file parses
         run: |
           python - <<'PY'
