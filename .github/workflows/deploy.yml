@@ -43,6 +43,21 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx opennextjs-cloudflare build
+      # שער הנגישות, גם כאן ולא ב-ci.yml בלבד.
+      #
+      # `ci.yml` רץ על PR, וזה מכסה את המסלול שבו כל שינוי עובר בפועל. מה שהוא
+      # אינו מכסה הוא דחיפה ישירה ל-main ו-`workflow_dispatch` — שני המסלולים
+      # שמגיעים לאוויר בלי PR, כלומר בלי סריקה. שאר השערים כאן (typecheck, lint,
+      # טסטים) כבר משוכפלים מאותו נימוק; זה משלים את השורה.
+      #
+      # **הוא נתלה בבילד שכבר נעשה ולא בונה מחדש.** `opennextjs-cloudflare build`
+      # מריץ `next build` בתוכו ומשאיר את `.next` במקומו, כך ש-`next start`
+      # שהסקריפט מרים עובד על אותו תוצר בדיוק שעומד להיפרס. אומת מקומית: הבנייה
+      # מותירה `.next/BUILD_ID`, והסריקה עוברת עליה.
+      - name: Install Chromium for the accessibility scan
+        run: npx playwright install --with-deps chromium
+      - name: Accessibility gate
+        run: npm run test:a11y
       # שער על המשתנים שנושאים את שם הדומיין.
       #
       # עד כאן לכל אחד מהם הייתה נפילה-לברירת-מחדל עם `rmjewel.com` כתוב בתוכה.
