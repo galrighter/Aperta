@@ -37,8 +37,14 @@ async function startServer() {
   // `stdio: "ignore"` ולא `pipe`: פייפ שאיש אינו קורא ממנו מתמלא, והכתיבה
   // הבאה של הילד נחסמת — כלומר השרת נתקע ברגע שהוא מדפיס מספיק. הלוג שלו
   // ממילא אינו מעניין כאן; מה שמעניין הוא אם הוא עונה, וזה נבדק למטה.
+  //
+  // `detached: true` כדי שתהיה קבוצת תהליכים שאפשר להרוג בשלמותה. `npx` הוא
+  // עטיפה שמריצה את `next` כילד, ו-`proc.kill()` מגיע לעטיפה בלבד: השרת עצמו
+  // שורד. ב-CI זה נראה כ-`Terminate orphan process: next-server` בסוף ה-job,
+  // ומקומית זה משאיר שרת תפוס על הפורט שמפיל את ההרצה הבאה.
   const proc = spawn("npx", ["next", "start", "-p", String(PORT)], {
     stdio: "ignore",
+    detached: true,
     env: { ...process.env },
   });
   const deadline = Date.now() + 90_000;
@@ -51,8 +57,22 @@ async function startServer() {
     }
     await new Promise((r) => setTimeout(r, 1000));
   }
-  proc.kill();
+  stopServer(proc);
   throw new Error(`השרת לא ענה על ${BASE} תוך 90 שניות`);
+}
+
+/** הורג את כל קבוצת התהליכים — ראו הנימוק ל-`detached` למעלה. */
+function stopServer(proc) {
+  try {
+    process.kill(-proc.pid);
+  } catch {
+    // כבר מת, או שהמערכת אינה תומכת בהריגת קבוצה. נפילה חזרה לילד עצמו.
+    try {
+      proc.kill();
+    } catch {
+      /* אין מה לעשות */
+    }
+  }
 }
 
 async function routesFromSitemap() {
@@ -103,7 +123,7 @@ try {
   }
   await browser.close();
 } finally {
-  server.kill();
+  stopServer(server);
 }
 
 if (failed > 0) {
