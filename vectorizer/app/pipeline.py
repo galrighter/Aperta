@@ -16,6 +16,7 @@ import numpy as np
 
 from .config import SETTINGS, THRESHOLD_OFFSETS, TOLERANCE_MM
 from .core import geometry, metrics, svg_builder, tracing
+from .core.curves import CurveSettings
 from .core.mask import analyse_and_mask
 from .core.renderer import render_svg_to_mask
 from .core.selection import Candidate, Selection, _topology_ok, select
@@ -60,7 +61,7 @@ def _build_candidate(
     mm_per_px = _mm_per_px(image, width_mm, height_mm)
     tolerance_px = tolerance_mm / mm_per_px
 
-    mask_res = analyse_and_mask(image, dark_region_role, threshold_offset)
+    mask_res = analyse_and_mask(image, dark_region_role, threshold_offset, SETTINGS.turn_policy)
     mask = mask_res.clean_mask
 
     geom_px = tracing.trace(mask, tolerance_px, SETTINGS.tracer_backend)
@@ -81,8 +82,21 @@ def _build_candidate(
         cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm)
         metal = geometry.cutouts_from_metal(cutouts, width_mm, height_mm)
 
-    metal_svg = svg_builder.build_metal_svg(metal, width_mm, height_mm)
-    cutouts_svg = svg_builder.build_cutouts_svg(cutouts, width_mm, height_mm)
+    # The curve fit *is* the smoothing, so its error budget is this candidate's
+    # simplification tolerance: the sweep over TOLERANCE_MM is now a sweep over
+    # how much staircase may be smoothed away, and the gate below scores each.
+    curves = (
+        CurveSettings(
+            max_error_mm=tolerance_mm,
+            corner_deg=SETTINGS.curve_corner_deg,
+            window_mm=SETTINGS.curve_window_mm,
+        )
+        if SETTINGS.curve_fit
+        else None
+    )
+    metal_built = svg_builder.build_metal_svg(metal, width_mm, height_mm, curves)
+    cutouts_built = svg_builder.build_cutouts_svg(cutouts, width_mm, height_mm, curves)
+    metal_svg, cutouts_svg = metal_built.svg, cutouts_built.svg
 
     rendered = render_svg_to_mask(metal_svg, image.width_px, image.height_px)
 
@@ -94,6 +108,10 @@ def _build_candidate(
         mm_per_px=mm_per_px,
     )
     stats = geometry.geometry_stats(metal)
+    # Anchors are counted on what was emitted, not on the polyline that fed the
+    # fit. score() keeps this term to prefer economical output, and after curve
+    # fitting the two numbers differ by an order of magnitude.
+    stats.anchor_point_count = metal_built.anchor_count
 
     cand = Candidate(
         candidate_id=f"t{mask_res.otsu_threshold + threshold_offset}_e{tolerance_mm}",
@@ -105,6 +123,8 @@ def _build_candidate(
         cutouts_svg=cutouts_svg,
     )
     cand._rendered = rendered  # type: ignore[attr-defined]  # kept for artifacts
+    cand._curve_count = metal_built.curve_count  # type: ignore[attr-defined]
+    cand._pinch_report = mask_res.pinch_report  # type: ignore[attr-defined]
     return cand
 
 
@@ -155,7 +175,7 @@ def run_pipeline(
                 candidates.append(c)
 
     selection = select(candidates)
-    src_mask = analyse_and_mask(image, dark_region_role, 0).clean_mask
+    src_mask = analyse_and_mask(image, dark_region_role, 0, SETTINGS.turn_policy).clean_mask
     # On rejection there is no selected candidate, but the back-office still
     # needs to see what the tracer produced — otherwise a failed run shows only
     # the conditioned mask and the reason stays invisible. Fall back to the
@@ -259,8 +279,23 @@ def build_debug(res: PipelineResult) -> dict:
                               if res.conditioned_png else "input already two-tone")})
     stages.append({"name": "tracing", "status": "ok" if res.candidates else "fail",
                    "detail": f"{len(res.candidates)} candidates"})
-    stages.append({"name": "smoothing", "status": "ok" if SETTINGS.smooth_iters > 0 else "skip",
-                   "detail": f"Chaikin x{SETTINGS.smooth_iters}"})
+    # A zero-width diagonal touch is a decision, and a decision that changes
+    # whether the piece comes off the bed in one part. It is reported whether or
+    # not any were found, so "none here" and "never checked" stay distinguishable.
+    pinch = next((getattr(c, "_pinch_report", None) for c in res.candidates), None) or {}
+    stages.append({"name": "turn policy",
+                   "status": "skip" if pinch.get("policy", "none") == "none" else "ok",
+                   "detail": (f"{pinch.get('policy', 'none')} · {pinch.get('found', 0)} zero-width "
+                              f"diagonal touches ({pinch.get('joined', 0)} joined, "
+                              f"{pinch.get('separated', 0)} separated)")})
+    if SETTINGS.curve_fit:
+        curved = getattr(sel, "_curve_count", 0) if sel is not None else 0
+        stages.append({"name": "smoothing", "status": "ok",
+                       "detail": (f"Bézier fit, corners >{SETTINGS.curve_corner_deg:g}° kept, "
+                                  f"{curved} curves")})
+    else:
+        stages.append({"name": "smoothing", "status": "ok" if SETTINGS.smooth_iters > 0 else "skip",
+                       "detail": f"Chaikin x{SETTINGS.smooth_iters}"})
     if sel is not None:
         m = sel.metrics
         stages.append({"name": "topology", "status": "ok" if _topology_ok(sel) else "fail",
@@ -285,6 +320,9 @@ def build_debug(res: PipelineResult) -> dict:
         "height_mm": res.height_mm,
         "color_key": res.chosen_key,
         "smooth_iters": SETTINGS.smooth_iters,
+        "curve_fit": SETTINGS.curve_fit,
+        "curve_corner_deg": SETTINGS.curve_corner_deg,
+        "turn_policy": SETTINGS.turn_policy,
         "gates": {
             "min_iou_hard": SETTINGS.min_iou_hard,
             "target_iou": SETTINGS.target_iou,
