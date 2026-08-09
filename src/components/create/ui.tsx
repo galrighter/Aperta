@@ -217,14 +217,14 @@ export function TextInput({
         aria-invalid={error ? true : undefined}
         aria-describedby={msg ? `${id}-msg` : undefined}
         className={`w-full rounded-[2px] border bg-white px-4 py-3 text-base transition-colors focus:outline-none ${
-          error ? "border-[#c0413b] focus:border-[#c0413b]" : "border-graphite/20 focus:border-lapis"
+          error ? "border-failred focus:border-failred" : "border-graphite/20 focus:border-lapis"
         }`}
       />
       {msg && (
         <span
           id={`${id}-msg`}
           role={error ? "alert" : undefined}
-          className={`mt-1.5 block text-[12px] ${error ? "text-[#c0413b]" : "text-ink60"}`}
+          className={`mt-1.5 block text-[12px] ${error ? "text-failred" : "text-ink60"}`}
         >
           {msg}
         </span>
