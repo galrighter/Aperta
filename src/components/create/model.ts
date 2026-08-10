@@ -153,6 +153,14 @@ export interface CreateState {
    */
   procErrorCode: string | null;
   /**
+   * כמה יצירות נכשלו ברצף, בלי הצלחה ביניהן.
+   *
+   * שני כשלים הם הרגע שבו "נסו שוב" מפסיק להיות התשובה: המשתמש כבר ניסה שוב,
+   * וזה לא עבד. מכאן המסך אומר שהתקלה חוזרת ונרשמת אצלנו, ומציע לשלוח משוב —
+   * במקום להזמין לחיצה שלישית לתוך אותו קיר. מתאפס בהצלחה ובחזרה לעיצוב.
+   */
+  procFailCount: number;
+  /**
    * מה שקורה בהמתנה, כפי שהלקוחה צריכה לדעת עליו. `rendering`/`saving` מגיעים
    * מהשרת; `disconnected` נכתב בדפדפן כשהבקשה נקטעה וההמתנה עברה לשורת ה-job.
    *
@@ -229,6 +237,7 @@ export const INITIAL: CreateState = {
   procError: null,
   procErrorDetail: null,
   procErrorCode: null,
+  procFailCount: 0,
   procStage: null,
   chooseError: null,
   editError: null,
@@ -375,12 +384,19 @@ export function invalidateDesign(): Partial<CreateState> {
     procError: null,
     procErrorDetail: null,
     procErrorCode: null,
+    procFailCount: 0,
     procStage: null,
     chooseError: null,
     editError: null,
     resultMode: "render",
   };
 }
+
+/**
+ * מאיזה כשל רצוף המסך מפסיק להציע "נסו שוב" כתשובה היחידה. שניים: הראשון
+ * יכול להיות מקרה, השני הוא בדיוק המשתמש שכבר לחץ "נסו שוב" וזה לא עבד.
+ */
+export const RECURRING_FAILURES = 2;
 
 /** שדות המידה — שינוי שלהם על עיצוב קיים מבטל אותו (ראו `invalidateDesign`). */
 export const SIZE_KEYS = [

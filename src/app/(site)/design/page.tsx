@@ -30,6 +30,7 @@ import { SavedDesigns } from "@/components/create/SavedDesigns";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
+import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
 import {
   beatPendingJob, clearPendingJob, setPendingJob,
 } from "@/lib/client/pendingJob";
@@ -235,6 +236,30 @@ export default function DesignPage() {
   useEffect(() => {
     saveAddrDraft(s.addr);
   }, [s.addr]);
+
+  /**
+   * טיוטת המשפך — המידות, המאפיינים, התיאור והכיתוב שהוקלדו עכשיו.
+   *
+   * נטענת פעם אחת בעלייה, ובכוונה **לפני** האפקטים של החזרה מגוגל ושל
+   * הפרמטרים בכתובת (הם מוגדרים אחריה ולכן רצים אחריה): מה שהם קובעים —
+   * מצב ששוחזר מה-stash, עיצוב שנפתח מקישור — גובר על הטיוטה.
+   *
+   * למה זה קיים: המשפך חי ב-state בזיכרון, ולכן יצירה שנכשלה לפני שנוצרה
+   * רשומה בשרת — או סתם רענון — מחקה את כל מה שמולא. מי שמדדה, כיוונה וכתבה
+   * איבדה הכול בדיוק כשמשהו אחר כבר השתבש.
+   */
+  useEffect(() => {
+    const draft = loadFunnelDraft();
+    if (!draft) return;
+    setState((prev) => ({ ...prev, ...draft }));
+    // מוצר כבר נבחר בטיוטה — הסרגל נפתח עד שלב העיצוב, כדי שאפשר יהיה לקפוץ
+    // ישר לתיאור במקום ללחוץ שוב את כל הדרך.
+    if (draft.product) setMaxReached((m) => Math.max(m, 2));
+  }, []);
+
+  useEffect(() => {
+    saveFunnelDraft(s);
+  }, [s]);
 
   const go = useCallback((screen: Screen) => {
     setState((prev) => {
@@ -459,7 +484,8 @@ export default function DesignPage() {
 
       clearPendingJob();
       jobRef.current = null;
-      setState((prev) => ({ ...prev, procStage: null }));
+      // הצלחה מאפסת גם את רצף הכשלים — הכשל הבא, אם יהיה, הוא סיפור חדש.
+      setState((prev) => ({ ...prev, procStage: null, procFailCount: 0 }));
       pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
       go("result");
     } catch (e) {
@@ -484,12 +510,32 @@ export default function DesignPage() {
           ? `${apiErr.code} · ${apiErr.status}`
           : `client · ${(e as Error)?.name || "Error"}`,
         procErrorCode: apiErr?.code ?? null,
+        // רצף הכשלים. מהכשל השני מסך השגיאה מפסיק להציע "נסו שוב" כתשובה
+        // היחידה — ראו RECURRING_FAILURES ו-ProcessingScreen.
+        procFailCount: prev.procFailCount + 1,
         // ההמתנה נגמרה, ולכן גם החיווי עליה. בלי זה "החיבור נקטע" היה נשאר
         // תלוי מעל מסך השגיאה שבא אחריו.
         procStage: null,
       }));
     }
   }, [account, go, pushEntry, remember]);
+
+  /**
+   * שליחת משוב ממסך השגיאה — אחרי ש"נסו שוב" נכשל גם הוא.
+   *
+   * המצב נקרא מהרפרנס ולא מה-closure, מאותה סיבה כמו ביצירה: ההודעה
+   * והמזהה הטכני של הכשל **האחרון** הם מה שנשלח, לא אלה שהיו כשנוצרה הפונקציה.
+   */
+  const sendProcFeedback = useCallback(async (message: string) => {
+    const cur = stateRef.current;
+    const { mailed } = await api.feedback({
+      designId: cur.designId ?? undefined,
+      message: message.trim() || undefined,
+      errorMessage: cur.procError ?? undefined,
+      errorDetail: cur.procErrorDetail ?? undefined,
+    });
+    return { mailed };
+  }, []);
 
   /* ===== "להזמין כזה" — עיצוב ששותף, במידה של מי שמזמין =====
      נכנסים לכאן במקום ל-`brief`: אין מה לתאר ואין מה לייצר, הדוגמה כבר קיימת.
@@ -784,6 +830,8 @@ export default function DesignPage() {
     // הכתובת השמורה יוצאת עם המשתמשת. מחשב משותף אינו מקרה קצה בסדנה, וכתובת
     // מלאה של אדם אחר בטופס היא בדיוק מה שאסור שהמסך הבא יראה.
     clearAddrDraft();
+    // וגם מה שמולא במשפך — התיאור והמידות של מי שיצאה אינם של מי שתיכנס.
+    clearFunnelDraft();
     setState((prev) => ({ ...prev, addr: INITIAL.addr }));
     setSaved([]);
     setAccount(null);
@@ -1057,6 +1105,8 @@ export default function DesignPage() {
       const orderNo =
         designCode(s.designSerial) ?? ((s.designId ?? "").slice(0, 8).toUpperCase() || "—");
       // המפתח מתאפס: ההזמנה הזאת נקלטה, והבאה היא הזמנה חדשה ולא ניסיון חוזר.
+      // הטיוטה המקומית מיצתה את תפקידה — העיצוב שהוזמן שמור בשרת וברשימה.
+      clearFunnelDraft();
       setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
       setMaxReached(5);
       if (typeof window !== "undefined") window.scrollTo(0, 0);
@@ -1185,10 +1235,18 @@ export default function DesignPage() {
             error={s.procError}
             detail={s.procErrorDetail}
             code={s.procErrorCode}
+            failCount={s.procFailCount}
+            accountEmail={account?.email ?? null}
+            onFeedback={sendProcFeedback}
             disconnected={s.procStage === DISCONNECTED_STAGE}
             onRetry={() => void startGeneration()}
             onBack={() => {
-              set({ procError: null, procErrorDetail: null, procErrorCode: null, procStage: null });
+              // החזרה לעיצוב היא שינוי כיוון — הרצף נשבר: מי שחוזרת, משנה
+              // משהו ומנסה שוב מתחילה ספירה חדשה, לא ממשיכה את הישנה.
+              set({
+                procError: null, procErrorDetail: null, procErrorCode: null,
+                procFailCount: 0, procStage: null,
+              });
               go("brief");
             }}
           />

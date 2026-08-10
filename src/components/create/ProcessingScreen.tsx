@@ -4,6 +4,7 @@
 // (לא טיימר, כנדרש ב-§5). מצב הכשל נוסף כאן — §11.2 מסמן אותו כחסר.
 import { useEffect, useMemo, useState } from "react";
 import { he } from "@/i18n/he";
+import { RECURRING_FAILURES } from "./model";
 import { ProgressBar } from "./ProgressBar";
 import { GhostBtn, PrimaryBtn } from "./ui";
 
@@ -46,13 +47,19 @@ const RETRY_POINTLESS = new Set([
 ]);
 
 export function ProcessingScreen({
-  error, detail, code, disconnected, onRetry, onBack,
+  error, detail, code, failCount = 0, accountEmail, onFeedback, disconnected, onRetry, onBack,
 }: {
   error: string | null;
   /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
   detail?: string | null;
   /** קוד הכשל — קובע אם "נסה שוב" הוא בכלל פעולה. */
   code?: string | null;
+  /** כמה יצירות נכשלו ברצף. משניים המסך אומר שהתקלה חוזרת ומציע משוב. */
+  failCount?: number;
+  /** לאן יישלח מייל האישור על המשוב — נאמר מראש, לא מתגלה בדיעבד. */
+  accountEmail?: string | null;
+  /** שליחת המשוב. `mailed` — האם מייל האישור באמת יצא. */
+  onFeedback?: (message: string) => Promise<{ mailed: boolean }>;
   /**
    * החיבור לבקשה נקטע וההרצה ממשיכה בשרת — הלקוחה מחכה לשורה, לא לבקשה.
    *
@@ -70,6 +77,27 @@ export function ProcessingScreen({
   const [qi, setQi] = useState(0);
   const [fade, setFade] = useState(true);
 
+  // טופס המשוב של מצב "תקלה חוזרת". חי כאן ולא במצב המשפך: הוא של המסך הזה
+  // בלבד, והמסך נשאר על כנו לאורך ניסיונות חוזרים — "נשלח" לא נמחק בכשל הבא.
+  const [fbText, setFbText] = useState("");
+  const [fbBusy, setFbBusy] = useState(false);
+  /** `mailed` — נשלח ומייל האישור יצא; `saved` — נשמר אצלנו בלי מייל. */
+  const [fbDone, setFbDone] = useState<null | "mailed" | "saved">(null);
+  const [fbFailed, setFbFailed] = useState(false);
+
+  const sendFeedback = async () => {
+    if (!onFeedback || fbBusy || fbDone) return;
+    setFbBusy(true);
+    setFbFailed(false);
+    try {
+      const { mailed } = await onFeedback(fbText);
+      setFbDone(mailed && accountEmail ? "mailed" : "saved");
+    } catch {
+      setFbFailed(true);
+    }
+    setFbBusy(false);
+  };
+
   // החלפת ציטוטים כל 7 שניות עם fade
   useEffect(() => {
     if (error) return;
@@ -84,6 +112,12 @@ export function ProcessingScreen({
   }, [error, order.length]);
 
   if (error) {
+    // תקלה חוזרת: המשתמש כבר לחץ "נסו שוב" וזה לא עבד. הכותרת מפסיקה לומר
+    // "נכשלה" ומתחילה לומר "אנחנו בודקים" — והמסך מציע לספר לנו, במקום להזמין
+    // לחיצה שלישית לתוך אותו קיר. כשלים שניסיון חוזר ממילא חסר בהם טעם
+    // (RETRY_POINTLESS) לא נכנסים לכאן — יש להם הסבר ופעולה משלהם.
+    const recurring =
+      failCount >= RECURRING_FAILURES && !RETRY_POINTLESS.has(code ?? "") && Boolean(onFeedback);
     return (
       <section className="mx-auto flex max-w-[620px] flex-col items-center px-5 py-24 text-center sm:px-10">
         <div
@@ -93,9 +127,11 @@ export function ProcessingScreen({
           !
         </div>
         <h1 className="mb-3 text-[26px] font-semibold tracking-tight text-graphite sm:text-[32px]">
-          {d.procErrorTitle}
+          {recurring ? d.procRepeatedTitle : d.procErrorTitle}
         </h1>
-        <p className="mb-3 text-[17px] leading-relaxed text-ink60">{d.procErrorBody}</p>
+        <p className="mb-3 text-[17px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+          {recurring ? d.procRepeatedBody : d.procErrorBody}
+        </p>
         {/* הודעת השגיאה עצמה — ink80 ולא mist: זה הטקסט שמסביר למה נכשל,
             והוא צריך להיות הקריא ביותר במסך, לא החיוור ביותר. */}
         <p
@@ -107,11 +143,62 @@ export function ProcessingScreen({
               ואי אפשר להבדיל בין דחיית ווקטורייזר, תשובה קטועה, וקריסת שרת. */}
           {detail && <span className="mt-1.5 block text-[11px] text-mist">{detail}</span>}
         </p>
+
+        {/* משוב מתוך הודעת השגיאה — רק בתקלה חוזרת. `aria-live` על אזור
+            הסטטוס: מי שאינו רואה את המסך צריך לשמוע ש"נשלח" קרה. */}
+        {recurring && (
+          <div className="mb-9 w-full max-w-md border border-graphite/15 bg-white px-5 py-5 text-start">
+            {fbDone ? (
+              <p aria-live="polite" className="text-[14px] leading-relaxed text-graphite">
+                {fbDone === "mailed" && accountEmail
+                  ? d.procFeedbackSent(accountEmail)
+                  : d.procFeedbackSentNoMail}
+              </p>
+            ) : (
+              <>
+                <div className="mb-2 text-[14px] font-semibold text-graphite">
+                  {d.procFeedbackTitle}
+                </div>
+                <textarea
+                  value={fbText}
+                  onChange={(e) => setFbText(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  aria-label={d.procFeedbackLabel}
+                  placeholder={d.procFeedbackLabel}
+                  className="mb-3 w-full resize-y border border-graphite/25 bg-white px-3 py-2 text-[14px] leading-relaxed text-graphite outline-none focus:border-lapis"
+                />
+                {accountEmail && (
+                  <p className="mb-3 text-[12px] leading-relaxed text-ink60">
+                    {d.procFeedbackNote(accountEmail)}
+                  </p>
+                )}
+                <div className="flex items-center gap-3">
+                  <PrimaryBtn onClick={() => void sendFeedback()} disabled={fbBusy}>
+                    {fbBusy ? d.procFeedbackBusy : d.procFeedbackSend}
+                  </PrimaryBtn>
+                  {fbFailed && (
+                    <p aria-live="polite" className="text-[12px]" style={{ color: "var(--color-failred)" }}>
+                      {d.procFeedbackFailed}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* כשניסיון חוזר חסר טעם, החזרה לתיאור היא הפעולה — ולא אפשרות משנית
             לצד כפתור שמזמין לחזור על אותו כשל. */}
         <div className="flex flex-wrap items-center justify-center gap-3">
           {RETRY_POINTLESS.has(code ?? "") ? (
             <PrimaryBtn onClick={onBack}>{d.procBack}</PrimaryBtn>
+          ) : recurring ? (
+            // הניסיון החוזר כבר נכשל — הוא נשאר זמין, אבל מפסיק להיות ההצעה.
+            <>
+              <GhostBtn onClick={onRetry}>{d.procRetry}</GhostBtn>
+              <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
+            </>
           ) : (
             <>
               <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>
