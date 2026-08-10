@@ -416,6 +416,8 @@ export default function DesignPage() {
       procErrorDetail: null,
       procErrorCode: null,
       procStage: null,
+      // ההסבר "היצירה לא הושלמה" מיצה את עצמו — הנה היא רצה שוב.
+      resumeIncomplete: false,
     };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
@@ -638,10 +640,12 @@ export default function DesignPage() {
           : { circ: String(Math.round(circP)), braceletWidth: Number(design.width_mm) };
 
         // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
-        // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס.
+        // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס. עם הסבר: בלעדיו
+        // הנחיתה על הטופס נראית כמו עיצוב שנעלם.
         if (!last) {
           setState({
             ...INITIAL,
+            resumeIncomplete: true,
             screen: "brief",
             product: design.product_type,
             designId: design.id,

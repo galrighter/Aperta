@@ -161,6 +161,11 @@ export interface CreateState {
    */
   procFailCount: number;
   /**
+   * נפתח עיצוב בלי גרסה — יצירה שנקטעה או נכשלה לפני שנשמרה תוצאה. מסך
+   * התיאור מציג על זה הסבר: נחיתה שקטה על הטופס נראית כמו עיצוב שנעלם.
+   */
+  resumeIncomplete: boolean;
+  /**
    * מה שקורה בהמתנה, כפי שהלקוחה צריכה לדעת עליו. `rendering`/`saving` מגיעים
    * מהשרת; `disconnected` נכתב בדפדפן כשהבקשה נקטעה וההמתנה עברה לשורת ה-job.
    *
@@ -238,6 +243,7 @@ export const INITIAL: CreateState = {
   procErrorDetail: null,
   procErrorCode: null,
   procFailCount: 0,
+  resumeIncomplete: false,
   procStage: null,
   chooseError: null,
   editError: null,
@@ -385,6 +391,7 @@ export function invalidateDesign(): Partial<CreateState> {
     procErrorDetail: null,
     procErrorCode: null,
     procFailCount: 0,
+    resumeIncomplete: false,
     procStage: null,
     chooseError: null,
     editError: null,
