@@ -1,5 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { framePreview, type BridgePlan, type FramedPreview } from "@/lib/geometry/frameCutouts";
+import { frameFullLocal, type FramedFull } from "@/lib/render/frameRequest";
 import type { DesignDims } from "@/lib/geometry/validate";
 
 // מסגור מועמדים — מחוץ ל-isolate של האתר.
@@ -52,12 +53,13 @@ async function frameOne(
   dims: DesignDims,
   cutoutsSvg: string,
   plan: BridgePlan,
+  full = false,
 ): Promise<FramedPreview> {
   // ה-host לא נקרא: service binding מנתב לפי ה-binding, לא לפי ה-URL.
   const resp = await svc.fetch("https://frame.internal/", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ dims, cutoutsSvg, plan }),
+    body: JSON.stringify({ dims, cutoutsSvg, plan, ...(full ? { full } : {}) }),
   });
   if (!resp.ok) {
     const detail = await resp.text().catch(() => "");
@@ -72,13 +74,14 @@ async function frameOnBox(
   dims: DesignDims,
   cutoutsSvg: string,
   plan: BridgePlan,
+  full = false,
 ): Promise<FramedPreview> {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.VECTORIZER_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_TOKEN}`;
   const resp = await fetch(`${url}/api/frame`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ dims, cutoutsSvg, plan }),
+    body: JSON.stringify({ dims, cutoutsSvg, plan, ...(full ? { full } : {}) }),
     signal: AbortSignal.timeout(FRAME_TIMEOUT_MS),
   });
   if (!resp.ok) {
@@ -86,6 +89,50 @@ async function frameOnBox(
     throw new Error(`geometry service ${resp.status}: ${detail.slice(0, 200)}`);
   }
   return (await resp.json()) as FramedPreview;
+}
+
+/**
+ * מסגור **מלא** של הזוכה — ולידציה, קנוניזציה ואיחוד חיתוכים — מחוץ ל-isolate.
+ *
+ * זה החצי השני של ההוצאה שהתחילה ב-28.7: המועמדים כבר מוסגרו בחוץ, אבל הזוכה
+ * מוסגר שוב בפנים (`ingestCutouts`) עם הגרף המלא — וב-10.8 בדיוק השלב הזה הרג
+ * isolate באמצע `saving`, בלי שנכתבה שגיאה. אותו סולם כמו התצוגה: קופסה →
+ * Worker נפרד → מקומית, והמקומית היא בדיוק מה שרץ עד היום.
+ */
+export async function frameFull(
+  dims: DesignDims,
+  cutoutsSvg: string,
+  plan: BridgePlan = {},
+): Promise<FramedFull> {
+  // שירות מגרסה שלפני `full` מתעלם מהדגל ומחזיר תצוגה בלי `normalized` —
+  // ושמירה ממנה הייתה גרסה בלי SVG קנוני ובלי גאומטריה. חלון הפריסה בין
+  // האתר לקופסה אמיתי, ולכן תשובה בלי השדה נחשבת כשל של המסלול, לא תשובה.
+  const assertFull = (out: FramedFull): FramedFull => {
+    if (!("normalized" in out)) throw new Error("service predates full framing");
+    return out;
+  };
+
+  const box = process.env.VECTORIZER_URL || null;
+  if (box) {
+    try {
+      const out = assertFull((await frameOnBox(box, dims, cutoutsSvg, plan, true)) as FramedFull);
+      console.log("framed winner via box");
+      return out;
+    } catch (e) {
+      console.error("geometry service failed (full), trying the frame worker:", (e as Error).message);
+    }
+  }
+  const svc = frameService();
+  if (svc) {
+    try {
+      const out = assertFull((await frameOne(svc, dims, cutoutsSvg, plan, true)) as FramedFull);
+      console.log("framed winner via worker");
+      return out;
+    } catch (e) {
+      console.error("frame worker failed (full), framing locally:", (e as Error).message);
+    }
+  }
+  return frameFullLocal(dims, cutoutsSvg, plan);
 }
 
 /**

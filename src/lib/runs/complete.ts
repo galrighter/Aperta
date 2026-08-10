@@ -2,7 +2,7 @@ import { collectRenderJob, runRenderJob, type RenderJob } from "@/lib/render/ser
 import { frameCandidates } from "@/lib/render/frameClient";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { getDesign } from "@/lib/db/designs";
+import { createSampleDesign, getDesign } from "@/lib/db/designs";
 import { claimJobDone } from "@/lib/db/jobs";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { signedUrl } from "@/lib/db/storage";
@@ -161,6 +161,12 @@ async function finishFromRender(
     return { kind: "rejected", status: String((box.raw as { status?: string }).status ?? "no candidate") };
   }
 
+  // עריכה שמושלמת בהתאוששות מקבלת דוגמה ממוספרת, בדיוק כמו במסלול הרגיל
+  // (החלטת גל, 10.8): תמונה חדשה מהמודל אינה נכתבת כגרסה שנייה על העיצוב
+  // הקיים. נוצרת רק אחרי שידוע שיש מה לשמור — דחייה לא משאירה עיצוב ריק.
+  const isEdit = Boolean(ctx.inputs?.editedFromCurrent);
+  const target = isEdit ? await createSampleDesign(design) : design;
+
   const offered = framed.filter((c) => c.report.status !== "fail");
   const raw = (box.raw as { metrics?: Record<string, number> }).metrics;
   const metrics = {
@@ -178,7 +184,7 @@ async function finishFromRender(
   }));
 
   const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
-    design,
+    design: target,
     cutoutsSvg: framed[0].framedSvg,
     userPrompt: ctx.userPrompt,
     renderPngPath,
@@ -201,12 +207,21 @@ async function finishFromRender(
     candidates: offeredRows,
     render: { model: box.model, url: renderUrl },
     vectorizer: metrics,
+    design: {
+      id: target.id,
+      serial: target.serial,
+      root_serial: target.root_serial,
+      sample_no: target.sample_no,
+    },
   };
 
   // רק מי שהעביר את השורה מ-`running` שולח את המייל. שני קוראים שנחתו על אותה
   // הרצה יסיימו אותה באותה תוצאה, ורק אחד יודיע עליה.
+  //
+  // עריכה לא שולחת מייל גם כאן: דוגמה חדשה נולדת עם גרסה 1, אבל "העיצוב שלך
+  // מוכן" מובטח פעם אחת ליצירה — לא לכל שינוי.
   if (await claimJobDone(jobId, runId, result)) {
-    await notifyDesignReady(design, version.version_no === 1);
+    await notifyDesignReady(target, version.version_no === 1 && !isEdit);
   }
   return { kind: "done", result };
 }

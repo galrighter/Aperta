@@ -1,0 +1,79 @@
+name: Canary generation
+
+# יצירה סינתטית מלאה, מקצה לקצה, על פרופיל בודק — דרך אותם מסלולי API שהאתר
+# משתמש בהם: יצירת עיצוב, קביעת מידות, והרצת המנוע עד גרסה שמורה.
+#
+# למה זה קיים: ב-10.8 שינוי בווקטורייזר שבר את **כל** היצירות לארבע שעות,
+# והתקלה התגלתה מצילום מסך של לקוח. כל חלקי הצינור — מודל התמונה, הקופסה,
+# המסגור, הוולידציה, המסד — נבדקים כאן יחד, כי רק ההרכבה שלהם היא מה שהלקוח
+# חווה. `/api/llm-health` בודק ספק אחד; זה בודק את היצירה.
+#
+# **זה עולה כסף** — קריאה אמיתית למודל התמונה (~$0.006 להרצה, ~$0.07 ליום
+# בקצב הזה) ויחידת מכסה של פרופיל הבודק (12 מתוך 50 ליום). זה מחיר הידיעה
+# שהאתר עובד לפני שלקוח מגלה שהוא לא.
+#
+# כשל כאן = GitHub שולח מייל כישלון workflow לבעלי הריפו. אין צינור התראות
+# נוסף לתחזק.
+
+on:
+  schedule:
+    # כל שעתיים, בדקה 23 — הרחק מעומס ה-cron של תחילת שעה עגולה.
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run a full generation on a tester profile
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set — canary cannot run."
+            exit 1
+          fi
+          jar=$(mktemp)
+
+          # כניסת אדמין — עוגייה, כמו שהסטודיו הפנימי עובד.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$jar" -X POST \
+            -H "content-type: application/json" \
+            -d "{\"token\":\"$ADMIN_TOKEN\"}" \
+            "$SITE_URL/api/admin/session")
+          [ "$code" = "200" ] || { echo "::error::admin login returned HTTP $code"; exit 1; }
+
+          # פרופיל בודק — היצירה רצה על הסטודיו הפנימי, לא על חשבון לקוח.
+          profile=$(curl -sS -b "$jar" "$SITE_URL/api/profiles" | python3 -c \
+            "import json,sys; print(json.load(sys.stdin)['profiles'][0]['id'])")
+
+          design=$(curl -sS -b "$jar" -X POST -H "content-type: application/json" \
+            -d "{\"profileId\":\"$profile\",\"productType\":\"bracelet\",\"name\":\"canary\",\"lengthMm\":160,\"widthMm\":12,\"gapMm\":30}" \
+            "$SITE_URL/api/designs" | python3 -c \
+            "import json,sys; print(json.load(sys.stdin)['design']['id'])")
+          echo "canary design: $design"
+
+          # היצירה עצמה. תיאור קבוע ופשוט — מה שנבדק הוא הצינור, לא המודל.
+          # עד 6 דקות: הרצה טיפוסית היא 30–90 שניות, וניסיון שני מוסיף עוד.
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 360 -b "$jar" -X POST \
+            -H "content-type: application/json" \
+            -d "{\"designId\":\"$design\",\"userPrompt\":\"עיגולים חופפים בגדלים שונים לאורך הצמיד\",\"currentSvg\":null,\"images\":[]}" \
+            "$SITE_URL/api/generate")
+          if [ "$code" != "200" ]; then
+            echo "::error::generation returned HTTP $code"
+            head -c 600 "$body"; echo
+            exit 1
+          fi
+          python3 - "$body" <<'EOF'
+          import json, sys
+          res = json.load(open(sys.argv[1]))
+          vid = res.get("version", {}).get("id")
+          assert vid, "generation returned 200 but no saved version"
+          print("canary OK — version", vid, "status", res.get("report", {}).get("status"))
+          EOF
+
+          # ניקוי: עיצובי canary לא נערמים ברשימת הבודק. ההרצה עצמה נשארת
+          # ביומן ההרצות — היא התיעוד שהבדיקה רצה.
+          curl -sS -b "$jar" -X DELETE "$SITE_URL/api/designs/$design" > /dev/null || true

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  feedbackAckMail, feedbackNotifyMail, notifyMail, orderAckMail, type InquiryMail,
+  failureSpikeMail, feedbackAckMail, feedbackNotifyMail, notifyMail, orderAckMail,
+  stalledJobMail, type InquiryMail,
 } from "../mailTemplates";
 
 const ORDER: InquiryMail = {
@@ -89,6 +90,27 @@ describe("משוב על תקלה חוזרת", () => {
     const mail = feedbackAckMail({ name: "דנה", code: null, url: "https://aperta-designs.com/design" });
     expect(mail.subject).not.toContain("null");
     expect(mail.text).toContain("https://aperta-designs.com/design");
+  });
+});
+
+describe("התראות תקלה", () => {
+  it("התראת רצף כשלים נושאת את המספרים ואת הכשל האחרון", () => {
+    const mail = failureSpikeMail({
+      count: 3, windowMinutes: 15,
+      reason: 'rescaleCutoutsSvg: unsupported path command "C"',
+      runId: "run-1", designRef: "AP-0102",
+    });
+    expect(mail.subject).toContain("נכשלות עכשיו");
+    expect(mail.text).toContain("3 הרצות");
+    expect(mail.text).toContain("rescaleCutoutsSvg");
+    expect(mail.text).toContain("/admin/runs");
+  });
+
+  it("התראת הרצה תקועה נושאת את הקישור שסוגר אותה בלחיצה", () => {
+    const mail = stalledJobMail({ jobId: "job-7", designRef: null });
+    expect(mail.text).toContain("actions/workflows/sweep-jobs.yml");
+    expect(mail.text).toContain("job-7");
+    expect(mail.text).not.toContain("null");
   });
 });
 

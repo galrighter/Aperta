@@ -10,6 +10,7 @@ import {
 import {
   frameCutoutsDims, type BridgePlan, type FramedCutouts, type FramedPreview,
 } from "@/lib/geometry/frameCutouts";
+import { frameFull } from "@/lib/render/frameClient";
 import type { BridgeRecord } from "@/lib/geometry/restoreBridges";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
@@ -166,7 +167,9 @@ export function designDims(design: DesignRow): DesignDims {
   };
 }
 
-/** מסגור מועמד מול שורת עיצוב. החישוב עצמו ב-geometry/frameCutouts. */
+/** מסגור מקומי מול שורת עיצוב. **בצינור החי** משמש רק כנפילה-לאחור דרך
+ *  `frameFull` (10.8) — המסגור המלא של הזוכה רץ על הקופסה, אחרי ש-isolate מת
+ *  בשלב saving על ההקצאה הזו בדיוק. נשאר כאן לטסטים שמודדים את ההקצאה עצמה. */
 export function frameCutouts(
   design: DesignRow,
   cutoutsSvg: string,
@@ -214,7 +217,9 @@ export async function ingestCutouts(opts: {
   replaceVersionId?: string | null;
 }): Promise<IngestResult> {
   const { design, cutoutsSvg } = opts;
-  const framed = frameCutouts(design, cutoutsSvg, opts.bridgePlan ?? {});
+  // המסגור המלא רץ מחוץ ל-isolate כשאפשר — ראו `frameFull`. מה שחוזר הוא
+  // בדיוק מה שהשמירה צריכה: תצוגה, SVG קנוני ואיחוד חיתוכים — בלי הגרף.
+  const framed = await frameFull(designDims(design), cutoutsSvg, opts.bridgePlan ?? {});
   const { lengthMm, widthMm, framedSvg, normalized } = framed;
   const report = withExtraChecks(framed.report, opts.extraChecks);
 
