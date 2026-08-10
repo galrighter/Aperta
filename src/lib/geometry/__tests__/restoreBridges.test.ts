@@ -45,6 +45,38 @@ describe("restoreBridges", () => {
     expect(records[0].matchMm).toBeLessThan(0.01);
   });
 
+  it("reaches the island the model actually drew, not the one we planned", () => {
+    // מודל התמונה מעתיק את הכיתוב, הוא לא משכפל אותו: ב-AP-0097 האיים שחזרו
+    // נפלו עד 1.4 מ"מ מהחלל שנחתך והיו גדולים ממנו ברבע. המלבן המתוכנן,
+    // שהוחזר מילה במילה, נגמר לפני שנגע בהם — הגשר נרשם ביומן והפריט חזר עם
+    // אותם איים בדיוק. כאן החלל שחזר נמוך ב-0.8 מ"מ מזה שנחתך.
+    const design = withIsland([10, 3, 20, 8], [13, 5.2, 15, 6.8]);
+    expect(components(design)).toBe(2);
+    const letter: LetterBridge = {
+      char: "e",
+      counter: [13, 4.5, 15, 5.5],
+      rects: [[13.6, 2.5, 14.4, 5]], // נגמר ב-5, והאי מתחיל ב-5.2
+      widthMm: 0.8,
+      sideways: false,
+    };
+    const { design: fixed, records } = restoreBridges(design, { ...OPTS, letterBridges: [letter] });
+    expect(records[0]).toMatchObject({ kind: "letter", char: "e" });
+    expect(components(fixed)).toBe(1);
+  });
+
+  it("falls back to the nearest point when the planned bridge misses the island", () => {
+    // הרצועה המתוכננת עוברת לגמרי לצד האי. גשר שלא נוגע אינו גשר, וטוב יותר
+    // לחבר לנקודה הקרובה מלרשום ביומן שחזור שלא החזיק כלום.
+    const design = withIsland([10, 3, 20, 7], [13, 4.5, 15, 5.5]);
+    const askew: LetterBridge = {
+      char: "e", counter: [13, 4.5, 15, 5.5], rects: [[16.6, 2.5, 17.4, 5]],
+      widthMm: 0.8, sideways: false,
+    };
+    const { design: fixed, records } = restoreBridges(design, { ...OPTS, letterBridges: [askew] });
+    expect(records[0].kind).toBe("ornament");
+    expect(components(fixed)).toBe(1);
+  });
+
   it("ignores a cut bridge that belongs to a different letter", () => {
     const design = withIsland([10, 3, 20, 7], [13, 4.5, 15, 5.5]);
     // חלל של אות אחרת, רחוק — אסור שיימשוך אליו את האי הזה.

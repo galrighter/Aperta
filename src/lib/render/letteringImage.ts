@@ -158,6 +158,10 @@ async function letteringPolygons(
     );
     const raw = cut.polygons;
     if (raw.length === 0 || !survivesCutting(raw, fab.minHole)) continue;
+    // חלל שלא הצלחנו לגשר הוא אי שייפול בחיתוך, ובתמונת הייחוס הוא נראה בדיוק
+    // כמו חלל מתוכנן — המודל מעתיק אותו, המעקב מחזיר אותו, והוולידציה פוסלת את
+    // החלופה. ויתור על הפנים האלה עולה כלום: הבאות בתור נבדקות ממילא.
+    if (cut.unbridged > 0) continue;
     // הנתח הגדול ביותר שגשר תופס מחלל סגור, כשהרצפה היא שקבעה אותו. זה המספר
     // שאומר כמה האות נפגעה — רוחב לבדו לא אומר כלום בלי החלל שהוא נכנס אליו.
     const tightShare = cut.tightBridges.length

@@ -1,4 +1,5 @@
 import { difference, polygonArea, rectPolygon } from "./poly";
+import { bridgeRect } from "./bridgeSpan";
 import { polygonToPathD } from "./normalize";
 import type { NormalizedDesign } from "./normalize";
 import type { Box } from "@/lib/text/stencil";
@@ -17,9 +18,15 @@ import type { MultiPolygon, Polygon, Pt } from "./types";
 //
 //  · **חלל של אות** — אנחנו חתכנו אותו, ולכן אנחנו יודעים. `textToStencil`
 //    מחשב כל גשר ומחזיר אותו (`CutBridge`), והחלל שחוזר מזוהה מולו לפי מיקום
-//    וגודל. הגשר מוחזר **בדיוק למקום שבו חתכנו אותו** — מלמעלה בלטינית,
-//    מהצד בעברית — במקום לנחש כיוון מגאומטריה עיוורת. נמדד: אי שחזר ב-AP-0068
-//    נפל 0.13–0.33 מ"מ מהחלל שחתכנו, על אות בגובה 5 מ"מ.
+//    וגודל. מהתוכנית נלקח מה שאנחנו יודעים ומודל התמונה לא: **הציר והמקום
+//    לרוחבו** — מלמעלה בלטינית, מהצד בעברית — במקום לנחש כיוון מגאומטריה
+//    עיוורת. נמדד: אי שחזר ב-AP-0068 נפל 0.13–0.33 מ"מ מהחלל שחתכנו, על אות
+//    בגובה 5 מ"מ.
+//
+//    **עד לאן** הוא נמתח נמדד מחדש מול מה שחזר, ולא מועתק מהתוכנית. המודל מזיז
+//    ומשנה גודל: ב-AP-0097 האיים שחזרו נפלו עד 1.4 מ"מ מהחלל שנחתך והיו גדולים
+//    ממנו ברבע, והמלבן המתוכנן — שהוחזר מילה במילה — נגמר לפני שנגע בהם. הגשר
+//    נרשם ביומן כאילו הוחזר, והפריט חזר עם אותם שני איים בדיוק.
 //
 //  · **אי בעיטור** — אין לנו כוונה לשחזר, כי לא אנחנו ציירנו. מחברים לנקודה
 //    הקרובה ביותר, וזה מותר רק כשהיא באמת קרובה: גשר ארוך שחוצה עיצוב מזיק
@@ -78,6 +85,9 @@ export interface LetterBridge {
   counter: Box;
   rects: Box[];
   widthMm: number;
+  /** אופקי (עברית) או אנכי (לטינית) — הציר שהגשר חוצה. חסר בתוכנית ישנה
+   *  שנשמרה לפני שהשדה קיים; אז נגזר מצורת המלבן, שהוא ארוך בציר הזה. */
+  sideways?: boolean;
 }
 
 export interface RestoreResult {
@@ -119,6 +129,31 @@ function matchLetter(
     if (d <= tol && (!best || d < best.distMm)) best = { bridge, distMm: d };
   }
   return best;
+}
+
+/**
+ * הגשרים המתוכננים, מוטלים על האי שבאמת חזר.
+ *
+ * מהתוכנית נלקחים הציר ומרכז הרצועה — מה שאנחנו יודעים על האות ומודל התמונה
+ * לא. אורך הרצועה נמדד מחדש מול האי והגוף (`bridgeRect`), כי המודל מזיז ומשנה
+ * גודל: מלבן שהועתק מילה במילה נגמר לפני שנגע באי שחזר.
+ *
+ * מערך ריק = אף רצועה לא פגשה את האי. הקורא נופל אז לחיבור לנקודה הקרובה.
+ */
+function letterStrips(island: Polygon, main: MultiPolygon, bridge: LetterBridge): Polygon[] {
+  const strips: Polygon[] = [];
+  for (const r of bridge.rects) {
+    // תוכנית ישנה בלי `sideways`: המלבן ארוך בציר שהוא חוצה, ולכן הצורה שלו
+    // אומרת את מה שהשדה היה אומר.
+    const sideways = bridge.sideways ?? r[2] - r[0] > r[3] - r[1];
+    const rect = bridgeRect(island, main, {
+      sideways,
+      centre: sideways ? (r[1] + r[3]) / 2 : (r[0] + r[2]) / 2,
+      width: sideways ? r[3] - r[1] : r[2] - r[0],
+    });
+    if (rect) strips.push(rect);
+  }
+  return strips;
 }
 
 /**
@@ -255,16 +290,20 @@ export function restoreBridges(n: NormalizedDesign, opts: RestoreOptions): Resto
     }
 
     const hit = matchLetter(box, opts.letterBridges ?? []);
-    if (hit) {
-      const drawn = hit.bridge.rects.map((r) => rectPolygon(r[0], r[1], r[2], r[3]));
-      bridges.push(...drawn);
+    // מהתוכנית: הציר ומרכז הרצועה לרוחבו. מהגאומטריה שחזרה: עד לאן הרצועה
+    // נמתחת. `null` = הרצועה לא פגשה את האי שחזר — הגשר המתוכנן אינו הגשר
+    // שהאי הזה צריך, ועדיף ליפול לחיבור לנקודה הקרובה מלרשום ביומן גשר
+    // שהוחזר ולא החזיק כלום.
+    const planned = hit ? letterStrips(island, [main], hit.bridge) : [];
+    if (hit && planned.length) {
+      bridges.push(...planned);
       records.push({
         kind: "letter",
         ...base,
         bridgeMm: hit.bridge.widthMm,
         char: hit.bridge.char,
         matchMm: Math.round(hit.distMm * 100) / 100,
-        pathD: drawn.map((p) => polygonToPathD(p)).join(""),
+        pathD: planned.map((p) => polygonToPathD(p)).join(""),
       });
       continue;
     }
