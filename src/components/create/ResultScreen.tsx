@@ -8,6 +8,9 @@
 import { he } from "@/i18n/he";
 import { designCode } from "@/lib/designCode";
 import {
+  blockCause, fabricationRef, hasFindings, markedChecks, needsLook,
+} from "@/lib/fabricationNotice";
+import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, LAPIS,
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
@@ -62,17 +65,22 @@ export function ResultScreen({
   // שנשמרה במצב לפני השינוי.
   const picks = (entry?.candidates ?? []).filter((c) => c?.report?.status !== "fail");
 
-  // כל מה שהוולידציה סימנה, כדי לצייר את זה על הפריסה. המנוע כבר מחשב מיקום
-  // לכל ממצא; עד עכשיו זה נזרק והלקוחה קיבלה פסק דין בלי ראיה.
-  const marks: IssueMark[] = checks
-    .filter((c) => c.status !== "pass")
-    .flatMap((c) =>
-      (c.locations ?? []).map((l) => ({ ...l, status: c.status as IssueMark["status"] })),
-    );
+  // מה שסיפרנו עליו, מסומן במקום שבו הוא יושב — פסילה בלי ראיה היא פסק דין.
+  // הסינון ל-`markedChecks` הוא החצי השני של אותו כלל: עיגול על ממצא שלא
+  // אמרנו עליו דבר, על פריט שכפתור ההזמנה שלו פתוח, מצביע על פגם ולא נותן לו
+  // שם. ראו lib/fabricationNotice.ts.
+  const marks: IssueMark[] = markedChecks(checks).flatMap((c) =>
+    (c.locations ?? []).map((l) => ({ ...l, status: c.status as IssueMark["status"] })),
+  );
 
   const status = report?.status ?? "pass";
+  const blocked = status === "fail";
   const statusText = statusWord(status);
-  const statusColor = STATUS_COLOR[status] ?? STATUS_COLOR.pass;
+  const statusColor = blocked ? STATUS_COLOR.fail : STATUS_COLOR.pass;
+  // הסיבה כמשפחה אחת, והבקשה שנגזרת ממנה. שתיהן נופלות ל-"other" כשהדוח חלקי
+  // או כשהכשל אינו ממופה — משפט גנרי, ולא עמוד בלי הסבר.
+  const cause = (blocked ? blockCause(checks) : null) ?? "other";
+  const look = needsLook(checks);
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
@@ -224,28 +232,24 @@ export function ResultScreen({
                       disabled={s.applying}
                       onClick={() => onChooseCandidate(i, c.svg)}
                       aria-pressed={on}
-                      aria-label={`${d.candidatesLabel} ${i + 1} — ${statusWord(c.report?.status)}${
-                        on ? ` · ${d.candidateChosen}` : ""
-                      }`}
-                      title={statusWord(c.report?.status)}
+                      aria-label={`${d.candidatesLabel} ${i + 1}${on ? ` · ${d.candidateChosen}` : ""}`}
                       className={`bg-white p-3 text-start transition ${
                         on
                           ? "border-2 border-graphite"
                           : "border border-graphite/15 hover:border-graphite/40"
                       } ${s.applying ? "opacity-50" : ""}`}
                     >
-                      <span className="mb-1.5 flex items-center gap-2">
-                        <span
-                          aria-hidden
-                          className="block h-1.5 w-1.5 rounded-full"
-                          style={{ background: STATUS_COLOR[c.report?.status] ?? STATUS_COLOR.pass }}
-                        />
-                        {on && (
-                          <span className="text-[11px] font-semibold tracking-wide text-graphite">
-                            {d.candidateChosen}
-                          </span>
-                        )}
-                      </span>
+                      {/* פעם ישבה כאן נקודת סטטוס לכל הצעה. כל ההצעות ברצועה
+                          עברו את הוולידציה (`offered` ב-/api/generate מסנן
+                          כשלים), כלומר הנקודה דירגה בין אפשרויות שכולן ניתנות
+                          לייצור — לפי אזהרות פנימיות שאין ללקוחה מה לעשות
+                          איתן. בחירה בין שתי הצעות תקינות היא בחירה של מראה,
+                          וכתם כתום ליד אחת מהן מסיט אותה בלי לומר למה. */}
+                      {on && (
+                        <span className="mb-1.5 block text-[11px] font-semibold tracking-wide text-graphite">
+                          {d.candidateChosen}
+                        </span>
+                      )}
                       {/* אותה קוטביות כמו בפריסה — כהה הוא מתכת. כאן זה חשוב
                           במיוחד: תפקיד הרצועה הוא להשוות בין הצעות, וקווי מתאר
                           מחייבים לפענח כל צורה לפני שאפשר להשוות שתיים. */}
@@ -354,28 +358,45 @@ export function ResultScreen({
             <Row k={d.fabFormat} v={d.fabFormatVal} />
             <Row k={d.specCuts} v={String(entry ? countCuts(entry.svg) : 0)} />
 
-            {/* ממצאים מהוולידציה */}
-            {checks.some((c) => c.status !== "pass") && (
-              <ul className="mt-3 flex flex-col gap-1.5 border-t border-graphite/10 pt-3">
-                {checks
-                  .filter((c) => c.status !== "pass")
-                  .slice(0, 4)
-                  .map((c, i) => (
-                    <li key={i} className="text-[13px] leading-snug" style={{ color: c.status === "fail" ? STATUS_COLOR.fail : STATUS_COLOR.warn }}>
-                      {c.message}
-                      {/* כמה, ולא רק מה. "פתח קטן מדי" על ממצא אחד ועל שמונה
-                          הם שני מצבים שונים לגמרי מבחינת מה שצריך לעשות. */}
-                      {(c.locations?.length ?? 0) > 0 && (
-                        <span className="text-ink60"> · {d.fabIssueCount(c.locations.length)}</span>
-                      )}
-                    </li>
-                  ))}
+            {/* למה אי אפשר לייצר — משפט אחד, ולא רשימת הממצאים של המנוע.
+                הרשימה שהייתה כאן ("החומר אינו רציף · מקום אחד", "גשר חומר צר
+                מדי · 4 מקומות") היא אבחנה נכונה בשפה של מי שמפעיל את המכונה:
+                ארבעה ממצאים, פעולה אחת אפשרית, ושום דרך ללקוחה לדעת מה מהם
+                מתאר את התכשיט שלה. מה נשאר ממנה ואיפה — ב-fabricationNotice. */}
+            {blocked && (
+              <div className="mt-3 border-t border-graphite/10 pt-3">
+                <p className="text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail, textWrap: "pretty" }}>
+                  {d.fabBlockedWhy[cause]}
+                </p>
                 {marks.length > 0 && (
-                  <li className="text-[12px] leading-snug text-ink60">
+                  <p className="mt-1.5 text-[12px] leading-snug text-ink60">
                     {flat ? d.fabIssueMarked : d.fabIssueSeeFlat}
-                  </li>
+                  </p>
                 )}
-              </ul>
+              </div>
+            )}
+
+            {/* הכיתוב — בקשה להסתכל, לא ממצא, ולכן לא באדום ולא ליד סטטוס
+                חוסם. מוצג גם כשהעיצוב חסום: אם היא תבקש שינוי, כדאי שתדע
+                שגם הכיתוב מבקש מבט. */}
+            {look && (
+              <p className="mt-3 border-t border-graphite/10 pt-3 text-[13px] leading-relaxed text-graphite" style={{ textWrap: "pretty" }}>
+                {d.fabLettering} {flat ? d.fabLetteringLookHere : d.fabLetteringLook}
+              </p>
+            )}
+
+            {/* מה שנשאר לנו מהרשימה: הסטטוס והקודים בשורה אחת. חסר משמעות
+                ללקוחה — ולכן גם אינו מפחיד — ומספיק לנו כדי לאבחן דוח שלם
+                מצילום מסך יחיד, בדיוק כמו `schema_outdated` בהודעת התקלה. */}
+            {hasFindings(report) && (
+              <p
+                title={d.fabRefLabel}
+                className="mt-3 border-t border-graphite/10 pt-3 text-[11px] tracking-wide text-mist"
+              >
+                {/* הקודים לטיניים ונקראים משמאל לימין; העמודה נשארת ימנית כמו
+                    שאר הכרטיס, אחרת השורה נתלשת לקצה השני של הקלף. */}
+                <span dir="ltr">{fabricationRef(report)}</span>
+              </p>
             )}
           </div>
 
@@ -427,9 +448,17 @@ export function ResultScreen({
           <PrimaryBtn onClick={onOrder} disabled={s.applying || status === "fail"} full>
             {d.resultOrder}
           </PrimaryBtn>
-          {(s.applying || status === "fail") && (
-            <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: s.applying ? undefined : STATUS_COLOR.fail }}>
-              {s.applying ? d.resultOrderBusy : d.resultOrderBlocked}
+          {/* למה הכפתור כבוי — ומה כן פתוח. הפעולה נגזרת ממה שנמצא על המסך:
+              רצועת ההצעות מוצגת רק מ-2 ומעלה, ולכן מתחתיה ההזמנה "לבחור
+              חלופה" הייתה מפנה לשום מקום. הסיבה עצמה יושבת בכרטיס הייצור
+              ולא כאן — כאן רק הצעד הבא. */}
+          {(s.applying || blocked) && (
+            <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: s.applying ? undefined : STATUS_COLOR.fail, textWrap: "pretty" }}>
+              {s.applying
+                ? d.resultOrderBusy
+                : picks.length > 1
+                  ? d.resultOrderBlockedPick
+                  : d.resultOrderBlockedAsk(d.fabBlockedTry[cause])}
             </p>
           )}
         </div>
@@ -445,9 +474,14 @@ function num(value: number | undefined, suffix: string): string {
     : "—";
 }
 
-/** מצב הייצור במילה אחת. סובל גם סטטוס חסר, שנקרא כמו "עובר". */
+/**
+ * מצב הייצור במילה אחת — ושתי מילים בלבד, כי זו השאלה: אפשר להזמין או לא.
+ * `warn` נקרא כמו "עובר" מפני שהוא באמת עובר: כפתור ההזמנה נחסם על `fail`
+ * ותו לא, ומצב שלישי במילים היה סותר את מה שהמסך מאפשר לעשות. ראו `fabOk`.
+ * סטטוס חסר (דוח ישן) נקרא גם הוא כמו "עובר".
+ */
 function statusWord(status: string | undefined): string {
-  return status === "fail" ? d.fabFail : status === "warn" ? d.fabWarn : d.fabOk;
+  return status === "fail" ? d.fabFail : d.fabOk;
 }
 
 function Row({ k, v }: { k: string; v: string }) {
