@@ -32,10 +32,52 @@ def test_pipeline_approves_faithful_trace(fixture_png: bytes) -> None:
     m = sel.metrics
     assert m.iou >= 0.99
     assert m.topology_ok
-    # mean deviation is the real fidelity guarantee; max rises at rounded
-    # corners once Chaikin smoothing (SMOOTH_ITERS) is on by default.
+    # mean deviation is the real fidelity guarantee; max is allowed to be
+    # larger, it only ever reflects one localised smoothing artefact.
     assert m.mean_contour_deviation_mm <= 0.05
     assert m.source_topology.holes == m.vector_topology.holes
+
+
+def _wavy_strip(width: int = 2400, height: int = 300) -> bytes:
+    """A strip whose openings are round — the shape a polyline cannot state."""
+    import cv2
+
+    img = np.full((height, width), 255, np.uint8)
+    cv2.rectangle(img, (0, 40), (width - 1, height - 41), 0, -1)
+    for i, x in enumerate(range(140, width - 100, 150)):
+        cv2.circle(img, (x, height // 2), 44 if i % 2 else 60, 255, -1)
+    return _png_bytes(Image.fromarray(img).convert("RGBA"))
+
+
+def test_round_openings_are_emitted_as_curves(fixture_png: bytes) -> None:
+    """Circles must come out as Béziers, not as a thousand line segments.
+
+    This is the fit earning its keep: the same geometry as a polyline needs an
+    order of magnitude more anchors to say the same thing, and every one of them
+    is a place the outline can kink.
+    """
+    res = pipeline.run_pipeline(_wavy_strip(), 120, 15)
+    sel = res.selection.selected
+    assert sel is not None
+    d = sel.metal_svg.rsplit('d="', 1)[1].split('"')[0]
+    assert d.count("C") >= 20
+    assert sel.geometry_stats.anchor_point_count < 400
+    assert 'd="' in sel.cutouts_svg and "C" in sel.cutouts_svg
+
+
+def test_corners_are_not_rounded_off_by_smoothing(fixture_png: bytes) -> None:
+    """Regression on the reason Chaikin was replaced.
+
+    Blind corner-cutting moved square opening corners far enough to eat most of
+    the max-deviation budget (measured 2.78mm on this render against a 4mm
+    gate). A corner-aware fit leaves a real corner where it found one.
+    """
+    png = _png_bytes(Image.fromarray(_shaded_render(1800, 600)))
+    res = pipeline.run_pipeline(png, 0.0, 15, condition=True, color_key="dark")
+    sel = res.selection.selected
+    assert sel is not None
+    assert res.status == "approved"
+    assert sel.metrics.max_contour_deviation_mm < 0.6
 
 
 def test_output_svgs_are_closed_and_have_viewbox(fixture_png: bytes) -> None:

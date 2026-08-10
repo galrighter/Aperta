@@ -20,6 +20,11 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 from shapely.validation import make_valid
 
+#: Sub-pixel step for reading VTracer's splines back, and a cap so one huge
+#: subpath cannot blow the point budget for the rest of the pipeline.
+_VTRACER_SAMPLE_PX = 0.5
+_VTRACER_MAX_SAMPLES = 20000
+
 
 def _contour_points(cnt: np.ndarray, tolerance_px: float) -> np.ndarray:
     approx = cv2.approxPolyDP(cnt, max(tolerance_px, 0.01), True)
@@ -74,12 +79,16 @@ def trace_opencv(mask: np.ndarray, tolerance_px: float) -> BaseGeometry:
 
 
 def trace_vtracer(mask: np.ndarray, tolerance_px: float) -> BaseGeometry:
-    """Trace via VTracer (binary/spline), then flatten its SVG to polygons.
+    """Trace via VTracer (binary/spline) and sample its splines finely.
 
-    Kept intentionally simple for now: VTracer emits filled black paths on the
-    foreground; we sample each subpath and rebuild polygons with the even-odd
-    rule. Curve smoothness is aesthetic — fidelity is measured on the mask, so
-    the OpenCV baseline is the default until this is calibrated on real images.
+    VTracer emits filled black paths on the foreground. Sampling used to step by
+    ``tolerance_px``, which threw away most of what VTracer had worked out: the
+    simplification tolerance is a *smoothing* choice, and spending it here meant
+    a coarse polyline stood in for the spline from this point on, with an eighth
+    of a subpath as the floor for short rings. Sampling at a fixed sub-pixel
+    step keeps the spline's shape intact and leaves the smoothing decision to
+    the curve fit in svg_builder, where it is corner-aware and where the
+    fidelity gate can actually score it.
     """
     import vtracer  # local import: heavy Rust extension
     from svgpathtools import parse_path, svg2paths
@@ -104,8 +113,7 @@ def trace_vtracer(mask: np.ndarray, tolerance_px: float) -> BaseGeometry:
     rings: list[np.ndarray] = []
     for path in paths:
         for sub in path.continuous_subpaths():
-            length = sub.length()
-            n = max(8, int(length / max(tolerance_px, 0.5)))
+            n = int(np.clip(sub.length() / _VTRACER_SAMPLE_PX, 8, _VTRACER_MAX_SAMPLES))
             pts = np.array([[p.real, p.imag] for p in (sub.point(t / n) for t in range(n + 1))])
             if len(pts) >= 3:
                 rings.append(pts)

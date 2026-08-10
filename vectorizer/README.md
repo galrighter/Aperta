@@ -16,9 +16,11 @@ calls it over HTTP and feeds the returned `cutouts_svg` into its normal pipeline
 ## Pipeline
 
 ```
-PNG + mm  →  Otsu binarize  →  trace (OpenCV baseline / VTracer)
+PNG + mm  →  Otsu binarize  →  resolve zero-width diagonal touches (turn policy)
+          →  trace (OpenCV baseline / VTracer)
           →  scale to mm + snap to stock edges  →  cleanup (Shapely)
-          →  build metal.svg + cutouts.svg  →  render back (resvg)
+          →  corner-aware Bézier fit  →  build metal.svg + cutouts.svg
+          →  render back (resvg)
           →  IoU + contour deviation + topology  →  select best / reject
 ```
 
@@ -144,7 +146,9 @@ Fidelity gates and the candidate grid are tunable — real generated images will
 likely force loosening. See `app/config.py`. Key knobs:
 `MIN_IOU_HARD` (0.985), `TARGET_IOU` (0.99), `MAX_MEAN_DEVIATION_MM` (0.05),
 `MAX_MAX_DEVIATION_MM` (0.15), `MAX_ASPECT_RATIO_ERROR` (0.01),
-`TRACER_BACKEND` (`opencv` | `vtracer`).
+`TRACER_BACKEND` (`opencv` | `vtracer`),
+`TURN_POLICY` (`minority`), `CURVE_FIT` (1), `CURVE_CORNER_DEG` (55),
+`CURVE_WINDOW_MM` (0.3), `SMOOTH_ITERS` (0 — the old Chaikin path).
 
 ## Conditioning & smoothing (calibrated on real renders)
 
@@ -154,8 +158,49 @@ conditions them: key on the metal colour (warm/dark/saturation), crop to the
 metal, despeckle, and — crucially — blur the **continuous metal score** before
 thresholding so boundaries come out smooth without fattening the thin bands.
 
-Smoothing is finished in the tracer via `SMOOTH_ITERS` Chaikin passes (default
-2) plus a tiny simplify, turning raster staircases into flowing curves.
+Smoothing is finished by fitting the traced rings with **corner-aware cubic
+Béziers** (`app/core/curves.py`) — the idea potrace published, written here from
+scratch so nothing GPL enters the image. Each vertex is classified as a corner or
+not by the turn measured across a `CURVE_WINDOW_MM` arc (per-vertex angles are
+useless: every step of a raster staircase is a 90° turn), and the smooth runs
+between corners are fitted with cubics, subdivided until every traced point is
+within the candidate's own simplification tolerance. A run that is already
+straight stays a straight line, which is what keeps the stock edges straight
+after the border snap.
+
+That error budget is a hard promise, not a target: where the budget cannot be
+met the fit falls back to the traced points rather than emitting a curve that
+misses it. Because the budget *is* `tolerance_mm`, the existing candidate sweep
+is already a sweep over how much staircase may be smoothed away, and the
+fidelity gate — which rasterises the emitted SVG, curves and all — picks the
+winner. Nothing is decided on appearance.
+
+This replaced `SMOOTH_ITERS` Chaikin passes, which cut every corner by the same
+clamped amount because they cannot tell a 90° corner from a one-pixel jag. On
+the shaded-render fixture that cost 2.78mm of max contour deviation against a
+4mm gate; the fit brings the same design in at 0.31mm with 140 anchors instead
+of 359. Chaikin is still switchable (`SMOOTH_ITERS`, `CURVE_FIT=0`) so the two
+can be compared through the gate, but running both would round real corners
+before the fit ever saw them.
+
+### Zero-width diagonal touches
+
+Where metal occupies exactly one diagonal of a 2x2 pixel window, two metal areas
+meet at a single mathematical point — and so do the two openings around them.
+OpenCV traces the foreground 8-connected and so calls the metal joined, silently:
+a bridge of zero width reaches the SVG as sound geometry, the component count
+says one piece, and the minimum-bridge-width check downstream is handed a part
+that reads as connected. The laser cuts through the point and the piece arrives
+in two.
+
+`TURN_POLICY` makes that an explicit, reported decision, the way potrace's
+`turnpolicy` does. Default `minority`: whichever colour is locally scarce keeps
+its connection, so a thin metal strand stays joined (and gains one honest pixel
+of width) while a hairline slit through a solid plate stays open. Also
+`majority`, `metal`, `cutout`, and `none` for the old implicit behaviour. The
+count of touches found, joined and separated goes into the debug bundle whatever
+the policy — including under `none`, so "nobody decided" and "nothing to decide"
+stay distinguishable.
 
 The fidelity philosophy after calibration: **topology (exact hole/component
 match) and mean contour deviation are the real gates**; IoU (`MIN_IOU_HARD`
@@ -168,8 +213,11 @@ to tighten per use case.
 
 - The colour key + `--height` are supplied per image today; forme (or a small
   auto-detect) will pick them when integrated.
-- VTracer backend is wired but the OpenCV polygon tracer + Chaikin is the
-  default and produces smooth curves.
+- VTracer backend is wired but the OpenCV polygon tracer is the default; the
+  Bézier fit is what produces the curves, so both backends now emit them. The
+  VTracer path samples its splines at a fixed sub-pixel step rather than at the
+  simplification tolerance, which used to spend the smoothing budget twice — once
+  coarsening the spline into a polyline, once smoothing the polyline again.
 - No forme integration yet — this service stands alone. Wiring it into
   `src/lib/llm/pipeline.ts` (design image → this service → cutouts) is the
   following step.
