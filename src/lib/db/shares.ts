@@ -2,6 +2,7 @@ import { supabaseAdmin } from "./supabase";
 import { ApiError } from "@/lib/api";
 import { newShareToken } from "@/lib/shareToken";
 import type { ProductType } from "@/lib/fabrication.config";
+import type { LetterBridge } from "@/lib/geometry/restoreBridges";
 import type { MultiPolygon } from "@/lib/geometry/types";
 
 // שכבת הגישה ל-`design_shares` (migration 0013). service role בלבד.
@@ -20,6 +21,9 @@ export interface ShareRow {
   thickness_mm: number;
   svg: string;
   material: MultiPolygon | null;
+  /** גשרי הכיתוב שנחתכו, בקואורדינטות ה-`svg` שבשורה (0021). null = אין כיתוב,
+   *  או שיתוף שנוצר לפני המיגרציה. */
+  letter_bridges: LetterBridge[] | null;
   render_path: string | null;
   /** צילום ההדמיה התלת־ממדית (0014). קודם ל-render_path כתמונת השיתוף. */
   preview_path: string | null;
@@ -36,12 +40,20 @@ export type NewShare = Omit<
 >;
 
 /**
- * מסד שעוד לא קיבל את 0013. אותו טיפול כמו ב-orders: "הטבלה לא קיימת" אינה
- * תקלה אלא מיגרציה שלא רצה, ו-500 סתמי על זה שולח לחפש באג בקוד.
+ * מסד שעוד לא קיבל את המיגרציות של הטבלה. אותו טיפול כמו ב-orders: "הטבלה לא
+ * קיימת" אינה תקלה אלא מיגרציה שלא רצה, ו-500 סתמי על זה שולח לחפש באג בקוד.
+ *
+ * שתי מיגרציות ולא אחת, כי אותה שגיאה עצמה מתקבלת גם על **עמודה** חסרה —
+ * `letter_bridges` נוסף ב-0021, ומסד שקיבל רק את 0013 נופל כאן עם הודעה
+ * שמצביעה על המיגרציה הלא נכונה.
  */
 function fail(error: { message: string }): never {
   if (/does not exist|schema cache|relation .* does not exist/i.test(error.message)) {
-    throw new ApiError("schema_outdated", "Database is missing migration 0013_design_shares", 503);
+    throw new ApiError(
+      "schema_outdated",
+      `Database is missing a design_shares migration (0013_design_shares / 0021_share_letter_bridges): ${error.message}`,
+      503,
+    );
   }
   throw new Error(error.message);
 }

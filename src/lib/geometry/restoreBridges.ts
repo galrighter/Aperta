@@ -80,6 +80,48 @@ export interface LetterBridge {
   widthMm: number;
 }
 
+/**
+ * העברת תוכנית גשרים בין שתי מסגרות — והמקום היחיד שבו הכלל הזה כתוב.
+ *
+ * **תיבת החלל נמתחת, ועובי הגשר לא.** החלל מתאר גאומטריה שנמתחה יחד עם כל
+ * השאר, ולכן הוא מוכפל בשני הצירים; עובי הגשר הוא **מידת ייצור במילימטרים**,
+ * והכפלתו בקנה מידה קטן מ-1 מדללת אותו אל מתחת לרצפה **בשקט** — הענף של גשרי
+ * האות ב-`restoreBridges` מצייר את המלבנים כמו שהם ואינו בודק רצפה.
+ *
+ * זה בדיוק מה שקרה בעיצוב 99. השיתוף נושא את הגשרים אפויים בגאומטריה,
+ * `rescaleCutoutsSvg` מותח אותם עם כל השאר, וגשר שישב על 0.75 בדיוק ירד ל-0.70
+ * באימוץ באורך קצר ב-7%. כאן הוא לא יורד.
+ *
+ * **איזה ציר הוא העובי.** גשר לטיני נחתך מלמעלה, כלומר הפס עצמו **אנכי**
+ * ועובייו נמדד על ציר ה-X; גשר עברי נחתך מהצד, הפס אופקי, והעובי על ציר ה-Y
+ * (`CutBridge.sideways` — הציר שהגשר **חוצה**, לא זה שהוא שוכב עליו). במקום
+ * להעביר את הדגל דרך כל שכבת אחסון, הציר נגזר מ-`widthMm` שכבר נישא ברשומה:
+ * העובי הוא הצלע שמידתה **היא** רוחב הגשר. הצלע השנייה היא אורך הגשר, והיא
+ * חוצה את החלל — ולכן היא נמתחת איתו.
+ */
+export function scaleLetterBridges(
+  bridges: readonly LetterBridge[],
+  sx: number,
+  sy: number,
+): LetterBridge[] {
+  if (Math.abs(sx - 1) < 1e-9 && Math.abs(sy - 1) < 1e-9) return [...bridges];
+  const stretch = ([x0, y0, x1, y1]: Box): Box => [x0 * sx, y0 * sy, x1 * sx, y1 * sy];
+  const move = (r: Box, widthMm: number): Box => {
+    const [x0, y0, x1, y1] = r;
+    const w = x1 - x0, h = y1 - y0;
+    const acrossX = Math.abs(w - widthMm) <= Math.abs(h - widthMm);
+    const halfW = (acrossX ? w : w * sx) / 2;
+    const halfH = (acrossX ? h * sy : h) / 2;
+    const cx = ((x0 + x1) / 2) * sx, cy = ((y0 + y1) / 2) * sy;
+    return [cx - halfW, cy - halfH, cx + halfW, cy + halfH];
+  };
+  return bridges.map((b) => ({
+    ...b,
+    counter: stretch(b.counter),
+    rects: b.rects.map((r) => move(r, b.widthMm)),
+  }));
+}
+
 export interface RestoreResult {
   design: NormalizedDesign;
   records: BridgeRecord[];

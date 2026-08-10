@@ -1,3 +1,4 @@
+import { FAB } from "@/lib/fabrication.config";
 import { difference, intersection, morphologicalOpen, multiPolygonArea, polygonArea, rectPolygon, simplify } from "./poly";
 import { polygonToPathD, type NormalizedDesign } from "./normalize";
 import { linkRect, rebuildDesign, shortestLink, type BridgeRecord } from "./restoreBridges";
@@ -58,8 +59,13 @@ const WINDOW_MM = 2;
  * הפתיחה היא סף חד, והתיקון הוא פס ברוחב מלא — ולכן צוואר שחסרות לו מאיות
  * מילימטר מקבל את אותו טיפול כמו צוואר שחסר לו חצי. ה-kerf (0.12 מ"מ) גדול
  * מההפרש הזה, כלומר הוא לא קיים בחיתוך; הוא קיים רק על המסך, כפס על האות.
+ *
+ * **המספר מגיע מהתצורה ולא מכאן, כי V4 קוראת את אותו מספר.** כשהוא ישב כאן
+ * לבדו הוא היה סובלנות של המתקן בלבד, והשופט המשיך להפיל על הרצפה המלאה —
+ * כלומר כל צוואר בתחום שהמתקן מוותר עליו נפסל בלי דרך לתקן אותו. ראה
+ * `letterBridgeToleranceMm`.
  */
-const NECK_TOLERANCE_MM = 0.05;
+const NECK_TOLERANCE_MM = FAB.letterBridgeToleranceMm;
 
 /**
  * תקציב קודקודים לפתיחה, אחרי ניקוי. מעליו מוותרים — ראה למטה.
@@ -218,6 +224,10 @@ export function thickenBridges(n: NormalizedDesign, opts: ThickenOptions): Thick
     // 0.05 מ"מ הוא הסף (החלטת גל, 2.8): ה-kerf הוא 0.12 מ"מ, סדר גודל מעל
     // ההפרש שנרדף כאן, והמתאר שחוזר מהמעקב נושא נקודה כל 0.02–0.1 מ"מ. מתחת
     // לסף הזה ההבדל אינו קיים בחיתוך — הוא קיים רק בעין, כפס על האות.
+    //
+    // **והוויתור כאן הוא ויתור אמיתי, לא דחייה.** V4 מפילה מול `NECK_FLOOR_MM`,
+    // שהוא בדיוק הסף הזה, ולכן מה שנשאר כאן עובר גם שם. כשהשניים היו שני
+    // מספרים, הצוואר שדילגנו עליו הוא זה שנפסל — ראה `letterBridgeToleranceMm`.
     const midpoint: Pt = [(link.a[0] + link.b[0]) / 2, (link.a[1] + link.b[1]) / 2];
     const neck = neckWidthMm(material, midpoint, opts.minBridgeMm);
     if (neck !== undefined && neck >= opts.minBridgeMm - NECK_TOLERANCE_MM) continue;

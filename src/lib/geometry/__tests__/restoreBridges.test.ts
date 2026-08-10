@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { restoreBridges, type LetterBridge } from "../restoreBridges";
+import { restoreBridges, scaleLetterBridges, type LetterBridge } from "../restoreBridges";
 import { normalizeSvg } from "../normalize";
 import { difference, rectPolygon } from "../poly";
 import type { MultiPolygon } from "../types";
+import type { Box } from "@/lib/text/stencil";
 
 // אי מתכת שחוזר מהמעקב נגשר במקום להימחק. מה שנבדק כאן הוא ההכרעה: מתי מחזירים
 // גשר שאנחנו חתכנו, מתי מחברים לנקודה הקרובה, ומתי בכל זאת מוחקים.
@@ -135,5 +136,72 @@ describe("restoreBridges", () => {
     expect(same).toBe(design);
     // אבל כן מדווחים: "לא נגענו" בלי שורה ביומן נראה בדיוק כמו "לא רץ".
     expect(records).toEqual([expect.objectContaining({ kind: "kept" })]);
+  });
+});
+
+// העברת התוכנית בין שתי מסגרות — מה שמסלול האימוץ ("להזמין כזה") עושה לפני
+// שהוא מוסר את התוכנית למסגור. הכלל היחיד שנשמר כאן, ובגללו זו פונקציה ולא
+// שלוש שורות בכל קורא: **החלל נמתח, עובי הגשר לא.**
+describe("scaleLetterBridges", () => {
+  /** גשר לטיני: נחתך מלמעלה, ולכן הפס אנכי ועובייו על ציר ה-X. */
+  const latin: LetterBridge = {
+    char: "e", counter: [13, 4.5, 15, 5.5], rects: [[13.6, 2.5, 14.4, 5]], widthMm: 0.8,
+  };
+  /** גשר עברי: נחתך מהצד, ולכן הפס אופקי ועובייו על ציר ה-Y. */
+  const hebrew: LetterBridge = {
+    char: "ם", counter: [13, 4.5, 15, 5.5], rects: [[11.5, 4.6, 14.0, 5.4]], widthMm: 0.8,
+  };
+  const width = ([x0, , x1]: Box) => Math.round((x1 - x0) * 1e6) / 1e6;
+  const height = ([, y0, , y1]: Box) => Math.round((y1 - y0) * 1e6) / 1e6;
+
+  it("מותח את תיבת החלל בשני הצירים — היא מתארת גאומטריה שנמתחה", () => {
+    const [b] = scaleLetterBridges([latin], 0.9, 1.2);
+    expect(b.counter).toEqual([13 * 0.9, 4.5 * 1.2, 15 * 0.9, 5.5 * 1.2]);
+  });
+
+  it("שומר על עובי הגשר הלטיני (ציר X) ומותח את אורכו", () => {
+    const [b] = scaleLetterBridges([latin], 0.9, 0.9);
+    // 0.8 מ"מ הוא מידת ייצור. כיווץ ב-10% היה מוריד אותו ל-0.72 בשקט, מתחת
+    // לרצפה — והענף של גשרי האות מצייר את המלבנים כמו שהם ואינו בודק רצפה.
+    expect(width(b.rects[0])).toBe(0.8);
+    expect(height(b.rects[0])).toBe(height(latin.rects[0]) * 0.9);
+  });
+
+  it("שומר על עובי הגשר העברי (ציר Y) — הכיוון נגזר מ-widthMm ולא מנוחש", () => {
+    const [b] = scaleLetterBridges([hebrew], 0.9, 0.9);
+    expect(height(b.rects[0])).toBe(0.8);
+    expect(width(b.rects[0])).toBe(width(hebrew.rects[0]) * 0.9);
+  });
+
+  it("מזיז את הגשר יחד עם החלל — אחרת הוא נחתך במקום הלא נכון", () => {
+    const [b] = scaleLetterBridges([latin], 0.5, 2);
+    const cx = (b.rects[0][0] + b.rects[0][2]) / 2;
+    expect(cx).toBeCloseTo(((13.6 + 14.4) / 2) * 0.5, 6);
+  });
+
+  it("קנה מידה 1:1 מחזיר את התוכנית כמו שהיא", () => {
+    expect(scaleLetterBridges([latin, hebrew], 1, 1)).toEqual([latin, hebrew]);
+  });
+
+  it("התוכנית המועברת עדיין מזוהה כאות, והגשר נחתך ברוחב המלא", () => {
+    // זה מה שהאימוץ באמת קונה. מסגרת המקור היא 40×10, והמזמין מקבל 36×10 —
+    // אורך קצר ב-10%, בדיוק המצב שהפיל את עיצוב 99.
+    const SX = 0.9;
+    const planned: LetterBridge = {
+      char: "e", counter: [13, 4.5, 15, 5.5], rects: [[13.6, 2.5, 14.4, 5]], widthMm: 0.8,
+    };
+    // אותו עיצוב, מותח ב-SX על ציר האורך.
+    const s = (v: number) => v * SX;
+    const design = withIsland(
+      [s(10), 3, s(20), 7],
+      [s(13), 4.5, s(15), 5.5],
+    );
+    const [moved] = scaleLetterBridges([planned], SX, 1);
+    const { records } = restoreBridges(design, { ...OPTS, letterBridges: [moved] });
+    expect(records[0]).toMatchObject({ kind: "letter", char: "e" });
+    expect(records[0].matchMm).toBeLessThan(0.01);
+    // ובלי ההעברה, אותו אי לא נמצא כאות בכלל — המרכז זז 1.4 מ"מ, מעל הסובלנות.
+    const { records: blind } = restoreBridges(design, { ...OPTS, letterBridges: [planned] });
+    expect(blind[0].kind).toBe("ornament");
   });
 });

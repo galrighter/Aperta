@@ -95,3 +95,33 @@ describe("buildShareSnapshot", () => {
     expect(snap.svg).toContain("nope");
   });
 });
+
+// תוכנית גשרי הכיתוב נוסעת עם הצילום (0021). בלעדיה, "להזמין כזה" מטפל בכל
+// חלל של אות כאי בעיטור — גשר לפי הקישור הקצר ביותר, ובעברית זה הכיוון הלא נכון.
+describe("buildShareSnapshot — תוכנית הגשרים", () => {
+  const plan = [{ char: "ם", counter: [13, 4.5, 15, 5.5], rects: [[11.5, 4.6, 14, 5.4]], widthMm: 0.75 }];
+
+  it("נושא את התוכנית שנשמרה על הגרסה", () => {
+    const snap = buildShareSnapshot(design(), version({ validation_report: { letterBridges: plan } }));
+    expect(snap.letter_bridges).toEqual(plan);
+  });
+
+  it("גרסה בלי כיתוב, ודוח מלפני השדה — null ולא כשל", () => {
+    // זה הרוב הקיים במסד, ואימוץ בלעדיה הוא בדיוק ההתנהגות שהייתה עד כה.
+    expect(buildShareSnapshot(design(), version()).letter_bridges).toBeNull();
+    expect(
+      buildShareSnapshot(design(), version({ validation_report: { letterBridges: null } })).letter_bridges,
+    ).toBeNull();
+    expect(
+      buildShareSnapshot(design(), version({ validation_report: { letterBridges: [] } })).letter_bridges,
+    ).toBeNull();
+  });
+
+  it("מסנן רשומה פגומה במקום להפיל שיתוף שכבר תקין", () => {
+    const snap = buildShareSnapshot(
+      design(),
+      version({ validation_report: { letterBridges: [...plan, { char: "x" }, null] } }),
+    );
+    expect(snap.letter_bridges).toEqual(plan);
+  });
+});
