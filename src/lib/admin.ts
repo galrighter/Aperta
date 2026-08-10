@@ -53,6 +53,21 @@ export function requireAdmin(req: Request): void {
   }
 }
 
+/**
+ * שער אדמין לקוראים שהם מכונה — `Authorization: Bearer <ADMIN_TOKEN>` במקום
+ * עוגייה. עוגייה נועדה לדפדפן; workflow שנדרש לשלוח אותה היה מחקה דפדפן בלי
+ * סיבה. אותו סוד, שתי דלתות. בלי הסוד — מושבת, לא פתוח.
+ */
+export function requireBearerAdmin(req: Request): void {
+  const t = adminToken();
+  if (!t) throw new ApiError("admin_disabled", "Admin is not configured (set ADMIN_TOKEN)", 503);
+  const header = req.headers.get("authorization") ?? "";
+  const sent = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!sent || !safeEqual(sent, t)) {
+    throw new ApiError("unauthorized", "Admin authentication required", 401);
+  }
+}
+
 /** מחרוזת Set-Cookie להתחברות (או לניקוי אם value ריק). */
 export function adminCookieHeader(value: string, maxAgeSeconds: number): string {
   const parts = [
