@@ -104,7 +104,15 @@ describe("כפתור ההזמנה", () => {
 
   it('כבוי כשהכרטיס אומר "לא ניתן לייצור"', () => {
     // הסטודיו חוסם ייצוא על אותו סטטוס בדיוק; המשפך שלח את זה עד הסדנה.
-    expect(RESULT).toContain("d.resultOrderBlocked");
+    expect(RESULT).toContain("d.resultOrderBlockedAsk");
+  });
+
+  it("מציע לבחור חלופה רק כשיש חלופה על המסך", () => {
+    // רצועת ההצעות מוצגת מ-`picks.length > 1`, ולכן הנוסח שמפנה אליה חייב
+    // להיות מותנה באותו תנאי בדיוק. הנוסח שהיה הזמין "לבחור חלופה אחרת"
+    // תמיד — כולל במסך שבו הרצועה ריקה, שהוא בדיוק המסך של כשל ולידציה.
+    expect(RESULT).toContain("picks.length > 1");
+    expect(RESULT).toContain("d.resultOrderBlockedPick");
   });
 
   it("מסביר למה, ולא רק מאפיר", () => {
