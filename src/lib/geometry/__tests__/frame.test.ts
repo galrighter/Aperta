@@ -33,6 +33,18 @@ describe("rescaleCutoutsSvg", () => {
     expect(rescaleCutoutsSvg(src, { lengthMm: 10, widthMm: 4 })).toBe(src);
   });
 
+  it("stretches a cubic by its control points — the curve the vectorizer now emits", () => {
+    // #198 החליף את הפוליגון בהתאמת בזייה, ומאז כל `cutouts_svg` נושא `C`.
+    // שלוש נקודות הבקרה נמתחות כמו כל זוג אחר, והעקומה שיוצאת היא המתיחה של
+    // זו שנכנסה — לא קירוב שלה.
+    const out = rescaleCutoutsSvg(
+      svg("0 0 10 4", "M0 0C2 1 4 3 10 4Z"),
+      { lengthMm: 20, widthMm: 8 },
+    );
+    expect(svgFrame(out)).toEqual({ lengthMm: 20, widthMm: 8 });
+    expect(out).toContain('d="M0 0C4 2 8 6 20 8Z"');
+  });
+
   it("refuses a path command it cannot scale, instead of guessing", () => {
     // קשת נחתכת במתכת; פרשנות שגויה שלה היא פריט פגום, לא באג ויזואלי.
     expect(() => rescaleCutoutsSvg(svg("0 0 10 4", "M0 0A5 5 0 0 1 10 4Z"), { lengthMm: 20, widthMm: 4 }))

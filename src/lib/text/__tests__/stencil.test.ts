@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { convertTextRequests } from "../textToPath";
 import { validateDesign } from "@/lib/geometry/validate";
 import { polygonsBBox, textToStencil } from "../stencil";
-import { difference, multiPolygonArea } from "@/lib/geometry/poly";
+import { FONT_IDS } from "../fonts";
+import { difference, multiPolygonArea, rectPolygon } from "@/lib/geometry/poly";
 
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 
@@ -128,4 +129,41 @@ describe("bridge direction by script", () => {
       expect(await opensSideways(ch), `${ch} opens sideways`).toBe(true);
     }
   });
+});
+
+// **הגשר חייב להגיע למתכת, לא לאי השני.**
+//
+// עד AP-0097 שני קצות הגשר נוחשו מתיבות חוסמות, ושתי הניחושים טעו:
+//
+//  · `8` בפנים רבות היא **שתי טבעות שחופפות**, ולא מסלול אחד. "התיבה שמכילה
+//    את החלל" הייתה אז הטבעת הפנימית, הקצה החיצון נחת בתוך הדיו — בין שני
+//    החללים — והגשר ריתך את שני האיים זה לזה במקום להחזיק אותם.
+//  · החלל של `4` הוא משולש. הקצה הפנימי נמדד מקצה התיבה החוסמת, ובמרכז
+//    הרוחב — שם הגשר יושב — גבול האי נמוך יותר, ולכן הרצועה לא נגעה בו כלל.
+//
+// שתיהן נראות תקינות בטבלת הגשרים ביומן ושתיהן משאירות אי שנופל בחיתוך. מה
+// שנבדק כאן הוא התוצאה ולא הדרך: אחרי החיתוך המתכת היא גוף אחד.
+describe("every counter ends up held, in every face", () => {
+  const fab = resolveFab(1.5, "bracelet");
+
+  /** כמה רכיבי מתכת נשארים סביב הכיתוב. 1 = הכול מחובר. */
+  const components = (polygons: Awaited<ReturnType<typeof textToStencil>>["polygons"]) => {
+    const [x0, y0, x1, y1] = polygonsBBox(polygons);
+    const around = [rectPolygon(x0 - 5, y0 - 5, x1 + 5, y1 + 5)];
+    return difference(around, polygons).length;
+  };
+
+  // `14.8.83` הוא התאריך מ-AP-0097 — `8` על שתי הטבעות ו-`4` על החלל המשולש,
+  // כלומר שני הפגמים במחרוזת אחת. `ORD` מוסיף עברית וקערות לטיניות.
+  for (const text of ["14.8.83", "ORDם ס"]) {
+    for (const fontId of FONT_IDS) {
+      it(`holds every island of "${text}" in ${fontId}`, async () => {
+        const cut = await textToStencil(
+          text, 0, 0, 8, "start", fab.minBridgeCut, { fontId }, FAB.minLetterBridgeMm,
+        );
+        expect(cut.unbridged, "islands left without a bridge").toBe(0);
+        expect(components(cut.polygons), "metal components around the lettering").toBe(1);
+      });
+    }
+  }
 });
