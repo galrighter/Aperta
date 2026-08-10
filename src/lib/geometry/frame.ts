@@ -27,11 +27,20 @@ export function svgFrame(svg: string | null | undefined): DesignFrame | null {
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 
 /**
- * מותח cutouts SVG למסגרת יעד. ה-vectorizer פולט מסלולים פוליגונליים בלבד
- * (M/L/Z, קואורדינטות מוחלטות), ולכן ההמרה היא הכפלה של כל זוג מספרים.
+ * מותח cutouts SVG למסגרת יעד.
  *
- * כל פקודה אחרת זורקת ולא מנוסה להתפרש: הגאומטריה הזו נחתכת במתכת, ופרשנות
- * שגויה של פקודת מסלול היא פריט פגום ולא באג ויזואלי.
+ * הפקודות הנתמכות הן אלה שכל הארגומנטים שלהן הם זוגות קואורדינטות —
+ * M/L/C/Q/S/T (וגם היחסיות: הזזה יחסית נמתחת באותם מקדמים, כי המתיחה
+ * ליניארית סביב הראשית) — ושם ההמרה היא הכפלה של כל זוג. עקומת בזייה נמתחת
+ * **במדויק** דרך נקודות הבקרה שלה: בזייה שקופה לטרנספורמציה אפינית.
+ *
+ * עד 10.8 נתמכו M/L/Z בלבד — הנחה שהייתה נכונה עד שהווקטורייזר עבר להתאמת
+ * עקומות (#198) והתחיל לפלוט `C`. כל יצירה נפלה אז על השורה למטה עם
+ * `internal · 500`, שלוש שעות אחרי המיזוג.
+ *
+ * H/V/A עדיין זורקות ולא מנוסות להתפרש: ל-H/V ארגומנט בודד שהסורק הזוגי היה
+ * קורא לא נכון, וקשת (A) אינה נמתחת דרך המספרים שלה במתיחה לא-אחידה.
+ * הגאומטריה הזו נחתכת במתכת, ופרשנות שגויה היא פריט פגום ולא באג ויזואלי.
  */
 export function rescaleCutoutsSvg(svg: string, to: DesignFrame): string {
   const from = svgFrame(svg);
@@ -51,7 +60,7 @@ function scalePath(d: string, sx: number, sy: number): string {
     const t = tokens[i];
     if (/^[A-Za-z]$/.test(t)) {
       const cmd = t.toUpperCase();
-      if (cmd !== "M" && cmd !== "L" && cmd !== "Z") {
+      if (!["M", "L", "Z", "C", "Q", "S", "T"].includes(cmd)) {
         throw new Error(`rescaleCutoutsSvg: unsupported path command "${t}"`);
       }
       out.push(t);
