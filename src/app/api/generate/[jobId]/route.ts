@@ -6,6 +6,9 @@ import { mayHaveFinished, resultFromVersion, isFirstVersion } from "@/lib/jobRec
 import { completeFromContext, type JobContext } from "@/lib/runs/complete";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { requireDesignAccess } from "@/lib/designAccess";
+import { alertStalledJob } from "@/lib/alerts/failures";
+import { designSampleCode } from "@/lib/designCode";
+import type { DesignRow } from "@/lib/db/designs";
 
 // מצב בקשת יצירה. הלקוחה מושכת מכאן עד ש-status אינו 'running'.
 //
@@ -22,7 +25,8 @@ export async function GET(req: Request, { params }: Params) {
     // התוצאה של הרצה שהסתיימה היא העיצוב עצמו, ולכן אותה בעלות בדיוק. שורה
     // בלי design_id היא הרצה שנכשלה לפני שהספיקה להיקשר לעיצוב — אין בה מה
     // לשמור עליו מלבד הודעת שגיאה.
-    if (job.design_id) await requireDesignAccess(req, job.design_id);
+    let design: DesignRow | null = null;
+    if (job.design_id) design = await requireDesignAccess(req, job.design_id);
 
     if (job.status === "done") {
       return NextResponse.json({ status: "done", result: job.result });
@@ -41,7 +45,7 @@ export async function GET(req: Request, { params }: Params) {
     // גרסה. אם כן, העבודה הסתיימה ומה שחסר הוא רק הרישום. ההכרעה עצמה ב-
     // `lib/jobRecovery`, שם היא נבדקת.
     if (job.design_id && job.run_id && mayHaveFinished(job)) {
-      const version = await versionForGeneration(job.design_id, job.run_id);
+      const version = await versionForGeneration(job.run_id);
       if (version) {
         const result = resultFromVersion(job.run_id, version);
         // תיקון השורה, best-effort: סקר הבא יענה מיד, והיומן יפסיק לדווח על
@@ -65,8 +69,11 @@ export async function GET(req: Request, { params }: Params) {
           // ל-500, כלומר בדיוק ל"היצירה נכשלה" על עיצוב שקיים — הכשל שהמסלול
           // הזה נבנה כדי למנוע. ההתראה לעולם לא מכריעה את התשובה.
           try {
-            const design = await getDesign(job.design_id);
-            await notifyDesignReady(design, isFirstVersion(version));
+            // העיצוב של **הגרסה**: גרסת עריכה יושבת על דוגמה ממוספרת, לא על
+            // העיצוב ששורת ה-job מצביעה עליו. עריכה ממילא אינה שולחת מייל.
+            const isEdit = Boolean((job.context as JobContext | null)?.inputs?.editedFromCurrent);
+            const design = await getDesign(version.design_id);
+            await notifyDesignReady(design, isFirstVersion(version) && !isEdit);
           } catch (e) {
             console.error("design-ready mail skipped:", (e as Error).message);
           }
@@ -99,6 +106,10 @@ export async function GET(req: Request, { params }: Params) {
     // 'running' לנצח. עדיף להודות בכישלון מאשר להשאיר את הלקוחה מול ספינר
     // שלא ייגמר — היא יכולה לנסות שוב.
     if (stalled) {
+      // הרגע שבו "תקוע" הפסיק להיות ניחוש: מישהו הסתכל, וההתאוששות לא סגרה.
+      // המייל יוצא מיד, עם קישור להרצת הסריקה — במקום לחכות ל-cron שמזגזג.
+      // פעם אחת להרצה; לעולם לא מפיל את התשובה ללקוחה.
+      await alertStalledJob({ jobId, designRef: design ? designSampleCode(design) : null });
       return NextResponse.json({
         status: "error",
         error: { code: "job_stalled", message: "Generation stopped responding" },

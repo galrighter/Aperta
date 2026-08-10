@@ -65,6 +65,59 @@ export async function getDesign(id: string): Promise<DesignRow> {
   return data as DesignRow;
 }
 
+/** מספר הדוגמה הבא תחת עיצוב-אב, עם הגנה מפני מירוץ מול `idx_designs_root_sample`. */
+async function nextSampleNo(rootId: string): Promise<number> {
+  const { data, error } = await supabaseAdmin()
+    .from("designs")
+    .select("sample_no")
+    .eq("root_design_id", rootId)
+    .order("sample_no", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return ((data?.sample_no as number | undefined) ?? 0) + 1;
+}
+
+/**
+ * עיצוב-דוגמה חדש תחת עיצוב-אב: אותו פרופיל, אותן מידות, ומספר מהצורה
+ * `AP-0085.2` — מספר משלו, עם האינדיקציה לעיצוב שממנו הוא נגזר.
+ *
+ * `root_design_id` מצביע תמיד על אב-הקדמון (לא על ההורה המיידי) כדי שהמיספור
+ * יישאר שטוח — דוגמה של דוגמה היא אחות, לא נכדה.
+ *
+ * שני קוראים: שכפול מפורש ("צור עותק"), ו**בקשת שינוי** — מאז 10.8 (החלטת גל)
+ * כל תמונה שהמודל מייצר מקבלת מספר עיצוב משלה, כדי ש"עיצוב AP-0085" יצביע
+ * לעולם על צורה אחת ולא על מה שבמקרה מוצג. העריכה יוצרת דוגמה ולא עיצוב עצמאי:
+ * המספר עצמו הוא הקישור למקור.
+ */
+export async function createSampleDesign(base: DesignRow, name?: string): Promise<DesignRow> {
+  const rootId = base.root_design_id ?? base.id;
+  const rootSerial = base.root_serial ?? base.serial;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const sampleNo = await nextSampleNo(rootId);
+    const { data, error } = await supabaseAdmin()
+      .from("designs")
+      .insert({
+        profile_id: base.profile_id,
+        name: name ?? base.name,
+        product_type: base.product_type,
+        length_mm: base.length_mm,
+        width_mm: base.width_mm,
+        gap_mm: base.gap_mm,
+        thickness_mm: base.thickness_mm,
+        root_design_id: rootId,
+        root_serial: rootSerial,
+        sample_no: sampleNo,
+      })
+      .select("*")
+      .single();
+    if (data) return data as DesignRow;
+    // מירוץ בין שתי דוגמאות מקבילות מאותו אב — ניסיון נוסף עם מספר עדכני.
+    if (!/duplicate|unique/i.test(error?.message ?? "")) throw new Error(error?.message);
+  }
+  throw new Error("Failed to allocate a sample number");
+}
+
 /**
  * הגישור של ההרצה: של הגרסה שנשמרה, ושל כל הצעה שהוצעה לצידה.
  *
@@ -144,14 +197,13 @@ export async function getVersion(id: string): Promise<VersionRow> {
  * 'running' לנצח בזמן שהעיצוב כבר שמור, והלקוחה מקבלת "היצירה נכשלה" על עיצוב
  * שקיים. הקיום של גרסה להרצה הזו הוא מה שמאפשר להתאושש מזה בקריאה.
  */
-export async function versionForGeneration(
-  designId: string,
-  generationId: string,
-): Promise<VersionRow | null> {
+export async function versionForGeneration(generationId: string): Promise<VersionRow | null> {
+  // לפי מזהה ההרצה בלבד, בלי סינון לפי עיצוב: מאז שעריכה נשמרת כדוגמה
+  // ממוספרת (10.8), הגרסה של הרצת-עריכה יושבת על עיצוב **אחר** מזה ששורת
+  // ה-job מצביעה עליו. מזהה ההרצה ממילא ייחודי גלובלית — הוא נגזרת uuid.
   const { data, error } = await supabaseAdmin()
     .from("design_versions")
     .select("*")
-    .eq("design_id", designId)
     .eq("generation_id", generationId)
     // הגבוהה ביותר: ניסיון חוזר שנפל באותה נקודה מוסיף עוד גרסה לאותה הרצה,
     // ומה שמעניין את הלקוחה הוא האחרונה.

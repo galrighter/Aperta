@@ -1718,6 +1718,24 @@ export const he = {
     quotaReason: "הודעת הספק",
     quotaAction: "מה לעשות: להוסיף תקציב בחשבון OpenAI (Billing). אין צורך בפריסה מחדש.",
 
+    // ---- התראת כשלים לא-צפויים ביצירה ----
+    failSpikeSubject: "יצירות נכשלות עכשיו באתר — כשל לא-צפוי חוזר",
+    failSpikeIntro: (count: number, minutes: number) =>
+      `${count} הרצות יצירה נכשלו ב-${minutes} הדקות האחרונות על כשל לא-צפוי (internal) — ` +
+      "כנראה תקלה אחת שפוגעת בכל היצירות, לא לקוח בודד.",
+    failSpikeReason: "הכשל האחרון",
+    failSpikeRun: "מזהה הרצה",
+    failSpikeDesign: "עיצוב",
+
+    // ---- התראת הרצה תקועה ----
+    stalledSubject: "יצירה נתקעה בלי מי שיסיים אותה — כדאי להריץ את הסריקה",
+    stalledIntro:
+      "הרצת יצירה עצרה באמצע (ה-isolate מת בלי לכתוב תוצאה), וההתאוששות בקריאה לא סגרה אותה. " +
+      "הסריקה המתוזמנת תאסוף אותה בסבב הבא — אבל ה-cron של GitHub מזגזג, ולחיצה ידנית סוגרת את זה עכשיו.",
+    stalledJob: "מזהה הבקשה",
+    stalledDesign: "עיצוב",
+    stalledAction: "להרצת הסריקה (Run workflow):",
+
     orderAckSubject: "קיבלנו את ההזמנה שלך",
     orderAckHello: "היי",
     orderAckIntro:

@@ -23,6 +23,10 @@ export interface Design {
   profile_id?: string;
   /** המספר הסידורי הרץ. designCode() הופך אותו ל-"AP-0007". */
   serial?: number | null;
+  /** 0018 — בדוגמה (שכפול/עריכה) מלאים ומצביעים על עיצוב-האב; המספר להצגה
+   *  נבנה מהם ב-designSampleCode ("AP-0085.2"). */
+  root_serial?: number | null;
+  sample_no?: number | null;
   name: string;
   product_type: ProductType;
   length_mm: number;

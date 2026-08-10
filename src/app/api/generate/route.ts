@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
+import { createSampleDesign, getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
@@ -22,6 +22,7 @@ import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
+import { alertUnexpectedFailure } from "@/lib/alerts/failures";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
 
@@ -621,6 +622,14 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       throw new ApiError("vectorize_failed", `Vectorizer did not approve any panel: ${status}`, 422);
     }
 
+    // כל תמונה שהמודל מייצר מקבלת מספר עיצוב משלה (החלטת גל, 10.8). בקשת
+    // שינוי לא כותבת גרסה שנייה על העיצוב הקיים אלא נשמרת כ**דוגמה** ממוספרת
+    // שלו — `AP-0085.2` — כך שהמספר שמוסרים בטלפון מצביע לעולם על צורה אחת,
+    // והנקודה בקוד היא האינדיקציה לעיצוב שממנו נגזרה. הדוגמה נוצרת רק אחרי
+    // שידוע שיש מה לשמור — כשל לא משאיר עיצוב ריק ברשימה. היצירה הראשונה
+    // נשארת על העיצוב שנפתח בשבילה.
+    const target = editSvg ? await createSampleDesign(design) : design;
+
     // 5) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה — אבל רק אלה שאפשר
     // לייצר. הצעה שנכשלה בוולידציה אינה בחירה אלא מלכודת: היא נראית ככל השאר,
     // הלקוחה תבחר בה כי היא יפה, והמסע ייעצר בייצוא. אם *כל* המועמדים נכשלו
@@ -646,7 +655,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       bridges: c.bridges,
     }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
-      design,
+      design: target,
       cutoutsSvg: candidates[0].framedSvg,
       userPrompt: body.userPrompt,
       renderPngPath,
@@ -683,6 +692,14 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       candidates: offeredRows,
       render: { model: job.model, url: renderUrl },
       vectorizer: metrics,
+      // העיצוב שהגרסה נשמרה עליו. ביצירה זה העיצוב שנפתח; בעריכה — הדוגמה
+      // החדשה, והלקוח צריך את המספר שלה כדי שהזמנה ושיתוף יצביעו נכון.
+      design: {
+        id: target.id,
+        serial: target.serial,
+        root_serial: target.root_serial,
+        sample_no: target.sample_no,
+      },
     };
   } catch (err) {
     // אם עוד לא שמרנו הרצה (כשל מוקדם — שירות הרנדר לא זמין, מודל התמונה) — נרשום שגיאה.
@@ -706,6 +723,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // (ApiError/LlmError) כבר מספרים את הסיפור שלהם — מה שנכתב כאן הוא בדיוק
       // מה שהיה נעלם: החריגה הלא-צפויה.
       await markRunError(lastAttemptId, err instanceof Error ? err.message : String(err));
+    }
+    // כשל לא-צפוי חוזר = תקלה שפוגעת בכולם, לא לקוח בודד. המייל יוצא מהכשל
+    // השני בחלון — ב-10.8 זה היה מקצר תקלה של ארבע שעות לדקות. תקציב שנגמר
+    // מוחרג: יש לו התראה משלו למטה, עם נוסח שאומר מה לעשות.
+    if (!(err instanceof ApiError) && !(err instanceof LlmError) && !isQuotaFailure(err)) {
+      await alertUnexpectedFailure(err, { runId: lastAttemptId, designRef });
     }
     // תקציב שנגמר אצל ספק התמונות משבית את היצירה לכולם עד שמישהו מוסיף תקציב,
     // ואי אפשר לגלות אותו מהאתר. ההתראה נשלחת אחרי כתיבת השורה ליומן, כדי
