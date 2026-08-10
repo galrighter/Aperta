@@ -17,6 +17,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
+import { markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
@@ -300,6 +301,8 @@ type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
 async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
   const startedAt = Date.now();
   let persisted = false;
+  /** ההרצה שנרשמה אחרונה — זו שכשל מאוחר (מסגור/ולידציה/שמירה) שייך אליה. */
+  let lastAttemptId = runId;
   let designId: string | null = null;
   let userPrompt: string | null = null;
   /** הרפרנס האנושי לעיצוב. נשמר בחוץ כי ההתראה על כשל נשלחת מה-catch. */
@@ -484,6 +487,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // להתאפס: כאן הוא כבר נבנה, וזה מה שנרשם בכל ניסיון.
     const log = runLog;
     const attemptOnce = async (attemptId: string, attemptNo: number) => {
+      lastAttemptId = attemptId;
       // הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
       // עצמם לא עוברים כאן. "coverage" קורא את צבע הרקע משולי התמונה ואת צבע
       // המתכת מהפיקסלים הרחוקים ממנו, ולכן הוא לא תלוי בכך שהמודל ציית
@@ -694,6 +698,14 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         vectorizer: null,
         ...(runLog ?? {}),
       });
+    } else if (!(err instanceof ApiError) && !(err instanceof LlmError)) {
+      // ההרצה כבר נרשמה — עם הסטטוס של הווקטורייזר — וכשל **אחרי** הרישום
+      // (מסגור, ולידציה, שמירת הגרסה) השאיר אותה נראית תקינה בזמן שהמשתמש
+      // קיבל 500: היומן ענה "אין שגיאה" על יצירה שנכשלה (אוגוסט 2026), והכשל
+      // האמיתי חי רק על שורת ה-job, שאינה מוצגת כשיש הרצה. כשלים מוכרים
+      // (ApiError/LlmError) כבר מספרים את הסיפור שלהם — מה שנכתב כאן הוא בדיוק
+      // מה שהיה נעלם: החריגה הלא-צפויה.
+      await markRunError(lastAttemptId, err instanceof Error ? err.message : String(err));
     }
     // תקציב שנגמר אצל ספק התמונות משבית את היצירה לכולם עד שמישהו מוסיף תקציב,
     // ואי אפשר לגלות אותו מהאתר. ההתראה נשלחת אחרי כתיבת השורה ליומן, כדי

@@ -103,6 +103,8 @@ export async function frameCandidates(
   const svc = frameService();
   const out: FramedPreview[] = [];
   const via: string[] = [];
+  /** הכשל הראשון של המסלול המקומי — נזרק רק אם אף מועמד לא שרד. */
+  let firstErr: unknown = null;
 
   for (const svg of svgs) {
     if (box) {
@@ -123,9 +125,19 @@ export async function frameCandidates(
         console.error("frame worker failed, framing locally:", (e as Error).message);
       }
     }
-    out.push(framePreview(dims, svg, plan));
-    via.push("local");
+    // המסלול האחרון — ועד עכשיו היחיד שלא נתפס: מועמד אחד שהגאומטריה שלו
+    // מפילה את המסגור הפיל את **כל** היצירה ב-internal, כולל שלושת המועמדים
+    // שהיו נחתכים מצוין. מועמד כזה נזרק; היצירה נכשלת רק כשאיש לא שרד.
+    try {
+      out.push(framePreview(dims, svg, plan));
+      via.push("local");
+    } catch (e) {
+      console.error("local framing failed, dropping candidate:", (e as Error).message);
+      firstErr ??= e;
+    }
   }
+
+  if (!out.length && firstErr) throw firstErr;
 
   // שורה אחת ליצירה, לא למועמד. בלעדיה יש רק אזהרות בכישלון — ושתיקה נראית
   // בדיוק כמו "הכול רץ על הקופסה", גם כשהכול רץ מקומית. זו השאלה שרוצים לענות

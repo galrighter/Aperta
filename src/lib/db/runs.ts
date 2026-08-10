@@ -227,6 +227,28 @@ export async function insertRun(run: NewRun): Promise<void> {
   if (retry.error) throw new Error(`insert run failed: ${retry.error.message}`);
 }
 
+/**
+ * מסמן על שורת הרצה כשל שקרה **אחרי** שהיא נרשמה.
+ *
+ * השורה נכתבת באמצע הצינור, עם הסטטוס של הווקטורייזר — ומה שנכשל אחריה
+ * (מסגור, ולידציה, שמירת הגרסה) לא עדכן אותה מעולם: היומן הציג הרצה שנראית
+ * תקינה בזמן שהמשתמש קיבל 500. הכשל האמיתי נשמר רק על שורת ה-job, שאינה
+ * מוצגת כשיש הרצה — כלומר בדיוק המקרה הזה היה בלתי נראה (אוגוסט 2026: לקוח
+ * עם `internal · 500` פעמיים ברצף, והיומן ענה "אין שגיאה").
+ *
+ * `error` נכתב רק על שורה שאין לה אחד — סיפור קיים לא נדרס. best-effort,
+ * כמו כל כתיבת יומן: הכשל המקורי הוא מה שחשוב להחזיר, לא כתיבת הדיווח עליו.
+ */
+export async function markRunError(id: string, message: string): Promise<void> {
+  const sb = supabaseAdmin();
+  const { error } = await sb
+    .from("generation_runs")
+    .update({ status: "error", error: message })
+    .eq("id", id)
+    .is("error", null);
+  if (error) console.error(`mark run ${id} error failed:`, error.message);
+}
+
 /** שורה ברשימת היומן: הכול חוץ מה-SVG, שנטען רק בפתיחת הרצה. */
 export type RunListRow = Omit<GenerationRunRow, "svg" | "debug_full"> & { has_svg: boolean };
 
