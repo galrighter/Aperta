@@ -34,11 +34,14 @@ const subscribeNever = () => () => {};
 const hasNativeShare = () => typeof navigator !== "undefined" && typeof navigator.share === "function";
 
 export function ShareButton({
-  designId, versionId, serial, flat, className = "", compact,
+  designId, versionId, serial, code: codeOverride, flat, className = "", compact,
 }: {
   designId: string;
   versionId: string;
   serial: number | null;
+  /** המספר להצגה כשהוא אינו נגזרת פשוטה של serial — גרסת-עריכה יושבת על
+   *  דוגמה ממוספרת (`AP-0085.2`), והשיתוף צריך למסור את המספר שלה. */
+  code?: string | null;
   /** הפריסה של הגרסה המוצגת — נכנסת לתמונת השיתוף מתחת להדמיה. */
   flat?: FlatSource | null;
   /** סגנון הכפתור עצמו, כדי שיתלבש גם על כותרת הסטודיו וגם על מסך התוצאה. */
@@ -120,12 +123,12 @@ export function ShareButton({
 
   /** הטקסט שנוסע עם הלינק — בוואטסאפ ובגיליון המערכת כאחד. */
   function messageFor(link: string): string {
-    const code = designCode(serial);
+    const code = codeOverride ?? designCode(serial);
     return `${t.shareText}${code ? ` (${code})` : ""}\n${link}`;
   }
 
   async function onNativeShare(link: string) {
-    const code = designCode(serial);
+    const code = codeOverride ?? designCode(serial);
     try {
       await navigator.share({
         title: code ? t.shareTitle(code) : he.site.brand,

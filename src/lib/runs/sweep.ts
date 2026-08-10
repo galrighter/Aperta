@@ -66,11 +66,14 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
 
   // קודם כול: אולי הגרסה כבר נשמרה והשורה רק לא נסגרה. זו הבדיקה שחייבת
   // לקדום לכל השאר — בלעדיה נייצר גרסה שנייה לאותה הרצה.
-  const version = await versionForGeneration(job.design_id, job.run_id);
+  const version = await versionForGeneration(job.run_id);
   if (version) {
     if (await claimJobDone(jobId, job.run_id, resultFromVersion(job.run_id, version))) {
       try {
-        await notifyDesignReady(await getDesign(job.design_id), isFirstVersion(version));
+        // העיצוב של **הגרסה**, לא של ה-job: גרסת עריכה יושבת על דוגמה ממוספרת,
+        // והמייל צריך להצביע עליה. עריכה ממילא לא שולחת מייל — ראו complete.ts.
+        const isEdit = Boolean(ctx.inputs?.editedFromCurrent);
+        await notifyDesignReady(await getDesign(version.design_id), isFirstVersion(version) && !isEdit);
       } catch (e) {
         console.error("sweep: design-ready mail skipped:", (e as Error).message);
       }

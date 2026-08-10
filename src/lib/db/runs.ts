@@ -386,6 +386,22 @@ export async function countQuotaFailuresSince(sinceIso: string, beforeIso: strin
   return count ?? 0;
 }
 
+/**
+ * כמה הרצות נגמרו בשגיאה מאז נקודת זמן — הדופק שהתראת הכשלים נשענת עליו.
+ *
+ * `status = 'error'` בלבד: דחייה (`rejected`) היא תוצאה לגיטימית של הצינור,
+ * וספירה שלה הייתה מזעיקה על ערבים שבהם המודל פשוט מצייר פחות טוב.
+ */
+export async function countErrorRunsSince(sinceIso: string): Promise<number> {
+  const { count, error } = await supabaseAdmin()
+    .from("generation_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "error")
+    .gte("created_at", sinceIso);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 /** הגרסה שהרצה שמרה, כפי שהיומן צריך אותה כדי למשוך ממנה קובץ ייצור. */
 export interface RunVersion {
   id: string;

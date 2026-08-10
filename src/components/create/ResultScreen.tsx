@@ -96,16 +96,20 @@ export function ResultScreen({
           פשוט לא נמצא — ראו ההערה ב-ShareButton. */}
       {(designCode(s.designSerial) || (s.designId && entry)) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-          {designCode(s.designSerial) && (
+          {/* המספר של **הגרסה המוצגת**: גרסת-עריכה יושבת על דוגמה ממוספרת
+              (`AP-0085.2`), והנקודה במספר היא האינדיקציה לעיצוב שממנו נגזרה. */}
+          {(entry?.designCode ?? designCode(s.designSerial)) && (
             <p className="font-display text-[12px] tracking-[0.14em] text-mist">
-              {d.codeLabel} <span className="text-lapis" dir="ltr">{designCode(s.designSerial)}</span>
+              {d.codeLabel}{" "}
+              <span className="text-lapis" dir="ltr">{entry?.designCode ?? designCode(s.designSerial)}</span>
             </p>
           )}
           {s.designId && entry && (
             <ShareButton
-              designId={s.designId}
+              designId={entry.designId ?? s.designId}
               versionId={entry.versionId}
               serial={s.designSerial}
+              code={entry.designCode}
               // הפריסה נכנסת לתמונת השיתוף מתחת להדמיה: על מתכת מעוגלת ומבריקה
               // הגרפיקה לא תמיד נקראית, ומי שרואה את הלינק בוואטסאפ רואה רק
               // את התמונה.
@@ -418,6 +422,14 @@ export function ResultScreen({
                         <div className="text-[13px] font-semibold text-graphite">
                           {d.versionLabel} {i + 1}
                           {e.region ? ` · ${d.regions[e.region]}` : ""}
+                          {/* גרסת-עריכה היא עיצוב ממוספר משלה — המספר מופיע
+                              ביומן כדי שאפשר יהיה למסור אותו בלי לנחש איזו
+                              גרסה הוא. */}
+                          {e.designCode && (
+                            <span className="ms-2 font-display text-[11px] font-normal tracking-[0.1em] text-lapis" dir="ltr">
+                              {e.designCode}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-0.5 truncate text-[13px] text-ink60">
                           {versionEntryLabel(e, i)}

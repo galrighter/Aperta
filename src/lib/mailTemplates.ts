@@ -255,6 +255,68 @@ export function quotaAlertMail(input: {
   };
 }
 
+/**
+ * הקישור להרצה ידנית של סריקת ההרצות התקועות. ניתן להחלפה בלי פריסה
+ * (`SWEEP_WORKFLOW_URL`) — כתובת ריפו אינה דבר שכדאי לחרוט בקוד פעמיים.
+ */
+function sweepWorkflowUrl(): string {
+  return (
+    process.env.SWEEP_WORKFLOW_URL ||
+    "https://github.com/galrighter/Aperta/actions/workflows/sweep-jobs.yml"
+  );
+}
+
+/**
+ * התראת רצף כשלים לא-צפויים. הכותרת אומרת את המסקנה — "יצירות נכשלות עכשיו" —
+ * כי מי שקורא אותה בטלפון צריך לדעת שזה שריפה, לא סטטיסטיקה.
+ */
+export function failureSpikeMail(input: {
+  count: number;
+  windowMinutes: number;
+  /** הודעת הכשל האחרון — הראיה שמכוונת את החיפוש. */
+  reason: string;
+  runId: string;
+  designRef: string | null;
+}): { subject: string; text: string } {
+  return {
+    subject: `${he.site.brand} — ${m.failSpikeSubject}`,
+    text: [
+      m.failSpikeIntro(input.count, input.windowMinutes),
+      "",
+      input.designRef ? `${m.failSpikeDesign}: ${input.designRef}` : null,
+      `${m.failSpikeRun}: ${input.runId}`,
+      `${m.failSpikeReason}:`,
+      input.reason.slice(0, 500),
+      "",
+      `${m.notifyAdminHint} ${SITE.url}/admin/runs`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
+  };
+}
+
+/** התראת הרצה תקועה — עם הקישור שסוגר אותה בלחיצה. */
+export function stalledJobMail(input: {
+  jobId: string;
+  designRef: string | null;
+}): { subject: string; text: string } {
+  return {
+    subject: `${he.site.brand} — ${m.stalledSubject}`,
+    text: [
+      m.stalledIntro,
+      "",
+      input.designRef ? `${m.stalledDesign}: ${input.designRef}` : null,
+      `${m.stalledJob}: ${input.jobId}`,
+      "",
+      `${m.stalledAction} ${sweepWorkflowUrl()}`,
+      "",
+      `${m.notifyAdminHint} ${SITE.url}/admin/runs`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
+  };
+}
+
 /* ===== הזמנות (טבלת orders, migration 0011) ===== */
 
 /**

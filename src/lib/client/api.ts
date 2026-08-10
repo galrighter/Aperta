@@ -80,6 +80,12 @@ export interface GenerationResult {
   /** הצעות נוספות מאותה יצירה, מדורגות. הראשונה היא הגרסה שנשמרה. */
   candidates?: Array<{ svg: string; report: ValidationReport; drawnRatio: number; stretch: number }>;
   render?: { model: string; url: string | null };
+  /**
+   * העיצוב שהגרסה נשמרה עליו. ביצירה — העיצוב שנפתח; בעריכה — דוגמה ממוספרת
+   * חדשה (`AP-0085.2`): כל תמונה מהמודל מקבלת מספר משלה (החלטת גל, 10.8).
+   * חסר בתשובת שרת ישן — ואז הגרסה יושבת על העיצוב הנוכחי, כמו קודם.
+   */
+  design?: { id: string; serial: number | null; root_serial: number | null; sample_no: number | null };
 }
 
 /** כמה זמן לחכות בין משיכות. היצירה לוקחת ~30-90 שניות, אז שנייה וחצי היא

@@ -37,7 +37,7 @@ import {
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
-  candidatesOf, circumferenceMm, entryFromGeneration,
+  candidatesOf, circumferenceMm, entryDesignId, entryFromGeneration,
   canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
   newOrderKey, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
@@ -911,13 +911,18 @@ export default function DesignPage() {
       if (!s.designId || !entry || (entry.chosen ?? 0) === index) return;
       set({ applying: true, chooseError: null });
       try {
-        const res = await api.chooseCandidate(s.designId, svg, index, entry.versionId);
+        // העיצוב של הגרסה המוצגת: בחירת הצעה על גרסת-עריכה מעדכנת את הדוגמה
+        // שלה (`AP-0085.2`), לא את עיצוב-האב של המשפך.
+        const res = await api.chooseCandidate(entryDesignId(s, entry)!, svg, index, entry.versionId);
         const next: EditEntry = {
           ...entryFromGeneration(res, { region: null, text: "" }),
           // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה — הבחירה עצמה אינה
-          // הרצה, והתשובה שלה לא נושאת אותן.
+          // הרצה, והתשובה שלה לא נושאת אותן. וגם העיצוב של הגרסה נשאר שלה:
+          // תשובת הבחירה לא נושאת אותו, והחלפת הצעה אינה מחליפה עיצוב.
           candidates: entry.candidates,
           chosen: index,
+          designId: entry.designId,
+          designCode: entry.designCode,
         };
         // בחירה בתוך אותה הרצה מעדכנת שורה קיימת ולא מוסיפה — והשרת מודיע על
         // כך בכך שהוא מחזיר את **אותו** מזהה גרסה. אין צורך בשדה נוסף בתשובה,
@@ -1031,6 +1036,11 @@ export default function DesignPage() {
     set({ sending: true, sendError: null, sendMailto: null, orderKey });
     const p = priceOf(s);
     const entry = activeEntry(s);
+    // מה שמוזמן הוא הגרסה שעל המסך — והעיצוב **שלה**: גרסת-עריכה יושבת על
+    // דוגמה ממוספרת (`AP-0085.2`), והזמנה שמצביעה על עיצוב-האב הייתה מזמינה
+    // צורה אחרת מזו שאושרה.
+    const orderedDesignId = entryDesignId(s, entry);
+    const orderedCode = entry?.designCode ?? designCode(s.designSerial);
     // הסיכום הזה משמש **רק** את מסלול הגיבוי ב-mailto. מה שנשמר ונשלח במסלול
     // התקין נבנה בשרת מהשורה שנכתבה (src/lib/orderSummary.ts) — טקסט שהדפדפן
     // מנסח הוא ניסוח, לא נתונים.
@@ -1039,8 +1049,8 @@ export default function DesignPage() {
       `היקף: ${Math.round(circumferenceMm(s))} ${d.mm} · רוחב: ${mmLabel(frameWidthMm(s, entry))} ${d.mm}`,
       s.product === "ring" ? "" : `ישיבה: ${d.fits[s.fit]}`,
       `חיתוכים: ${countCuts(entry?.svg ?? null)}`,
-      `מספר עיצוב: ${designCode(s.designSerial) ?? "—"}`,
-      `מזהה עיצוב: ${s.designId ?? "—"}`,
+      `מספר עיצוב: ${orderedCode ?? "—"}`,
+      `מזהה עיצוב: ${orderedDesignId ?? "—"}`,
       `סה"כ: ${d.ils}${p.total}`,
       "",
       `כתובת: ${s.addr.street}, ${s.addr.city}${s.addr.zip ? ` ${s.addr.zip}` : ""}`,
@@ -1053,7 +1063,7 @@ export default function DesignPage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          designId: s.designId,
+          designId: orderedDesignId,
           // הגרסה שהיא רואה על המסך ברגע ההזמנה — לא "האחרונה שנוצרה". אחרי
           // ההזמנה אפשר להמשיך לערוך, ומה שנחתך חייב להיות מה שהיא אישרה.
           versionId: entry?.versionId ?? null,
@@ -1122,7 +1132,7 @@ export default function DesignPage() {
       // מספר ההזמנה הוא מספר העיצוב. עד כה הוא נגזר מחיתוך של uuid — מחרוזת
       // אקראית שאי אפשר להקריא בטלפון, ושלא הצביעה על שום דבר שאפשר לחפש.
       const orderNo =
-        designCode(s.designSerial) ?? ((s.designId ?? "").slice(0, 8).toUpperCase() || "—");
+        orderedCode ?? ((orderedDesignId ?? "").slice(0, 8).toUpperCase() || "—");
       // המפתח מתאפס: ההזמנה הזאת נקלטה, והבאה היא הזמנה חדשה ולא ניסיון חוזר.
       // הטיוטה המקומית מיצתה את תפקידה — העיצוב שהוזמן שמור בשרת וברשימה.
       clearFunnelDraft();
@@ -1134,9 +1144,7 @@ export default function DesignPage() {
       // שמשמעותו שכל מה שמילאה נעלם — נבנה `mailto:` עם אותן שורות בדיוק,
       // כדי שיהיה מסלול שני שמגיע לבן אדם. לא מפנים אליו אוטומטית: מי שאין לו
       // לקוח דואר מוגדר היה מאבד גם את המסך הזה.
-      const subject = `${d.orderMailSubject} ${
-        designCode(s.designSerial) ?? s.addr.name.trim()
-      }`.trim();
+      const subject = `${d.orderMailSubject} ${orderedCode ?? s.addr.name.trim()}`.trim();
       const body = [
         ...lines,
         "",

@@ -2,6 +2,7 @@
 // מקור: handoff_design_flow/HANDOFF.md
 import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
+import { designSampleCode } from "@/lib/designCode";
 import { svgFrame } from "@/lib/geometry/frame";
 import { FAB, type FitStyle } from "@/lib/fabrication.config";
 import { computeSizing, idMmFromUsSize, US_RING_ID_MM, US_RING_SIZES } from "@/lib/sizing";
@@ -80,6 +81,17 @@ export interface EditEntry {
    * מפני בחירה חוזרת של אותה הצעה לא פעלה.
    */
   chosen?: number;
+  /**
+   * העיצוב שהגרסה הזו יושבת עליו, כשהוא שונה מהעיצוב של המשפך.
+   *
+   * מאז 10.8 בקשת שינוי נשמרת כדוגמה ממוספרת (`AP-0085.2`) — עיצוב משלה,
+   * שהמספר שלו הוא האינדיקציה למקור. הזמנה, שיתוף ובחירת הצעה על הגרסה הזו
+   * חייבים להצביע עליה ולא על עיצוב-האב. ריק = הגרסה על עיצוב המשפך (יצירה
+   * ראשונה, או שרת ישן).
+   */
+  designId?: string;
+  /** המספר להצגה (`AP-0085.2`) — מחושב פעם אחת מהתשובה. */
+  designCode?: string | null;
 }
 
 export interface Addr {
@@ -292,6 +304,9 @@ type GenerationLike = {
   report: ValidationReport | null;
   geometry: { material: MultiPolygon } | null;
   candidates?: Array<{ svg: string; report: ValidationReport }>;
+  /** העיצוב שהגרסה נשמרה עליו — בעריכה זו דוגמה ממוספרת חדשה. השדות רשות,
+   *  כי גם תשובת "להזמין כזה" עוברת כאן והטיפוס שלה מציין פחות. */
+  design?: { id: string; serial?: number | null; root_serial?: number | null; sample_no?: number | null };
 };
 
 /**
@@ -316,8 +331,22 @@ export function entryFromGeneration(
     report: res.report,
     geometry: res.geometry,
     candidates: res.candidates,
+    // העיצוב של הגרסה נוסע עם השורה: הזמנה ושיתוף של גרסת-עריכה חייבים
+    // להצביע על הדוגמה שלה (`AP-0085.2`), לא על עיצוב-האב של המשפך.
+    designId: res.design?.id,
+    designCode: res.design
+      ? designSampleCode({
+          serial: res.design.serial,
+          root_serial: res.design.root_serial,
+          sample_no: res.design.sample_no,
+        })
+      : undefined,
   };
 }
+
+/** העיצוב שפעולה על הגרסה המוצגת צריכה להצביע עליו — שלה, או של המשפך. */
+export const entryDesignId = (s: CreateState, e: EditEntry | null): string | null =>
+  e?.designId ?? s.designId;
 
 /** מה שדרוש כדי לאתר את ההצעות של גרסה — לא הטיפוס המלא, כדי שהפונקציות
  *  למטה יהיו ניתנות לבדיקה בלי לבנות שורת גרסה שלמה. */
