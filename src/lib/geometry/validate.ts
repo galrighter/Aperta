@@ -1,5 +1,5 @@
 import { he } from "@/i18n/he";
-import { FAB, resolveFab, type ProductType } from "@/lib/fabrication.config";
+import { FAB, NECK_FLOOR_MM, resolveFab, type ProductType } from "@/lib/fabrication.config";
 import { normalizeSvg, ContractViolation, isCuttableOpening, type NormalizedDesign } from "./normalize";
 import {
   difference, morphologicalOpen, simplify,
@@ -148,8 +148,15 @@ export function validateNormalized(n: NormalizedDesign, dims: DesignDims): Valid
   //
   // הבדיקה רצה **אחרי** `thickenBridges` (ראה frameCutouts), ולכן היא נדלקת
   // בדיוק כשהתיקון best-effort ויתר — מה שעד כה קרה בשקט מוחלט.
+  //
+  // **הרצפה הנאכפת היא `NECK_FLOOR_MM` ולא `minLetterBridgeMm`.** ההפרש בין
+  // השתיים הוא הסובלנות ש-`thickenBridges` מוותר בתוכה במכוון, וכשהבדיקה הזו
+  // התעלמה ממנה נוצר תחום מת: צוואר ב-[0.70, 0.75) נפסל כאן ולא תוקן שם, כי
+  // המתקן ויתר עליו במכוון. עיצוב שנחת שם היה "לא ניתן לייצור" לתמיד. שני
+  // הצדדים קוראים היום את אותו מספר, ולכן כל צוואר שנפסל כאן הוא צוואר שהמתקן
+  // כבר ניסה להרחיב וכשל. ראה `letterBridgeToleranceMm`.
   {
-    const floor = FAB.minLetterBridgeMm;
+    const floor = NECK_FLOOR_MM;
     // אותו ניקוי כמו ב-thickenBridges: מתאר שחוזר מהמעקב נושא נקודה כל
     // 0.02–0.1 מ"מ, וזה מה שמייקר את ההיסטים. התזוזה מתחת לרצפה שנמדדת.
     const simplified = simplify(material, NECK_CLEAN_MM);
@@ -173,8 +180,9 @@ export function validateNormalized(n: NormalizedDesign, dims: DesignDims): Valid
         const hanging = sorted.slice(simplified.length);
         checks.push({
           check: "V4", status: "fail", message: he.checks.V4,
-          details: `Material is held by ${extra} neck(s) thinner than the ${floor}mm floor, at (mm): ` +
+          details: `Material is held by ${extra} neck(s) thinner than the ${floor}mm enforced floor, at (mm): ` +
             `${hanging.map((p) => { const c = ringCentroid(p[0]); return `(${c[0].toFixed(1)}, ${c[1].toFixed(1)})`; }).join(", ")}. ` +
+            `Automatic thickening (to ${FAB.minLetterBridgeMm}mm) already ran and could not fix these. ` +
             `A neck this thin survives validation but breaks when cut or rolled — widen it.`,
           locations: centroidLocations(hanging),
         });

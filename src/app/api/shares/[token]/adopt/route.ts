@@ -3,9 +3,12 @@ import { z } from "zod";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { requireAccountId } from "@/lib/account";
 import { isShareToken } from "@/lib/shareToken";
-import { getShareByToken } from "@/lib/db/shares";
+import { getShareByToken, type ShareRow } from "@/lib/db/shares";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { ingestCutouts } from "@/lib/vectorizer";
+import { svgFrame } from "@/lib/geometry/frame";
+import { scaleLetterBridges } from "@/lib/geometry/restoreBridges";
+import type { BridgePlan } from "@/lib/geometry/frameCutouts";
 import { he } from "@/i18n/he";
 
 /**
@@ -26,6 +29,12 @@ import { he } from "@/i18n/he";
  *
  * זהו גם הכלל שנכתב במפורש ב-`frameCutouts.ts`: חוקי הייצור יושבים במקום
  * אחד. מסלול שני שמותח גאומטריה בדרכו שלו הוא היום שבו השניים מתפצלים.
+ *
+ * **ומה שהיה חסר כאן: תוכנית הגשרים.** המסלול קרא ל-`ingestCutouts` בלי
+ * `bridgePlan`, ולכן כל חלל של אות שחזר מנותק טופל כאי בעיטור — גשר לפי
+ * הקישור הקצר ביותר במקום הגשר שאנחנו חתכנו, בכיוון שנגזר מגאומטריה עיוורת.
+ * בעברית הגשר נחתך מהצד, ועל `ם` גשר מלמעלה הוא אות אחרת. השיתוף נושא מאז את
+ * התוכנית (0021), ו-`adoptedPlan` מעביר אותה למסגרת של המזמין.
  *
  * הוולידציה רצה על המסגרת הסופית ותוצאתה נמסרת כמו שהיא: מסך התוצאה כבר יודע
  * להציג מצב ייצור כולל כישלון, ומשם אפשר לבקש שינוי — תשובה טובה יותר מ-500.
@@ -80,6 +89,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       cutoutsSvg: share.svg,
       userPrompt: null,
       renderPngPath: null,
+      bridgePlan: adoptedPlan(share, lengthMm, widthMm),
     });
 
     // מאיזה שיתוף זה בא. נשמר בדוח (jsonb) ולא בעמודה, מאותה סיבה שנתיב
@@ -109,3 +119,29 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * תוכנית גשרי הכיתוב של השיתוף, במסגרת של המזמין.
+ *
+ * השיתוף שמר אותה בקואורדינטות ה-SVG שלו (0021), והמזמין מקבל מסגרת אחרת —
+ * האורך תמיד שלו, והרוחב לרוב. `ingestCutouts` מצפה לתוכנית **בקואורדינטות
+ * שהוזמנו** (`frameCutouts` משלים משם את ההפרש שהסובלנות בולעת), ולכן ההעברה
+ * כאן היא בדיוק בין שתי המסגרות האלה.
+ *
+ * `scaleLetterBridges` ולא הכפלה מקומית: הכלל שעובי הגשר אינו נמתח הוא חוק
+ * ייצור, ואת הדילול השקט שהוא מונע ראינו כבר על עיצוב שאומץ באורך קצר יותר.
+ *
+ * בלי תוכנית — שיתוף מלפני 0021, או עיצוב בלי כיתוב — מוחזרת תוכנית ריקה, וזו
+ * בדיוק ההתנהגות שהייתה כאן עד כה.
+ */
+function adoptedPlan(share: ShareRow, lengthMm: number, widthMm: number): BridgePlan {
+  const planned = share.letter_bridges;
+  if (!planned?.length) return {};
+  // המסגרת ששותפה נקראת מה-SVG עצמו ולא מעמודות השורה, מאותה סיבה שכל השאר
+  // קורא אותה משם: ה-viewBox הוא המסגרת שהגאומטריה באמת יושבת בה.
+  const from = svgFrame(share.svg);
+  if (!from) return {};
+  return {
+    letterBridges: scaleLetterBridges(planned, lengthMm / from.lengthMm, widthMm / from.widthMm),
+  };
+}

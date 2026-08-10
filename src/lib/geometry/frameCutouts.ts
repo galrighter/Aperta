@@ -1,11 +1,10 @@
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { rescaleCutoutsSvg, svgFrame } from "./frame";
 import { dropThinCutouts } from "./normalize";
-import { restoreBridges, type BridgeRecord, type LetterBridge } from "./restoreBridges";
+import { restoreBridges, scaleLetterBridges, type BridgeRecord, type LetterBridge } from "./restoreBridges";
 import { thickenBridges } from "./thickenBridges";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
-import type { Box } from "@/lib/text/stencil";
 
 // מסגור מועמד: מתיחה למידה שהוזמנה + ולידציה, בלי DB ובלי רשת.
 //
@@ -69,6 +68,13 @@ export interface FramedPreview {
   framedSvg: string;
   /** מה שנעשה לכל אי מתכת — גושר, חובר, או נמחק. ליומן. */
   bridges: BridgeRecord[];
+  /**
+   * תוכנית גשרי הכיתוב **במסגרת שנמסרה** — כלומר באותן קואורדינטות כמו
+   * `framedSvg`, ולא באלה שהתקבלו. זה מה שאפשר לשמור ולהמשיך ממנו; התוכנית
+   * שנכנסה נמדדה על הפס שהוזמן והיא מפגרת אחריו ברוחב (ראה `planInFrame`).
+   * `null` = הרצה בלי כיתוב.
+   */
+  letterBridges: LetterBridge[] | null;
   lengthMm: number;
   widthMm: number;
   /** היחס שהמודל צייר בפועל, לפני המתיחה. */
@@ -111,27 +117,13 @@ export interface BridgePlan {
  * בכך כדי להצמיד אי לגשר של האות השכנה. אז נחתך גשר בכיוון הלא נכון, ועל `ם`
  * זו אות אחרת.
  *
- * שתי ההעברות שונות בכוונה:
- * - **תיבת החלל** נמתחת, מרכז וגובה כאחד — היא מתארת גאומטריה שנמתחה.
- * - **מלבן הגשר** רק זז, וגובהו נשמר. הגובה הזה הוא מידת ייצור במילימטרים,
- *   וכיווץ שלו ב-5% היה מדלל גשר אל מתחת ל-`minLetterBridgeMm` בשקט — הענף של
- *   גשרי האות ב-`restoreBridges` מצייר את המלבנים כמו שהם ואינו בודק רצפה.
+ * ההעברה עצמה היא `scaleLetterBridges`, ולא קוד מקומי: תיבת החלל נמתחת ועובי
+ * הגשר לא, וזה כלל ייצור שאסור שיהיו לו שני מימושים. מסלול האימוץ מריץ את אותה
+ * פונקציה על שני הצירים — שם המסגרת של המקור שונה מזו של המזמין בשניהם.
  */
 function planInFrame(plan: BridgePlan, k: number): BridgePlan {
   if (!plan.letterBridges?.length || Math.abs(k - 1) < 1e-9) return plan;
-  const stretch = ([x0, y0, x1, y1]: Box): Box => [x0, y0 * k, x1, y1 * k];
-  const shift = ([x0, y0, x1, y1]: Box): Box => {
-    const half = (y1 - y0) / 2;
-    const cy = ((y0 + y1) / 2) * k;
-    return [x0, cy - half, x1, cy + half];
-  };
-  return {
-    letterBridges: plan.letterBridges.map((b) => ({
-      ...b,
-      counter: stretch(b.counter),
-      rects: b.rects.map(shift),
-    })),
-  };
+  return { letterBridges: scaleLetterBridges(plan.letterBridges, 1, k) };
 }
 
 export function frameCutoutsDims(
@@ -219,6 +211,7 @@ export function frameCutoutsDims(
   return {
     framedSvg,
     bridges,
+    letterBridges: plan.letterBridges?.length ? [...plan.letterBridges] : null,
     lengthMm,
     widthMm,
     drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
@@ -230,7 +223,7 @@ export function frameCutoutsDims(
 
 /** אותו חישוב, בלי גרף הפוליגונים — מה שמוחזר דרך גבול תהליך. */
 export function framePreview(dims: DesignDims, cutoutsSvg: string, plan: BridgePlan = {}): FramedPreview {
-  const { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report } =
+  const { framedSvg, bridges, letterBridges, lengthMm, widthMm, drawnRatio, stretch, report } =
     frameCutoutsDims(dims, cutoutsSvg, plan);
-  return { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report };
+  return { framedSvg, bridges, letterBridges, lengthMm, widthMm, drawnRatio, stretch, report };
 }
