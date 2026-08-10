@@ -11,7 +11,8 @@ vi.mock("@opennextjs/cloudflare", () => ({
   },
 }));
 
-import { frameCandidates } from "../frameClient";
+import { frameCandidates, frameFull } from "../frameClient";
+import { frameFullLocal } from "../frameRequest";
 import { framePreview } from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
 import worker from "../../../../workers/frame/index";
@@ -89,6 +90,48 @@ describe("frameCandidates", () => {
   it("still fails the generation when no candidate survives framing", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(frameCandidates(dims, [arc])).rejects.toThrow();
+    err.mockRestore();
+  });
+});
+
+describe("frameFull — המסגור המלא של הזוכה", () => {
+  it("frames locally when there is no service, with the canonical svg and cut union", async () => {
+    const out = await frameFull(dims, svg("0 0 44 8"));
+    expect(out).toEqual(frameFullLocal(dims, svg("0 0 44 8")));
+    expect(out.normalized?.canonicalSvg).toContain("<svg");
+    expect(out.normalized?.cutUnion.length).toBeGreaterThan(0);
+    // הגרף המלא לא חוצה את הגבול — רק מה שהשמירה צריכה.
+    expect(out.normalized).not.toHaveProperty("cutouts");
+  });
+
+  it("goes through the box and returns the same answer", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { full?: boolean };
+      expect(body.full).toBe(true);
+      const answer = handleFrame(body as unknown as FrameRequest);
+      return Response.json(answer.body, { status: answer.status });
+    }) as unknown as typeof fetch);
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+
+    const out = await frameFull(dims, svg("0 0 44 8"));
+    expect(out).toEqual(JSON.parse(JSON.stringify(frameFullLocal(dims, svg("0 0 44 8")))));
+    fetchSpy.mockRestore();
+  });
+
+  it("treats a stale service — answering without `normalized` — as a miss, not an answer", async () => {
+    // שירות מגרסה שלפני `full` מתעלם מהדגל ומחזיר תצוגה בלבד. שמירה ממנה
+    // הייתה גרסה בלי SVG קנוני ובלי גאומטריה — חלון הפריסה הזה אמיתי.
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((async () =>
+      Response.json(framePreview(dims, svg("0 0 44 8")))) as unknown as typeof fetch);
+    process.env.VECTORIZER_URL = "https://vec.example.com";
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const out = await frameFull(dims, svg("0 0 44 8"));
+    expect(out.normalized?.canonicalSvg).toContain("<svg");
+    expect(err).toHaveBeenCalledWith(
+      expect.stringContaining("geometry service failed (full)"), expect.any(String),
+    );
+    fetchSpy.mockRestore();
     err.mockRestore();
   });
 });

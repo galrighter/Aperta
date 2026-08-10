@@ -3,7 +3,8 @@ import { handleRouteError, ApiError } from "@/lib/api";
 import { getJob, claimJobDone, failJob, JOB_STALE_MS } from "@/lib/db/jobs";
 import { versionForGeneration, getDesign } from "@/lib/db/designs";
 import { mayHaveFinished, resultFromVersion, isFirstVersion } from "@/lib/jobRecovery";
-import { completeFromContext, type JobContext } from "@/lib/runs/complete";
+import { canRerun, completeFromContext, rerunFromContext, type JobContext } from "@/lib/runs/complete";
+import { RERUN_MAX_AGE_MS } from "@/lib/runs/sweep";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { alertStalledJob } from "@/lib/alerts/failures";
@@ -16,6 +17,9 @@ import type { DesignRow } from "@/lib/db/designs";
 // לא יודע שמשהו השתנה — רק שהיא כבר לא תלויה בכך שחיבור אחד שרד דקה וחצי.
 
 type Params = { params: Promise<{ jobId: string }> };
+
+// ההתאוששות יכולה לכלול רנדר מחדש (~30-60 שניות) נוסף על מסגור ושמירה.
+export const maxDuration = 300;
 
 export async function GET(req: Request, { params }: Params) {
   try {
@@ -92,23 +96,46 @@ export async function GET(req: Request, { params }: Params) {
     // מותנית ב-`running`, אבל בזבוז.
     const stalled = Date.now() - new Date(job.updated_at).getTime() > JOB_STALE_MS;
     if (stalled && job.design_id && job.run_id && job.context) {
-      const outcome = await completeFromContext(jobId, job.run_id, job.context as JobContext);
+      const ctx = job.context as JobContext;
+      const outcome = await completeFromContext(jobId, job.run_id, ctx);
       if (outcome.kind === "done") return NextResponse.json({ status: "done", result: outcome.result });
       if (outcome.kind === "rejected") {
         const error = { code: "vectorize_failed", message: `Vectorizer did not approve any panel: ${outcome.status}` };
         await failJob(jobId, job.run_id, error);
         return NextResponse.json({ status: "error", error });
       }
-      // "אבודה" נופלת להכרזת התקיעה למטה — זו בדיוק המשמעות שלה.
+
+      // הקופסה שכחה את ההרצה. אותו סולם בדיוק כמו הסריקה — כי למה לחכות לה:
+      // מי שמסתכל עכשיו הוא בדיוק הלקוח שמחכה לתשובה, ורנדר מחדש (בגבולות
+      // הנאמנות והגיל של הסריקה) מחזיר לו את מה ששילם עליו במקום "נכשל".
+      // הלקוח מושך סדרתית — משיכה אחת בכל רגע — ולכן אין כאן רנדר-מחדש כפול;
+      // שני מכשירים על אותה הרצה ייפגשו באותו מזהה קופסה ובסגירה מותנית.
+      if (outcome.kind === "lost") {
+        const age = Date.now() - new Date(job.created_at).getTime();
+        if (age <= RERUN_MAX_AGE_MS && canRerun(ctx)) {
+          const again = await rerunFromContext(jobId, job.run_id, ctx);
+          if (again.kind === "done") return NextResponse.json({ status: "done", result: again.result });
+          if (again.kind === "rejected") {
+            const error = { code: "vectorize_failed", message: `Vectorizer did not approve any panel: ${again.status}` };
+            await failJob(jobId, job.run_id, error);
+            return NextResponse.json({ status: "error", error });
+          }
+        }
+        // אי אפשר לרנדר מחדש (רפרנס שאבד, ישן מדי) או שגם הרנדר החוזר לא
+        // הניב — ההרצה אבודה באמת. נסגרת סופית, כמו בסריקה, כדי שאף קורא
+        // הבא לא ינסה שוב לנצח.
+        await failJob(jobId, job.run_id, { code: "job_stalled", message: "Generation stopped responding" });
+      }
     }
 
     // ה-isolate שהריץ את העבודה יכול למות בלי לכתוב כלום, ואז השורה נשארת
     // 'running' לנצח. עדיף להודות בכישלון מאשר להשאיר את הלקוחה מול ספינר
     // שלא ייגמר — היא יכולה לנסות שוב.
     if (stalled) {
-      // הרגע שבו "תקוע" הפסיק להיות ניחוש: מישהו הסתכל, וההתאוששות לא סגרה.
-      // המייל יוצא מיד, עם קישור להרצת הסריקה — במקום לחכות ל-cron שמזגזג.
-      // פעם אחת להרצה; לעולם לא מפיל את התשובה ללקוחה.
+      // לכאן מגיעים רק אחרי שהמערכת ניסתה הכול בעצמה — השלמה, ואם מותר גם
+      // רנדר מחדש. המייל אינו בקשת פעולה אלא ידיעה: לקוח שילם בהמתנה וקיבל
+      // כישלון, וזה משהו שצריך לדעת עליו. פעם אחת להרצה; לעולם לא מפיל את
+      // התשובה ללקוח.
       await alertStalledJob({ jobId, designRef: design ? designSampleCode(design) : null });
       return NextResponse.json({
         status: "error",

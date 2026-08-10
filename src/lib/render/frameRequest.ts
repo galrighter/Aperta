@@ -1,5 +1,8 @@
-import { framePreview, type BridgePlan } from "@/lib/geometry/frameCutouts";
+import {
+  frameCutoutsDims, framePreview, type BridgePlan, type FramedPreview,
+} from "@/lib/geometry/frameCutouts";
 import type { DesignDims } from "@/lib/geometry/validate";
+import type { MultiPolygon } from "@/lib/geometry/types";
 
 // המסגור כשירות — הבקשה, התשובה, וההחלטה מה עונים על מה.
 //
@@ -19,6 +22,34 @@ export interface FrameRequest {
   /** הגשרים שנחתכו בכיתוב, כדי שאי שחזר מנותק ייגשר ולא יימחק. אופציונלי:
    *  הרצה בלי כיתוב לא שולחת אותו, וכל אי מטופל כאי בעיטור. */
   plan?: BridgePlan;
+  /**
+   * מסגור **מלא** — למועמד הזוכה, בדרך לשמירת גרסה. מחזיר גם את מה שהשמירה
+   * צריכה: ה-SVG הקנוני ואיחוד החיתוכים. עד 10.8 החלק הזה רץ בתוך ה-isolate
+   * של האתר (ingestCutouts), והוא היה ההקצאה שהרגה הרצות בשלב saving —
+   * "died during saving" בלי שנכתבה שגיאה. עכשיו גם הוא רץ כאן.
+   */
+  full?: boolean;
+}
+
+/**
+ * תשובת המסגור המלא. `normalized` מצומצם בכוונה למה שחוצה את החוט: השמירה
+ * צריכה את ה-SVG הקנוני ואת איחוד החיתוכים — לא את הפוליגונים של כל cutout
+ * בנפרד. הגרף נשאר ומת בצד שממסגר; זה כל העניין.
+ */
+export interface FramedFull extends FramedPreview {
+  normalized: { canonicalSvg: string; cutUnion: MultiPolygon } | null;
+}
+
+/** מסגור מלא, מקומית — וההצרה לצורת החוט. הקצוות והנפילה-לאחור קוראים לאותה
+ *  פונקציה, כדי שהתשובה זהה מכל מסלול. */
+export function frameFullLocal(dims: DesignDims, cutoutsSvg: string, plan: BridgePlan = {}): FramedFull {
+  const { normalized, ...preview } = frameCutoutsDims(dims, cutoutsSvg, plan);
+  return {
+    ...preview,
+    normalized: normalized
+      ? { canonicalSvg: normalized.canonicalSvg, cutUnion: normalized.cutUnion }
+      : null,
+  };
 }
 
 /** תשובה בלי תלות בפרוטוקול. כל קצה עוטף אותה במה שהוא יודע להחזיר. */
@@ -37,8 +68,12 @@ export function handleFrame(body: FrameRequest | null | undefined): FrameAnswer 
   }
 
   try {
-    // גרף הפוליגונים נשאר בתהליך שממסגר ומת עם הבקשה. חוזר רק מה שהמסך צריך.
-    return { status: 200, body: framePreview(body.dims, body.cutoutsSvg, body.plan ?? {}) };
+    // גרף הפוליגונים נשאר בתהליך שממסגר ומת עם הבקשה. חוזר רק מה שהקורא צריך:
+    // תצוגה למועמדים, ותצוגה + קנוני + איחוד לזוכה שנשמר.
+    const answer = body.full
+      ? frameFullLocal(body.dims, body.cutoutsSvg, body.plan ?? {})
+      : framePreview(body.dims, body.cutoutsSvg, body.plan ?? {});
+    return { status: 200, body: answer };
   } catch (e) {
     // מסגור שנכשל הוא לא קריסה של השירות: הקורא נופל למסלול הבא.
     return { status: 500, body: { error: `frame failed: ${(e as Error).message}` } };
