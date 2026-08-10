@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { notifyMail, orderAckMail, type InquiryMail } from "../mailTemplates";
+import {
+  feedbackAckMail, feedbackNotifyMail, notifyMail, orderAckMail, type InquiryMail,
+} from "../mailTemplates";
 
 const ORDER: InquiryMail = {
   kind: "order",
@@ -49,6 +51,44 @@ describe("אישור ללקוחה", () => {
     const mail = orderAckMail({ ...ORDER, orderRef: null });
     expect(mail.subject).not.toContain("undefined");
     expect(mail.text).not.toContain("null");
+  });
+});
+
+describe("משוב על תקלה חוזרת", () => {
+  const FB = {
+    name: "דנה",
+    email: "dana@example.com",
+    designRef: "AP-0054",
+    errorShown: "משהו השתבש. נסו שוב. · internal · 500",
+    message: "ניסיתי צמיד עם עלים ופעמיים נכשל",
+  };
+
+  it("ההתראה לגל נושאת את השגיאה שהוצגה — הראיה שצילום מסך לא נותן", () => {
+    const mail = feedbackNotifyMail(FB);
+    expect(mail.subject).toContain("דנה");
+    expect(mail.text).toContain("internal · 500");
+    expect(mail.text).toContain("AP-0054");
+    expect(mail.text).toContain(FB.message);
+  });
+
+  it("משוב בלי טקסט אינו נראה כשדה שנשבר", () => {
+    const mail = feedbackNotifyMail({ ...FB, message: "" });
+    expect(mail.text).not.toContain("undefined");
+    expect(mail.text).toContain("נשלח בלי טקסט");
+  });
+
+  it("האישור למשתמש נושא את קישור ההמשך — הדרך חזרה לעיצוב", () => {
+    const url = "https://aperta-designs.com/design?resume=abc";
+    const mail = feedbackAckMail({ name: "דנה", code: "AP-0054", url });
+    expect(mail.text).toContain(url);
+    expect(mail.html).toContain(url);
+    expect(mail.subject).toContain("AP-0054");
+  });
+
+  it("עובד גם כשהכשל קרה לפני שנוצר עיצוב — בלי מספר, עם קישור למשפך", () => {
+    const mail = feedbackAckMail({ name: "דנה", code: null, url: "https://aperta-designs.com/design" });
+    expect(mail.subject).not.toContain("null");
+    expect(mail.text).toContain("https://aperta-designs.com/design");
   });
 });
 
