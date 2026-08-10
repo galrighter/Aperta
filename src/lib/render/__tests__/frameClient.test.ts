@@ -70,6 +70,27 @@ describe("frameCandidates", () => {
     const [got] = await frameCandidates(dims, [svg("0 0 44 8")]);
     expect(got).toEqual(framePreview(dims, svg("0 0 44 8")));
   });
+
+  // קשת — rescaleCutoutsSvg מסרב לה, והמסגור המקומי זורק עליה. עד עכשיו מועמד
+  // אחד כזה הפיל את היצירה כולה ב-internal, כולל המועמדים שהיו נחתכים מצוין.
+  const arc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"><g id="cutouts">` +
+    `<path d="M0 0A5 5 0 0 1 10 4Z"/></g></svg>`;
+
+  it("drops the candidate local framing cannot handle, keeping the rest", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await frameCandidates(dims, [arc, svg("0 0 44 8")]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toEqual(framePreview(dims, svg("0 0 44 8")));
+    // הזריקה חייבת להישמע — מועמד שנעלם בשקט נראה כמו "המודל צייר פחות".
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("local framing failed"), expect.any(String));
+    err.mockRestore();
+  });
+
+  it("still fails the generation when no candidate survives framing", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(frameCandidates(dims, [arc])).rejects.toThrow();
+    err.mockRestore();
+  });
 });
 
 describe("the framing worker", () => {

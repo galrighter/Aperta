@@ -70,6 +70,13 @@ export function BriefScreen({
     <section className="mx-auto max-w-[1100px] px-5 py-14 sm:px-10">
       <Eyebrow>{d.briefEyebrow}</Eyebrow>
       <ScreenTitle>{d.briefTitle}</ScreenTitle>
+      {/* נפתח עיצוב שהיצירה שלו לא הושלמה. בלי המשפט הזה הנחיתה כאן נראית
+          כמו "העיצוב נעלם" — אין תוצאה, אין הסבר, רק טופס. */}
+      {s.resumeIncomplete && (
+        <div className="mb-8 border border-lapis/30 bg-lapis/[0.06] px-5 py-4 text-[14px] leading-relaxed text-graphite" style={{ textWrap: "pretty" }}>
+          {d.briefResumedIncomplete}
+        </div>
+      )}
       <p className="mb-10 max-w-[560px] text-[17px] text-ink60">{d.briefSubtitle}</p>
 
       <div className="grid items-start gap-9 md:grid-cols-[1.15fr_1fr]">

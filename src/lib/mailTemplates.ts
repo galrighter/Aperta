@@ -138,6 +138,89 @@ export function designReadyMail(input: {
 }
 
 /**
+ * משוב על תקלה חוזרת ביצירה — ההתראה לגל.
+ *
+ * נשלח רק כשמשתמש **בחר** לספר: כל כשל ממילא נכתב ליומן ההרצות, ומייל על כל
+ * כשל היה רעש. מה שהמייל הזה מוסיף על היומן הוא שאדם אמיתי נתקע פעמיים ברצף
+ * וטרח לדווח — כלומר זה קורה עכשיו, למישהו, בדרך להזמנה.
+ */
+export function feedbackNotifyMail(input: {
+  name: string;
+  email: string;
+  /** `AP-0054` — העיצוב שנכשל, כשידוע. */
+  designRef: string | null;
+  /** ההודעה + המזהה הטכני כפי שהוצגו על המסך — הראיה שמצילום מסך היה חסר. */
+  errorShown: string;
+  /** מה שהמשתמש כתב, אם כתב. */
+  message: string;
+}): { subject: string; text: string } {
+  return {
+    subject: `${m.feedbackNotifySubject} — ${input.name}`,
+    text: [
+      m.feedbackNotifyIntro,
+      "",
+      `${m.notifyFrom}: ${input.name}`,
+      `${m.notifyEmail}: ${input.email}`,
+      input.designRef ? `${m.feedbackDesign}: ${input.designRef}` : null,
+      `${m.feedbackError}: ${input.errorShown}`,
+      "",
+      `${m.feedbackUserSaid}:`,
+      input.message || m.feedbackUserSaidEmpty,
+      "",
+      `${m.notifyAdminHint} ${SITE.url}/admin/runs`,
+    ]
+      .filter((line): line is string => line !== null)
+      .join("\n"),
+  };
+}
+
+/**
+ * האישור למי ששלח משוב על תקלה.
+ *
+ * שני דברים חייבים לצאת ממנו: שהדיווח התקבל ומישהו בודק, ושדרך חזרה לעיצוב
+ * קיימת ולא אבדה — הקישור פותח את העיצוב בדיוק בנקודה שבה היצירה נכשלה.
+ */
+export function feedbackAckMail(input: {
+  name: string;
+  /** `AP-0054` — כשיש עיצוב שנוצר. הכשל יכול לקרות גם לפני שנוצרה רשומה. */
+  code: string | null;
+  /** הקישור שממשיך את העיצוב מאותה נקודה. */
+  url: string;
+}): { subject: string; text: string; html: string } {
+  const ref = input.code ? ` ${input.code}` : "";
+  const subject = `${he.site.brand} — ${m.feedbackAckSubject}${ref}`;
+
+  const text = [
+    `${m.feedbackAckHello} ${input.name},`,
+    "",
+    m.feedbackAckIntro,
+    "",
+    input.code ? `${m.feedbackAckRef}: ${input.code}` : null,
+    `${m.feedbackAckCta} ${input.url}`,
+    "",
+    m.feedbackAckNote,
+    "",
+    m.readySignature,
+    SITE.url,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  const html = mailShell(
+    [
+      paragraph(`${m.feedbackAckHello} ${input.name},`),
+      paragraph(m.feedbackAckIntro),
+      input.code ? refLine(m.feedbackAckRef, input.code) : "",
+      // הנקודתיים נועדו לשורת הטקסט ("... : https://..."); על כפתור הן שגיאת ניסוח.
+      button(m.feedbackAckCta.replace(/[:\s]+$/, ""), input.url),
+      note(m.feedbackAckNote),
+    ].join(""),
+  );
+
+  return { subject, text, html };
+}
+
+/**
  * התראת תקציב שנגמר אצל ספק התמונות.
  *
  * הכותרת אומרת את המסקנה ולא את הסימפטום: מי שקורא אותה בטלפון צריך לדעת

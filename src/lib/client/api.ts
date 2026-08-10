@@ -370,6 +370,21 @@ export const api = {
       body: JSON.stringify(dims),
     }),
 
+  /**
+   * משוב על תקלה חוזרת ביצירה — נשלח ממסך השגיאה, אחרי ש"נסו שוב" נכשל גם
+   * הוא. `mailed` אומר אם מייל האישור באמת יצא: המסך מבטיח מייל רק כשיש אחד.
+   */
+  feedback: (input: {
+    designId?: string;
+    message?: string;
+    errorMessage?: string;
+    errorDetail?: string;
+  }) =>
+    call<{ ok: true; id: string; mailed: boolean }>("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
   /** הצילום הציבורי של שיתוף — מה שהמסע צריך כדי לפתוח במידות הנכונות. */
   share: (token: string) =>
     call<{
