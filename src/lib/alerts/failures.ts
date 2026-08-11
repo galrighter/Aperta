@@ -2,6 +2,7 @@ import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { failureSpikeMail, stalledJobMail } from "@/lib/mailTemplates";
 import { countErrorRunsSince } from "@/lib/db/runs";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
+import { wakeDutyAgent, dutyConfigured } from "./duty";
 
 // התראות על יצירה ששבורה עכשיו — כדי שגל יידע מהמערכת, לא מלקוח מתוסכל.
 //
@@ -39,7 +40,9 @@ export interface FailureAlertContext {
  */
 export async function alertUnexpectedFailure(err: unknown, ctx: FailureAlertContext): Promise<void> {
   try {
-    if (!mailConfigured()) return;
+    // שני היעדים חולקים את אותם שערים (דפוס + ויסות): מייל לגל, והערת התורן
+    // האוטומטי. כשאף אחד מהם לא מוגדר אין למי להתריע — ואין טעם לשאול את המסד.
+    if (!mailConfigured() && !dutyConfigured()) return;
 
     const since = new Date(Date.now() - SPIKE_WINDOW_MINUTES * 60_000).toISOString();
     // הכשל הנוכחי כבר נרשם ליומן (persistRun/markRunError רצים לפניו), ולכן
@@ -53,15 +56,28 @@ export async function alertUnexpectedFailure(err: unknown, ctx: FailureAlertCont
     // `true` = כבר הותרע בחלון הזה. הקריאה גם רושמת את ההתראה הנוכחית.
     if (await tooManyAttempts("alert:genfail", SPIKE_THROTTLE_MS, 1)) return;
 
-    const mail = failureSpikeMail({
-      count: recent,
-      windowMinutes: SPIKE_WINDOW_MINUTES,
-      reason: err instanceof Error ? err.message : String(err ?? ""),
-      runId: ctx.runId,
-      designRef: ctx.designRef ?? null,
-    });
-    const res = await sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text });
-    if (!res.ok) console.error("failure spike mail failed:", res.error);
+    const reason = err instanceof Error ? err.message : String(err ?? "");
+    if (mailConfigured()) {
+      const mail = failureSpikeMail({
+        count: recent,
+        windowMinutes: SPIKE_WINDOW_MINUTES,
+        reason,
+        runId: ctx.runId,
+        designRef: ctx.designRef ?? null,
+      });
+      const res = await sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text });
+      if (!res.ok) console.error("failure spike mail failed:", res.error);
+    }
+
+    // תיאור עובדתי בלבד — הסשן מקבל אותו כקלט לא-אמין (routine-fire-payload)
+    // ומצליב מול Ops status לפי docs/AUTOFIX_ROUTINE.md.
+    await wakeDutyAgent(
+      [
+        `רצף כשלים לא-צפויים ביצירה: ${recent} כשלים ב-${SPIKE_WINDOW_MINUTES} הדקות האחרונות.`,
+        `הרצה אחרונה: ${ctx.runId}${ctx.designRef ? ` (עיצוב ${ctx.designRef})` : ""}.`,
+        `נוסח הכשל: ${reason.slice(0, 300)}`,
+      ].join("\n"),
+    );
   } catch (e) {
     console.error("failure spike alert failed:", (e as Error).message);
   }
@@ -81,12 +97,21 @@ export async function alertStalledJob(input: {
   designRef?: string | null;
 }): Promise<void> {
   try {
-    if (!mailConfigured()) return;
+    if (!mailConfigured() && !dutyConfigured()) return;
     if (await tooManyAttempts(`alert:stall:${input.jobId}`, 24 * 60 * 60_000, 1)) return;
 
-    const mail = stalledJobMail({ jobId: input.jobId, designRef: input.designRef ?? null });
-    const res = await sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text });
-    if (!res.ok) console.error("stalled job mail failed:", res.error);
+    if (mailConfigured()) {
+      const mail = stalledJobMail({ jobId: input.jobId, designRef: input.designRef ?? null });
+      const res = await sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text });
+      if (!res.ok) console.error("stalled job mail failed:", res.error);
+    }
+
+    await wakeDutyAgent(
+      [
+        `הרצת יצירה תקועה: job ${input.jobId}${input.designRef ? ` (עיצוב ${input.designRef})` : ""}.`,
+        "נצפתה running מעבר לסף וההתאוששות-בקריאה לא סגרה אותה.",
+      ].join("\n"),
+    );
   } catch (e) {
     console.error("stalled job alert failed:", (e as Error).message);
   }

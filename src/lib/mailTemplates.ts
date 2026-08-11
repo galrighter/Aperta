@@ -256,6 +256,51 @@ export function quotaAlertMail(input: {
 }
 
 /**
+ * "חזרנו לאוויר" — למי שנתקע ביצירה ונטש, אחרי שהתקלה תוקנה.
+ *
+ * נשלח ידנית בלבד (workflow "Comeback mail", אחרי תצוגה מקדימה): "התקלה
+ * נפתרה" היא הכרזה של אדם. הגוף אומר "תיקנו את התקלה" — מי שנתקע באמצע
+ * יצירה עזב עם הרושם שמשהו אצלו לא עבד, וזה מה שסוגר את הרושם הזה.
+ */
+export function comebackMail(input: {
+  name: string;
+  /** `AP-0102` — העיצוב שנתקע, כשיש לו מספר. */
+  code: string | null;
+  /** הקישור שממשיך בדיוק מהנקודה שבה נעצר. */
+  url: string;
+}): { subject: string; text: string; html: string } {
+  const subject = `${he.site.brand} — ${m.comebackSubject}`;
+
+  const text = [
+    `${m.comebackHello} ${input.name},`,
+    "",
+    m.comebackIntro,
+    "",
+    input.code ? `${m.comebackRef}: ${input.code}` : null,
+    `${m.comebackCta} ${input.url}`,
+    "",
+    m.comebackNote,
+    "",
+    m.readySignature,
+    SITE.url,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+
+  const html = mailShell(
+    [
+      paragraph(`${m.comebackHello} ${input.name},`),
+      paragraph(m.comebackIntro),
+      input.code ? refLine(m.comebackRef, input.code) : "",
+      button(m.comebackCta.replace(/[:\s]+$/, ""), input.url),
+      note(m.comebackNote),
+    ].join(""),
+  );
+
+  return { subject, text, html };
+}
+
+/**
  * הקישור להרצה ידנית של סריקת ההרצות התקועות. ניתן להחלפה בלי פריסה
  * (`SWEEP_WORKFLOW_URL`) — כתובת ריפו אינה דבר שכדאי לחרוט בקוד פעמיים.
  */

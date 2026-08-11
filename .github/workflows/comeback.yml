@@ -1,0 +1,56 @@
+name: Comeback mail
+
+# מייל "חזרנו לאוויר" — למי שנתקע ביצירה ונטש, אחרי שהתקלה תוקנה.
+#
+# מופעל **ידנית בלבד**: "התקלה נפתרה" היא הכרזה של אדם, לא של cron. ההרצה
+# הראשונה תמיד תצוגה מקדימה (send=false) — מי היה מקבל ומי כבר קיבל — ורק
+# הרצה שנייה עם send=true שולחת בפועל. הדדופ בצד השרת: איש לא מקבל את אותו
+# מייל פעמיים על אותו עיצוב, גם אם לוחצים שוב.
+
+on:
+  workflow_dispatch:
+    inputs:
+      send:
+        description: "לשלוח באמת (false = תצוגה מקדימה בלבד)"
+        type: boolean
+        default: false
+      since_hours:
+        description: "כמה שעות אחורה לחפש תקועים"
+        default: "48"
+
+jobs:
+  comeback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find (and optionally mail) stuck-and-gone users
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          SEND: ${{ inputs.send }}
+          SINCE_HOURS: ${{ inputs.since_hours }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set."
+            exit 1
+          fi
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 300 -X POST \
+            -H "authorization: Bearer $ADMIN_TOKEN" \
+            -H "content-type: application/json" \
+            -d "{\"send\":$SEND,\"sinceHours\":$SINCE_HOURS}" \
+            "$SITE_URL/api/admin/comeback")
+          python3 - "$body" "$code" <<'EOF'
+          import json, sys
+          body, code = sys.argv[1], sys.argv[2]
+          if code != "200":
+              print(f"::error::comeback returned HTTP {code}")
+              print(open(body).read()[:600]); sys.exit(1)
+          r = json.load(open(body))
+          print(f"candidates: {len(r['candidates'])}, sent: {r['sent']}")
+          for c in r["candidates"]:
+              mark = "already-sent" if c["alreadySent"] else "would-send"
+              print(f"  [{mark}] {c['name']} <{c['email']}> — {c['code'] or c['designId']} (stuck {c['stuckAt']})")
+          for f in r.get("failures", []):
+              print(f"::warning::send failed: {f}")
+          EOF

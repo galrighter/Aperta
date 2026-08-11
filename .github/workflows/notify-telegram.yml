@@ -1,0 +1,67 @@
+name: Telegram notify
+
+# שליחת הודעה לבוט ההתראות של גל בטלגרם — הערוץ שבו התורן האוטומטי מדווח
+# "מה הייתה התקלה, מה טופל, והאם עכשיו תקין" (docs/AUTOFIX_ROUTINE.md, שלב 8).
+#
+# למה דרך workflow: הטוקן של הבוט חי ב-secrets של הריפו, וסשן הרוטין לא נושא
+# סודות — אותו דפוס כמו "Ops status". כל הודעה שנשלחה מתועדת כריצה.
+#
+# הרצה בלי TELEGRAM_ALERT_CHAT_ID לא שולחת כלום: היא מדפיסה ללוג את מזהי
+# הצ'אטים שהבוט רואה (getUpdates), כדי שאפשר יהיה להעתיק את הנכון ולשמור
+# אותו — פעם אחת — כ-secret או variable בשם TELEGRAM_ALERT_CHAT_ID.
+
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: "תוכן ההודעה"
+        required: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send (or help discover the chat id)
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_ALERT_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID || vars.TELEGRAM_ALERT_CHAT_ID }}
+          TEXT: ${{ inputs.text }}
+        run: |
+          set -euo pipefail
+          if [ -z "$BOT_TOKEN" ]; then
+            echo "::error::TELEGRAM_ALERT_BOT_TOKEN secret is not set."
+            exit 1
+          fi
+          if [ -z "$CHAT_ID" ]; then
+            # מצב גילוי: אין למי לשלוח, אבל אפשר להגיד לאן אפשר היה. עובד רק
+            # אם נשלחה לבוט הודעה לאחרונה (getUpdates שומר ~24 שעות) ואין
+            # webhook מוגדר על הבוט.
+            echo "::error::TELEGRAM_ALERT_CHAT_ID is not set. Chats the bot can currently see:"
+            curl -sS "https://api.telegram.org/bot$BOT_TOKEN/getUpdates" | python3 -c '
+          import json, sys
+          seen = {}
+          for u in json.load(sys.stdin).get("result", []):
+              chat = (u.get("message") or u.get("channel_post") or {}).get("chat")
+              if chat: seen[chat["id"]] = chat.get("title") or chat.get("first_name") or ""
+          if not seen:
+              print("  (none — send the bot a message on Telegram, then re-run)")
+          for cid, name in seen.items():
+              print(f"  chat_id={cid}  ({name})")
+          '
+            echo "Save the right one as a repository secret or variable named TELEGRAM_ALERT_CHAT_ID."
+            exit 1
+          fi
+          # קיצוץ ל-4000 תווים — מגבלת sendMessage היא 4096, והסוף של סיכום
+          # ארוך חשוב פחות מהעובדה שההודעה יצאה.
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 30 \
+            -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$CHAT_ID" \
+            --data-urlencode "text=${TEXT:0:4000}" \
+            --data-urlencode "disable_web_page_preview=true")
+          if [ "$code" != "200" ]; then
+            echo "::error::telegram sendMessage returned HTTP $code"
+            head -c 400 "$body"; echo
+            exit 1
+          fi
+          echo "sent."

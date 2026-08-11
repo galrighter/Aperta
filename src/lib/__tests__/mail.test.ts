@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  failureSpikeMail, feedbackAckMail, feedbackNotifyMail, notifyMail, orderAckMail,
-  stalledJobMail, type InquiryMail,
+  comebackMail, failureSpikeMail, feedbackAckMail, feedbackNotifyMail, notifyMail,
+  orderAckMail, stalledJobMail, type InquiryMail,
 } from "../mailTemplates";
 
 const ORDER: InquiryMail = {
@@ -90,6 +90,23 @@ describe("משוב על תקלה חוזרת", () => {
     const mail = feedbackAckMail({ name: "דנה", code: null, url: "https://aperta-designs.com/design" });
     expect(mail.subject).not.toContain("null");
     expect(mail.text).toContain("https://aperta-designs.com/design");
+  });
+});
+
+describe("חזרנו לאוויר", () => {
+  it("אומר שהתקלה תוקנה ונושא את קישור ההמשך", () => {
+    const url = "https://aperta-designs.com/design?resume=abc";
+    const mail = comebackMail({ name: "דנה", code: "AP-0102", url });
+    expect(mail.text).toContain("תיקנו את התקלה");
+    expect(mail.text).toContain(url);
+    expect(mail.html).toContain(url);
+    expect(mail.text).toContain("AP-0102");
+  });
+
+  it("עובד גם לעיצוב בלי מספר", () => {
+    const mail = comebackMail({ name: "דנה", code: null, url: "https://aperta-designs.com/design" });
+    expect(mail.text).not.toContain("null");
+    expect(mail.subject).toContain("חזרנו לאוויר");
   });
 });
 

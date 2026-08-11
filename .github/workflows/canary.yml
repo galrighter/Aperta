@@ -77,3 +77,21 @@ jobs:
           # ניקוי: עיצובי canary לא נערמים ברשימת הבודק. ההרצה עצמה נשארת
           # ביומן ההרצות — היא התיעוד שהבדיקה רצה.
           curl -sS -b "$jar" -X DELETE "$SITE_URL/api/designs/$design" > /dev/null || true
+
+      # canary אדום מעיר את התורן האוטומטי (docs/AUTOFIX_ROUTINE.md) — בנוסף
+      # למייל הכישלון של GitHub, לא במקומו. בלי הסודות — מדלגים בשקט: התורן
+      # הוא תוספת, והכשל עצמו כבר מדווח.
+      - name: Wake the duty agent on failure
+        if: failure()
+        env:
+          DUTY_API_URL: ${{ secrets.DUTY_API_URL }}
+          DUTI_API_TOKEN: ${{ secrets.DUTI_API_TOKEN }}
+        run: |
+          [ -n "$DUTY_API_URL" ] && [ -n "$DUTI_API_TOKEN" ] || { echo "duty trigger not configured; skipping"; exit 0; }
+          curl -sS -X POST "$DUTY_API_URL" \
+            -H "authorization: Bearer $DUTI_API_TOKEN" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "{\"text\":\"בדיקת ה-canary נכשלה: יצירה סינתטית מלאה לא הסתיימה בגרסה שמורה. ריצה: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}" \
+            || echo "duty wake failed (non-fatal)"
