@@ -177,15 +177,18 @@ export function feedbackNotifyMail(input: {
 /**
  * האישור למי ששלח משוב על תקלה.
  *
- * שני דברים חייבים לצאת ממנו: שהדיווח התקבל ומישהו בודק, ושדרך חזרה לעיצוב
- * קיימת ולא אבדה — הקישור פותח את העיצוב בדיוק בנקודה שבה היצירה נכשלה.
+ * שני דברים חייבים לצאת ממנו: שהדיווח התקבל ומישהו מטפל, ושהעבודה שמורה.
+ *
+ * **בלי קישור חזרה** (הוסר 11.8, החלטת גל): המייל הזה מגיע שניות אחרי
+ * הדיווח — כשהתקלה בוודאות עדיין חיה — וכפתור "חזרה לעיצוב" היה הזמנה
+ * להיכשל שוב. במקומו הבטחה: "כשנתקן — נשלח מייל". את ההבטחה מקיים מייל
+ * "חזרנו לאוויר" (`comebackMail`), שיוצא אחרי תיקון מאומת-canary ונושא
+ * את קישור ההמשך.
  */
 export function feedbackAckMail(input: {
   name: string;
   /** `AP-0054` — כשיש עיצוב שנוצר. הכשל יכול לקרות גם לפני שנוצרה רשומה. */
   code: string | null;
-  /** הקישור שממשיך את העיצוב מאותה נקודה. */
-  url: string;
 }): { subject: string; text: string; html: string } {
   const ref = input.code ? ` ${input.code}` : "";
   const subject = `${he.site.brand} — ${m.feedbackAckSubject}${ref}`;
@@ -196,7 +199,7 @@ export function feedbackAckMail(input: {
     m.feedbackAckIntro,
     "",
     input.code ? `${m.feedbackAckRef}: ${input.code}` : null,
-    `${m.feedbackAckCta} ${input.url}`,
+    m.feedbackAckPromise,
     "",
     m.feedbackAckNote,
     "",
@@ -211,8 +214,7 @@ export function feedbackAckMail(input: {
       paragraph(`${m.feedbackAckHello} ${input.name},`),
       paragraph(m.feedbackAckIntro),
       input.code ? refLine(m.feedbackAckRef, input.code) : "",
-      // הנקודתיים נועדו לשורת הטקסט ("... : https://..."); על כפתור הן שגיאת ניסוח.
-      button(m.feedbackAckCta.replace(/[:\s]+$/, ""), input.url),
+      paragraph(m.feedbackAckPromise),
       note(m.feedbackAckNote),
     ].join(""),
   );

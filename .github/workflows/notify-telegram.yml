@@ -51,13 +51,23 @@ jobs:
             echo "Save the right one as a repository secret or variable named TELEGRAM_ALERT_CHAT_ID."
             exit 1
           fi
-          # קיצוץ ל-4000 תווים — מגבלת sendMessage היא 4096, והסוף של סיכום
-          # ארוך חשוב פחות מהעובדה שההודעה יצאה.
+          # HTML ולא טקסט חשוף: זיהוי הקישורים האוטומטי של טלגרם לא אמין בתוך
+          # טקסט עברי (RTL) — קישור לסשן הגיע לגל לא-לחיץ (11.8). עיגון מפורש
+          # (<a href>) לחיץ תמיד. הטקסט מגיע חופשי מהתורן ולכן מקודד קודם
+          # (escape), ורק אז הקישורים נעטפים.
+          html=$(python3 - <<'PYEOF'
+          import html, os, re
+          text = os.environ["TEXT"][:3500]
+          esc = html.escape(text)
+          print(re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', esc))
+          PYEOF
+          )
           body=$(mktemp)
           code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 30 \
             -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
             --data-urlencode "chat_id=$CHAT_ID" \
-            --data-urlencode "text=${TEXT:0:4000}" \
+            --data-urlencode "text=$html" \
+            --data-urlencode "parse_mode=HTML" \
             --data-urlencode "disable_web_page_preview=true")
           if [ "$code" != "200" ]; then
             echo "::error::telegram sendMessage returned HTTP $code"
