@@ -9,8 +9,9 @@ import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
-import { planRender } from "@/lib/render/panels";
+import { NATURAL_RATIO, planRender } from "@/lib/render/panels";
 import { canvasFor, sizeParam } from "@/lib/render/canvas";
+import { ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
@@ -420,6 +421,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** צורת הקנבס שנשלחה בפועל. בלי זה אי אפשר להעמיד ביומן הרצה בפס
          *  מול הרצה מחוצה לו — ושתיהן נראות זהות בכל שדה אחר. */
         canvasSize: sizeParam(canvas),
+        /**
+         * מה שהוזמן מול מה שהתא שנבחר מסוגל לתת. שניהם ידועים כאן, לפני
+         * שהמודל רץ, ושניהם נשמרים — הפער ביניהם הוא כל מה שהמסגור ייאלץ
+         * למתוח אחר כך. ב-AP-0096: 29.04 מול 8.63.
+         */
+        orderedRatio: Math.round((dims.lengthMm / dims.widthMm) * 100) / 100,
+        plannedRatio: Math.round(NATURAL_RATIO(plan.rows, plan.cols, canvas) * 100) / 100,
         minHoleMm,
         colorKey: "dark",
         imageCount: body.images.length,
@@ -569,6 +577,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           plannedCandidates: plan.candidates,
           deliveredPanels: job.candidates.length,
           attempt: attemptNo,
+          // מה שהמודל **באמת** צייר, מול מה שהוזמן. נגזר מה-SVG שנשמר על
+          // השורה עצמה (`raw.cutouts_svg`, ראה persistRun), כדי שהמספר
+          // והתמונה ביומן יתארו את אותו דבר.
+          ...(ratioGap(job.raw.cutouts_svg as string | undefined, dims) ?? {}),
         },
       });
       persisted = true;

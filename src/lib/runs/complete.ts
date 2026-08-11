@@ -1,6 +1,7 @@
 import { collectRenderJob, runRenderJob, type RenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
+import { ratioGap } from "@/lib/render/ratioGap";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
 import { createSampleDesign, getDesign } from "@/lib/db/designs";
 import { claimJobDone } from "@/lib/db/jobs";
@@ -144,6 +145,10 @@ async function finishFromRender(
     inputs: {
       ...ctx.inputs,
       deliveredPanels: box.candidates.length,
+      // אותו מדד כמו במסלול החי: מה שהוזמן מול מה שהמודל צייר. הרצה שנאספה
+      // מהקופסה אינה שונה בשום דבר שרלוונטי לו, וחור במדידה דווקא בהרצות
+      // שהתאוששו היה מטה את התשובה על "כמה מההרצות נמתחות".
+      ...(ratioGap(box.raw.cutouts_svg as string | undefined, designDims(design)) ?? {}),
       /** הסיום נעשה בלי הבקשה שפתחה. בלי זה אי אפשר להבחין ביומן בין הרצה
        *  שהושלמה כרגיל לבין כזו שנאספה אחרי שהבקשה מתה. */
       completedDetached: true,

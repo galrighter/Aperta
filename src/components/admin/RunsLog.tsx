@@ -10,6 +10,7 @@
 // שני מסכים שמראים את אותו מידע אחרת הם שני מסכים שמתחזקים אחרת. `/debug` נשאר
 // מעבדת ההרצה (להריץ פרומפט או תמונה) ומשתמש באותם רכיבי אבחון.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { STRETCH_ALERT } from "@/lib/render/ratioGap";
 import ExportFiles from "./ExportFiles";
 
 export type Stage ={ name: string; status: string; detail: string };
@@ -48,6 +49,12 @@ export type RunInputs = {
   rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
   /** צורת הקנבס שנשלחה למודל, `"1536x1024"`. חסר בהרצות מלפני התיעוד. */
   canvasSize?: string;
+  /** היחס: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח כדי להגיע
+   *  לאורך שהוזמן. חסרים בהרצות מלפני המדידה — ראה `lib/render/ratioGap`. */
+  orderedRatio?: number;
+  plannedRatio?: number;
+  drawnRatio?: number;
+  stretch?: number;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
   imageDropped?: "lettering" | "edit";
@@ -704,14 +711,47 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
       chips.push(`${planned.length} גשרי כיתוב · עד ${Math.round(worst * 100)}% מהחלל`);
     }
   }
-  if (chips.length === 0) return null;
+  const ratio = ratioChip(inputs);
+  if (chips.length === 0 && !ratio) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {chips.map((c) => (
         <span key={c} className="rounded-[2px] bg-porcelain px-1.5 py-0.5 text-[11px] text-ink60">{c}</span>
       ))}
+      {/* היחס בשורה נפרדת מהשאר בצבע: מתיחה גדולה היא ממצא, לא מאפיין. */}
+      {ratio && (
+        <span
+          className={`rounded-[2px] px-1.5 py-0.5 text-[11px] ${
+            ratio.alert ? "bg-amber-100 text-amber-800" : "bg-porcelain text-ink60"
+          }`}
+        >
+          {ratio.text}
+        </span>
+      )}
     </div>
   );
+}
+
+/**
+ * היחס כתגית אחת: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח.
+ *
+ * מוצג גם כשהמתיחה קטנה — בלי הרקע אי אפשר לדעת אם ×4.2 הוא חריג או השגרה,
+ * וזו השאלה שהמדידה הזו נועדה לענות עליה. מה שמשתנה מעל הסף הוא הצבע.
+ *
+ * `null` בהרצות שנשמרו לפני המדידה: שם אין מה להציג, ותגית ריקה גרועה מכלום.
+ */
+export function ratioChip(
+  inputs: Pick<RunInputs, "orderedRatio" | "plannedRatio" | "drawnRatio" | "stretch">,
+): { text: string; alert: boolean } | null {
+  const { orderedRatio, plannedRatio, drawnRatio, stretch } = inputs;
+  if (orderedRatio == null && drawnRatio == null) return null;
+  const parts = [
+    orderedRatio != null ? `הוזמן ${orderedRatio}:1` : null,
+    plannedRatio != null ? `תוכנן ${plannedRatio}` : null,
+    drawnRatio != null ? `צויר ${drawnRatio}` : null,
+    stretch != null ? `מתיחה ×${stretch}` : null,
+  ].filter(Boolean);
+  return { text: parts.join(" · "), alert: stretch != null && stretch >= STRETCH_ALERT };
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
