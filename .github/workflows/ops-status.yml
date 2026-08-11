@@ -1,0 +1,38 @@
+name: Ops status
+
+# תמונת המצב התפעולית — מודפסת ללוג ה-workflow.
+#
+# למה דרך workflow ולא קריאה ישירה: הסוד (ADMIN_TOKEN) חי כאן, ב-secrets של
+# הריפו, וסשן הרוטין של התורן האוטומטי (docs/AUTOFIX_ROUTINE.md) לא נושא אותו.
+# הרוטין מריץ את זה דרך workflow_dispatch וקורא את ה-JSON מהלוג — כך הסוד
+# נשאר במקום אחד, וכל בדיקת מצב מתועדת כריצה שאפשר לחזור אליה.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and print the ops status
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set."
+            exit 1
+          fi
+          body=$(mktemp)
+          code=$(curl -sS -o "$body" -w '%{http_code}' --max-time 60 \
+            -H "authorization: Bearer $ADMIN_TOKEN" \
+            "$SITE_URL/api/admin/status")
+          if [ "$code" != "200" ]; then
+            echo "::error::status returned HTTP $code"
+            head -c 600 "$body"; echo
+            exit 1
+          fi
+          echo "=== OPS STATUS JSON ==="
+          python3 -m json.tool "$body"
+          echo "=== END OPS STATUS ==="
