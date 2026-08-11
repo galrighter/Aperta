@@ -21,8 +21,20 @@ const RENDER_TIMEOUT_MS = 240_000;
 /** כמה זמן להמתין לתשובה על בקשה *בודדת* אל הקופסה במסלול המוחזק. הפתיחה
  *  והסקירה שתיהן קצרות — העבודה עצמה כבר לא רצה בתוך אף אחת מהן. */
 const CALL_TIMEOUT_MS = 30_000;
-/** כל כמה זמן לשאול את הקופסה מה מצב ההרצה. */
+/**
+ * הסקירה מתחילה צפופה ומתרחבת, במקום קצב קבוע.
+ *
+ * למה: כל סקירה היא תת-בקשה של אותה הפעלת Worker, ו-Cloudflare קוצב תת-בקשות
+ * להפעלה. קצב קבוע של 2ש׳ לאורך עד 240ש׳ הוא עד 120 סקירות — ויצירה איטית
+ * חצתה את המכסה באמצע ונפלה עם "Too many subrequests" (11.8; ההרצות המהירות
+ * עברו, ולכן זה נראה כתקלה לסירוגין). ההתחלה הצפופה שומרת על תגובתיות בהרצות
+ * הקצרות — רובן נגמרות תוך דקה — וההרחבה עד 15ש׳ תוחמת הרצה איטית בכ-11
+ * סקירות במקום 60. המחיר: איחור זיהוי סיום של עד 15ש׳ בזנב של הרצה ארוכה,
+ * זניח מול יצירה שנכשלת.
+ */
 const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MAX_MS = 15_000;
+const POLL_BACKOFF = 1.5;
 
 /**
  * ניסיון חוזר אחד, ורק על כשל שקרה *מיד*. כשל מהיר פירושו שהחיבור לא נוצר כלל
@@ -253,6 +265,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
     }
     const deadline = sentAt + RENDER_TIMEOUT_MS;
     const statusUrl = `${vectorizerUrl()}/api/generate/${encodeURIComponent(boxJobId)}`;
+    let pollDelay = POLL_INTERVAL_MS;
     while (body.state === "running") {
       if (Date.now() >= deadline) {
         throw new ApiError(
@@ -261,7 +274,8 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
           504,
         );
       }
-      await sleep(POLL_INTERVAL_MS);
+      await sleep(pollDelay);
+      pollDelay = Math.min(pollDelay * POLL_BACKOFF, POLL_INTERVAL_MAX_MS);
       // כשל רשת בסקירה אינו כשל של ההרצה — היא ממשיכה על הקופסה. שואלים שוב.
       let poll: Response;
       try {
