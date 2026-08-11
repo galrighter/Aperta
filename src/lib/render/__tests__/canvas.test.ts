@@ -135,12 +135,19 @@ describe("הכללת המתכנן לקנבס", () => {
     expect(planRender({ ratio: 104.4 / 40, widthMm: 40, minHoleMm: 0.5, canvas: PORTRAIT }).rows).toBe(2);
   });
 
-  it("התקרה חלה גם על שורות — פס צר וארוך אינו מחזיר תריסר", () => {
-    // 125×10, יחס 12.5. עד כה `MAX_CANDIDATES` נאכף רק בלולאת העמודות: לרוחב
-    // זה נתן 6 (במקרה בדיוק על הגבול), ולאורך 12.
+  it("פס צר וארוך מייצר לפי היחס ומציע שישה", () => {
+    // 125×10, יחס 12.5. עד 11.8 `MAX_CANDIDATES` חתך כאן את השורות עצמן, כלומר
+    // את צורת התא — והתא הוא הידית היחידה על היחס שהמודל מצייר. עכשיו הוא חל
+    // על התצוגה בלבד: מייצרים מה שהיחס דורש (בגבול תקציב הפיקסלים), ומציעים
+    // עד שישה.
     const input = { ratio: 12.5, widthMm: 10, minHoleMm: 0.5 };
-    expect(planRender({ ...input, canvas: LANDSCAPE }).candidates).toBeLessThanOrEqual(6);
-    expect(planRender({ ...input, canvas: PORTRAIT }).candidates).toBeLessThanOrEqual(6);
+    for (const canvas of [LANDSCAPE, PORTRAIT]) {
+      const p = planRender({ ...input, canvas });
+      expect(p.offered).toBeLessThanOrEqual(6);
+      expect(p.offered).toBe(Math.min(p.candidates, 6));
+      // מה שכן חוסם את הייצור הוא הרזולוציה, ולא מספר החלופות שמציגים.
+      expect(p.rows).toBeLessThanOrEqual(maxRows(10, 0.5, canvas));
+    }
   });
 
   /* ===== הסטייה המותרת ביחס (RATIO_SLACK) =====
@@ -190,10 +197,11 @@ describe("הכללת המתכנן לקנבס", () => {
     });
 
     it("התקרות עדיין חוסמות — הסטייה אינה רשות לפרוץ אותן", () => {
-      // פס צר מאוד: היחס מרשה עוד ועוד שורות, MAX_CANDIDATES עוצר ב-6.
+      // פס צר מאוד: היחס מרשה עוד ועוד שורות, ותקציב הפיקסלים עוצר. מ-11.8 זו
+      // התקרה היחידה על הייצור — `MAX_CANDIDATES` עבר לתצוגה.
       const p = planRender({ ratio: 20, widthMm: 8, minHoleMm: 0.5, canvas: PORTRAIT });
-      expect(p.candidates).toBeLessThanOrEqual(6);
       expect(p.rows).toBeLessThanOrEqual(maxRows(8, 0.5, PORTRAIT));
+      expect(p.offered).toBeLessThanOrEqual(6);
     });
   });
 

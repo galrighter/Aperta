@@ -9,8 +9,9 @@ import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
-import { planRender } from "@/lib/render/panels";
+import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
 import { canvasFor, sizeParam } from "@/lib/render/canvas";
+import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
 import { runRenderJob } from "@/lib/render/service";
@@ -363,8 +364,16 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       : undefined;
     // עקיפת הכיול נוגעת בשורות בלבד; העמודות נשארות 1 כדי שהניסוי יהיה על
     // משתנה אחד — ומספר החלופות שווה למספר השורות, כמו לפני שהיו עמודות.
-    const plan = body.rowsOverride
-      ? { rows: body.rowsOverride, cols: 1, calls: 1 as const, candidates: body.rowsOverride, canvas }
+    const plan: RenderPlan = body.rowsOverride
+      ? {
+          rows: body.rowsOverride,
+          cols: 1,
+          calls: 1 as const,
+          candidates: body.rowsOverride,
+          // גם מהמעבדה: מייצרים כמה שביקשו, ומציעים את מה שהמסך מציג.
+          offered: Math.min(body.rowsOverride, MAX_CANDIDATES),
+          canvas,
+        }
       : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
@@ -420,6 +429,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** צורת הקנבס שנשלחה בפועל. בלי זה אי אפשר להעמיד ביומן הרצה בפס
          *  מול הרצה מחוצה לו — ושתיהן נראות זהות בכל שדה אחר. */
         canvasSize: sizeParam(canvas),
+        /**
+         * מה שהוזמן מול מה שהתא שנבחר מסוגל לתת. שניהם ידועים כאן, לפני
+         * שהמודל רץ, ושניהם נשמרים — הפער ביניהם הוא כל מה שהמסגור ייאלץ
+         * למתוח אחר כך. ב-AP-0096: 29.04 מול 8.63.
+         */
+        orderedRatio: Math.round((dims.lengthMm / dims.widthMm) * 100) / 100,
+        plannedRatio: Math.round(NATURAL_RATIO(plan.rows, plan.cols, canvas) * 100) / 100,
         minHoleMm,
         colorKey: "dark",
         imageCount: body.images.length,
@@ -568,7 +584,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           // השניים אומר שהמודל לא צייר את הרשת שהתבקשה.
           plannedCandidates: plan.candidates,
           deliveredPanels: job.candidates.length,
+          offeredPanels: plan.offered,
           attempt: attemptNo,
+          // מה שהמודל **באמת** צייר, מול מה שהוזמן. נגזר מה-SVG שנשמר על
+          // השורה עצמה (`raw.cutouts_svg`, ראה persistRun), כדי שהמספר
+          // והתמונה ביומן יתארו את אותו דבר.
+          ...(ratioGap(job.raw.cutouts_svg as string | undefined, dims) ?? {}),
         },
       });
       persisted = true;
@@ -587,7 +608,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // לא ההחזקה שלו. מכאן ה-isolate של האתר ממסגר פעם אחת בלבד — את הזוכה,
       // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
       const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
-      const framed = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!), bridgePlan))
+      // מייצרים לפי היחס, מציגים עד `offered` (11.8). כשהתמונה נחתכה ליותר
+      // פסים ממה שמציגים, הנבחרים הם הקרובים ביותר ליחס שהוזמן — כלומר אלה
+      // שיצטרכו את המתיחה הקטנה ביותר. הבחירה על ה-viewBox בלבד, לפני המסגור:
+      // מסגור של עשרים־וחמישה מועמדים הוא בדיוק ההקצאה שהוצאה מה-isolate.
+      const shortlist = pickClosestRatio(approved, (c) => c.cutoutsSvg, dims, plan.offered);
+      const framed = (await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan))
         .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
       return { job, renderPngPath, framed };
     };
