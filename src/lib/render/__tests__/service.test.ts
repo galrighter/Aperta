@@ -41,7 +41,7 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-let calls: Array<{ url: string; method: string; body?: unknown }>;
+let calls: Array<{ url: string; method: string; body?: unknown; headers?: Record<string, string> }>;
 
 beforeEach(() => {
   calls = [];
@@ -88,6 +88,7 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response | Prom
       url,
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(init.body as string) : undefined,
+      headers: init?.headers as Record<string, string> | undefined,
     });
     return Promise.resolve(handler(url, init));
   });
@@ -226,6 +227,21 @@ describe("המסלול המוחזק", () => {
     const err = await withFakeClock(() => runRenderJob(input({ jobId: JOB })).catch((e) => e));
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).code).toBe("render_lost");
+  });
+
+  it("חותמת את הבקשה בטוקן מ-VECTORIZER_TOKEN — השם שתחתיו הסוד מוגדר בפריסה (deploy.yml)", async () => {
+    // 11.8: שינוי שם המשתנה ל-VECTORIZER_API_TOKEN (שאף סוד לא מוגדר תחתיו)
+    // השאיר את הבקשה בלי כותרת authorization — הקופסה דחתה כל יצירה ב-401.
+    const prev = process.env.VECTORIZER_TOKEN;
+    process.env.VECTORIZER_TOKEN = "s3cret";
+    try {
+      stubFetch(() => json(RESULT, 200));
+      await withFakeClock(() => runRenderJob(input()));
+      expect(calls[0]!.headers?.authorization).toBe("Bearer s3cret");
+    } finally {
+      if (prev === undefined) delete process.env.VECTORIZER_TOKEN;
+      else process.env.VECTORIZER_TOKEN = prev;
+    }
   });
 
   it("אותה בקשה מקבלת אותו מזהה, בקשה שהשתנתה לא", async () => {
