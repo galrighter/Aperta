@@ -17,8 +17,7 @@ name: Canary generation
 
 on:
   schedule:
-    # כל שעתיים, בדקה 23 — הרחק מעומס ה-cron של תחילת שעה עגולה.
-    - cron: "23 */2 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:

@@ -173,7 +173,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
   }
 
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (process.env.VECTORIZER_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_TOKEN}`;
+  if (process.env.VECTORIZER_API_TOKEN) headers.authorization = `Bearer ${process.env.VECTORIZER_API_TOKEN}`;
 
   const request = {
     prompt: input.prompt,
