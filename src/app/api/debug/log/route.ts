@@ -6,7 +6,7 @@ import {
   type RunStagePaths, type RunStatusFilter,
 } from "@/lib/db/runs";
 import { designCode } from "@/lib/designCode";
-import { listRecentJobs } from "@/lib/db/jobs";
+import { jobFailuresForRuns, listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 import { decodeRunCursor, encodeRunCursor, legacyRunCursor } from "@/lib/runs/cursor";
 
@@ -108,6 +108,10 @@ export async function GET(req: Request) {
     // הגרסה של כל הרצה — מה שהכפתור בשורה צריך כדי למשוך קובץ ייצור בלי
     // לפתוח את הפירוט. שאילתה אחת לעמוד, כמו הבעלים.
     const versions = await versionsForRuns(rows.map((r) => r.id));
+    // והכשל של הבקשה שמאחורי כל הרצה. שורת ההרצה נכתבת באמצע הצינור, וכל מה
+    // שנכשל אחריה נרשם על ה-job בלבד — ולכן הרצה יכולה להיראות "approved · אין
+    // שגיאה" בזמן שהלקוחה לא קיבלה דבר. ראו `jobFailuresForRuns`.
+    const jobFailures = await jobFailuresForRuns(rows.map((r) => r.id));
 
     const items = rows.map((r) => {
       const stages = (r.stage_paths ?? {}) as RunStagePaths;
@@ -121,6 +125,12 @@ export async function GET(req: Request) {
         colorKey: r.color_key,
         status: r.status,
         error: r.error,
+        /**
+         * הכשל של בקשת היצירה שההרצה הזו שייכת לה — מה שנרשם על ה-job ולא על
+         * שורת ההרצה. זה מה שהופך "approved · אין שגיאה" על הרצה שלא הולידה
+         * דבר לשורה שאומרת מה קרה בפועל.
+         */
+        jobError: jobFailures.get(r.id) ?? null,
         durationMs: r.duration_ms,
         renderModel: r.render_model,
         renderUrl: r.render_path ? image("render") : null,

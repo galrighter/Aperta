@@ -203,6 +203,58 @@ export async function listStalledJobs(limit = 20): Promise<GenerationJobRow[]> {
   return (data ?? []) as GenerationJobRow[];
 }
 
+/** הכשל שנרשם על בקשת היצירה של הרצה, כפי שהיומן צריך להציג אותו. */
+export interface RunJobFailure extends JobError {
+  /** מצב הבקשה עצמה — כדי להבדיל בין "נכשלה" לבין "עדיין רצה". */
+  status: JobStatus;
+}
+
+/**
+ * הכשל של בקשת היצירה מאחורי כל הרצה בעמוד, בשאילתה אחת.
+ *
+ * **למה זה נדרש.** שורת ההרצה נכתבת באמצע הצינור, עם הפסיקה של הווקטורייזר —
+ * ומה שנכשל *אחריה* (מסגור, ולידציה, שמירת הגרסה) נרשם על שורת ה-job בלבד.
+ * שלוש דרכים מגיעות לשם ואף אחת מהן לא נוגעת בהרצה: `failJob` במסלול המשיכה,
+ * בסריקה, ו-`markRunError` שדילג במכוון על `ApiError`/`LlmError`. התוצאה
+ * נמדדה על AP-0096 — שלוש הרצות עם סטטוס "approved" ובלי שגיאה, שאף אחת מהן
+ * לא הולידה גרסה, והלקוחה לא קיבלה כלום. הכשל האמיתי
+ * (`rescaleCutoutsSvg: unsupported path command "C"`) ישב על ה-job והיומן
+ * מעולם לא הראה אותו.
+ *
+ * `run_id` של ה-job הוא **מזהה ההרצה הראשונה** של אותה בקשה, ולכן ניסיון שני
+ * (`attempt: 2`) לא נושא את הכשל בעצמו — הוא מוצג על השורה שהבקשה הצביעה
+ * עליה. best-effort, כמו `versionsForRuns`: כשל כאן משאיר יומן בלי השורה
+ * הנוספת, ולא יומן בלי שורות.
+ */
+export async function jobFailuresForRuns(runIds: string[]): Promise<Map<string, RunJobFailure>> {
+  const ids = [...new Set(runIds.filter(Boolean))];
+  const out = new Map<string, RunJobFailure>();
+  if (ids.length === 0) return out;
+  try {
+    const { data, error } = await supabaseAdmin()
+      .from("generation_jobs")
+      .select("run_id, status, error")
+      .in("run_id", ids)
+      .not("error", "is", null);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as Array<{
+      run_id: string | null;
+      status: JobStatus;
+      error: JobError | null;
+    }>) {
+      if (!row.run_id || !row.error?.message || out.has(row.run_id)) continue;
+      out.set(row.run_id, {
+        code: row.error.code,
+        message: row.error.message,
+        status: row.status,
+      });
+    }
+  } catch (e) {
+    console.error("run job failure lookup failed:", (e as Error).message);
+  }
+  return out;
+}
+
 export async function getJob(id: string): Promise<GenerationJobRow | null> {
   const sb = supabaseAdmin();
   const { data, error } = await sb.from("generation_jobs").select("*").eq("id", id).maybeSingle();
