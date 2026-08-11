@@ -94,10 +94,10 @@ describe("משוב על תקלה חוזרת", () => {
 });
 
 describe("חזרנו לאוויר", () => {
-  it("לוקח אחריות ונושא את קישור ההמשך", () => {
+  it("אומר שהתקלה תוקנה ונושא את קישור ההמשך", () => {
     const url = "https://aperta-designs.com/design?resume=abc";
     const mail = comebackMail({ name: "דנה", code: "AP-0102", url });
-    expect(mail.text).toContain("התקלה הייתה אצלנו");
+    expect(mail.text).toContain("תיקנו את התקלה");
     expect(mail.text).toContain(url);
     expect(mail.html).toContain(url);
     expect(mail.text).toContain("AP-0102");
