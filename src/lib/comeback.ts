@@ -68,9 +68,25 @@ export async function findComebackCandidates(sinceIso: string): Promise<Comeback
   const rows = (stuck ?? []) as StuckDesignRow[];
   if (!rows.length) return [];
 
+  // רק עיצובים שנתקעו על **תקלה** — יש להם הרצת `error` ביומן — ולא על דחייה
+  // של הצינור. עיצוב בלי גרסה יכול להיווצר גם כשהמודל פשוט צייר גרוע וכל
+  // המועמדים נדחו; "תיקנו את התקלה" למי ששום תקלה לא פגעה בו הוא שקר, והוא
+  // גם מזמין לניסיון שייכשל שוב באותה צורה (11.8, אחרי תרגיל התורן).
+  const { data: errored, error: errErr } = await sb
+    .from("generation_runs")
+    .select("design_id")
+    .in("design_id", rows.map((d) => d.id))
+    .eq("status", "error");
+  if (errErr) throw new Error(errErr.message);
+  const byFault = new Set(
+    ((errored ?? []) as Array<{ design_id: string | null }>).map((r) => r.design_id),
+  );
+  const faulted = rows.filter((d) => byFault.has(d.id));
+  if (!faulted.length) return [];
+
   // עיצוב אחד לבעלים — הטרי ביותר (הרשימה כבר ממוינת יורד).
   const byOwner = new Map<string, StuckDesignRow>();
-  for (const d of rows) if (!byOwner.has(d.profile_id)) byOwner.set(d.profile_id, d);
+  for (const d of faulted) if (!byOwner.has(d.profile_id)) byOwner.set(d.profile_id, d);
   const ownerIds = [...byOwner.keys()];
 
   // רק חשבונות אמיתיים עם מייל. בודקים הם הסטודיו הפנימי — עיצוב canary תקוע
