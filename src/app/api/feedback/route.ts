@@ -10,7 +10,6 @@ import { feedbackAckMail, feedbackNotifyMail } from "@/lib/mailTemplates";
 import { designCode } from "@/lib/designCode";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
-import { SITE } from "@/lib/site.config";
 import { he } from "@/i18n/he";
 
 // משוב על תקלה חוזרת ביצירה — נשלח ממסך השגיאה עצמו, אחרי ש"נסו שוב" נכשל
