@@ -78,18 +78,20 @@ describe("משוב על תקלה חוזרת", () => {
     expect(mail.text).toContain("נשלח בלי טקסט");
   });
 
-  it("האישור למשתמש נושא את קישור ההמשך — הדרך חזרה לעיצוב", () => {
-    const url = "https://aperta-designs.com/design?resume=abc";
-    const mail = feedbackAckMail({ name: "דנה", code: "AP-0054", url });
-    expect(mail.text).toContain(url);
-    expect(mail.html).toContain(url);
+  it("האישור מבטיח מייל כשיתוקן — ובלי קישור חזרה לתקלה שעוד חיה", () => {
+    // הכפתור הוסר (11.8): המייל מגיע כשהתקלה בוודאות עדיין קיימת, וקישור
+    // "חזרה לעיצוב" היה הזמנה להיכשל שוב. את החזרה מקיים מייל "חזרנו לאוויר".
+    const mail = feedbackAckMail({ name: "דנה", code: "AP-0054" });
+    expect(mail.text).not.toContain("resume=");
+    expect(mail.html).not.toContain("resume=");
+    expect(mail.text).toContain("נשלח לך מייל");
     expect(mail.subject).toContain("AP-0054");
   });
 
-  it("עובד גם כשהכשל קרה לפני שנוצר עיצוב — בלי מספר, עם קישור למשפך", () => {
-    const mail = feedbackAckMail({ name: "דנה", code: null, url: "https://aperta-designs.com/design" });
+  it("עובד גם כשהכשל קרה לפני שנוצר עיצוב — בלי מספר", () => {
+    const mail = feedbackAckMail({ name: "דנה", code: null });
     expect(mail.subject).not.toContain("null");
-    expect(mail.text).toContain("https://aperta-designs.com/design");
+    expect(mail.text).toContain("שמור");
   });
 });
 

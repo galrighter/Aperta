@@ -10,7 +10,6 @@ import { feedbackAckMail, feedbackNotifyMail } from "@/lib/mailTemplates";
 import { designCode } from "@/lib/designCode";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
-import { SITE } from "@/lib/site.config";
 import { he } from "@/i18n/he";
 
 // משוב על תקלה חוזרת ביצירה — נשלח ממסך השגיאה עצמו, אחרי ש"נסו שוב" נכשל
@@ -63,9 +62,6 @@ export async function POST(req: Request) {
     }
     const ref = design ? designCode(design.serial) : null;
 
-    // בלי עיצוב (הכשל קרה עוד לפני שנוצרה רשומה) הקישור מוביל למשפך — הטיוטה
-    // המקומית שבדפדפן משחזרת שם את מה שמולא.
-    const resumeUrl = design ? `${SITE.url}/design?resume=${design.id}` : `${SITE.url}/design`;
     const errorShown = [body.errorMessage, body.errorDetail].filter(Boolean).join(" · ") || "—";
     const name = account.name?.trim() || account.email.split("@")[0];
 
@@ -110,7 +106,7 @@ export async function POST(req: Request) {
       });
       if (!adminRes.ok) console.error("feedback notification failed:", adminRes.error);
 
-      const ack = feedbackAckMail({ name, code: ref, url: resumeUrl });
+      const ack = feedbackAckMail({ name, code: ref });
       const ackRes = await sendMail({
         to: account.email,
         subject: ack.subject,
