@@ -17,7 +17,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { markRunError } from "@/lib/db/runs";
+import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
@@ -711,18 +711,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         prompt: userPrompt,
         colorKey: "coverage",
         startedAt,
-        error: err instanceof Error ? err.message : String(err),
+        // עם הקוד, כמו בכל שאר הכתיבות ליומן: `internal` ו-`vectorize_failed`
+        // הם ההבדל בין תקלה אצלנו לדחייה של הצינור, וההודעה לבדה מוחקת אותו.
+        error: describeFailure(err),
         vectorizer: null,
         ...(runLog ?? {}),
       });
-    } else if (!(err instanceof ApiError) && !(err instanceof LlmError)) {
+    } else {
       // ההרצה כבר נרשמה — עם הסטטוס של הווקטורייזר — וכשל **אחרי** הרישום
       // (מסגור, ולידציה, שמירת הגרסה) השאיר אותה נראית תקינה בזמן שהמשתמש
       // קיבל 500: היומן ענה "אין שגיאה" על יצירה שנכשלה (אוגוסט 2026), והכשל
-      // האמיתי חי רק על שורת ה-job, שאינה מוצגת כשיש הרצה. כשלים מוכרים
-      // (ApiError/LlmError) כבר מספרים את הסיפור שלהם — מה שנכתב כאן הוא בדיוק
-      // מה שהיה נעלם: החריגה הלא-צפויה.
-      await markRunError(lastAttemptId, err instanceof Error ? err.message : String(err));
+      // האמיתי חי רק על שורת ה-job, שאינה מוצגת כשיש הרצה.
+      //
+      // **בלי החרגה של כשלים מוכרים.** עד 11.8 `ApiError`/`LlmError` דולגו
+      // כאן, בהנחה שהם "מספרים את הסיפור שלהם" — אבל הם מספרים אותו ללקוחה
+      // ולשורת ה-job, לא ליומן. AP-0096 הוא המדידה: המסגור חזר מה-Worker
+      // כ-`ApiError` עם `internal`, שלוש הרצות רצופות נרשמו "approved · אין
+      // שגיאה", אף אחת מהן לא הולידה גרסה, והלקוחה לא ראתה כלום. הקוד נכתב
+      // לצד ההודעה כדי שהשורה תגיד את אותו דבר שה-job אומר.
+      await markRunError(lastAttemptId, describeFailure(err));
     }
     // כשל לא-צפוי חוזר = תקלה שפוגעת בכולם, לא לקוח בודד. המייל יוצא מהכשל
     // השני בחלון — ב-10.8 זה היה מקצר תקלה של ארבע שעות לדקות. תקציב שנגמר
