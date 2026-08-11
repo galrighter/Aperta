@@ -123,6 +123,56 @@ describe("המסלול המוחזק", () => {
     expect((calls[0]!.body as { job_id: null }).job_id).toBeNull();
   });
 
+  it("הסקירה מתרחבת: הרצה איטית לא שורפת את מכסת תת-הבקשות", async () => {
+    // Cloudflare קוצב תת-בקשות להפעלה, וכל סקירה היא תת-בקשה. קצב קבוע של
+    // 2ש׳ נתן עד 120 סקירות להרצה איטית — ו"Too many subrequests" הפיל יצירות
+    // אמיתיות (11.8). הטסט מקבע את התקציב: שתי דקות מדומות של "עדיין רץ"
+    // חייבות לעלות הרבה פחות סקירות מהקצב הקבוע, אבל לא אפס.
+    let polls = 0;
+    let ready = false;
+    stubFetch((url) => {
+      if (url.endsWith("/api/generate")) return json({ state: "running" }, 202);
+      polls += 1;
+      return ready ? json({ state: "done", result: RESULT }, 200) : json({ state: "running" }, 202);
+    });
+
+    const promise = runRenderJob(input({ jobId: JOB }));
+    let settled = false;
+    promise.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+
+    // חימום: עד הסקירה הראשונה קריאת גוף התשובה רצה על זמן *אמיתי* (ראה
+    // withFakeClock) — קידום לפניה מבזבז את החלון בלי שנרשם אף טיימר. תחת
+    // החבילה המלאה זה בדיוק המרוץ שהפיל את המדידה לאפס.
+    const warmup = Date.now() + 5_000;
+    while (polls === 0 && Date.now() < warmup) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+    const before = polls;
+
+    // 120 שניות מדומות של הרצה איטית. קצב קבוע היה סוקר ~60 פעמים בחלון כזה.
+    for (let i = 0; i < 60; i++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+    const during = polls - before;
+
+    ready = true;
+    const until = Date.now() + 3_000;
+    while (!settled && Date.now() < until) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await vi.advanceTimersByTimeAsync(15_000);
+    }
+    const job = await promise;
+
+    expect(job.panels).toBe(1);
+    expect(during).toBeGreaterThan(1);
+    expect(during).toBeLessThan(15);
+  });
+
   it("כשל שקרה ברקע מגיע עם הקוד שלו", async () => {
     // תקציב שנגמר חייב להישאר תקציב שנגמר גם כשהוא מתגלה בסקירה: זה מה
     // שמפעיל את מייל ההתראה בנתיב היצירה.
