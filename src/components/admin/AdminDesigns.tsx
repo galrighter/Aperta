@@ -2,6 +2,7 @@
 
 // "מי עיצב מה" — הלשונית שהופכת רישום משתמשים למשהו שאפשר להסתכל עליו.
 import { useMemo } from "react";
+import Link from "next/link";
 import { useAdminPages } from "@/lib/client/useAdminData";
 import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
@@ -62,9 +63,16 @@ export default function AdminDesigns({
 
             <div className="flex flex-1 flex-col gap-2 p-4">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="font-display text-[13px] font-bold tracking-[0.14em] text-lapis" dir="ltr">
+                {/* המספר הוא גם הדרך אל העיצוב עצמו: הגרסאות שלו, מי הבעלים
+                    ומה נבחר. עד עכשיו הכרטיס היה סוף הדרך, וכל מה שהיה אפשר
+                    לעשות ממנו זה להוריד קבצים. */}
+                <Link
+                  href={`/admin/designs/${r.id}`}
+                  className="font-display text-[13px] font-bold tracking-[0.14em] text-lapis hover:underline"
+                  dir="ltr"
+                >
                   {designSampleCode(r) ?? "—"}
-                </span>
+                </Link>
                 <span className="text-[12px] text-mist">
                   {new Date(r.created_at).toLocaleDateString("he-IL")}
                 </span>

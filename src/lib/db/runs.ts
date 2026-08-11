@@ -238,15 +238,43 @@ export async function insertRun(run: NewRun): Promise<void> {
  *
  * `error` נכתב רק על שורה שאין לה אחד — סיפור קיים לא נדרס. best-effort,
  * כמו כל כתיבת יומן: הכשל המקורי הוא מה שחשוב להחזיר, לא כתיבת הדיווח עליו.
+ *
+ * **הסטטוס בכתיבה נפרדת, ורק מ-`approved`.** שתי העדכונים אינם אותו תנאי:
+ * ההודעה נכתבת רק על שורה שקטה, אבל `approved` שנגמר בכשל אינו approved גם אם
+ * כבר יש לו הודעה — וזו בדיוק השורה שהטעתה ביומן ובספירות. `rejected` נשאר
+ * `rejected`: שם הדחייה היא הסיפור, והחלפתה ב"שגיאה" מוחקת אותו.
  */
+/**
+ * כשל כפי שהוא נכתב לשורת ההרצה: `code · message` כשיש קוד, ואחרת ההודעה.
+ *
+ * אותה צורה בדיוק שבה הכשל נרשם על שורת ה-job, כדי ששני המקורות שהיומן מציג
+ * זה לצד זה יהיו ברי-השוואה — ושהקוד (`internal`, `vectorize_failed`) לא
+ * יאבד בדרך: הוא מה שמבדיל בין תקלה אצלנו לדחייה של הצינור.
+ *
+ * הקוד נקרא כתכונה ולא דרך `instanceof ApiError`: זה שומר את שכבת המסד בלי
+ * תלות בשכבת ה-API, וממילא כל כשל שנושא `code` מתאר את עצמו כך.
+ */
+export function describeFailure(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" && code ? `${code} · ${err.message}` : err.message;
+}
+
 export async function markRunError(id: string, message: string): Promise<void> {
   const sb = supabaseAdmin();
   const { error } = await sb
     .from("generation_runs")
-    .update({ status: "error", error: message })
+    .update({ error: message })
     .eq("id", id)
     .is("error", null);
   if (error) console.error(`mark run ${id} error failed:`, error.message);
+
+  const status = await sb
+    .from("generation_runs")
+    .update({ status: "error" })
+    .eq("id", id)
+    .eq("status", "approved");
+  if (status.error) console.error(`mark run ${id} status failed:`, status.error.message);
 }
 
 /** שורה ברשימת היומן: הכול חוץ מה-SVG, שנטען רק בפתיחת הרצה. */

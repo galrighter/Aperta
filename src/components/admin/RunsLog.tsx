@@ -77,6 +77,15 @@ export type Owner = { id: string; name: string; color: string; email: string | n
 export type LogItem = {
   id: string; createdAt: string; source: string; productType: string | null;
   prompt: string | null; colorKey: string | null; status: string; error: string | null;
+  /**
+   * הכשל שנרשם על **בקשת היצירה** ולא על ההרצה.
+   *
+   * שורת ההרצה נכתבת באמצע הצינור, עם הפסיקה של הווקטורייזר בלבד, וכל מה
+   * שנכשל אחריה — מסגור, ולידציה, שמירת הגרסה — נרשם על ה-job. בלי השדה הזה
+   * הרצה שנגמרה בכלום נראית ביומן "approved · אין שגיאה": כך נראו שלוש ההרצות
+   * של AP-0096, שכולן נפלו על `rescaleCutoutsSvg` והלקוחה לא קיבלה מהן דבר.
+   */
+  jobError?: { code: string; message: string; status: string } | null;
   durationMs: number | null; renderModel: string | null; renderUrl: string | null;
   /** מה שהמשתמש צירף בעצמו, להבדיל מההדמיה שנוצרה ממנו. */
   inputImageUrl?: string | null;
@@ -707,6 +716,28 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * הרצה שנראית מוצלחת ולא יצא ממנה עיצוב.
+ *
+ * הסטטוס בשורה הוא הפסיקה של הווקטורייזר על הפאנל — לא תוצאת היצירה. הרצה
+ * יכולה להיות "approved", לשאת הדמיה ו-SVG, ולהיכשל אחרי זה במסגור או בשמירה;
+ * אז הלקוחה לא מקבלת כלום והיומן ממשיך להראות אותה ירוקה. זה מה שקרה
+ * ב-AP-0096 שלוש פעמים.
+ *
+ * הדרישה לכשל רשום היא מכוונת: `version` חסר גם בהרצות מלפני מיגרציה 0012,
+ * שאין להן `generation_id` להיתפס בו, ותגית אדומה על כל ההיסטוריה הישנה היא
+ * רעש ולא ממצא.
+ */
+export function noOutcome(
+  it: Pick<LogItem, "status" | "version" | "jobError" | "error">,
+): boolean {
+  return it.status === "approved" && !it.version && Boolean(it.jobError || it.error);
+}
+
+/** אותו כשל בדיוק, שנרשם בשני המקומות. אין טעם להציג אותו פעמיים. */
+export const sameFailure = (runError: string | null, jobMessage: string): boolean =>
+  Boolean(runError && (runError === jobMessage || runError.includes(jobMessage)));
+
 /** שורה אחת ביומן: הסיכום, המאפיינים, ומה שהמשתמש נתן. */
 function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
   it: LogItem;
@@ -762,6 +793,15 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
               </span>
             )}
             <span className={`rounded border px-1.5 text-xs ${STATUS_COLOR[it.status] ?? ""}`}>{it.status}</span>
+            {/* הסטטוס הוא הפסיקה של הווקטורייזר על הפאנל, לא תוצאת היצירה.
+                כשהבקשה נכשלה אחריו, "approved" לבדו הוא בדיוק מה שהטעה: השורה
+                נראתה תקינה והלקוחה לא קיבלה כלום. התגית הזו היא התשובה שסורקים
+                בעין — "רצה, ולא יצא מזה עיצוב". */}
+            {noOutcome(it) && (
+              <span className="rounded border border-[#c0413b]/40 bg-[#c0413b]/10 px-1.5 text-xs text-[#a8342f]">
+                לא נשמרה גרסה
+              </span>
+            )}
             <span className="rounded border border-graphite/20 bg-porcelain px-1.5 text-xs text-ink60">{SOURCE_LABEL[it.source] ?? it.source}</span>
             {it.owner && (
               <span className="flex items-center gap-1 text-xs text-ink60">
@@ -784,6 +824,14 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
           {it.prompt && <div className="mt-0.5 break-words text-xs text-ink60">{it.prompt}</div>}
           {it.inputs && <InputChips inputs={it.inputs} />}
           {it.error && <div className="mt-0.5 break-words text-xs text-red-600">שגיאה: {it.error}</div>}
+          {/* הכשל של הבקשה. מוצג גם כשההרצה עצמה "אושרה": זו בדיוק ההרצה
+              שנראתה תקינה. לא מוצג כשהוא כבר נאמר בשורת ההרצה — אותו משפט
+              פעמיים אינו שני כשלים. */}
+          {it.jobError && !sameFailure(it.error, it.jobError.message) && (
+            <div className="mt-0.5 break-words text-xs text-red-600">
+              כשל הבקשה: <span dir="ltr">{it.jobError.code}</span> · {it.jobError.message}
+            </div>
+          )}
           <div className="mt-0.5 text-[10px] text-mist">
             {new Date(it.createdAt).toLocaleString("he-IL")}
             {it.colorKey ? ` · צבע ${it.colorKey}` : ""}
@@ -796,14 +844,20 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
           <button className="rounded-[2px] border border-lapis px-2 py-1 text-xs text-lapis hover:bg-lapis/5"
             onClick={onPrompt}>פרומפט</button>
-          {/* ההדמיה שהלקוחה עצמה רואה במסך התוצאה — הגרסה החיה של העיצוב הזה. */}
+          {/* העיצוב שההרצה הזו יצרה — הגרסאות שלו, הבעלים וקבצי הייצור.
+              קודם זה הצביע על המשפך של הלקוחה (`/design?resume=<id>`), וזה
+              עבד רק כשהעיצוב רשום על מי שלחץ: `/api/designs/[id]` נשען על
+              בעלות. על עיצוב של לקוחה הקריאה חזרה 403, המשפך נשאר במצב
+              ההתחלתי, וההודעה על כך מוצגת רק בתוך מגירת "העיצובים שלי" —
+              כלומר הלחיצה נחתה בשקט על מסך בחירת המוצר בזמן שהעיצוב מוכן
+              ושמור. `/admin/designs/<id>` עובר בשער האדמין, כמו הייצוא. */}
           {it.designId && (
             <a
               className="rounded-[2px] border border-graphite/20 px-2 py-1 text-center text-xs hover:bg-porcelain"
-              href={`/design?resume=${it.designId}`}
+              href={`/admin/designs/${it.designId}`}
               target="_blank"
               rel="noreferrer"
-              title="פתיחת העיצוב כפי שהלקוחה רואה אותו"
+              title="פתיחת העיצוב שההרצה יצרה"
             >
               העיצוב
             </a>

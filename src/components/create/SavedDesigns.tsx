@@ -32,7 +32,18 @@ export function SavedDesigns({
     if (open) onOpen?.();
   }, [open, onOpen]);
 
-  if (items.length === 0) return null;
+  // אין מה להמשיך — אבל אם ניסיון לפתוח עיצוב **נכשל**, ההסבר חייב להישאר על
+  // המסך גם כאן. זה בדיוק המצב של קישור `?resume=` שנפתח בדפדפן שאין בו רשימה
+  // מקומית (מייל, מכשיר אחר, חשבון אחר): הפתיחה נכשלת, המשפך נשאר במסך הראשון,
+  // וההודעה היחידה שמסבירה למה נעלמה יחד עם הרשימה — כלומר לחיצה שנחתה בשקט על
+  // "מה בונים" בזמן שהעיצוב שנלחץ קיים ומוכן.
+  if (items.length === 0) {
+    return error ? (
+      <div className="border border-graphite/10 border-s-2 border-s-lapis bg-white px-5 py-3.5 text-[13px] text-failred">
+        {error}
+      </div>
+    ) : null;
+  }
 
   return (
     <div className="border border-graphite/10 bg-white">
