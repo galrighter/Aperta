@@ -796,14 +796,20 @@ function LogRow({ it, expanded, detail, onToggle, onPrompt, onRerun }: {
             onClick={onToggle}>{expanded ? "סגור" : "שלבים"}</button>
           <button className="rounded-[2px] border border-lapis px-2 py-1 text-xs text-lapis hover:bg-lapis/5"
             onClick={onPrompt}>פרומפט</button>
-          {/* ההדמיה שהלקוחה עצמה רואה במסך התוצאה — הגרסה החיה של העיצוב הזה. */}
+          {/* העיצוב שההרצה הזו יצרה — הגרסאות שלו, הבעלים וקבצי הייצור.
+              קודם זה הצביע על המשפך של הלקוחה (`/design?resume=<id>`), וזה
+              עבד רק כשהעיצוב רשום על מי שלחץ: `/api/designs/[id]` נשען על
+              בעלות. על עיצוב של לקוחה הקריאה חזרה 403, המשפך נשאר במצב
+              ההתחלתי, וההודעה על כך מוצגת רק בתוך מגירת "העיצובים שלי" —
+              כלומר הלחיצה נחתה בשקט על מסך בחירת המוצר בזמן שהעיצוב מוכן
+              ושמור. `/admin/designs/<id>` עובר בשער האדמין, כמו הייצוא. */}
           {it.designId && (
             <a
               className="rounded-[2px] border border-graphite/20 px-2 py-1 text-center text-xs hover:bg-porcelain"
-              href={`/design?resume=${it.designId}`}
+              href={`/admin/designs/${it.designId}`}
               target="_blank"
               rel="noreferrer"
-              title="פתיחת העיצוב כפי שהלקוחה רואה אותו"
+              title="פתיחת העיצוב שההרצה יצרה"
             >
               העיצוב
             </a>

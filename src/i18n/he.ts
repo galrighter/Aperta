@@ -875,6 +875,23 @@ export const he = {
     adminExportNone: "אין גרסה מוכנה לייצוא.",
     adminExportError: "הכנת הקבצים נכשלה.",
 
+    // ---- עיצוב אחד ----
+    adminDesignBack: "→ חזרה לעיצובים",
+    adminDesignNotFound: "העיצוב לא נמצא.",
+    adminDesignError: "טעינת העיצוב נכשלה.",
+    adminDesignOpen: "פתיחת העיצוב",
+    adminDesignOwnerTitle: "בעלים",
+    adminDesignOpenUser: "כל הפעילות שלו",
+    adminDesignCreated: "נוצר",
+    adminDesignUpdated: "עודכן",
+    adminDesignThickness: "עובי",
+    adminDesignVersionsTitle: "גרסאות",
+    adminDesignVersionsTruncated: "מוצגות הגרסאות האחרונות בלבד.",
+    adminDesignCurrentBadge: "הגרסה שנבחרה",
+    adminDesignNoVersions:
+      "אין לעיצוב הזה אף גרסה — היצירה נפתחה ולא הושלמה. יומן היצירות מראה מה קרה בהרצה.",
+    adminDesignVersionPrompt: "מה נתבקש",
+
     // ---- לשונית המשתמשים ----
     adminTabUsers: "משתמשים",
     adminCardUsersDesc: "מי נרשם ומתי, ומה קרה אצלו מאז — יצירות, עריכות, כשלים, הזמנות ופניות.",

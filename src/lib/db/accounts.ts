@@ -312,3 +312,100 @@ export async function listDesignsForAdmin(
     })),
   };
 }
+
+/** גרסה אחת, כפי שמסך העיצוב בבק־אופיס צריך אותה. בלי `validation_report`:
+ *  הדוח שייך ליומן ההרצות, וכאן הוא רק היה מכפיל את משקל התשובה. */
+export interface AdminVersionRow {
+  id: string;
+  version_no: number;
+  source: "generate" | "edit" | "auto_repair";
+  user_prompt: string | null;
+  validation_status: "pass" | "warn" | "fail";
+  created_at: string;
+  svg: string;
+}
+
+/** העיצוב עצמו במסך הפירוט — כמו בכרטיס ברשימה, ועוד מה שנדרש כדי לייצא
+ *  ולומר איזו גרסה היא הנבחרת. */
+export interface AdminDesignDetailRow extends Omit<AdminDesignRow, "versions" | "svg"> {
+  thickness_mm: number;
+  current_version_id: string | null;
+}
+
+export interface AdminDesignDetail {
+  design: AdminDesignDetailRow;
+  /** החדשה קודם — זה הסדר שבו מסתכלים על עיצוב שחזרו אליו. */
+  versions: AdminVersionRow[];
+  /** יש יותר גרסאות מכפי שהוחזרו. נאמר במסך ולא נבלע. */
+  truncated: boolean;
+}
+
+/**
+ * כמה גרסאות מוחזרות. כל גרסה נושאת SVG מלא, ועיצוב שנערך עשרות פעמים היה
+ * שולח מגה־בתים למסך שמראה גרסה אחת גדולה.
+ */
+export const MAX_DETAIL_VERSIONS = 24;
+
+/**
+ * עיצוב אחד לבק־אופיס — הגרסאות שלו, הבעלים והמידות.
+ *
+ * **למה מסלול אדמין ולא `/api/designs/[id]`.** ההוא נשען על בעלות
+ * (`requireDesignAccess`), כלומר על כך שהפונה הוא בעל החשבון. עיצוב של לקוחה
+ * אינו של אף אחד מהמסלולים המזוהים בסטודיו, ולכן הבק־אופיס לא יכול היה לקרוא
+ * אותו — אותה הנמקה בדיוק שבגללה קיים `admin/designs/[id]/export`.
+ *
+ * `null` = אין עיצוב כזה. מסך שנפתח על מזהה שנמחק צריך לומר "לא נמצא", ולא
+ * "הטעינה נכשלה".
+ */
+export async function getDesignForAdmin(
+  id: string,
+  limit = MAX_DETAIL_VERSIONS,
+): Promise<AdminDesignDetail | null> {
+  const sb = supabaseAdmin();
+
+  const { data, error } = await sb
+    .from("designs")
+    .select(
+      "id, serial, root_serial, sample_no, name, product_type, length_mm, width_mm, gap_mm, thickness_mm, created_at, updated_at, current_version_id, profiles(id, name, color, kind, email, phone)",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) fail(error);
+  if (!data) return null;
+
+  const row = data as unknown as Omit<AdminDesignDetailRow, "owner"> & {
+    profiles: AdminDesignRow["owner"];
+  };
+
+  // גרסה אחת מעבר לגבול — כך "יש עוד" נענה בלי שאילתת ספירה נוספת.
+  const versionsRes = await sb
+    .from("design_versions")
+    .select("id, version_no, source, user_prompt, validation_status, created_at, svg")
+    .eq("design_id", id)
+    .order("version_no", { ascending: false })
+    .limit(limit + 1);
+  if (versionsRes.error) fail(versionsRes.error);
+
+  const all = (versionsRes.data ?? []) as unknown as AdminVersionRow[];
+
+  return {
+    design: {
+      id: row.id,
+      serial: row.serial,
+      root_serial: row.root_serial,
+      sample_no: row.sample_no,
+      name: row.name,
+      product_type: row.product_type,
+      length_mm: Number(row.length_mm),
+      width_mm: Number(row.width_mm),
+      gap_mm: Number(row.gap_mm),
+      thickness_mm: Number(row.thickness_mm),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      current_version_id: row.current_version_id,
+      owner: row.profiles ?? null,
+    },
+    versions: all.slice(0, limit),
+    truncated: all.length > limit,
+  };
+}
