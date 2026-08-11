@@ -23,7 +23,7 @@ import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
-import { alertUnexpectedFailure } from "@/lib/alerts/failures";
+import { alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
 
@@ -757,10 +757,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // לצד ההודעה כדי שהשורה תגיד את אותו דבר שה-job אומר.
       await markRunError(lastAttemptId, describeFailure(err));
     }
-    // כשל לא-צפוי חוזר = תקלה שפוגעת בכולם, לא לקוח בודד. המייל יוצא מהכשל
-    // השני בחלון — ב-10.8 זה היה מקצר תקלה של ארבע שעות לדקות. תקציב שנגמר
-    // מוחרג: יש לו התראה משלו למטה, עם נוסח שאומר מה לעשות.
-    if (!(err instanceof ApiError) && !(err instanceof LlmError) && !isQuotaFailure(err)) {
+    // כשל שיכול להיות מערכתי וחוזר = תקלה שפוגעת בכולם, לא לקוח בודד. ההזעקה
+    // יוצאת מהכשל השני בחלון — ב-10.8 זה היה מקצר תקלה של ארבע שעות לדקות.
+    // עד 11.8 השער היה `!(err instanceof ApiError)` — וכשל מסודר כמו
+    // `render_failed` (למשל 401 גורף מהקופסה) לא הזעיק איש למרות שהפיל את
+    // כולם. הקריטריון המלא, כולל מה מוחרג ולמה: `isSystemicFailure`.
+    if (isSystemicFailure(err)) {
       await alertUnexpectedFailure(err, { runId: lastAttemptId, designRef });
     }
     // תקציב שנגמר אצל ספק התמונות משבית את היצירה לכולם עד שמישהו מוסיף תקציב,
