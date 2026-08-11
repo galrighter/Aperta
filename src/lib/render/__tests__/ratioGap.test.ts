@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ratioGap, STRETCH_ALERT } from "@/lib/render/ratioGap";
+import { pickClosestRatio, ratioGap, STRETCH_ALERT } from "@/lib/render/ratioGap";
 import { ratioChip } from "@/components/admin/RunsLog";
 import { NATURAL_RATIO, maxRows, planRender } from "@/lib/render/panels";
 import { LANDSCAPE, PORTRAIT, canvasFor } from "@/lib/render/canvas";
@@ -29,6 +29,30 @@ describe("the gap between what was ordered and what the model drew", () => {
     expect(ratioGap(null, { lengthMm: 145.2, widthMm: 5 })).toBeNull();
     expect(ratioGap("<svg/>", { lengthMm: 145.2, widthMm: 5 })).toBeNull();
     expect(ratioGap(cutouts(34.77, 5), { lengthMm: 0, widthMm: 5 })).toBeNull();
+  });
+});
+
+describe("which panels get offered when more were cut than are shown", () => {
+  const panels = [
+    { id: "far", svg: cutouts(20, 5) }, // 4:1 — רחוק מ-29
+    { id: "close", svg: cutouts(120, 5) }, // 24:1 — הקרוב ביותר
+    { id: "mid", svg: cutouts(60, 5) }, // 12:1
+    { id: "broken", svg: null }, // בלי viewBox שמיש
+  ];
+  const ordered = { lengthMm: 145.2, widthMm: 5 };
+
+  it("takes the ones closest to the ordered ratio — the least stretch", () => {
+    const picked = pickClosestRatio(panels, (p) => p.svg, ordered, 2);
+    expect(picked.map((p) => p.id)).toEqual(["close", "mid"]);
+  });
+
+  it("keeps everything when there is nothing to choose between", () => {
+    expect(pickClosestRatio(panels, (p) => p.svg, ordered, 6)).toEqual(panels);
+  });
+
+  it("sends an unmeasurable panel to the back — it is the first to be cut", () => {
+    const picked = pickClosestRatio(panels, (p) => p.svg, ordered, 3);
+    expect(picked.map((p) => p.id)).toEqual(["close", "mid", "far"]);
   });
 });
 
@@ -69,9 +93,22 @@ describe("why AP-0096 could not have held its ratio", () => {
     expect(NATURAL_RATIO(capLandscape, 1, LANDSCAPE) / ratio).toBeGreaterThan(0.9);
   });
 
-  it("stopped at 6 rows — the cap on how many alternatives to show, not on pixels", () => {
+  it("used to stop at 6 rows — the display cap; now it produces to the pixel budget", () => {
     const plan = planRender({ ...item, ratio, canvas: PORTRAIT });
-    expect(plan.rows).toBe(6);
-    expect(plan.rows).toBeLessThan(maxRows(item.widthMm, item.minHoleMm, PORTRAIT));
+    // 6 היה מה שהתצוגה הרשתה, לא מה שהתמונה יכלה לתת. עכשיו הייצור עולה עד
+    // תקרת הפיקסלים, והתצוגה נחתכת בנפרד.
+    expect(plan.rows).toBe(maxRows(item.widthMm, item.minHoleMm, PORTRAIT));
+    expect(plan.offered).toBe(6);
+    // וזה מה שזה שווה: המתיחה יורדת מ-×4.2 לפחות מ-×1.6.
+    expect(ratio / NATURAL_RATIO(plan.rows, plan.cols, PORTRAIT)).toBeLessThan(1.6);
+  });
+
+  it("keeps the resolution promise — the added rows are the ones that cost nothing", () => {
+    // הפריט מצויר בקנה מידה `min(לאורך, לרוחב)`, ובפס צר וארוך ציר האורך הוא
+    // החסם הרבה אחרי שהשורות נגמרו: 24 שורות חינם, ותקרת ההישרדות 25.
+    const alongLength = (PORTRAIT.widthPx * 0.9) / item.lengthMm;
+    const free = Math.floor((PORTRAIT.heightPx * 0.5) / (item.widthMm * alongLength));
+    expect(free).toBe(24);
+    expect(planRender({ ...item, ratio, canvas: PORTRAIT }).rows).toBeLessThanOrEqual(free + 1);
   });
 });

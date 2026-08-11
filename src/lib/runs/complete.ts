@@ -1,7 +1,8 @@
 import { collectRenderJob, runRenderJob, type RenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { ingestCutouts, designDims } from "@/lib/vectorizer";
-import { ratioGap } from "@/lib/render/ratioGap";
+import { MAX_CANDIDATES } from "@/lib/render/panels";
+import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
 import { createSampleDesign, getDesign } from "@/lib/db/designs";
 import { claimJobDone } from "@/lib/db/jobs";
@@ -159,7 +160,10 @@ async function finishFromRender(
   const bridgePlan = { letterBridges: ctx.bridges };
   const RANK = { pass: 0, warn: 1, fail: 2 } as const;
   const approved = box.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
-  const framed = (await frameCandidates(designDims(design), approved.map((c) => c.cutoutsSvg!), bridgePlan))
+  // כמו במסלול החי: מייצרים לפי היחס ומציגים עד `MAX_CANDIDATES`, והנבחרים
+  // הם הקרובים ביותר ליחס שהוזמן. הרצה שהתאוששה לא אמורה להציע דבר אחר.
+  const shortlist = pickClosestRatio(approved, (c) => c.cutoutsSvg, designDims(design), MAX_CANDIDATES);
+  const framed = (await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan))
     .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
 
   if (framed.length === 0) {

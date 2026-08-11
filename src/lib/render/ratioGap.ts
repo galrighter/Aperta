@@ -53,6 +53,35 @@ export function ratioGap(
 }
 
 /**
+ * מי מהפסים שנחתכו מוצע לבחירה, כשיש יותר ממה שמציגים.
+ *
+ * מאז 11.8 הייצור נגזר מהיחס ומתקציב הפיקסלים, והתצוגה חסומה ב-`MAX_CANDIDATES`
+ * — כלומר יש מה לבחור מתוכו. הקריטריון הוא **קרבה ליחס שהוזמן**: הפס שיצטרך
+ * את המתיחה הקטנה ביותר הוא הפס שיישאר הכי קרוב למה שהמודל צייר, וזו בדיוק
+ * הפגיעה שנמדדה ב-AP-0096. הבחירה נעשית מה-viewBox בלבד — בלי למסגר, בלי
+ * ולידציה ובלי לצאת מה-isolate — ולכן היא זולה גם על עשרים־וחמישה פסים.
+ *
+ * המדד סימטרי (`|log|`): פס שנמתח ×2 ופס שנדחס בחצי סובלים באותה מידה. פס בלי
+ * viewBox שמיש יורד לסוף התור אבל לא נזרק — עדיף מועמד שלא נמדד על אף מועמד.
+ *
+ * המיון יציב, ולכן פסים שקולים נשארים בסדר שהקופסה החזירה.
+ */
+export function pickClosestRatio<T>(
+  panels: T[],
+  svgOf: (panel: T) => string | null | undefined,
+  ordered: { lengthMm: number; widthMm: number },
+  limit: number,
+): T[] {
+  if (panels.length <= limit) return panels;
+  const scored = panels.map((panel, index) => {
+    const gap = ratioGap(svgOf(panel), ordered);
+    return { panel, index, score: gap ? Math.abs(Math.log(gap.stretch)) : Infinity };
+  });
+  scored.sort((a, b) => a.score - b.score || a.index - b.index);
+  return scored.slice(0, limit).map((s) => s.panel);
+}
+
+/**
  * מאיזו מתיחה זה מפסיק להיות עיגול והופך לעיוות.
  *
  * 1.5 הוא סף לתצוגה ולא ממצא: הוא נבחר כדי שהיומן יסמן את מה שכדאי להסתכל
