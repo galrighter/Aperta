@@ -3,6 +3,9 @@ import { failureSpikeMail, stalledJobMail } from "@/lib/mailTemplates";
 import { countErrorRunsSince } from "@/lib/db/runs";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { wakeDutyAgent, dutyConfigured } from "./duty";
+import { isQuotaFailure } from "./quota";
+import { ApiError } from "@/lib/api";
+import { LlmError } from "@/lib/llm/core";
 
 // התראות על יצירה ששבורה עכשיו — כדי שגל יידע מהמערכת, לא מלקוח מתוסכל.
 //
@@ -29,6 +32,31 @@ export interface FailureAlertContext {
   runId: string;
   /** `AP-0054` — העיצוב שההרצה נכשלה עליו, כשידוע. */
   designRef?: string | null;
+}
+
+/**
+ * אילו כשלים נחשבים "יכולים להיות מערכתיים" — כלומר ראויים להזעקה כשהם חוזרים.
+ *
+ * ההיסטוריה: השער המקורי הזעיק רק על כשל *בלי קוד* (`internal`), בהנחה שקוד
+ * מסודר = סיפור מוכר שלא מצריך תורן. תרגיל התורן (11.8) הפריך אותה: טוקן שגוי
+ * מול קופסת הרנדר החזיר 401 על **כל** יצירה — תקלה מערכתית מלאה — והתגלגל
+ * ל-`render_failed` המסודר, ששני מופעים רצופים שלו לא העירו איש.
+ *
+ * מה כן מוחרג, ולמה:
+ * - תקציב (`isQuotaFailure`) — יש לו התראה ייעודית עם נוסח "לך שלם".
+ * - `content_blocked` — דטרמיניסטי לתיאור הספציפי; חוזר על עצמו אצל לקוח אחד
+ *   בלי להעיד כלום על האתר.
+ * - `render_busy` — הקופסה מלאה; מצב עומס שמתפנה מעצמו, לא שבר.
+ * - `LlmError` — כשל מודל בודד; הצינור מנסה שוב בעצמו, וכשל מתמשך של הספק
+ *   נתפס ב-canary וב-llm-health.
+ */
+export function isSystemicFailure(err: unknown): boolean {
+  if (isQuotaFailure(err)) return false;
+  if (err instanceof LlmError) return false;
+  if (err instanceof ApiError) {
+    return !["content_blocked", "render_busy"].includes(err.code);
+  }
+  return true;
 }
 
 /**
