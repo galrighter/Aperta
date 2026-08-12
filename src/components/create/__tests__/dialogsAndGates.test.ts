@@ -138,6 +138,54 @@ describe("ניווט במשפך", () => {
     // חזרה ל-processing הייתה מציגה ספינר של הרצה שכבר הסתיימה.
     expect(PAGE).toContain('screen === "processing"');
   });
+
+  it("רשומת הכניסה נושאת את המסך שלה", () => {
+    // בלי זה היא נטענת עם state ריק, ו-Back ממסך המידות מנווט באמת בלי לשנות
+    // כלום על המסך: לחיצה מתה, ורק זו שאחריה יוצאת מהאתר.
+    expect(PAGE).toContain("markScreen(INITIAL.screen)");
+    expect(PAGE).toContain("markScreen(stash.state.screen)");
+  });
+
+  it("מסך ההמתנה דוחף רשומה משלו, והתוצאה מחליפה אותה", () => {
+    // דחיפה — כי היא זו שנדחפת בחזרה כשלוחצים Back באמצע הרצה.
+    expect(PAGE).toContain('window.history.pushState({ screen: "processing" }, "")');
+    // החלפה ולא דחיפה — אחרת מתחת לתוצאה יושבת רשומת ההמתנה, שאליה Back
+    // מסרב לחזור, וה-Back מהתוצאה הופך ללחיצה מתה.
+    expect(PAGE).toContain('goReplacing("result")');
+    expect(PAGE).toContain("markScreen(screen)");
+  });
+
+  it("Back נעול כל עוד המנוע עובד", () => {
+    // מי שחזרה אחורה באמצע ההמתנה נחתה על מסך העיצוב, לחצה "שלחו" שוב
+    // וקיבלה הרצה שנייה על אותו תיאור: מספר עיצוב שני ועוד יחידה מהמכסה.
+    expect(PAGE).toContain("if (runningRef.current) {");
+    expect(PAGE).toContain("window.history.pushState({ screen: stateRef.current.screen }");
+    expect(PAGE).toContain("setLockNotice(true)");
+    // ולא נגזר מהמצב: "חזרה לעיצוב" ממסך השגיאה מנקה אותה ורק אז נסוג, ומצב
+    // נגזר היה אומר באותו רגע "רצה" — כלומר דוחף אותה בחזרה פנימה.
+    expect(PAGE).toContain("runningRef.current = true");
+    expect(PAGE).toContain("runningRef.current = false");
+  });
+
+  it("סרגל השלבים ננעל יחד עם Back", () => {
+    // הדרך השנייה לצאת ממסך ההמתנה, ואותה תוצאה בדיוק בסופה.
+    expect(PAGE).toContain("locked={running}");
+    expect(read("src/components/create/ui.tsx")).toContain("disabled={notYet || locked}");
+  });
+
+  it("מסך העיצוב מציע לחזור לתוצאה שכבר קיימת", () => {
+    // חזרה אחורה מהתוצאה נוחתת כאן, והמסך נראה כמו עיצוב שנמחק — בעוד
+    // הכפתור הראשי שבו מייצר עיצוב **נוסף** במקום להחזיר את הקיים.
+    const BRIEF = read("src/components/create/BriefScreen.tsx");
+    expect(PAGE).toContain("hasResult={s.edits.length > 0}");
+    expect(BRIEF).toContain("d.briefBackToResult");
+    expect(BRIEF).toContain("hasResult ? d.briefSubmitNew : d.briefSubmit");
+  });
+
+  it("מסך ההמתנה אומר שהוא נעול", () => {
+    // ההמתנה נמשכת עד כשתי דקות. מסך שחוסם בלי להסביר נראה תקוע.
+    expect(read("src/components/create/ProcessingScreen.tsx")).toContain("d.procLockNote");
+  });
 });
 
 describe("אישור התנאים", () => {

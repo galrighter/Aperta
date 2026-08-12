@@ -5,7 +5,7 @@
 import { useRef, useState } from "react";
 import { he } from "@/i18n/he";
 import {
-  Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, PrimaryBtn,
+  Eyebrow, ScreenTitle, CardLabel, Chip, ChipRow, GhostBtn, PrimaryBtn,
 } from "./ui";
 import { canGenerate, MAX_LETTERING } from "./model";
 import type {
@@ -22,11 +22,20 @@ const d = he.design;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export function BriefScreen({
-  s, set, onSubmit,
+  s, set, onSubmit, hasResult, onBackToResult,
 }: {
   s: CreateState;
   set: (patch: Partial<CreateState>) => void;
   onSubmit: () => void;
+  /**
+   * כבר יש תוצאה מהתיאור הזה — הגענו לכאן בחזרה אחורה, לא בדרך קדימה.
+   *
+   * המסך נראה אז בדיוק כמו עיצוב שנמחק: התיאור על המסך, שום תוצאה, וכפתור
+   * ראשי שנקרא "שלחו". הוא **אינו** הדרך חזרה — הוא מייצר עיצוב נוסף, עם
+   * מספר משלו וניכוי מהמכסה היומית.
+   */
+  hasResult?: boolean;
+  onBackToResult?: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -75,6 +84,14 @@ export function BriefScreen({
       {s.resumeIncomplete && (
         <div className="mb-8 border border-lapis/30 bg-lapis/[0.06] px-5 py-4 text-[14px] leading-relaxed text-graphite" style={{ textWrap: "pretty" }}>
           {d.briefResumedIncomplete}
+        </div>
+      )}
+      {/* חזרנו לכאן מהתוצאה. הכפתור קודם למשפט בסדר הקריאה כי הוא התשובה
+          לשאלה ששאלו ("איפה העיצוב?"), והמשפט הוא ההסבר למה הוא לא כאן. */}
+      {hasResult && onBackToResult && (
+        <div className="mb-8 border border-lapis/30 bg-lapis/[0.06] px-5 py-4" style={{ textWrap: "pretty" }}>
+          <p className="mb-3 text-[14px] leading-relaxed text-graphite">{d.briefHasResult}</p>
+          <GhostBtn onClick={onBackToResult}>{d.briefBackToResult}</GhostBtn>
         </div>
       )}
       <p className="mb-10 max-w-[560px] text-[17px] text-ink60">{d.briefSubtitle}</p>
@@ -310,8 +327,10 @@ export function BriefScreen({
           </div>
 
           <div className="mt-6">
+            {/* הכפתור אומר מה הוא עושה. "שלחו" מול תיאור שכבר יש לו תוצאה
+                נקרא כמו "המשיכו", והוא לא — הוא מייצר עיצוב נוסף. */}
             <PrimaryBtn onClick={onSubmit} disabled={!canSubmit} full>
-              {d.briefSubmit}
+              {hasResult ? d.briefSubmitNew : d.briefSubmit}
             </PrimaryBtn>
             {!canSubmit && (
               <p className="mt-2.5 text-center text-[13px] text-mist">{d.briefBlocked}</p>
