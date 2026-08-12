@@ -269,34 +269,48 @@ export function CheckBox({
 /* ===== סרגל שלבים (handoff §1) ===== */
 
 export function StepRail({
-  screen, maxReached, onGo,
+  screen, maxReached, locked = false, onGo,
 }: {
-  screen: Screen; maxReached: number; onGo: (i: number) => void;
+  screen: Screen; maxReached: number;
+  /**
+   * הרצת מנוע באוויר — כל השלבים נעולים, גם אלה שכבר נפתחו.
+   *
+   * הסרגל הוא הדרך השנייה לצאת ממסך ההמתנה (הראשונה היא Back), ויציאה באמצע
+   * מסתיימת ב"שלחו" נוסף על אותו תיאור: עיצוב שני, מכסה שנייה.
+   */
+  locked?: boolean;
+  onGo: (i: number) => void;
 }) {
   const cur = RAIL.findIndex((r) => r.screens.includes(screen));
   return (
     <nav
       aria-label={d.stepAria}
+      aria-busy={locked || undefined}
       // נעצר מתחת לכותרת ולא מאחוריה: שתיהן היו sticky top-0, וברגע שגללו
       // הסרגל נעלם מתחת לכותרת השקופה למחצה — שתי שורות במקום אחת, ואף אחת
       // מהן לא קריאה. הגובה מגיע כמשתנה שהכותרת מודדת על עצמה.
-      style={{ top: "var(--ap-header-h, 0px)" }}
-      className="sticky z-10 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur sm:px-10"
+      // העמעום של הנעילה יושב כאן ולא על כל שלב בנפרד: שלב שכבר נפתח אינו
+      // "לא רלוונטי" אלא "לא עכשיו", וההבדל בין השניים צריך להיראות.
+      style={{ top: "var(--ap-header-h, 0px)", opacity: locked ? 0.5 : 1 }}
+      className="sticky z-10 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur transition-opacity sm:px-10"
     >
       {RAIL.map((r, i) => {
         const done = cur > i;
         const active = cur === i;
-        const locked = i > maxReached;
+        // שני מקורות לנעילה, ואחד לעמעום: שלב שטרם נפתח מעומעם כי הוא לא
+        // רלוונטי עדיין; נעילה של הרצה היא זמנית, והעמעום שלה יושב על הסרגל
+        // כולו (מטה) ולא על שלב בודד.
+        const notYet = i > maxReached;
         return (
           <div key={r.key} className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => !locked && onGo(i)}
-              disabled={locked}
-              title={locked ? d.stepLocked : undefined}
+              onClick={() => !notYet && !locked && onGo(i)}
+              disabled={notYet || locked}
+              title={locked ? d.stepBusy : notYet ? d.stepLocked : undefined}
               aria-current={active ? "step" : undefined}
               className="flex items-center gap-2 whitespace-nowrap disabled:cursor-not-allowed"
-              style={{ opacity: locked ? 0.4 : 1 }}
+              style={{ opacity: notYet ? 0.4 : 1 }}
             >
               {/* מספר השלב. הצבע הממתין הוא `mist` ולא #aab4b8: הערך ההוא נפסל
                   ב-globals.css על 1.88:1, והוא לא היה חל רק על שלבים נעולים —

@@ -47,7 +47,7 @@ const RETRY_POINTLESS = new Set([
 ]);
 
 export function ProcessingScreen({
-  error, detail, code, failCount = 0, accountEmail, onFeedback, disconnected, onRetry, onBack,
+  error, detail, code, failCount = 0, accountEmail, onFeedback, disconnected, locked, onRetry, onBack,
 }: {
   error: string | null;
   /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
@@ -68,6 +68,14 @@ export function ProcessingScreen({
    * יכולה להתארך — ומסך שמסתובב בשקט דקות ארוכות הוא בדיוק מה שנראה שבור.
    */
   disconnected?: boolean;
+  /**
+   * ההרצה באוויר, ולכן המסע נעול — Back וסרגל השלבים אינם זזים מכאן.
+   *
+   * נאמר על המסך ולא רק נאכף מאחוריו: ההמתנה נמשכת עד כשתי דקות, היד הולכת
+   * ללחצן האחורה מעצמה, ומסך שחוסם בלי להסביר נראה תקוע. הסיבה עצמה גם היא
+   * לא סוד — חזרה אחורה באמצע הייתה מייצרת עיצוב שני על אותו תיאור.
+   */
+  locked?: boolean;
   onRetry: () => void;
   onBack: () => void;
 }) {
@@ -242,7 +250,19 @@ export function ProcessingScreen({
 
       {/* פס התקדמות. הוא נשאר פעיל גם בניתוק — ההרצה באמת ממשיכה, ומסך קפוא
           היה אומר את ההפך מהכותרת שמעליו. */}
-      <ProgressBar active label={disconnected ? d.procDisconnected : d.procTitle} className="mb-12" />
+      <ProgressBar
+        active
+        label={disconnected ? d.procDisconnected : d.procTitle}
+        className={locked ? "mb-6" : "mb-12"}
+      />
+
+      {/* הנעילה נאמרת, ולא רק נאכפת. מחוץ ל-`aria-live` שלמעלה: זו עובדה
+          קבועה של המסך ולא עדכון, ואין סיבה להקריא אותה שוב בכל שינוי מצב. */}
+      {locked && (
+        <p className="mb-12 max-w-[440px] border border-graphite/15 bg-white px-4 py-3 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+          {d.procLockNote}
+        </p>
+      )}
 
       {/* ציטוט מתחלף */}
       <blockquote

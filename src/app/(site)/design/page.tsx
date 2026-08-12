@@ -53,6 +53,32 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
   return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
+/**
+ * רישום המסך על רשומת ההיסטוריה **הנוכחית** — בלי להוסיף רשומה.
+ *
+ * כל מסך שמוצג בלי `go` (הכניסה למשפך, חזרה מגוגל, פתיחה מכתובת) חייב לעבור
+ * כאן: `popstate` מזהה לאן לחזור רק לפי `state.screen`, ורשומה שאין לה אחד
+ * כזה היא לחיצת Back שמנווטת באמת אבל לא משנה כלום על המסך.
+ */
+function markScreen(screen: Screen, url?: string): void {
+  if (typeof window === "undefined") return;
+  if (url === undefined) window.history.replaceState({ screen }, "");
+  else window.history.replaceState({ screen }, "", url);
+}
+
+/**
+ * דחיפת רשומה למסך שנקבע בלי `go` — פתיחת עיצוב שמור, לינק שיתוף.
+ *
+ * דחיפה ולא סימון: מתחת למסך שנפתח נשארת רשומת הכניסה, ולכן Back ממנו חוזר
+ * לתחילת המשפך. סימון היה מוחק אותה, ואז Back מעיצוב שנפתח מהרשימה היה מקפיץ
+ * מהאתר כולו.
+ */
+function pushScreen(screen: Screen): void {
+  if (typeof window === "undefined") return;
+  if ((window.history.state as { screen?: Screen } | null)?.screen === screen) return;
+  window.history.pushState({ screen }, "");
+}
+
 export default function DesignPage() {
   const [s, setState] = useState<CreateState>(INITIAL);
   const [maxReached, setMaxReached] = useState(0);
@@ -127,6 +153,19 @@ export default function DesignPage() {
   });
 
   useEffect(() => setSaved(listMyDesigns()), []);
+
+  /**
+   * רשומת הכניסה מקבלת את המסך שהיא מציגה.
+   *
+   * בלעדיה היא נטענת עם `state` ריק, ואז Back ממסך המידות מנווט באמת — ולא
+   * משנה כלום על המסך. לחיצה מתה, ורק הלחיצה שאחריה יוצאת מהאתר. גם רענון
+   * נכנס לכאן: המצב בזיכרון חוזר ל-INITIAL בעוד הרשומה עדיין נושאת את המסך
+   * שממנו רועננו. האפקטים שמשחזרים מצב (חזרה מגוגל, פתיחה מכתובת) מוגדרים
+   * אחרי זה, ולכן רצים אחרי — וסימון משלהם גובר.
+   */
+  useEffect(() => {
+    markScreen(INITIAL.screen);
+  }, []);
 
   /* ===== הציור של כרטיס שהמכשיר הזה לא יצר =====
      ה-path נשמר מקומית רק אחרי גרסה שחזרה כאן. עיצוב שנמשך מהשרת (כניסה
@@ -282,6 +321,52 @@ export default function DesignPage() {
   }, []);
 
   /**
+   * מעבר מסך שמחליף את הרשומה הנוכחית במקום להוסיף אחת — היציאה ממסך ההמתנה.
+   *
+   * `processing` דוחף רשומה משלו (בלי זה Back באמצע הרצה נופל למסך המידות),
+   * ואם התוצאה הייתה דוחפת רשומה נוספת מעליה, Back מהתוצאה היה נוחת דווקא על
+   * רשומת ההמתנה — שאליה אנחנו מסרבים לחזור, כלומר עוד לחיצה מתה. ההחלפה
+   * משאירה את המבנה שהיה תמיד: מתחת לתוצאה יושב הבריף.
+   */
+  const goReplacing = useCallback((screen: Screen) => {
+    setState((prev) => {
+      if (prev.screen !== screen) markScreen(screen);
+      return { ...prev, screen };
+    });
+    const i = RAIL.findIndex((r) => r.screens.includes(screen));
+    if (i >= 0) setMaxReached((m) => Math.max(m, i));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  }, []);
+
+  /**
+   * הרצת מנוע באוויר — יצירה ראשונה (מסך ההמתנה בלי שגיאה) או שינוי שנשלח
+   * ממסך התוצאה. זה הזמן שבו המסע נעול: לא Back, לא סרגל שלבים.
+   *
+   * למה בכלל: העיצוב נוצר בשרת ועולה כסף. מי שחזרה אחורה באמצע ההמתנה נחתה
+   * על מסך העיצוב עם התיאור שלה, לחצה "שלחו" שוב — וקיבלה הרצה שנייה על אותו
+   * תיאור בדיוק: מספר עיצוב שני, ועוד יחידה מהמכסה היומית. הראשונה בינתיים
+   * הסתיימה בשרת בלי שאיש רואה אותה.
+   */
+  const running = (s.screen === "processing" && !s.procError) || s.applying;
+  /**
+   * אותו דבר עבור המאזין — ובכוונה לא נגזר מהמצב.
+   *
+   * המאזין נרשם פעם אחת, ולכן `running` שנקרא ממנו היה קפוא על הרינדור
+   * הראשון; אבל גם סנכרון באפקט לא היה נכון כאן. "חזרה לעיצוב" ממסך השגיאה
+   * מנקה את השגיאה ורק אז נסוג, וברגע שבין השניים המצב הנגזר אומר "רצה" —
+   * כלומר הנעילה הייתה דוחפת את הלקוחה בחזרה למסך שממנו ביקשה לצאת. הדגל
+   * נדלק ונכבה סביב קריאת המנוע עצמה, ששם הוא נכון תמיד.
+   */
+  const runningRef = useRef(false);
+  /** ניסו לצאת בזמן הרצה. ההודעה מוצגת רק כל עוד הנעילה בתוקף. */
+  const [lockNotice, setLockNotice] = useState(false);
+  useEffect(() => {
+    if (!lockNotice) return;
+    const t = setTimeout(() => setLockNotice(false), 8000);
+    return () => clearTimeout(t);
+  }, [lockNotice]);
+
+  /**
    * Back של הדפדפן חוזר מסך אחד במשפך במקום לצאת ממנו.
    *
    * מסך שאינו בהיסטוריה שלנו (`state.screen` ריק) הוא הכניסה למשפך, ושם Back
@@ -291,6 +376,15 @@ export default function DesignPage() {
    */
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
+      // הרצה באוויר — המסע נעול. הדפדפן כבר ביצע את הניווט (popstate אינו
+      // ניתן לביטול), ולכן "לא לזוז" פירושו לדחוף בחזרה רשומה זהה לזו שממנה
+      // יצאנו: רשומה אחת נצרכה, רשומה אחת נדחפה, והמבנה נשאר כשהיה. לחיצה
+      // חוזרת פשוט תחזור על אותו דבר.
+      if (runningRef.current) {
+        window.history.pushState({ screen: stateRef.current.screen }, "");
+        setLockNotice(true);
+        return;
+      }
       const screen = (e.state as { screen?: Screen } | null)?.screen;
       if (!screen || screen === "processing") return;
       setState((prev) => (prev.screen === screen ? prev : { ...prev, screen }));
@@ -409,6 +503,15 @@ export default function DesignPage() {
       return;
     }
 
+    // רשומת היסטוריה משלו למסך ההמתנה. היא זו שנדחפת בחזרה כשלוחצים Back
+    // באמצע ההרצה, והיא זו שמוחלפת בתוצאה כשההרצה נגמרת — כך שמתחת לתוצאה
+    // נשאר הבריף, בדיוק כמו לפני הנעילה. "נסו שוב" אינו דוחף עוד אחת: הוא
+    // נלחץ ממסך ההמתנה עצמו.
+    if (typeof window !== "undefined" && cur.screen !== "processing") {
+      window.history.pushState({ screen: "processing" }, "");
+    }
+    runningRef.current = true;
+
     const st = {
       ...cur,
       screen: "processing" as Screen,
@@ -501,11 +604,14 @@ export default function DesignPage() {
 
       clearPendingJob();
       jobRef.current = null;
+      runningRef.current = false;
       // הצלחה מאפסת גם את רצף הכשלים — הכשל הבא, אם יהיה, הוא סיפור חדש.
       setState((prev) => ({ ...prev, procStage: null, procFailCount: 0 }));
       pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
-      go("result");
+      goReplacing("result");
     } catch (e) {
+      // ההרצה נגמרה — גם אם רע. מסך השגיאה הוא מסך שאפשר לצאת ממנו.
+      runningRef.current = false;
       const apiErr = e instanceof ClientApiError ? e : null;
       // תשובה אמיתית של השרת סוגרת את ההרצה; כשל רשת/תפוגה **לא**. במקרה
       // השני ההרצה עשויה להמשיך בשרת ולהצליח, ואז החלון הקופץ הוא הדרך
@@ -535,7 +641,7 @@ export default function DesignPage() {
         procStage: null,
       }));
     }
-  }, [account, go, pushEntry, remember]);
+  }, [account, go, goReplacing, pushEntry, remember]);
 
   /**
    * שליחת משוב ממסך השגיאה — אחרי ש"נסו שוב" נכשל גם הוא.
@@ -661,6 +767,7 @@ export default function DesignPage() {
           });
           setMaxReached(2);
           setResumingId(null);
+          pushScreen("brief");
           if (typeof window !== "undefined") window.scrollTo(0, 0);
           return;
         }
@@ -701,6 +808,7 @@ export default function DesignPage() {
         });
         setMaxReached(3);
         setResumingId(null);
+        pushScreen("result");
         if (typeof window !== "undefined") window.scrollTo(0, 0);
       } catch (e) {
         setResumingId(null);
@@ -810,6 +918,10 @@ export default function DesignPage() {
     if (!stash) return;
     setState(stash.state);
     setMaxReached(stash.maxReached);
+    // החזרה מגוגל טוענת את העמוד מחדש, כלומר ההיסטוריה שלנו נמחקה: הרשומה
+    // היחידה שיש היא זו, והמסך שהיא מציגה הוא זה שהגיע מה-stash ולא מסך
+    // הפתיחה. בלי הסימון Back כאן היה ניווט שלא משנה כלום.
+    markScreen(stash.state.screen);
     // המסלול נוסע עם המצב: הרפרנס עצמו לא שורד טעינת עמוד מחדש.
     pendingAction.current = stash.action ?? "generate";
     resumeTarget.current = stash.resumeId ?? null;
@@ -819,7 +931,7 @@ export default function DesignPage() {
     if (failed) {
       // מנקים את הסימון מהכתובת: רענון אחריו לא אמור להראות שוב שגיאה ישנה.
       url.searchParams.delete("auth");
-      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      markScreen(stash.state.screen, `${url.pathname}${url.search}`);
       startAfterSignIn.current = stash.resume;
       setGateError(d.acctGoogleFailed);
       setGateOpen(true);
@@ -864,6 +976,9 @@ export default function DesignPage() {
     const entry = activeEntry(s);
     if (!s.designId || !entry || !s.editReq.trim()) return;
     set({ applying: true, editError: null });
+    // שינוי הוא הרצת מנוע לכל דבר — אותו זמן, אותה מכסה. מי שחוזרת אחורה
+    // באמצעו נוחתת על מסך העיצוב, ומשם "שלחו" מייצר עיצוב חדש לגמרי.
+    runningRef.current = true;
     try {
       const res = await api.generate(
         {
@@ -888,6 +1003,7 @@ export default function DesignPage() {
       );
       clearPendingJob();
       jobRef.current = null;
+      runningRef.current = false;
       // אותה בנייה כמו ביצירה הראשונה — כולל ההצעות. שינוי רץ באותו צינור
       // ומחזיר את אותו מספר הצעות; כאן הן נזרקו, ולכן אחרי כל שינוי נשארה
       // הצעה אחת על המסך והשאר הופיעו רק אחרי רענון.
@@ -896,6 +1012,7 @@ export default function DesignPage() {
       // התוצאה מתחלפת בראש העמוד, והלקוחה עומדת בתיבת הבקשה בתחתיתו.
       if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
     } catch (e) {
+      runningRef.current = false;
       // בליעה שקטה: הכפתור חזר מ"מחיל…" ל"החלת שינוי" ושום דבר אחר לא זז.
       const apiErr = e instanceof ClientApiError ? e : null;
       set({ applying: false, editError: apiErr?.message ?? d.editFailed });
@@ -910,6 +1027,9 @@ export default function DesignPage() {
       // שנשמרה בגרסה (השרת שומר canonicalSvg), כך שהיא לא זיהתה כלום.
       if (!s.designId || !entry || (entry.chosen ?? 0) === index) return;
       set({ applying: true, chooseError: null });
+      // קצר יותר משינוי, אבל אותה נעילה בדיוק: המסך אומר "אי אפשר לזוז", וזה
+      // חייב להיות נכון גם ללחצן האחורה ולא רק לכפתורים שמואפרים.
+      runningRef.current = true;
       try {
         // העיצוב של הגרסה המוצגת: בחירת הצעה על גרסת-עריכה מעדכנת את הדוגמה
         // שלה (`AP-0085.2`), לא את עיצוב-האב של המשפך.
@@ -929,8 +1049,10 @@ export default function DesignPage() {
         // והתנהגות שרת ישן (מזהה חדש בכל פעם) ממשיכה לעבוד בלי שינוי.
         if (res.version.id === entry.versionId) replaceEntry(s, s.activeEdit, next);
         else pushEntry(s, next);
+        runningRef.current = false;
         set({ applying: false });
       } catch (e) {
+        runningRef.current = false;
         // בליעה שקטה נראתה בדיוק כמו כפתור מת: לחיצה, שום שינוי, שום הסבר.
         const apiErr = e instanceof ClientApiError ? e : null;
         set({ applying: false, chooseError: apiErr?.message ?? he.errGeneric });
@@ -959,7 +1081,9 @@ export default function DesignPage() {
     if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken) return;
 
     // ניקוי הכתובת: רענון אחרי שהעיצוב נפתח לא אמור לפתוח אותו שוב מאפס.
-    window.history.replaceState({}, "", window.location.pathname);
+    // הרשומה נשארת מסומנת במסך הפתיחה — מה שנפתח מכאן (שיתוף, עיצוב שמור)
+    // דוחף רשומה משלו מעליה, כך ש-Back ממנו חוזר למשפך ולא קופץ מהאתר.
+    markScreen(INITIAL.screen, window.location.pathname);
 
     if (shareToken) {
       // מחרוזת שאינה טוקן כלל אינה מגיעה לשרת — אבל היא **כן** חייבת לעצור
@@ -986,6 +1110,7 @@ export default function DesignPage() {
               : { braceletWidth: sh.widthMm }),
           }));
           setMaxReached(1);
+          pushScreen("sizes");
         })
         .catch(() => {
           // לינק מבוטל או שגוי: נשארים במסע רגיל מהתחלה, עם הסבר. עדיף
@@ -1173,8 +1298,32 @@ export default function DesignPage() {
         <StepRail
           screen={s.screen}
           maxReached={maxReached}
-          onGo={(i) => go(RAIL_TARGET[i])}
+          // הסרגל הוא הדרך השנייה לצאת מהמסע באמצע הרצה, ולכן הוא ננעל יחד
+          // עם Back. הבדיקה חוזרת גם ב-`onGo`: כפתור מושבת אינו שולח אירוע,
+          // אבל זו הרשות שמחליטה, לא התצוגה.
+          locked={running}
+          onGo={(i) => {
+            if (running) {
+              setLockNotice(true);
+              return;
+            }
+            go(RAIL_TARGET[i]);
+          }}
         />
+      )}
+
+      {/* ניסיון לצאת באמצע הרצה. `assertive` ולא `polite`: זו תשובה ללחיצה
+          שהמשתמשת עשתה עכשיו, ולא עדכון רקע. */}
+      {running && lockNotice && (
+        <div
+          role="status"
+          aria-live="assertive"
+          className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-5"
+        >
+          <p className="max-w-[520px] border border-graphite/15 bg-white px-5 py-4 text-[14px] leading-relaxed text-graphite shadow-[0_2px_18px_rgba(0,0,0,0.10)]" style={{ textWrap: "pretty" }}>
+            {d.lockedBusy}
+          </p>
+        </div>
       )}
 
       <div key={s.screen} className="ap-fade">
@@ -1255,7 +1404,18 @@ export default function DesignPage() {
           </>
         )}
 
-        {s.screen === "brief" && <BriefScreen s={s} set={set} onSubmit={() => void startGeneration()} />}
+        {s.screen === "brief" && (
+          <BriefScreen
+            s={s}
+            set={set}
+            onSubmit={() => void startGeneration()}
+            // חזרה אחורה מהתוצאה נוחתת כאן, והתוצאה עצמה עדיין בזיכרון. בלי
+            // הדרך חזרה אליה המסך נראה כמו עיצוב שנמחק, והפעולה הראשית שבו
+            // מייצרת עיצוב שני במקום להחזיר את הראשון.
+            hasResult={s.edits.length > 0}
+            onBackToResult={() => go("result")}
+          />
+        )}
 
         {s.screen === "processing" && (
           <ProcessingScreen
@@ -1266,6 +1426,7 @@ export default function DesignPage() {
             accountEmail={account?.email ?? null}
             onFeedback={sendProcFeedback}
             disconnected={s.procStage === DISCONNECTED_STAGE}
+            locked={running}
             onRetry={() => void startGeneration()}
             onBack={() => {
               // החזרה לעיצוב היא שינוי כיוון — הרצף נשבר: מי שחוזרת, משנה
@@ -1274,7 +1435,12 @@ export default function DesignPage() {
                 procError: null, procErrorDetail: null, procErrorCode: null,
                 procFailCount: 0, procStage: null,
               });
-              go("brief");
+              // נסיגה אמיתית ולא דחיפה: למסך ההמתנה יש רשומת היסטוריה משלו
+              // (היא זו שמחזיקה את הנעילה), ומתחתיה יושב הבריף. דחיפת רשומת
+              // בריף שנייה מעליה הייתה הופכת את ה-Back הבא ללחיצה מתה.
+              if ((window.history.state as { screen?: Screen } | null)?.screen === "processing") {
+                window.history.back();
+              } else go("brief");
             }}
           />
         )}
