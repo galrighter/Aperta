@@ -29,6 +29,7 @@ import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
+import { popStoryHandoff } from "@/lib/client/storyHandoff";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
 import {
@@ -38,7 +39,7 @@ import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryDesignId, entryFromGeneration,
-  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
+  canGenerate, countCuts, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
   newOrderKey, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
@@ -629,6 +630,9 @@ export default function DesignPage() {
                   st.image && st.imageRole !== "ready"
                     ? [{ kind: "inspiration" as const, dataUrl: st.image.dataUrl }]
                     : [],
+                // story mode — הדגל היחיד שנוסע לשרת במסלול הפשוט. בכל מסלול
+                // אחר הוא `undefined`, כלומר הבקשה זהה למה שהייתה.
+                mode: st.story ? ("story" as const) : undefined,
                 // ניסיון חוזר אחרי ניתוק: אותו מזהה, ולכן אותה הרצה על הקופסה.
                 // מה שכבר רונדר ושולם נאסף במקום להיקנות שוב. `jobRef` שורד רק
                 // כשל רשת/תפוגה — תשובה אמיתית של השרת מנקה אותו למטה, וקלט
@@ -1134,7 +1138,12 @@ export default function DesignPage() {
       try {
         // העיצוב של הגרסה המוצגת: בחירת הצעה על גרסת-עריכה מעדכנת את הדוגמה
         // שלה (`AP-0085.2`), לא את עיצוב-האב של המשפך.
-        const res = await api.chooseCandidate(entryDesignId(s, entry)!, svg, index, entry.versionId);
+        // story mode — ההצעה נמסגרת למידות של עצמה, כי הרוחב במסלול הזה נגזר
+        // מהעיצוב ולא נבחר. בכל מסלול אחר הפרמטר ריק והבקשה זהה לקודמתה.
+        const res = await api.chooseCandidate(
+          entryDesignId(s, entry)!, svg, index, entry.versionId,
+          s.story ? ("story" as const) : undefined,
+        );
         const next: EditEntry = {
           ...entryFromGeneration(res, { region: null, text: "" }),
           // אותן הצעות ממשיכות להיות זמינות אחרי הבחירה — הבחירה עצמה אינה
@@ -1171,6 +1180,8 @@ export default function DesignPage() {
      נקרא מ-`window.location` ולא מ-`useSearchParams` כדי לא לחייב את העמוד
      כולו ב-Suspense; שלושת הפרמטרים נכנסים בטעינה מלאה. */
   const urlHandled = useRef(false);
+  /** story mode — המסירה נקלטה, והיצירה ממתינה לרינדור שבו המצב כבר עודכן. */
+  const storyStart = useRef(false);
   useEffect(() => {
     if (urlHandled.current) return;
     urlHandled.current = true;
@@ -1179,7 +1190,33 @@ export default function DesignPage() {
     const wantsDesigns = params.get("designs");
     const wantsSignIn = params.get("signin");
     const shareToken = params.get("from");
-    if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken) return;
+    const fromStory = params.get("story");
+    if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken && !fromStory) return;
+
+    /* story mode — הגעה מהמסלול הפשוט (`/story/create`).
+       המוצר, המידה והסיפור כבר נמסרו (lib/client/storyHandoff), ולכן שלושת
+       המסכים הראשונים כבר נענו ואין על מה לעצור: נכנסים ישר ליצירה. מה
+       שממשיך מכאן הוא המסע הקיים, מילה במילה — כולל שער החשבון, ההתאוששות
+       מניתוק וההזמנה. */
+    if (fromStory) {
+      const handoff = popStoryHandoff();
+      // מסירה שלא נמצאה (רענון, כניסה ישירה לכתובת) אינה שגיאה — פשוט ממשיכים
+      // כמסע רגיל מהתחלה, בלי שום התנהגות מיוחדת.
+      if (handoff) {
+        setState((prev) => ({
+          ...prev,
+          story: true,
+          product: handoff.product,
+          ...(handoff.product === "ring" ? { ringSize: handoff.size } : { circ: handoff.size }),
+          brief: handoff.story,
+          screen: "processing",
+        }));
+        setMaxReached(2);
+        storyStart.current = true;
+      }
+      markScreen(handoff ? "processing" : INITIAL.screen, window.location.pathname);
+      return;
+    }
 
     // ניקוי הכתובת: רענון אחרי שהעיצוב נפתח לא אמור לפתוח אותו שוב מאפס.
     // הרשומה נשארת מסומנת במסך הפתיחה — מה שנפתח מכאן (שיתוף, עיצוב שמור)
@@ -1253,6 +1290,49 @@ export default function DesignPage() {
     setSavedOpen(true);
   }, [resume]);
 
+  /* ===== story mode — הרצת היצירה אחרי שהמסירה נכנסה למצב =====
+     לא מתוך האפקט שקלט אותה: `startGeneration` קורא את המצב מ-`stateRef`, והוא
+     מתעדכן רק בסיום הרינדור הבא (ראו ההערה על `stateRef`). קריאה מיידית הייתה
+     יוצאת עם `brief` ריק, נופלת על `canGenerate` ומחזירה את הלקוחה למסך תיאור
+     שהיא מעולם לא ביקשה לראות — בדיוק הכשל שתועד ב-AP-0074. */
+  useEffect(() => {
+    if (!storyStart.current) return;
+    if (s.screen !== "processing" || runningRef.current) return;
+    storyStart.current = false;
+    void startGeneration();
+  }, [s.screen, startGeneration]);
+
+  /* ===== story mode — הרוחב שנגזר חוזר אל המצב =====
+     במסלול הפשוט הרוחב אינו נבחר אלא נמדד מהעיצוב שחזר, ולכן הערך שבמצב
+     (`braceletWidth`/`ringWidth`) הוא רק העוגן הנומינלי שנשלח לתכנון. מרגע
+     שיש גרסה, מקור האמת הוא ה-viewBox שלה — וכל מי שקורא רוחב חייב לקרוא את
+     אותו מספר.
+
+     **את מה זה משרת.** לא את המחיר — הוא קבוע למוצר ואינו תלוי ברוחב בכלל
+     (lib/pricing.ts). שני דברים אחרים כן קוראים את המצב:
+
+     - **הרשומה המקומית.** `remember` שומר `widthMm: widthOf(st)` בכרטיס
+       ב"העיצובים שלי". בלי הסנכרון הכרטיס מספר על פס של 18 מ"מ בזמן שמה
+       שנשמר הוא 32.
+     - **תוספת הנוחות שבתוך האורך.** `stripLengthMm` נגזר גם מהרוחב
+       (`widthComfortAllowanceMm`), ובטבעת הוא עולה במדרגות — 6 מ"מ ו-12 מ"מ
+       אינם מקבלים את אותה תוספת. יצירה נוספת על אותו סיפור צריכה לצאת עם
+       התוספת של הפריט שנוצר, לא של העוגן שאיתו נכנסנו.
+
+     מעוגל לספרה אחת — בדיוק המספר שההזמנה שולחת — כדי שכל מי שקורא רוחב יקרא
+     את אותו מספר.
+
+     `set` ולא `setSizes`: זו קריאה של מה שכבר נוצר, לא מידה חדשה שהוזנה.
+     `setSizes` היה מבטל את העיצוב שממנו נקרא הרוחב (`SIZE_KEYS`). */
+  useEffect(() => {
+    if (!s.story) return;
+    const entry = activeEntry(s);
+    if (!entry?.svg) return;
+    const w = Math.round(frameWidthMm(s, entry) * 10) / 10;
+    if (!(w > 0) || Math.abs(widthOf(s) - w) < 0.05) return;
+    set(s.product === "ring" ? { ringWidth: w } : { braceletWidth: w });
+  }, [s, set]);
+
   /* ===== שליחת ההזמנה ===== */
   const submitOrder = useCallback(async () => {
     // המפתח של ניסיון השליחה. נוצר פעם אחת ונשמר במצב: ניסיון שני אחרי רשת
@@ -1313,9 +1393,9 @@ export default function DesignPage() {
           circumferenceMm: Math.round(circumferenceMm(s) * 10) / 10,
           widthMm: Math.round(frameWidthMm(s, entry) * 10) / 10,
           fit: s.product === "ring" ? undefined : s.fit,
-          // המחיר עצמו מחושב בשרת מאותה פונקציה; מה שנשלח הוא מה שקבע אותו —
-          // ולכן `densityForPrice`: ב"שהמודל יחליט" לא נבחרה צפיפות.
-          density: densityForPrice(s),
+          // המחיר עצמו מחושב בשרת מאותה פונקציה, והקלט היחיד שלו הוא המוצר:
+          // מאז המחיר הקבוע (lib/pricing.ts) הרוחב והצפיפות אינם מזיזים אותו,
+          // ולכן הצפיפות כבר לא נשלחת — היא לא נשמרה על ההזמנה מעולם.
           cuts: countCuts(entry?.svg ?? null),
           // הכיתוב נוסע בתוך שדה התיאור ולא בעמודה משלו: הוא כבר חתוך
           // בגאומטריה שהסדנה מקבלת, ומה שנחוץ כאן הוא שמי שקורא את ההזמנה

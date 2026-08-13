@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { createSampleDesign, getDesign, getVersion, reserveGeneration } from "@/lib/db/designs";
+import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
+import { STORY_MODE, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
 import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
-import { ingestCutouts, designDims } from "@/lib/vectorizer";
+import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
 import { canvasFor, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
@@ -86,6 +88,15 @@ const schema = z.object({
    *  לא בהכרח הגרסה הנוכחית של העיצוב. */
   baseVersionId: z.string().uuid().optional(),
   images: z.array(imageSchema).max(3).default([]),
+  /**
+   * story mode — המסלול הפשוט (`/story`). ההבדל היחיד: אין רוחב שנבחר, ולכן
+   * הרוחב נגזר מהיחס שהמודל צייר ונשמר על הרשומה, והמסגור מקבל אותו כמות
+   * שהוא — כלומר קנה מידה אחיד. ראה src/lib/story/mode.ts.
+   *
+   * אופציונלי, וברירת המחדל היא ההתנהגות הקיימת: בקשה בלי השדה הזה עוברת
+   * בדיוק באותו קוד כמו קודם.
+   */
+  mode: z.literal(STORY_MODE).optional(),
 
   // --- כיול פרומפט (בק־אופיס בלבד; ראה את השער ב-POST) ---
   /** הפרומפט המדויק שיישלח למודל, במקום זה שנבנה מהמידות. */
@@ -406,11 +417,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // ומספר השורות שחותך בפועל הוא `plan.rows` — אם הם סותרים, הקופסה תחתוך
     // לפי plan.rows. זה מכוון (אפשר לנסות ניסוח מול חיתוך אחר), והמסך מציג את
     // המספר שיחתוך ליד התיבה כדי שהסתירה תהיה גלויה.
+    // story mode — במסלול Story אין רוחב שנבחר, ולכן הפרומפט מוסר טווח במקום
+    // מידה. `undefined` בכל מסלול אחר = הפסקה נבנית בדיוק כמו קודם.
+    const story = isStory(body.mode);
     const prompt =
       body.promptOverride?.trim() ||
       buildRenderPrompt(
         body.userPrompt, design.product_type, dims, plan.rows,
         Boolean(editSvg), Boolean(lettering), plan.cols,
+        story ? { widthRange: widthRangeOf(design.product_type) } : undefined,
       );
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
@@ -480,6 +495,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           : null,
         /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
         promptOverride: Boolean(body.promptOverride?.trim()),
+        // story mode — כדי שאפשר יהיה למדוד את הניסוי ביומן מול המסלול הרגיל.
+        mode: story ? STORY_MODE : undefined,
       },
       // ה-base64 שכבר בידנו, לא בייטים: כאן נבנה קודם data URL חדש בשרשור
       // (עותק שלישי של המטען) רק כדי לפרק אותו מיד, והבייטים שיצאו הוחזקו עד
@@ -613,8 +630,29 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // שיצטרכו את המתיחה הקטנה ביותר. הבחירה על ה-viewBox בלבד, לפני המסגור:
       // מסגור של עשרים־וחמישה מועמדים הוא בדיוק ההקצאה שהוצאה מה-isolate.
       const shortlist = pickClosestRatio(approved, (c) => c.cutoutsSvg, dims, plan.offered);
-      const framed = (await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan))
-        .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+      // story mode — כל מועמד ממוסגר **למידות של עצמו**: האורך שהוזמן, והרוחב
+      // שקנה מידה אחיד מייצר עבור הציור הזה (בתוך טווח הייצור). מכאן המסגור
+      // הקיים בוחר את הרוחב האחיד מעצמו ו-`stretch` חוזר 1 — בלי שום שינוי
+      // בקוד הגיאומטרי ובלי דגל שנוסע לשירות המסגור. ראה lib/story/mode.ts.
+      //
+      // הקריאה נשארת `frameCandidates`, מועמד בכל פעם: הפונקציה ממסגרת סדרתית
+      // ממילא (מועמד אחד חי בכל רגע — ראה frameClient), וכך גם הנפילה־לאחור
+      // בין הקופסה, ה-Worker והמסלול המקומי נשארת זהה לשני המסלולים.
+      const ranked = (
+        story
+          ? await shortlist.reduce<Promise<FramedPreview[]>>(async (acc, c) => {
+              const out = await acc;
+              const svg = c.cutoutsSvg!;
+              out.push(...(await frameCandidates(storyFrameDims(designDims(design), svg), [svg], bridgePlan)));
+              return out;
+            }, Promise.resolve([]))
+          : await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan)
+      ).sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+      // story mode — ואחרי הדירוג, סדר שמראה את השונות. ההצעה הראשונה נשארת
+      // מי שהייתה (היא זו שנשמרת כגרסה); מה שמשתנה הוא הסדר של השאר, כדי
+      // ששתי ההצעות הראשונות שהלקוחה רואה לא יהיו הדומות ביותר זו לזו.
+      // ראה orderByVariety.
+      const framed = story ? orderByVariety(ranked) : ranked;
       return { job, renderPngPath, framed };
     };
 
@@ -656,6 +694,17 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // נשארת על העיצוב שנפתח בשבילה.
     const target = editSvg ? await createSampleDesign(design) : design;
 
+    // story mode — הרוחב של הזוכה הוא הרוחב של העיצוב מכאן והלאה.
+    //
+    // הוא נקרא מה-viewBox של המועמד שנבחר ולא מחושב מחדש: זו המסגרת שהוא באמת
+    // יושב בה אחרי המסגור. הרשומה מתעדכנת כדי שכל מה שבא אחרי — בקשת שינוי,
+    // מעבר בין הצעות, ההזמנה והבק־אופיס — ידבר על אותו רוחב, ו-`ingested`
+    // נושא אותו כבר עכשיו כדי שהמסגור של הזוכה יהיה זהות ולא מתיחה שנייה.
+    const storyWidthMm = story ? svgFrame(candidates[0].framedSvg)?.widthMm ?? null : null;
+    const ingestTarget =
+      storyWidthMm !== null ? { ...target, width_mm: storyWidthMm } : target;
+    if (storyWidthMm !== null) await updateDesignWidth(target.id, storyWidthMm);
+
     // 5) הטוב ביותר נשמר כגרסה; השאר חוזרים לבחירת הלקוחה — אבל רק אלה שאפשר
     // לייצר. הצעה שנכשלה בוולידציה אינה בחירה אלא מלכודת: היא נראית ככל השאר,
     // הלקוחה תבחר בה כי היא יפה, והמסע ייעצר בייצוא. אם *כל* המועמדים נכשלו
@@ -681,7 +730,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       bridges: c.bridges,
     }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
-      design: target,
+      design: ingestTarget,
       cutoutsSvg: candidates[0].framedSvg,
       userPrompt: body.userPrompt,
       renderPngPath,

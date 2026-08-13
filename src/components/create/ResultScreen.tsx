@@ -6,6 +6,8 @@
 // מה שהיה כאן ואיננו: כרטיס "כוונון מהיר" — שני מחוונים שנספחו לפרומפט של כל
 // בקשת שינוי. הוסר (גל, 31.7); הנימוק המלא ב-buildEditPrompt.
 import { he } from "@/i18n/he";
+// story mode — מסגור טקסטואלי בלבד לתוצאה במסלול הפשוט. ראה STORY_FLOW_PLAN.md §17.
+import { story } from "@/i18n/story";
 import { designCode } from "@/lib/designCode";
 import {
   blockCause, fabricationRef, hasFindings, markedChecks, needsLook,
@@ -84,11 +86,28 @@ export function ResultScreen({
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
-      <Eyebrow>{d.resultEyebrow}</Eyebrow>
+      <Eyebrow>{s.story ? story.result.eyebrow : d.resultEyebrow}</Eyebrow>
       {/* פעם היו כאן שתי כותרות, ו"קובץ מוכן לחיתוך" קיבל "הקובץ שלך מוכן".
           מרגע שהמילה "קובץ" ירדה מהאתר, שני הענפים אמרו את אותו הדבר —
-          והלקוחה מקבלת את אותה כותרת בלי קשר למאיפה הגיע העיצוב. */}
-      <ScreenTitle>{d.resultTitle}</ScreenTitle>
+          והלקוחה מקבלת את אותה כותרת בלי קשר למאיפה הגיע העיצוב.
+
+          story mode מחזיר הבחנה אחת, וזו הבחנה של משמעות ולא של מקור: במסלול
+          הפשוט מה שעל המסך הוא **פרשנות** לסיפור, ואחת מכמה. "העיצוב שלך
+          מוכן" מזמין את השאלה "האם זה מה שדמיינתי"; "הנה כמה תרגומים לסיפור
+          שלך" מזמין את השאלה "איזה מהם הכי שלי". זו כל ההבחנה, והיא טקסטואלית
+          בלבד — המסך, הפקדים וההזמנה זהים. */}
+      <ScreenTitle>
+        {s.story
+          ? picks.length > 1
+            ? story.result.titleMany
+            : story.result.titleOne
+          : d.resultTitle}
+      </ScreenTitle>
+      {s.story && (
+        <p className="mt-3 max-w-[560px] text-[15px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+          {story.result.note}
+        </p>
+      )}
 
       {/* המספר הסידורי, ליד העיצוב עצמו — זה מה שמוסרים כשמדברים עליו.
           לצידו השיתוף: שתי הדרכים למסור את העיצוב הזה למישהו אחר, באותה שורה,

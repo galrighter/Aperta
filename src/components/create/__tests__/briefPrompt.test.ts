@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { INITIAL, buildPrompt, canGenerate, densityForPrice, priceOf, type CreateState } from "../model";
+import { INITIAL, buildPrompt, canGenerate, priceOf, type CreateState } from "../model";
 
 // "שהמודל יחליט" — האפשרות לא לבחור מאפיינים. הבדיקה כאן היא על מה שיוצא
 // לפרומפט ועל מה שקורה לתמחור, כי אלה שני המקומות שהדגל נוגע בהם.
@@ -37,16 +37,27 @@ describe("buildPrompt — מאפיינים", () => {
   });
 });
 
-describe("תמחור כשלא נבחרה צפיפות", () => {
-  it("נופל לבינונית, ולא לצפיפות שנשארה במסך", () => {
-    expect(densityForPrice(state({ attrsAuto: true, density: "high" }))).toBe("medium");
-    expect(densityForPrice(state({ attrsAuto: false, density: "high" }))).toBe("high");
+describe("תמחור מול מה שנבחר במסך", () => {
+  // מה שהיה כאן: `densityForPrice` — הצפיפות שהתמחור עבד לפיה, ובדיקה
+  // ש"שהמודל יחליט" מתומחר כבינונית. מאז המחיר הקבוע (lib/pricing.ts) לצפיפות
+  // אין תפקיד בתמחור בכלל, והשאלה החליפה צורה: לא "איזו צפיפות נספרת" אלא
+  // "האם משהו במסך יכול להזיז את המחיר". התשובה היא לא.
+  it("שום מאפיין עיצוב אינו מזיז את המחיר", () => {
+    const std = priceOf(state({ product: "bracelet" }));
+    for (const density of ["low", "medium", "high"] as const) {
+      expect(priceOf(state({ product: "bracelet", density })).total).toBe(std.total);
+      expect(priceOf(state({ product: "bracelet", density, attrsAuto: true })).total).toBe(std.total);
+    }
+    // וגם הרוחב, שהוא עדיין בחירה של הלקוחה במסלול הרגיל.
+    for (const braceletWidth of [5, 18, 40, 80]) {
+      expect(priceOf(state({ product: "bracelet", braceletWidth })).total).toBe(std.total);
+    }
   });
 
-  it("המחיר ב״שהמודל יחליט״ שווה למחיר של צפיפות בינונית", () => {
-    const auto = priceOf(state({ attrsAuto: true, density: "high" }));
-    const medium = priceOf(state({ attrsAuto: false, density: "medium" }));
-    expect(auto.total).toBe(medium.total);
+  it("המחיר כן נבדל בין מוצר למוצר", () => {
+    expect(priceOf(state({ product: "ring" })).total).not.toBe(
+      priceOf(state({ product: "bracelet" })).total,
+    );
   });
 });
 

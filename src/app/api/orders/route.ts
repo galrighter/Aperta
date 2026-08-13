@@ -85,7 +85,9 @@ const createSchema = z.object({
   circumferenceMm: z.number().positive().max(400),
   widthMm: z.number().positive().max(100),
   fit: z.enum(["tight", "regular", "loose"]).optional(),
-  density: z.enum(["low", "medium", "high"]).default("medium"),
+  // מה שהיה כאן ואיננו: `density`. הוא נשלח לצורך התמחור בלבד ומעולם לא נשמר
+  // על ההזמנה, ומרגע שהמחיר קבוע למוצר לא נותר לו לאן ללכת. לקוח ישן שממשיך
+  // לשלוח אותו אינו נשבר — zod מסנן שדה שאינו בסכימה בשקט.
   cuts: z.number().int().min(0).max(10_000).optional(),
   brief: z.string().trim().max(4000).optional(),
   // honeypot נגד בוטים — אמור להישאר ריק
@@ -138,11 +140,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const price = priceFor({
-      productType: body.productType,
-      widthMm: body.widthMm,
-      density: body.density,
-    });
+    // מחיר קבוע למוצר. הרוחב והצפיפות עדיין מגיעים בגוף הבקשה — הם נרשמים על
+    // ההזמנה ומתארים את מה שנחתך — אבל אינם נכנסים לחישוב. ראו lib/pricing.ts.
+    const price = priceFor({ productType: body.productType });
 
     // המחיר שהוצג מול המחיר שנשמר. שניהם מחושבים מאותה פונקציה, ולכן פער כאן
     // אינו זיוף אלא **מסך ישן**: מחירון שהתעדכן בזמן שהמשפך היה פתוח. הזמנה

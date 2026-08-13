@@ -90,9 +90,10 @@ export function SummaryScreen({
         <div className="lg:sticky lg:top-[104px]">
           <div className="border border-graphite/10 bg-white p-6">
             <CardLabel>{d.priceTitle}</CardLabel>
+            {/* שתי שורות, ולא ארבע. תוספת הרוחב ותוספת המורכבות הוסרו יחד עם
+                המעבר למחיר קבוע למוצר (ראו lib/pricing.ts): מה שמובטח בכרטיס
+                המוצר הוא מה שמופיע כאן, בלי מספר שמתגלה בסוף המסע. */}
             <PriceRow k={d.priceBase} v={p.base} />
-            <PriceRow k={d.priceWidth} v={p.widthAdd} />
-            <PriceRow k={d.priceComplexity} v={p.complexity} />
             <PriceRow k={d.priceShipping} v={p.shipping} />
             <div className="mt-2 flex items-baseline justify-between border-t border-graphite/15 pt-3.5">
               <span className="text-base font-semibold text-graphite">{d.priceTotal}</span>

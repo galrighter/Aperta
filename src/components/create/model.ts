@@ -103,6 +103,18 @@ export interface CreateState {
   screen: Screen;
   product: Product | null;
 
+  /**
+   * story mode — הגיעו מהמסלול הפשוט (`/story`).
+   *
+   * הדגל יושב כאן ולא ב-state נפרד של העמוד מאותה סיבה כמו `fromShare`: הוא
+   * חייב לשרוד את היציאה לגוגל וחזרה. `stashCreateState` שומר את המצב הזה
+   * במלואו, ובלי הדגל בתוכו מי שנדרשה להזדהות באמצע הייתה חוזרת מהכניסה
+   * למסלול הרגיל — עם הרוחב, הפקדים והניסוחים שלו.
+   *
+   * `false` בכל מסלול אחר, וזו ברירת המחדל של המערכת.
+   */
+  story: boolean;
+
   // מידות
   wristPreset: string;
   circ: string;
@@ -227,6 +239,7 @@ export interface CreateState {
 export const INITIAL: CreateState = {
   screen: "product",
   product: null,
+  story: false,
   wristPreset: "medium",
   circ: "",
   fit: "regular",
@@ -603,13 +616,13 @@ export function sizeIssue(s: CreateState): SizeIssue | null {
 export { SHIPPING } from "@/lib/pricing";
 export type { Price } from "@/lib/pricing";
 
-/** הצפיפות שהתמחור עובד לפיה. ב"שהמודל יחליט" אין צפיפות שנבחרה, ולכן נלקחת
- *  הבינונית — תוספת המורכבות לא יכולה להיגזר ממה שעוד לא נוצר, ולחייב לפי
- *  התוצאה פירושו מחיר שמשתנה אחרי שהוצג. */
-export const densityForPrice = (s: CreateState): Density => (s.attrsAuto ? "medium" : s.density);
+// מה שהיה כאן ואיננו: `densityForPrice` — הצפיפות שהתמחור עבד לפיה, עם נפילה
+// לבינונית ב"שהמודל יחליט". מרגע שהמחיר קבוע למוצר (ראו lib/pricing.ts) אין
+// לצפיפות שום תפקיד בתמחור, והפונקציה הייתה הסבה למספר שאיש לא קורא.
+// הצפיפות עצמה נשארה בדיוק כפי שהייתה — היא מעצבת את הפריט, לא את המחיר.
 
 export const priceOf = (s: CreateState): Price =>
-  priceFor({ productType: s.product ?? "bracelet", widthMm: widthOf(s), density: densityForPrice(s) });
+  priceFor({ productType: s.product ?? "bracelet" });
 
 /* ===== גאומטריה ===== */
 

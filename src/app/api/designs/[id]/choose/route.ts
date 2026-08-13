@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody } from "@/lib/api";
 import { requireDesignAccess } from "@/lib/designAccess";
-import { getVersion, renderPathOf } from "@/lib/db/designs";
+import { getVersion, renderPathOf, updateDesignWidth } from "@/lib/db/designs";
 import { isReplaceablePick } from "@/lib/versionRole";
-import { ingestCutouts } from "@/lib/vectorizer";
+import { designDims, ingestCutouts } from "@/lib/vectorizer";
+import { STORY_MODE, isStory, storyFrameDims } from "@/lib/story/mode";
 
 // בחירת מועמד. /api/generate מחזיר כמה הצעות ושומר את הטובה ביותר כגרסה;
 // כשהלקוחה בוחרת אחרת, הבחירה נרשמת כגרסה — אבל **שורה אחת לכל הרצה**:
@@ -32,6 +33,13 @@ const schema = z.object({
    * באה נקבעה לפי השורה הלא נכונה. אופציונלי, עם נפילה־לאחור להתנהגות הישנה.
    */
   fromVersionId: z.string().uuid().optional(),
+  /**
+   * story mode — במסלול Story לכל הצעה יש רוחב משלה: הוא נגזר מהיחס שהמודל
+   * צייר בה, ולא מבחירה של הלקוחה. בלי הדגל הזה מעבר להצעה אחרת היה ממסגר
+   * אותה לרוחב של ההצעה הזוכה — כלומר מותח אותה בדיוק בציר שהמסלול הזה בא
+   * לשמור. ריק = ההתנהגות הקיימת.
+   */
+  mode: z.literal(STORY_MODE).optional(),
 });
 
 export async function POST(req: Request, { params }: Params) {
@@ -51,8 +59,17 @@ export async function POST(req: Request, { params }: Params) {
     // כבר שמורות על הגרסה שההרצה יצרה, והקורא מאתר אותן לפי אותו מזהה.
     const generationId = source?.generation_id ?? null;
 
+    // story mode — ההצעה נמסגרת למידות של עצמה: האורך שהוזמן, והרוחב שקנה מידה
+    // אחיד מייצר עבורה. ה-SVG שהגיע כבר יושב במסגרת הזו (הוא מוסגר כך ביצירה),
+    // ולכן זו זהות ולא מתיחה שנייה — והרשומה מתעדכנת כדי שההזמנה, ההדמיה וכל
+    // בקשת שינוי שתבוא אחריה ידברו על אותו רוחב.
+    const storyDims = isStory(body.mode)
+      ? storyFrameDims(designDims(design), body.svg)
+      : null;
+    if (storyDims) await updateDesignWidth(design.id, storyDims.widthMm);
+
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
-      design,
+      design: storyDims ? { ...design, width_mm: storyDims.widthMm } : design,
       cutoutsSvg: body.svg,
       userPrompt: null,
       /**
