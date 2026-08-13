@@ -62,3 +62,62 @@ export function clampWidth(widthMm: number, productType: DesignDims["productType
 /** טווח הרוחב שהפרומפט מוסר למודל — אותו טווח, מאותו מקור. */
 export const widthRangeOf = (productType: DesignDims["productType"]): [number, number] =>
   FAB.products[productType].widthRangeMm;
+
+/* ===== סדר ההצעות: מגוון צורני ===== */
+
+/** מה שנדרש כדי למדוד ריחוק בין שתי הצעות. תת-קבוצה של `FramedPreview`. */
+export interface VarietyCandidate {
+  report: { metrics?: { openAreaPct?: number } | null } | null;
+  /** היחס שהמודל צייר בפועל. במסלול Story הוא **גם** הרוחב שיצא, ולכן הוא
+   *  ציר צורני אמיתי ולא מדד תכנוני. */
+  drawnRatio: number;
+}
+
+/**
+ * סידור ההצעות כך שהשונות ביניהן תהיה גלויה — במסלול Story בלבד.
+ *
+ * **למה זה שונה כאן.** במסלול הרגיל הלקוחה ביקשה עיצוב מסוים, והדירוג שואל
+ * "מי הכי קרוב למה שהוזמן" (`|stretch − 1|`). במסלול Story השאלה שהמסך מציג
+ * היא אחרת לגמרי: לא "האם זה מה שדמיינתי" אלא "איזו מהפרשנויות האלה הכי שלי".
+ * לשאלה הזו, ארבע הצעות שנראות אותו דבר אינן בחירה — הן אשליה של בחירה.
+ *
+ * **מה נשאר כפי שהוא:** ההצעה הראשונה. היא זו שנשמרת כגרסה ומוצגת ראשונה,
+ * והיא נבחרת בדיוק כמו קודם (סטטוס ולידציה, ואז הקרובה ביותר). מה שמשתנה הוא
+ * הסדר של **השאר** — מה שהלקוחה גוללת ביניהם.
+ *
+ * האלגוריתם הוא farthest-first: בכל צעד נבחרת ההצעה הרחוקה ביותר מכל מה שכבר
+ * נבחר. שני צירים, ושניהם כבר מחושבים על כל מועמד — אין כאן חישוב גאומטרי נוסף:
+ *  - **כמה פתוח** (`openAreaPct`) — ההבדל בין תבנית צפופה לדלילה.
+ *  - **איזו פרופורציה** (`drawnRatio`) — ובמסלול הזה גם הרוחב שייצא בפועל.
+ * כל ציר מנורמל לטווח שנצפה בפועל, כדי שציר עם מספרים גדולים לא יבלע את השני.
+ */
+export function orderByVariety<T extends VarietyCandidate>(items: T[]): T[] {
+  if (items.length < 3) return items;
+
+  const open = items.map((c) => c.report?.metrics?.openAreaPct ?? 0);
+  const ratio = items.map((c) => c.drawnRatio || 0);
+  const span = (xs: number[]): number => {
+    const d = Math.max(...xs) - Math.min(...xs);
+    // טווח אפס = הציר אינו מבחין בין ההצעות. 1 מנטרל אותו במקום לחלק באפס.
+    return d > 1e-9 ? d : 1;
+  };
+  const openSpan = span(open);
+  const ratioSpan = span(ratio);
+  const dist = (a: number, b: number): number =>
+    Math.abs(open[a] - open[b]) / openSpan + Math.abs(ratio[a] - ratio[b]) / ratioSpan;
+
+  const order = [0];
+  const left = items.map((_, i) => i).slice(1);
+  while (left.length) {
+    let best = 0;
+    let bestGap = -1;
+    for (let k = 0; k < left.length; k++) {
+      // הריחוק של מועמד מהקבוצה הוא המרחק ל**קרוב אליו ביותר** בתוכה: מועמד
+      // שדומה מאוד לאחד שכבר נבחר אינו מגוון, גם אם הוא רחוק משאר הקבוצה.
+      const gap = Math.min(...order.map((j) => dist(left[k], j)));
+      if (gap > bestGap) { bestGap = gap; best = k; }
+    }
+    order.push(left.splice(best, 1)[0]);
+  }
+  return order.map((i) => items[i]);
+}

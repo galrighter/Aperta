@@ -114,20 +114,26 @@ export function buildRenderPrompt(
    *  זו שקובעת את היחס המצויר — היא היחס ביניהם. ראה planRender ב-panels.ts. */
   cols = 1,
   /**
-   * story mode — טווח הרוחב שמותר לעיצוב, במקום רוחב אחד.
+   * story mode — שני ההבדלים של המסלול הפשוט, בפרמטר אחד.
    *
-   * במסלול Story הלקוחה אינה בוחרת רוחב: האורך נגזר מהיקף הגוף שלה והרוחב הוא
-   * של העיצוב, בתוך טווח הייצור. הפסקה למטה מוסרת אז אורך מדויק וטווח רוחב
-   * במקום מידה אחת ויחס — ומה שיצא בפועל נמדד מהציור עצמו (lib/story/mode.ts).
-   *
+   * **`widthRange`** — טווח הרוחב שמותר לעיצוב, במקום רוחב אחד. במסלול Story
+   * הלקוחה אינה בוחרת רוחב: האורך נגזר מהיקף הגוף שלה והרוחב הוא של העיצוב,
+   * בתוך טווח הייצור. הפסקה למטה מוסרת אז אורך מדויק וטווח רוחב במקום מידה
+   * אחת ויחס — ומה שיצא בפועל נמדד מהציור עצמו (lib/story/mode.ts).
    * `d.widthMm` עדיין נמסר כעוגן ("בערך כזה"), כי הוא זה שקבע את צורת הקנבס
    * ואת מספר הפאנלים; בלי שום עוגן המודל מצייר פס עבה מדי — נמדד, ראה ההערה
    * על PROPORTIONS למטה.
    *
+   * **המגוון** — כשיש יותר מפריט אחד, המסלול מבקש שהם יהיו קריאות שונות
+   * *באמת* של אותו סיפור. משפט ה-LAYOUT הקיים כבר אומר "וריאציה אחרת של אותה
+   * כוונה", וזה מספיק כשהלקוחה תיארה עיצוב מסוים; כאן זה לא מספיק, כי הבחירה
+   * בין הפרשנויות **היא** המוצר. ארבע הצעות שנבדלות בעיטור בלבד אינן בחירה.
+   *
    * ריק = ההתנהגות הקיימת, מילה במילה.
    */
-  widthRange?: readonly [number, number],
+  story?: { widthRange: readonly [number, number] },
 ): string {
+  const widthRange = story?.widthRange;
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
     lengthMm: product.defaultLengthMm,
@@ -247,6 +253,21 @@ export function buildRenderPrompt(
         // ממה שעריכה אמורה לעשות.
         "THE OUTER EDGE IS PART OF THE DESIGN, not a given frame: it rises and falls, narrows and swells, tapers or scallops along the length exactly as the design intent asks.",
         "Design intent for the piece: " + userPrompt.trim().replace(/[.\s]+$/, "") + ".",
+        // story mode — הבחירה בין הפרשנויות היא המוצר, ולכן המגוון הוא דרישה
+        // ולא נעימות. נכתב כהיתר חיובי ומפורש ("שונות זו מזו ב-X, ב-Y וב-Z"),
+        // מאותו נימוק שמתועד מעל משפט הצללית: מודל תמונה פועל על שמות עצם
+        // ופעלים, לא על "אל תחזור על עצמך".
+        //
+        // רק כשיש על מה לדבר: פריט יחיד, ועריכה — שבה כל הפריטים הם *אותו*
+        // פריט עם שינוי אחד — יוצאים מכאן.
+        ...(story && pieces > 1
+          ? [
+              "VARIETY: these pieces are different readings of that one intent, not one design redrawn. " +
+              "Across them the silhouette changes, the cutting goes from open and airy in some to dense and close in others, " +
+              "the rhythm shifts from regular to irregular, and the pattern sits differently along the length — " +
+              "so that seeing them side by side is a real choice between distinct pieces.",
+            ]
+          : []),
       ];
 
   return [

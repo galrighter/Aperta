@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
-import { STORY_MODE, isStory, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { STORY_MODE, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -425,7 +425,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       buildRenderPrompt(
         body.userPrompt, design.product_type, dims, plan.rows,
         Boolean(editSvg), Boolean(lettering), plan.cols,
-        story ? widthRangeOf(design.product_type) : undefined,
+        story ? { widthRange: widthRangeOf(design.product_type) } : undefined,
       );
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
@@ -638,7 +638,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הקריאה נשארת `frameCandidates`, מועמד בכל פעם: הפונקציה ממסגרת סדרתית
       // ממילא (מועמד אחד חי בכל רגע — ראה frameClient), וכך גם הנפילה־לאחור
       // בין הקופסה, ה-Worker והמסלול המקומי נשארת זהה לשני המסלולים.
-      const framed = (
+      const ranked = (
         story
           ? await shortlist.reduce<Promise<FramedPreview[]>>(async (acc, c) => {
               const out = await acc;
@@ -648,6 +648,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
             }, Promise.resolve([]))
           : await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan)
       ).sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+      // story mode — ואחרי הדירוג, סדר שמראה את השונות. ההצעה הראשונה נשארת
+      // מי שהייתה (היא זו שנשמרת כגרסה); מה שמשתנה הוא הסדר של השאר, כדי
+      // ששתי ההצעות הראשונות שהלקוחה רואה לא יהיו הדומות ביותר זו לזו.
+      // ראה orderByVariety.
+      const framed = story ? orderByVariety(ranked) : ranked;
       return { job, renderPngPath, framed };
     };
 

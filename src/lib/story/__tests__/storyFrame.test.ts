@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { frameCutoutsDims } from "@/lib/geometry/frameCutouts";
 import { FAB } from "@/lib/fabrication.config";
+import { priceFor } from "@/lib/pricing";
+import {
+  INITIAL, frameWidthMm, priceOf, type CreateState, type EditEntry,
+} from "@/components/create/model";
 import type { DesignDims } from "@/lib/geometry/validate";
-import { clampWidth, isStory, storyFrameDims } from "../mode";
+import { clampWidth, isStory, orderByVariety, storyFrameDims } from "../mode";
 
 /**
  * story mode — הטענה שכל המסלול נשען עליה: **האורך נקבע לפי המידה של האדם,
@@ -68,6 +72,50 @@ describe("storyFrameDims", () => {
   });
 });
 
+describe("orderByVariety", () => {
+  /** מועמד לצורך הסדר בלבד: כמה פתוח, ובאיזו פרופורציה. */
+  const cand = (openAreaPct: number, drawnRatio: number, id: string) => ({
+    report: { metrics: { openAreaPct } }, drawnRatio, id,
+  });
+
+  it("ההצעה הראשונה נשארת מי שהייתה — היא זו שנשמרת כגרסה", () => {
+    const out = orderByVariety([
+      cand(30, 9, "winner"), cand(31, 9.1, "twin"), cand(70, 4, "other"), cand(50, 6, "mid"),
+    ]);
+    expect(out[0].id).toBe("winner");
+  });
+
+  it("השנייה בתור היא הרחוקה מהראשונה, לא הדומה לה", () => {
+    // שלוש הצעות כמעט זהות ואחת שונה לגמרי: בלי הסידור, מי שגוללת רואה
+    // קודם את התאומה ורק בסוף את מה שבאמת אחר.
+    const out = orderByVariety([
+      cand(30, 9, "winner"), cand(31, 9.1, "twin"), cand(30.5, 8.9, "twin2"), cand(72, 3.5, "far"),
+    ]);
+    expect(out.map((c) => c.id)).toEqual(["winner", "far", "twin", "twin2"]);
+  });
+
+  it("שומר על כל ההצעות, ולא נוגע ברשימה קצרה", () => {
+    const two = [cand(30, 9, "a"), cand(70, 4, "b")];
+    expect(orderByVariety(two).map((c) => c.id)).toEqual(["a", "b"]);
+    const four = [cand(30, 9, "a"), cand(31, 9, "b"), cand(70, 4, "c"), cand(50, 6, "d")];
+    expect(orderByVariety(four).map((c) => c.id).sort()).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("מועמדים זהים לחלוטין אינם מפילים את החישוב (טווח אפס)", () => {
+    const same = [cand(40, 7, "a"), cand(40, 7, "b"), cand(40, 7, "c")];
+    expect(orderByVariety(same).map((c) => c.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("דוח חסר נספר כאפס ולא זורק", () => {
+    const items = [
+      { report: null, drawnRatio: 9, id: "a" },
+      { report: { metrics: null }, drawnRatio: 4, id: "b" },
+      cand(60, 6, "c"),
+    ];
+    expect(orderByVariety(items).map((c) => c.id)).toHaveLength(3);
+  });
+});
+
 describe("המסלול הקיים", () => {
   it("ממשיך להיצמד לרוחב שהוזמן ולדווח על המתיחה — בלי story", () => {
     // אותו ציור בדיוק, בלי storyFrameDims: זו ההתנהגות שהעורך נשען עליה —
@@ -76,6 +124,28 @@ describe("המסלול הקיים", () => {
     expect(framed.widthMm).toBe(18);
     // הצירים **אינם** באותו קנה מידה, וזה מכוון כאן: 0.8 מול 0.45.
     expect(framed.lengthMm / 200).not.toBeCloseTo(framed.widthMm / 40, 2);
+  });
+
+  it("המחיר שעל המסך והמחיר שהשרת מחשב נגזרים מאותו רוחב", () => {
+    // **למה זה טסט של Story דווקא.** ההזמנה שולחת `widthMm` מה-viewBox של
+    // הגרסה ו-`displayedTotal` מ-`priceOf`, שקורא את המצב. השרת מתמחר מ-
+    // `widthMm` ופוסל ב-409 (`price_changed`) כששני המספרים אינם מסכימים.
+    // במסלול הרגיל הרוחב הוא בחירה והשניים מתלכדים; במסלול Story הוא נגזר,
+    // ולכן המצב **חייב** להתעדכן ממנו — וזה מה שהאפקט ב-design/page.tsx עושה.
+    const entry = {
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32"></svg>',
+    } as EditEntry;
+    const nominal: CreateState = {
+      ...INITIAL, story: true, product: "bracelet", braceletWidth: 18,
+      edits: [entry], activeEdit: 0,
+    };
+    const ordered = Math.round(frameWidthMm(nominal, entry) * 10) / 10;
+    const server = priceFor({ productType: "bracelet", widthMm: ordered, density: "medium" });
+
+    // בלי הסנכרון: המסך מתמחר 18 מ"מ, ההזמנה שולחת 32 — והקופה נועלת.
+    expect(priceOf(nominal).total).not.toBe(server.total);
+    // עם הסנכרון: אותו קלט בדיוק בשני הצדדים.
+    expect(priceOf({ ...nominal, braceletWidth: ordered }).total).toBe(server.total);
   });
 
   it("`isStory` דולק רק על המחרוזת המפורשת", () => {
