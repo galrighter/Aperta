@@ -126,8 +126,17 @@ describe("ניווט במשפך", () => {
   it("כל מעבר מסך נכנס להיסטוריה", () => {
     // שמונת המסכים חיים על כתובת אחת ובמצב בזיכרון. בלי הדחיפה, Back בנייד
     // יוצא מ-/design לגמרי — כתובת המשלוח, אישור התנאים וטקסט העריכה ביחד.
-    expect(PAGE).toContain("window.history.pushState({ screen }, \"\")");
+    expect(PAGE).toContain("pushHist(screen)");
     expect(PAGE).toContain("prev.screen !== screen");
+  });
+
+  it("כל רשומה נושאת את העומק שלה", () => {
+    // בלי המספר הזה אין דרך לדעת **כמה** רשומות נצרכו בלחיצת Back אחת:
+    // אנדרואיד מאחד לחיצות רצופות לקפיצה אחת, ו-`popstate` מדווח רק על היעד.
+    expect(PAGE).toContain("atIdx = idxOf(window.history.state) + 1");
+    expect(PAGE).toContain('window.history.pushState({ screen, idx: atIdx } satisfies HistState, "")');
+    // סימון אינו תזוזה, ולכן הוא שומר את העומק של הרשומה שהוא מחליף.
+    expect(PAGE).toContain("atIdx = idxOf(window.history.state);");
   });
 
   it("Back חוזר מסך אחורה במקום לצאת", () => {
@@ -147,8 +156,8 @@ describe("ניווט במשפך", () => {
   });
 
   it("מסך ההמתנה דוחף רשומה משלו, והתוצאה מחליפה אותה", () => {
-    // דחיפה — כי היא זו שנדחפת בחזרה כשלוחצים Back באמצע הרצה.
-    expect(PAGE).toContain('window.history.pushState({ screen: "processing" }, "")');
+    // דחיפה — כי היא זו שאליה חוזרים כשלוחצים Back באמצע הרצה.
+    expect(PAGE).toContain('pushHist("processing")');
     // החלפה ולא דחיפה — אחרת מתחת לתוצאה יושבת רשומת ההמתנה, שאליה Back
     // מסרב לחזור, וה-Back מהתוצאה הופך ללחיצה מתה.
     expect(PAGE).toContain('goReplacing("result")');
@@ -159,12 +168,30 @@ describe("ניווט במשפך", () => {
     // מי שחזרה אחורה באמצע ההמתנה נחתה על מסך העיצוב, לחצה "שלחו" שוב
     // וקיבלה הרצה שנייה על אותו תיאור: מספר עיצוב שני ועוד יחידה מהמכסה.
     expect(PAGE).toContain("if (runningRef.current) {");
-    expect(PAGE).toContain("window.history.pushState({ screen: stateRef.current.screen }");
     expect(PAGE).toContain("setLockNotice(true)");
     // ולא נגזר מהמצב: "חזרה לעיצוב" ממסך השגיאה מנקה אותה ורק אז נסוג, ומצב
     // נגזר היה אומר באותו רגע "רצה" — כלומר דוחף אותה בחזרה פנימה.
     expect(PAGE).toContain("runningRef.current = true");
     expect(PAGE).toContain("runningRef.current = false");
+  });
+
+  it("הנעילה חוזרת קדימה ואינה דוחפת רשומה חדשה", () => {
+    // דחיפה מוחקת את כל מה שקדימה, ולכן לחיצה שאיחדה שתי רשומות החזירה אחת
+    // במקום שתיים: ההיסטוריה של המשפך התקצרה בכל לחיצה, המסך שמתחת התחלף
+    // בכל פעם, ואחרי מספיק לחיצות הלחיצה הבאה יצאה מהאתר יחד עם ההרצה.
+    expect(PAGE).toContain("const back = at === null ? 1 : atIdx - at;");
+    expect(PAGE).toContain("if (back > 0) window.history.go(back);");
+    // ובמפורש לא: דחיפה חוזרת של המסך הנוכחי מתוך המאזין.
+    expect(PAGE).not.toContain("window.history.pushState({ screen: stateRef.current.screen }");
+  });
+
+  it("Back נעול מחזיר את הגלילה לראש העמוד", () => {
+    // הדפדפן משחזר את הגלילה של הרשומה שאליה קפץ, ולכן הלחיצה נראתה כמו
+    // קפיצה אקראית לתחתית העמוד — וההודעה שמסבירה את הנעילה נשארה מחוץ לעין.
+    const at = PAGE.indexOf("if (runningRef.current) {");
+    expect(at, "ענף הנעילה לא נמצא").toBeGreaterThan(-1);
+    const branch = PAGE.slice(at, PAGE.indexOf("if (at !== null) atIdx = at;"));
+    expect(branch).toContain("window.scrollTo({ top: 0");
   });
 
   it("סרגל השלבים ננעל יחד עם Back", () => {
