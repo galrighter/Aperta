@@ -8,7 +8,7 @@ import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError, DISCONNECTED_STAGE } from "@/lib/client/api";
 import {
-  clearMyDesigns, listMyDesigns, mergeMyDesign, removeMyDesign, saveMyDesign,
+  clearMyDesigns, listMyDesigns, markMyDesignDone, mergeMyDesign, removeMyDesign, saveMyDesign,
   setMyDesignPreview,
   type SavedDesign,
 } from "@/lib/client/myDesigns";
@@ -54,6 +54,26 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
 }
 
 /**
+ * מה שאנחנו כותבים על רשומת היסטוריה.
+ *
+ * `idx` הוא העומק שלנו בתוך המשפך, והוא נוסף כדי שנדע **כמה** רשומות נצרכו
+ * בלחיצת Back אחת. אנדרואיד מאחד לחיצות רצופות לקפיצה אחת (`popstate` יחיד עם
+ * דלתא גדולה מאחת), ובלי המספר הזה אין דרך לדעת זאת מתוך האירוע.
+ */
+interface HistState {
+  screen?: Screen;
+  idx?: number;
+}
+
+/** העומק שאנחנו עומדים בו עכשיו. נשמר בצד כי `popstate` מדווח רק על היעד. */
+let atIdx = 0;
+
+const idxOf = (raw: unknown): number => {
+  const n = (raw as HistState | null)?.idx;
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+};
+
+/**
  * רישום המסך על רשומת ההיסטוריה **הנוכחית** — בלי להוסיף רשומה.
  *
  * כל מסך שמוצג בלי `go` (הכניסה למשפך, חזרה מגוגל, פתיחה מכתובת) חייב לעבור
@@ -62,8 +82,18 @@ function pick<T extends string>(value: string | undefined, allowed: readonly T[]
  */
 function markScreen(screen: Screen, url?: string): void {
   if (typeof window === "undefined") return;
-  if (url === undefined) window.history.replaceState({ screen }, "");
-  else window.history.replaceState({ screen }, "", url);
+  // העומק נשאר של הרשומה שמוחלפת — סימון אינו תזוזה בהיסטוריה.
+  atIdx = idxOf(window.history.state);
+  const st: HistState = { screen, idx: atIdx };
+  if (url === undefined) window.history.replaceState(st, "");
+  else window.history.replaceState(st, "", url);
+}
+
+/** דחיפת רשומה חדשה למסך. כל דחיפה במשפך עוברת כאן, כדי שהעומק יישאר רציף. */
+function pushHist(screen: Screen): void {
+  if (typeof window === "undefined") return;
+  atIdx = idxOf(window.history.state) + 1;
+  window.history.pushState({ screen, idx: atIdx } satisfies HistState, "");
 }
 
 /**
@@ -75,8 +105,8 @@ function markScreen(screen: Screen, url?: string): void {
  */
 function pushScreen(screen: Screen): void {
   if (typeof window === "undefined") return;
-  if ((window.history.state as { screen?: Screen } | null)?.screen === screen) return;
-  window.history.pushState({ screen }, "");
+  if ((window.history.state as HistState | null)?.screen === screen) return;
+  pushHist(screen);
 }
 
 export default function DesignPage() {
@@ -310,9 +340,7 @@ export default function DesignPage() {
       // בתוך ה-updater ולא לצידו: `screen` הקודם נקרא כאן מהמצב עצמו, כך
       // שהדחיפה לא תלויה ב-closure שיכול להיות ישן (אותה סיבה שבגללה `go`
       // חסר תלויות).
-      if (typeof window !== "undefined" && prev.screen !== screen) {
-        window.history.pushState({ screen }, "");
-      }
+      if (prev.screen !== screen) pushHist(screen);
       return { ...prev, screen };
     });
     const i = RAIL.findIndex((r) => r.screens.includes(screen));
@@ -376,16 +404,30 @@ export default function DesignPage() {
    */
   useEffect(() => {
     const onPop = (e: PopStateEvent) => {
+      const st = e.state as HistState | null;
+      const at = typeof st?.idx === "number" ? st.idx : null;
+
       // הרצה באוויר — המסע נעול. הדפדפן כבר ביצע את הניווט (popstate אינו
-      // ניתן לביטול), ולכן "לא לזוז" פירושו לדחוף בחזרה רשומה זהה לזו שממנה
-      // יצאנו: רשומה אחת נצרכה, רשומה אחת נדחפה, והמבנה נשאר כשהיה. לחיצה
-      // חוזרת פשוט תחזור על אותו דבר.
+      // ניתן לביטול), ולכן "לא לזוז" פירושו לחזור **קדימה** אל הרשומה שממנה
+      // יצאנו.
+      //
+      // קדימה ולא דחיפה מחדש, וזה ההבדל בין נעילה לבין שחיקה: דחיפה מוחקת את
+      // כל מה שקדימה, ולכן לחיצה שאיחדה שתי רשומות (אנדרואיד עושה זאת כשלוחצים
+      // מהר, ומדווח `popstate` אחד עם קפיצה של שתיים) החזירה רשומה אחת במקום
+      // שתיים. כך ההיסטוריה של המשפך התקצרה בלחיצה — המסך שמתחת התחלף בכל
+      // פעם, ואחרי מספיק לחיצות הלחיצה הבאה יצאה מהאתר יחד עם ההרצה שרצה.
+      // `go` חוזר בדיוק לאותה רשומה בלי לגעת במבנה, כמה שלבים שלא נצרכו.
       if (runningRef.current) {
-        window.history.pushState({ screen: stateRef.current.screen }, "");
+        const back = at === null ? 1 : atIdx - at;
+        if (back > 0) window.history.go(back);
         setLockNotice(true);
+        // ההודעה יושבת בתחתית המסך, וללא זה הדפדפן משחזר את הגלילה של הרשומה
+        // שאליה קפצנו — כלומר הלחיצה נראית כמו קפיצה אקראית בתוך העמוד.
+        window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
         return;
       }
-      const screen = (e.state as { screen?: Screen } | null)?.screen;
+      if (at !== null) atIdx = at;
+      const screen = st?.screen;
       if (!screen || screen === "processing") return;
       setState((prev) => (prev.screen === screen ? prev : { ...prev, screen }));
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
@@ -507,9 +549,7 @@ export default function DesignPage() {
     // באמצע ההרצה, והיא זו שמוחלפת בתוצאה כשההרצה נגמרת — כך שמתחת לתוצאה
     // נשאר הבריף, בדיוק כמו לפני הנעילה. "נסו שוב" אינו דוחף עוד אחת: הוא
     // נלחץ ממסך ההמתנה עצמו.
-    if (typeof window !== "undefined" && cur.screen !== "processing") {
-      window.history.pushState({ screen: "processing" }, "");
-    }
+    if (cur.screen !== "processing") pushHist("processing");
     runningRef.current = true;
 
     const st = {
@@ -525,6 +565,9 @@ export default function DesignPage() {
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
     if (typeof window !== "undefined") window.scrollTo(0, 0);
+
+    /** העיצוב שההרצה הזו רצה עליו. נקרא גם מה-catch — ראו שם. */
+    let ranOn: string | null = null;
 
     try {
       // "נסה שוב" חוזר לכאן. עיצוב שכבר נוצר ועוד אין לו גרסה הוא בדיוק
@@ -563,6 +606,7 @@ export default function DesignPage() {
         gapMm: gapOf(st),
       });
 
+      ranOn = design.id;
       const withId = { ...st, designId: design.id, designSerial: design.serial ?? null };
       setState(withId);
       // נרשם עכשיו, לפני הגנרציה — כדי שהעיצוב יהיה בר-איתור גם אם היא נקטעת.
@@ -626,6 +670,45 @@ export default function DesignPage() {
       // בשורה הטכנית הוא **סוג** החריגה בלבד — מספיק כדי להבדיל בצילום מסך בין
       // TypeError לבין תפוגה, בלי לדלוף את הנוסח. המלא הולך לקונסולה, שם מקומו.
       if (!apiErr) console.error("generation failed:", e);
+
+      // **לפני שמכריזים על כשל — לשאול את השרת אם הוא בכלל קרה.**
+      //
+      // מה שנכשל כאן הוא החוט אל הדפדפן, ולא בהכרח ההרצה: אנדרואיד שזורק את
+      // הלשונית מהזיכרון, רשת שנופלת, המתנה שפגה — כולם מגיעים לכאן בזמן
+      // שהצינור בשרת ממשיך, מסיים ושומר את הגרסה. `pollJob` מכסה את המקרה
+      // שבו הבקשה עצמה נקטעה, אבל לא את מה שקורה אחריו, ואז הלקוחה קיבלה
+      // "היצירה נכשלה" על עיצוב מוכן — ומייל "העיצוב שלך מוכן" על אותו עיצוב
+      // בדיוק, באותה דקה. שאלה אחת מכריעה את זה: יש גרסה, או שאין.
+      if (ranOn) {
+        try {
+          const { design, versions } = await api.getDesign(ranOn);
+          const last = versions[versions.length - 1];
+          if (last) {
+            clearPendingJob();
+            jobRef.current = null;
+            const withId = { ...st, designId: design.id, designSerial: design.serial ?? null };
+            setState((prev) => ({ ...prev, procStage: null, procFailCount: 0 }));
+            pushEntry(withId, {
+              versionId: last.id,
+              versionNo: last.version_no,
+              lengthMm: Number(design.length_mm),
+              region: null,
+              text: "",
+              svg: last.svg,
+              report: last.validation_report,
+              // הגאומטריה נחשבת בבקשה נפרדת, ומסך התוצאה משלים אותה לפי דרישה.
+              geometry: null,
+              candidates: candidatesOf(last, candidatesByGeneration(versions)),
+              chosen: last.picked_index ?? undefined,
+            });
+            goReplacing("result");
+            return;
+          }
+        } catch {
+          // אי אפשר לברר. ממשיכים למסך השגיאה — כשאין ידיעה, הוא התשובה הנכונה.
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         procError: apiErr?.message ?? he.errGeneric,
@@ -772,13 +855,25 @@ export default function DesignPage() {
           return;
         }
 
-        const val = await api.validate({
-          svg: last.svg,
-          productType: design.product_type,
-          lengthMm: Number(design.length_mm),
-          widthMm: Number(design.width_mm),
-          thicknessMm: Number(design.thickness_mm),
-        });
+        // הגאומטריה של הגרסה האחרונה — לתצוגת התלת-ממד בלבד.
+        //
+        // **ולכן היא לא מפילה את הפתיחה.** זו בקשה נפרדת שמריצה חישוב כבד
+        // ויכולה להיכשל בפני עצמה (מגבלת קצב, זמן CPU בקצה, רשת חולפת), וכל
+        // כשל שלה הוצג כ"טעינת העיצוב נכשלה" — על עיצוב שקיים בשרת, מוכן
+        // ומצויר. זה בדיוק המסך שקיבלה לקוחה שחזרה לעיצוב שלה מ"העיצובים
+        // שלי" ומהקישור במייל, וזו הסיבה שסגירת הדפדפן "פתרה" את זה.
+        //
+        // בלי הגאומטריה נשארת הפריסה השטוחה — והאפקט של מסך התוצאה משלים
+        // אותה לפי דרישה כשעוברים לתלת-ממד.
+        const val = await api
+          .validate({
+            svg: last.svg,
+            productType: design.product_type,
+            lengthMm: Number(design.length_mm),
+            widthMm: Number(design.width_mm),
+            thicknessMm: Number(design.thickness_mm),
+          })
+          .catch(() => null);
         const byRun = candidatesByGeneration(versions);
         setState({
           ...INITIAL,
@@ -798,7 +893,7 @@ export default function DesignPage() {
             text: i === 0 ? "" : (v.user_prompt ?? ""),
             svg: v.svg,
             report: v.validation_report,
-            geometry: i === versions.length - 1 ? val.geometry : null,
+            geometry: i === versions.length - 1 ? (val?.geometry ?? null) : null,
             // ההצעות חוזרות מהשרת (0012). קודם הן לא נשלפו כלל, ולכן כל פתיחה
             // של עיצוב שמור — וכל רענון — מחקה את רצועת החלופות.
             candidates: candidatesOf(v, byRun),
@@ -808,6 +903,12 @@ export default function DesignPage() {
         });
         setMaxReached(3);
         setResumingId(null);
+        // הרשומה המקומית נכתבת כ-`pending` כבר עם יצירת העיצוב, ומי שמעדכן
+        // אותה הוא המסך שקיבל את הגרסה. מי שאיבדה את החוט באמצע לא עברה שם,
+        // ולכן הכרטיס ב"העיצובים שלי" המשיך לומר "טרם הושלם" על עיצוב שמוכן
+        // — גם אחרי שנפתח מכאן. הנה הגרסה, מולנו: זה מכריע.
+        markMyDesignDone(design.id);
+        setSaved(listMyDesigns());
         pushScreen("result");
         if (typeof window !== "undefined") window.scrollTo(0, 0);
       } catch (e) {
