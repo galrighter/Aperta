@@ -1213,8 +1213,23 @@ export default function DesignPage() {
         }));
         setMaxReached(2);
         storyStart.current = true;
+        /* **שתי רשומות ולא אחת, וזה לא קוסמטי.** הנעילה בזמן הרצה עובדת מתוך
+           `popstate` — היא מחזירה קדימה את מי שלחצה Back (#217). `popstate`
+           נורה רק על ניווט **בתוך** המסמך, ולכן היא דורשת שתהיה רשומה אחת
+           לפחות מתחת למסך ההמתנה. במסלול הרגיל תמיד יש — מוצר, מידות, תיאור.
+           כאן המסע נכנס ישר להמתנה, ובלי הרשומה שמתחת לחיצת Back הייתה יוצאת
+           מהעמוד לגמרי בזמן שההרצה באוויר, בלי שהנעילה תראה אותה בכלל.
+
+           הרשומה שמתחת היא `brief` ולא מסך הפתיחה: התיאור כבר מולא בסיפור
+           שנמסר, וזה גם המסך שאליו Back מהתוצאה אמור לנחות — עם הסיפור בתיבה
+           ועם הדרך חזרה לתוצאה. `markScreen` + `pushHist` שומרים על רציפות
+           העומק (0 ואז 1), בדיוק כמו כל דחיפה אחרת במשפך. */
+        markScreen("brief", window.location.pathname);
+        pushHist("processing");
+        return;
       }
-      markScreen(handoff ? "processing" : INITIAL.screen, window.location.pathname);
+      // מסירה שלא נמצאה: רשומת כניסה רגילה, בלי שום התנהגות מיוחדת.
+      markScreen(INITIAL.screen, window.location.pathname);
       return;
     }
 
