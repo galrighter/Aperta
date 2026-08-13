@@ -37,9 +37,12 @@ export default function ArchBackground() {
       {/* מסגרת מסובבת ענקית מימין למעלה — שני ריבועים מקוננים */}
       <div style={{ position: "absolute", top: "-170px", right: "-130px", width: "540px", height: "540px", border: "2px solid rgba(32,35,38,0.12)", transform: "rotate(12deg)" }} />
       <div style={{ position: "absolute", top: "-120px", right: "-80px", width: "540px", height: "540px", border: "1px solid rgba(32,35,38,0.08)", transform: "rotate(12deg)" }} />
-      {/* קו שיער לאפיס אנכי + מעוין לאפיס */}
-      <div style={{ position: "absolute", top: 0, left: "13%", width: "1.5px", height: "100vh", background: "linear-gradient(rgba(63,98,151,0.55),rgba(63,98,151,0.08))" }} />
-      <div style={{ position: "absolute", top: "38%", left: "calc(13% - 8px)", width: "16px", height: "16px", background: "var(--color-lapis)", transform: "rotate(45deg)" }} />
+      {/* קו שיער לאפיס אנכי + מעוין לאפיס.
+          המיקום האופקי מגיע מ-`--ap-lapis-rail` ולא מ-13% קשיח: אלה שני
+          האלמנטים היחידים כאן שטקסט אינו יכול לשבת מעליהם, ובנייד 13% נופלים
+          בתוך עמודת הקריאה. ההנמקה והמדידה ב-globals.css. */}
+      <div style={{ position: "absolute", top: 0, left: "var(--ap-lapis-rail)", width: "1.5px", height: "100vh", background: "linear-gradient(rgba(63,98,151,0.55),rgba(63,98,151,0.08))" }} />
+      <div style={{ position: "absolute", top: "38%", left: "calc(var(--ap-lapis-rail) - 8px)", width: "16px", height: "16px", background: "var(--color-lapis)", transform: "rotate(45deg)" }} />
       {/* קו אלכסוני עדין למעלה */}
       <div style={{ position: "absolute", top: "22%", right: "20%", width: "220px", height: "1px", background: "rgba(32,35,38,0.12)", transform: "rotate(-19deg)" }} />
       {/* עיגול מיתאר מימין למטה */}
