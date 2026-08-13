@@ -39,7 +39,7 @@ import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
   INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryDesignId, entryFromGeneration,
-  canGenerate, countCuts, densityForPrice, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
+  canGenerate, countCuts, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
   newOrderKey, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
@@ -1207,16 +1207,19 @@ export default function DesignPage() {
      שיש גרסה, מקור האמת הוא ה-viewBox שלה — וכל מי שקורא רוחב חייב לקרוא את
      אותו מספר.
 
-     **מה נשבר בלעדיו, ואיפה בדיוק.** ההזמנה שולחת `widthMm` מה-viewBox אבל
-     `displayedTotal` מ-`priceOf(s)`, שקורא את המצב; והשרת מחשב מחיר מ-`widthMm`
-     ופוסל את ההזמנה ב-409 (`price_changed`) כששני המספרים אינם מסכימים. במסלול
-     הרגיל השניים כמעט תמיד זהים — הרוחב הוא בחירה, והמסגור מכבד אותה. במסלול
-     Story הם נבדלים כמעט תמיד, כי הרוחב נגזר: פס שיצא 32 מ"מ היה מוצג במחיר של
-     18 מ"מ ואז נדחה בקופה. **התוספת לפי מ"מ אינה מוסתרת כאן** — היא מוצגת
-     בסיכום לפני התשלום, מאותה פונקציית תמחור, כמו בכל הזמנה אחרת.
+     **את מה זה משרת.** לא את המחיר — הוא קבוע למוצר ואינו תלוי ברוחב בכלל
+     (lib/pricing.ts). שני דברים אחרים כן קוראים את המצב:
 
-     מעוגל לספרה אחת — בדיוק המספר שנשלח — כך שהמחיר שעל המסך והמחיר שהשרת
-     מחשב נגזרים מאותו קלט ולא משניים שקרובים זה לזה.
+     - **הרשומה המקומית.** `remember` שומר `widthMm: widthOf(st)` בכרטיס
+       ב"העיצובים שלי". בלי הסנכרון הכרטיס מספר על פס של 18 מ"מ בזמן שמה
+       שנשמר הוא 32.
+     - **תוספת הנוחות שבתוך האורך.** `stripLengthMm` נגזר גם מהרוחב
+       (`widthComfortAllowanceMm`), ובטבעת הוא עולה במדרגות — 6 מ"מ ו-12 מ"מ
+       אינם מקבלים את אותה תוספת. יצירה נוספת על אותו סיפור צריכה לצאת עם
+       התוספת של הפריט שנוצר, לא של העוגן שאיתו נכנסנו.
+
+     מעוגל לספרה אחת — בדיוק המספר שההזמנה שולחת — כדי שכל מי שקורא רוחב יקרא
+     את אותו מספר.
 
      `set` ולא `setSizes`: זו קריאה של מה שכבר נוצר, לא מידה חדשה שהוזנה.
      `setSizes` היה מבטל את העיצוב שממנו נקרא הרוחב (`SIZE_KEYS`). */
@@ -1289,9 +1292,9 @@ export default function DesignPage() {
           circumferenceMm: Math.round(circumferenceMm(s) * 10) / 10,
           widthMm: Math.round(frameWidthMm(s, entry) * 10) / 10,
           fit: s.product === "ring" ? undefined : s.fit,
-          // המחיר עצמו מחושב בשרת מאותה פונקציה; מה שנשלח הוא מה שקבע אותו —
-          // ולכן `densityForPrice`: ב"שהמודל יחליט" לא נבחרה צפיפות.
-          density: densityForPrice(s),
+          // המחיר עצמו מחושב בשרת מאותה פונקציה, והקלט היחיד שלו הוא המוצר:
+          // מאז המחיר הקבוע (lib/pricing.ts) הרוחב והצפיפות אינם מזיזים אותו,
+          // ולכן הצפיפות כבר לא נשלחת — היא לא נשמרה על ההזמנה מעולם.
           cuts: countCuts(entry?.svg ?? null),
           // הכיתוב נוסע בתוך שדה התיאור ולא בעמודה משלו: הוא כבר חתוך
           // בגאומטריה שהסדנה מקבלת, ומה שנחוץ כאן הוא שמי שקורא את ההזמנה

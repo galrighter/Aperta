@@ -51,6 +51,10 @@ function priceLineParts(o: OrderRow): Line[] {
   if (!p) return [];
   const parts: Array<Line | null> = [
     { label: m.orderLineBase, value: money(p.base) },
+    // שתי השורות הבאות מדפיסות **הזמנות היסטוריות בלבד**. מאז המחיר הקבוע
+    // (lib/pricing.ts) אין תוספת רוחב ואין תוספת מורכבות, והן חסרות בכל הזמנה
+    // חדשה — אבל הן נגבו בפועל בהזמנות שנשלחו לפני כן, וסיכום שלא מציג אותן
+    // מדפיס סכום שאינו מסתדר. אין למחוק אותן.
     p.widthAdd ? { label: m.orderLineWidthAdd, value: money(p.widthAdd) } : null,
     // הפרש ולא סכום: המורכבות הסטנדרטית כבר בתוך הבסיס, ותבנית פשוטה מוזילה.
     p.complexity

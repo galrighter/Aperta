@@ -616,13 +616,13 @@ export function sizeIssue(s: CreateState): SizeIssue | null {
 export { SHIPPING } from "@/lib/pricing";
 export type { Price } from "@/lib/pricing";
 
-/** הצפיפות שהתמחור עובד לפיה. ב"שהמודל יחליט" אין צפיפות שנבחרה, ולכן נלקחת
- *  הבינונית — תוספת המורכבות לא יכולה להיגזר ממה שעוד לא נוצר, ולחייב לפי
- *  התוצאה פירושו מחיר שמשתנה אחרי שהוצג. */
-export const densityForPrice = (s: CreateState): Density => (s.attrsAuto ? "medium" : s.density);
+// מה שהיה כאן ואיננו: `densityForPrice` — הצפיפות שהתמחור עבד לפיה, עם נפילה
+// לבינונית ב"שהמודל יחליט". מרגע שהמחיר קבוע למוצר (ראו lib/pricing.ts) אין
+// לצפיפות שום תפקיד בתמחור, והפונקציה הייתה הסבה למספר שאיש לא קורא.
+// הצפיפות עצמה נשארה בדיוק כפי שהייתה — היא מעצבת את הפריט, לא את המחיר.
 
 export const priceOf = (s: CreateState): Price =>
-  priceFor({ productType: s.product ?? "bracelet", widthMm: widthOf(s), density: densityForPrice(s) });
+  priceFor({ productType: s.product ?? "bracelet" });
 
 /* ===== גאומטריה ===== */
 

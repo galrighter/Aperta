@@ -126,26 +126,29 @@ describe("המסלול הקיים", () => {
     expect(framed.lengthMm / 200).not.toBeCloseTo(framed.widthMm / 40, 2);
   });
 
-  it("המחיר שעל המסך והמחיר שהשרת מחשב נגזרים מאותו רוחב", () => {
-    // **למה זה טסט של Story דווקא.** ההזמנה שולחת `widthMm` מה-viewBox של
-    // הגרסה ו-`displayedTotal` מ-`priceOf`, שקורא את המצב. השרת מתמחר מ-
-    // `widthMm` ופוסל ב-409 (`price_changed`) כששני המספרים אינם מסכימים.
-    // במסלול הרגיל הרוחב הוא בחירה והשניים מתלכדים; במסלול Story הוא נגזר,
-    // ולכן המצב **חייב** להתעדכן ממנו — וזה מה שהאפקט ב-design/page.tsx עושה.
+  it("הרוחב שנגזר אינו נוגע במחיר — לא על המסך ולא בשרת", () => {
+    // במסלול Story הרוחב אינו נבחר אלא נגזר מהעיצוב שחזר, ולכן הוא **חייב**
+    // להיות חסר משמעות לתמחור: אי אפשר להבטיח מחיר לפני היצירה ואז לגבות לפי
+    // מה שהמודל צייר. מאז המחיר הקבוע (lib/pricing.ts) זה נכון במבנה עצמו —
+    // והטסט הזה נועל את זה מהצד של Story, שבו זה קריטי.
+    //
+    // בפועל זה גם מה שמונע דחיית הזמנה: ההזמנה שולחת `widthMm` מה-viewBox
+    // ו-`displayedTotal` מ-`priceOf`, והשרת פוסל ב-409 (`price_changed`)
+    // כששני המספרים אינם מסכימים. כשהרוחב אינו קלט לתמחור, אין על מה לא להסכים.
     const entry = {
       svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32"></svg>',
     } as EditEntry;
-    const nominal: CreateState = {
+    const s: CreateState = {
       ...INITIAL, story: true, product: "bracelet", braceletWidth: 18,
       edits: [entry], activeEdit: 0,
     };
-    const ordered = Math.round(frameWidthMm(nominal, entry) * 10) / 10;
-    const server = priceFor({ productType: "bracelet", widthMm: ordered, density: "medium" });
+    const derived = Math.round(frameWidthMm(s, entry) * 10) / 10;
+    expect(derived).toBe(32); // הרוחב באמת נגזר, ואינו 18
 
-    // בלי הסנכרון: המסך מתמחר 18 מ"מ, ההזמנה שולחת 32 — והקופה נועלת.
-    expect(priceOf(nominal).total).not.toBe(server.total);
-    // עם הסנכרון: אותו קלט בדיוק בשני הצדדים.
-    expect(priceOf({ ...nominal, braceletWidth: ordered }).total).toBe(server.total);
+    const shown = priceOf(s);
+    // מה שהשרת יחשב על אותה הזמנה, ומה שהמסך היה מציג אחרי סנכרון הרוחב.
+    expect(priceFor({ productType: "bracelet" }).total).toBe(shown.total);
+    expect(priceOf({ ...s, braceletWidth: derived }).total).toBe(shown.total);
   });
 
   it("`isStory` דולק רק על המחרוזת המפורשת", () => {

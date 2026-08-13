@@ -1,4 +1,4 @@
-import { FAB, type ProductType } from "./fabrication.config";
+import { type ProductType } from "./fabrication.config";
 
 // תמחור (handoff §7) — מקום אחד, שני צדדים.
 //
@@ -18,17 +18,24 @@ import { FAB, type ProductType } from "./fabrication.config";
 export type Density = "low" | "medium" | "high";
 
 export interface Price {
-  /** צמיד/טבעת סטנדרטיים, כולל אריזה — לפני משלוח. כולל מע"מ. */
+  /** צמיד/טבעת, כולל אריזה — לפני משלוח. כולל מע"מ. */
   base: number;
-  /** תוספת על רוחב מעבר לסטנדרטי. */
-  widthAdd: number;
-  /** הפרש מהמורכבות הסטנדרטית (medium): שלילי בפשוטה, חיובי בצפופה. */
-  complexity: number;
   shipping: number;
   /** מה שמשלמים. */
   total: number;
   /** המע"מ **הכלול** ב-total. שורת מידע, לא תוספת. */
   vat: number;
+
+  /* ===== רכיבים היסטוריים =====
+     עד למחיר הקבוע (החלטת גל) המחיר נשא שתי תוספות משתנות: `widthAdd` לפי
+     הרוחב ו-`complexity` לפי הצפיפות. הן **אינן מחושבות יותר** — אבל הן שמורות
+     בעמודת `price` (jsonb) של כל הזמנה שנשלחה לפניהן, וזו רשומה היסטורית של מה
+     שנגבה בפועל. לכן הן נשארות בטיפוס כאופציונליות: הבק־אופיס וסיכום ההזמנה
+     ממשיכים להציג אותן בהזמנות ישנות, ולא מציגים אותן בחדשות. */
+  /** @deprecated תוספת רוחב — בהזמנות שנשלחו לפני המחיר הקבוע בלבד. */
+  widthAdd?: number;
+  /** @deprecated תוספת מורכבות — בהזמנות שנשלחו לפני המחיר הקבוע בלבד. */
+  complexity?: number;
 }
 
 /** מחיר פריט סטנדרטי לפני משלוח, כולל מע"מ ואריזה. */
@@ -38,31 +45,33 @@ export const SHIPPING = 35;
 /** מע"מ בישראל מ-2025. הסכומים כוללים אותו — הוא נגזר מהם ולא מתווסף להם. */
 export const TAX_RATE = 0.18;
 
-/**
- * המורכבות הסטנדרטית היא `medium`, והיא כבר בתוך מחיר הבסיס. לכן מה שנשמר
- * כאן הוא **הפרש**: תבנית פשוטה זולה יותר, צפופה יקרה יותר. השמירה על היחסים
- * שהיו (0 / 45 / 110 בנטו) ולא על הסכומים — הסכומים נקבעו מחדש בבסיס.
- */
-const COMPLEXITY_DELTA: Record<Density, number> = { low: -45, medium: 0, high: 65 };
-
-/** תוספת לכל מ"מ מעבר לרוחב ברירת המחדל של המוצר. */
-const PER_MM: Record<ProductType, number> = { bracelet: 5, ring: 14 };
-
 /** המע"מ הכלול בסכום. */
 export const vatIn = (grossTotal: number): number =>
   Math.round((grossTotal * TAX_RATE) / (1 + TAX_RATE));
 
+/**
+ * **מחיר קבוע למוצר** (החלטת גל) — הקלט היחיד הוא מה מייצרים.
+ *
+ * מה שהיה כאן ואיננו: שתי תוספות משתנות. `widthAdd` הוסיפה ₪5 לכל מ"מ בצמיד
+ * ו-₪14 בטבעת מעל רוחב ברירת המחדל, ו-`complexity` הזיזה ‎−45/0/+65 לפי
+ * הצפיפות שנבחרה. שתיהן הוסרו משני המסלולים גם יחד.
+ *
+ * **למה.** המחיר שהאתר מבטיח בכרטיס המוצר הוא "₪399 כולל מע"מ", והוא היה נכון
+ * רק לפריט בברירת המחדל; כל בחירה אחרת גילתה מספר אחר בסוף המסע. במסלול הסיפור
+ * זה הפך לבלתי אפשרי ממש — שם הרוחב אינו נבחר אלא נגזר מהעיצוב שחזר, כך
+ * שהתוספת הייתה נגבית על משהו שהלקוחה מעולם לא ביקשה ולא יכלה לצפות.
+ *
+ * מספר אחד למוצר הוא גם מה שמאפשר להבטיח אותו לפני היצירה, בכל מסלול.
+ *
+ * הפקדים עצמם לא הוסרו: הרוחב והמאפיינים במסלול הרגיל נשארים בדיוק כפי שהיו,
+ * ומעצבים את הפריט. הם פשוט אינם מזיזים את המחיר.
+ */
 export interface PriceInput {
   productType: ProductType;
-  widthMm: number;
-  density: Density;
 }
 
-export function priceFor({ productType, widthMm, density }: PriceInput): Price {
+export function priceFor({ productType }: PriceInput): Price {
   const base = BASE[productType];
-  const def = FAB.products[productType].defaultWidthMm;
-  const widthAdd = Math.round(Math.max(0, widthMm - def) * PER_MM[productType]);
-  const complexity = COMPLEXITY_DELTA[density];
-  const total = base + widthAdd + complexity + SHIPPING;
-  return { base, widthAdd, complexity, shipping: SHIPPING, total, vat: vatIn(total) };
+  const total = base + SHIPPING;
+  return { base, shipping: SHIPPING, total, vat: vatIn(total) };
 }

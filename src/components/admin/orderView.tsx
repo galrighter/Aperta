@@ -72,6 +72,8 @@ export function PriceBlock({ price }: { price: OrderRow["price"] }) {
       <div className="font-display text-lg font-bold text-graphite">{money(price.total)}</div>
       <div className="text-[12px] text-mist">
         {money(price.base)}
+        {/* רוחב ומורכבות מופיעים בהזמנות שנשלחו לפני המחיר הקבוע בלבד — שם הם
+            נגבו, ולכן הם מוצגים. בהזמנה חדשה הם חסרים ולא נכתבת שורה. */}
         {price.widthAdd ? ` + ${money(price.widthAdd)}` : ""}
         {price.complexity
           ? ` ${price.complexity > 0 ? "+" : "−"} ${money(Math.abs(price.complexity))}`
