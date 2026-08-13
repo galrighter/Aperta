@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "forme-studio",
-  "main": ".open-next/worker.js",
+  // לא `.open-next/worker.js` ישירות אלא העטיפה שלו: הכניסה ש-OpenNext מייצרת
+  // מייצאת `fetch` בלבד, ואין בה איפה לתלות את המתזמן למטה. ראה worker-entry.js.
+  "main": "worker-entry.js",
   "compatibility_date": "2025-05-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -30,6 +32,18 @@
   // ו-script אחר הוא isolate אחר. הפריסה חייבת לעלות בסדר הזה — forme-frame
   // קודם, אחרת אין למה לקשור. אם ה-binding חסר, הקוד נופל למסגור מקומי.
   "services": [{ "binding": "FRAME", "service": "forme-frame" }],
+
+  // הסריקה שמסיימת הרצות תקועות. עברה לכאן מ-GitHub Actions, ששם `*/10` נמסר
+  // בפועל כפעם בשעה (מרווחים של 50–108 דקות ב-12 ההרצות שקדמו ל-13.8) —
+  // והמחיר היה לקוח מול מסך טעינה 11.5 דקות. Cron Trigger יורה בזמן.
+  //
+  // **מה זה עולה:** 144 הפעלות ביום, ~4,380 בחודש — 0.04% ממכסת ה-10M של
+  // Workers Paid, שהחשבון ממילא נמצא בו (service binding ו-maxDuration של
+  // 300ש׳ שניהם דורשים אותו). סבב שמוצא טבלה ריקה הוא שאילתה אחת, וסבב שמוצא
+  // עבודה עושה בדיוק את מה שהמתזמן הקודם עשה. התוספת האמיתית היא אפס.
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
 
   "observability": {
     "enabled": true
