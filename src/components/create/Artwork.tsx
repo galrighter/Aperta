@@ -206,7 +206,7 @@ export function RegionChips({
             className="rounded-[2px] px-3.5 py-2 text-[13px] transition-colors"
             style={{
               border: `1px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
-              background: on ? LAPIS : "#fff",
+              background: on ? LAPIS : "var(--color-chalk)",
               color: on ? "#fff" : "#202326",
             }}
           >

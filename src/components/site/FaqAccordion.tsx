@@ -21,7 +21,7 @@ export type FaqItem = { q: string; a: string };
  */
 export default function FaqAccordion({ items }: { items: readonly FaqItem[] }) {
   return (
-    <div className="divide-y divide-graphite/10 overflow-hidden rounded-[2px] border border-graphite/10 bg-white">
+    <div className="divide-y divide-graphite/10 overflow-hidden rounded-[2px] border border-graphite/10 bg-chalk">
       {items.map((item, i) => (
         <details key={i} name="faq" open={i === 0} className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 text-right transition-colors hover:bg-porcelain [&::-webkit-details-marker]:hidden">

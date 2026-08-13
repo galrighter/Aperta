@@ -19,7 +19,7 @@ export default function ContactPage() {
       </h1>
       <p className="mt-3 text-lg text-ink60">{s.contactSubtitle}</p>
 
-      <div className="mt-10 border border-graphite/10 bg-white p-6 sm:p-8">
+      <div className="mt-10 border border-graphite/10 bg-chalk p-6 sm:p-8">
         <ContactForm />
       </div>
 

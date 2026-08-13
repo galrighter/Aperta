@@ -43,8 +43,13 @@ export function StoryExamples({ className = "" }: { className?: string }) {
   const ex = s.examples[i];
 
   return (
+    // אין כאן כרטיס. עד עכשיו זו הייתה תיבה ממולאת עם מסגרת, וב-`/story` היא
+    // נקראה כריבוע שהשתלט על הרקע — בנייד היא תפסה כמעט את כל הרוחב. מה שהחזיק
+    // את הדוגמה כיחידה אינו המילוי אלא המבנה שכבר קיים: התוויות, החץ בין שני
+    // החלקים והמסגרת המוסטת שסביבה. הצעיף (`ap-veil`) מחליף את המילוי — הוא
+    // שומר על הניגודיות בלי לצייר קצה.
     <div
-      className={`ap-surface border border-graphite/10 bg-white ${className}`}
+      className={`ap-veil ${className}`}
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
       onFocusCapture={() => setHeld(true)}
@@ -91,7 +96,9 @@ export function StoryExamples({ className = "" }: { className?: string }) {
           <div className="font-display text-[10px] tracking-[0.22em] text-mist">
             {s.examplesTranslation}
           </div>
-          <div className="mt-3 flex items-center justify-center bg-porcelain px-4 py-5 sm:py-7">
+          {/* הצורה עומדת על הדף עצמו. הריבוע הממולא שהיה כאן היה פורצלן על
+              פורצלן — כלומר מלבן שלא נראה, שכל תפקידו בפועל היה להוסיף עוד קצה. */}
+          <div className="mt-3 flex items-center justify-center px-2 py-4 sm:py-6">
             <PatternMark variant={VARIANTS[i]} className="h-auto w-full max-w-[320px]" />
           </div>
           {/* הצורה עצמה `aria-hidden`; מה שנקרא בקורא מסך הוא המשפט הזה. */}
@@ -99,7 +106,7 @@ export function StoryExamples({ className = "" }: { className?: string }) {
         </div>
 
         {/* ניווט. נקודות ולא חצים: ארבע דוגמאות שוות ערך, לא רצף. */}
-        <div className="flex items-center justify-center gap-2.5">
+        <div className="flex items-center justify-center gap-2.5 pt-1">
           {s.examples.map((_, n) => (
             <button
               key={n}
@@ -122,6 +129,14 @@ export function StoryExamples({ className = "" }: { className?: string }) {
             </button>
           ))}
         </div>
+
+        {/* הכיתוב עבר לכאן מ-`StoryHome`. שם הוא היה אח של הבלוק ולא חלק ממנו,
+            כלומר `text-mist` ב-11px שנצבע ישירות מעל הדקורציה — בדיוק המצב
+            ש-§B1 תיאר. כאן הוא בתוך הצעיף, והמסגרת המוסטת עוטפת את הדוגמה
+            והכיתוב כיחידה אחת במקום לחתוך ביניהם. */}
+        <p className="text-center font-display text-[11px] tracking-[0.14em] text-mist">
+          {s.examplesHint}
+        </p>
       </div>
     </div>
   );

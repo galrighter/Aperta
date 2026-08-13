@@ -108,7 +108,7 @@ export function BriefScreen({
             aria-hidden={locked}
             {...(locked ? { inert: "" as unknown as boolean } : {})}
           >
-            <div className="border border-graphite/10 bg-white p-6">
+            <div className="border border-graphite/10 bg-chalk p-6">
               <CardLabel htmlFor="brief-text">{d.briefLabel}</CardLabel>
               <textarea
                 id="brief-text"
@@ -116,7 +116,7 @@ export function BriefScreen({
                 onChange={(e) => set({ brief: e.target.value })}
                 placeholder={d.briefPlaceholder}
                 disabled={locked}
-                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-white p-4 text-base leading-relaxed transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed"
+                className="w-full resize-y rounded-[2px] border border-graphite/20 bg-chalk p-4 text-base leading-relaxed transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed"
                 style={{ minHeight: 150 }}
               />
               <p className="mt-3 text-[13px] leading-relaxed text-ink60">{d.briefHint}</p>
@@ -131,7 +131,7 @@ export function BriefScreen({
               מדוד של פי כמה בדיוק.
               מה שזה **לא** נותן: ערובה. המודל מדייק ברוב החלופות ולא בכולן,
               ולכן הבחירה של הלקוחה היא האישור — וזה מה ש-textVerify אומר. */}
-          <div className="mt-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
             {/* העמעום עוטף את השדה בלבד. הודעת הנעילה היא הדבר היחיד שיש
                 לקרוא כשהשדה סגור, ועמומה היא בדיוק מה שלא רוצים. */}
             <div
@@ -151,7 +151,7 @@ export function BriefScreen({
                 maxLength={MAX_LETTERING}
                 disabled={locked || letteringLocked}
                 dir="auto"
-                className="w-full rounded-[2px] border border-graphite/20 bg-white p-4 text-base transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed disabled:bg-porcelain"
+                className="w-full rounded-[2px] border border-graphite/20 bg-chalk p-4 text-base transition-colors focus:border-lapis focus:outline-none disabled:cursor-not-allowed disabled:bg-porcelain"
               />
             </div>
             {letteringLocked ? (
@@ -171,7 +171,7 @@ export function BriefScreen({
           </div>
 
           {/* תמונה */}
-          <div className="mt-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.imageTitle}</CardLabel>
             <input
               ref={fileRef}
@@ -188,7 +188,7 @@ export function BriefScreen({
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     disabled={imageLocked}
-                    className="rounded-[2px] border border-dashed border-graphite/35 bg-white px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-lapis hover:text-lapis disabled:cursor-not-allowed disabled:border-graphite/20 disabled:bg-porcelain disabled:text-mist disabled:hover:border-graphite/20 disabled:hover:text-mist"
+                    className="rounded-[2px] border border-dashed border-graphite/35 bg-chalk px-[22px] py-3.5 text-[15px] text-graphite transition-colors hover:border-lapis hover:text-lapis disabled:cursor-not-allowed disabled:border-graphite/20 disabled:bg-porcelain disabled:text-mist disabled:hover:border-graphite/20 disabled:hover:text-mist"
                   >
                     {d.imageUpload}
                   </button>
@@ -236,7 +236,7 @@ export function BriefScreen({
                           className="rounded-[2px] p-3.5 text-start transition-colors"
                           style={{
                             border: `1.5px solid ${on ? "#3f6297" : "rgba(32,35,38,0.18)"}`,
-                            background: on ? "rgba(63,98,151,0.06)" : "#fff",
+                            background: on ? "rgba(63,98,151,0.06)" : "var(--color-chalk)",
                           }}
                         >
                           <div className="text-sm font-semibold text-graphite">{info.name}</div>
@@ -259,7 +259,7 @@ export function BriefScreen({
           {/* הערת נעילה של "קובץ מוכן לחיתוך" — יושבת מתחת לתמונה, כי היא
               מסבירה מה התפקיד שנבחר שם עשה לשדות שמעליה. */}
           {locked && (
-            <p className="mt-4 border-s-2 border-lapis bg-white p-4 text-sm leading-relaxed text-ink80">
+            <p className="mt-4 border-s-2 border-lapis bg-chalk p-4 text-sm leading-relaxed text-ink80">
               {d.readyLockNote}
             </p>
           )}
@@ -268,7 +268,7 @@ export function BriefScreen({
         {/* ===== מאפיינים ===== */}
         <div className="md:sticky md:top-[104px]">
           <div
-            className="border border-graphite/10 bg-white p-6 transition-opacity"
+            className="border border-graphite/10 bg-chalk p-6 transition-opacity"
             style={{ opacity: locked ? 0.35 : 1 }}
             aria-hidden={locked}
           >

@@ -21,7 +21,7 @@ export function DoneScreen({ orderNo }: { orderNo: string }) {
       </h1>
       <p className="mb-6 font-display text-xs tracking-[0.18em] text-mist">{d.doneSub}</p>
 
-      <div className="mb-7 border border-graphite/15 bg-white px-7 py-4">
+      <div className="mb-7 border border-graphite/15 bg-chalk px-7 py-4">
         <div className="font-display text-xs tracking-[0.18em] text-mist">{d.doneOrderNo}</div>
         <div className="mt-1 font-display text-2xl font-bold tracking-wider text-graphite">
           {orderNo}

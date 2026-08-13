@@ -128,7 +128,7 @@ export default async function SharePage({ params }: Params) {
 
         {/* ===== מפרט והפעולות ===== */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-[104px]">
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <div className="mb-4 font-display text-xs tracking-[0.15em] text-mist">{t.specTitle}</div>
             <Row k={t.specProduct} v={share.product_type === "ring" ? he.ring : he.bracelet} />
             <Row k={t.specWidth} v={`${mmLabel(Number(share.width_mm))} ${he.design.mm}`} />
@@ -175,7 +175,7 @@ export default async function SharePage({ params }: Params) {
             [t.aboutPoint2Title, t.aboutPoint2Body],
             [t.aboutPoint3Title, t.aboutPoint3Body],
           ].map(([title, body]) => (
-            <div key={title} className="border border-graphite/10 bg-white p-6">
+            <div key={title} className="border border-graphite/10 bg-chalk p-6">
               <h2 className="text-base font-semibold text-graphite">{title}</h2>
               <p className="mt-1.5 text-[14px] leading-relaxed text-ink60">{body}</p>
             </div>

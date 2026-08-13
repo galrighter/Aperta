@@ -144,7 +144,7 @@ export function ResultScreen({
           ביומן הגרסאות יושב בתחתית העמוד, ובטלפון זו גלילה של מסך שלם ומשהו.
           מוצג רק כשיש יותר מגרסה אחת: לפני זה אין לאן לחזור ואין מה למספר. */}
       {s.edits.length > 1 && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-graphite/10 bg-white px-5 py-4">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border border-graphite/10 bg-chalk px-5 py-4">
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-graphite">
               {d.versionCurrent(activeIndex + 1, s.edits.length)}
@@ -199,7 +199,7 @@ export function ResultScreen({
       <div className="grid items-start gap-8 lg:grid-cols-[1.5fr_1fr]">
         {/* ===== תצוגה ===== */}
         <div>
-          <div className="border border-graphite/10 bg-white">
+          <div className="border border-graphite/10 bg-chalk">
             {/* אין תבנית — לומר את זה במפורש במקום להציג פס חלק כאילו זו התוצאה. */}
             {!cutouts ? (
               <div className="px-6 py-16 text-center">
@@ -256,7 +256,7 @@ export function ResultScreen({
                       onClick={() => onChooseCandidate(i, c.svg)}
                       aria-pressed={on}
                       aria-label={`${d.candidatesLabel} ${i + 1}${on ? ` · ${d.candidateChosen}` : ""}`}
-                      className={`bg-white p-3 text-start transition ${
+                      className={`bg-chalk p-3 text-start transition ${
                         on
                           ? "border-2 border-graphite"
                           : "border border-graphite/15 hover:border-graphite/40"
@@ -300,7 +300,7 @@ export function ResultScreen({
 
           {/* סימון אזורים — במצב פריסה */}
           {flat && (
-            <div className="mt-4 border border-graphite/10 bg-white p-5">
+            <div className="mt-4 border border-graphite/10 bg-chalk p-5">
               <CardLabel>{d.regionTitle}</CardLabel>
               <p className="mb-3.5 text-[13px] text-ink60">{d.regionHint}</p>
               <RegionChips region={s.region} onRegion={(r) => set({ region: r })} />
@@ -308,7 +308,7 @@ export function ResultScreen({
           )}
 
           {/* בקשה למודל */}
-          <div className="mt-4 border border-graphite/10 bg-white p-5">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-5">
             <CardLabel htmlFor="edit-request">{`${d.editReqTitle} · ${d.regions[s.region ?? "all"]}`}</CardLabel>
             <textarea
               id="edit-request"
@@ -368,7 +368,7 @@ export function ResultScreen({
         {/* ===== צד ===== */}
         <div className="flex flex-col gap-4 lg:sticky lg:top-[104px]">
           {/* מצב ייצור */}
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.fabTitle}</CardLabel>
             <div className="mb-4 flex items-center gap-2">
               <span className="h-[7px] w-[7px] rounded-full" style={{ background: statusColor }} />
@@ -424,7 +424,7 @@ export function ResultScreen({
           </div>
 
           {/* יומן גרסאות */}
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.versionsTitle}</CardLabel>
             {s.edits.length <= 1 ? (
               <p className="text-[13px] text-ink60">{d.versionsEmpty}</p>

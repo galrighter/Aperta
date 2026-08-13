@@ -39,14 +39,14 @@ export function SavedDesigns({
   // "מה בונים" בזמן שהעיצוב שנלחץ קיים ומוכן.
   if (items.length === 0) {
     return error ? (
-      <div className="border border-graphite/10 border-s-2 border-s-lapis bg-white px-5 py-3.5 text-[13px] text-failred">
+      <div className="border border-graphite/10 border-s-2 border-s-lapis bg-chalk px-5 py-3.5 text-[13px] text-failred">
         {error}
       </div>
     ) : null;
   }
 
   return (
-    <div className="border border-graphite/10 bg-white">
+    <div className="border border-graphite/10 bg-chalk">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -90,7 +90,7 @@ export function SavedDesigns({
             {items.map((it) => (
               <li key={it.id} className="flex flex-col border border-graphite/[0.14] bg-porcelain">
                 {/* תצוגה מקדימה מהגאומטריה השמורה */}
-                <div className="flex h-[60px] items-center justify-center overflow-hidden border-b border-graphite/10 bg-white px-3">
+                <div className="flex h-[60px] items-center justify-center overflow-hidden border-b border-graphite/10 bg-chalk px-3">
                   {it.path && it.lengthMm ? (
                     <svg
                       viewBox={`-1 -1 ${it.lengthMm + 2} ${it.widthMm + 2}`}
@@ -119,7 +119,7 @@ export function SavedDesigns({
                     מספר סידורי אחד — אבל בלי השורה הזאת מי שיצר שלוש פעמים
                     ראה כרטיס אחד ולא שום שביל לשתיים האחרות. */}
                 {it.results && it.results.length > 1 && it.lengthMm && (
-                  <div className="flex items-center gap-1.5 overflow-x-auto border-b border-graphite/10 bg-white px-3 py-2">
+                  <div className="flex items-center gap-1.5 overflow-x-auto border-b border-graphite/10 bg-chalk px-3 py-2">
                     {it.results.map((r) => (
                       <svg
                         key={r.versionId}

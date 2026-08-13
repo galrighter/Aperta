@@ -44,7 +44,7 @@ export default function AccessibilityPage() {
       <Section title={a.levelTitle}>
         {/* המצב כשורה משלו ולא כמשפט בתוך פסקה: זו העובדה שבודק חיצוני מחפש,
             והיא צריכה להיות קריאה בסריקה ולא בקריאה. */}
-        <p className="mb-2 inline-block border-s-2 border-lapis bg-white px-4 py-2 text-sm font-semibold text-graphite">
+        <p className="mb-2 inline-block border-s-2 border-lapis bg-chalk px-4 py-2 text-sm font-semibold text-graphite">
           {a.levelStatus}
         </p>
         <p className="leading-relaxed text-ink60">{a.levelBody}</p>
@@ -69,7 +69,7 @@ export default function AccessibilityPage() {
       </Section>
 
       {/* ===== פרטי הקשר — הסיבה שהעמוד קיים ===== */}
-      <section className="mt-10 border border-graphite/15 bg-white p-6">
+      <section className="mt-10 border border-graphite/15 bg-chalk p-6">
         <h2 className="text-lg font-semibold text-graphite">{a.contactTitle}</h2>
         <p className="mt-2 leading-relaxed text-ink60">{a.contactBody}</p>
 

@@ -8,7 +8,7 @@ const s = he.site;
 const ERROR_ID = "contact-error";
 
 const inputCls =
-  "w-full rounded-[2px] border border-graphite/20 bg-white px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-lapis focus:ring-2 focus:ring-lapis/20";
+  "w-full rounded-[2px] border border-graphite/20 bg-chalk px-4 py-3 text-sm text-graphite outline-none transition-colors focus:border-lapis focus:ring-2 focus:ring-lapis/20";
 
 export default function ContactForm() {
   const [name, setName] = useState("");
@@ -75,7 +75,7 @@ export default function ContactForm() {
         ref={sentRef}
         tabIndex={-1}
         role="status"
-        className="rounded-[2px] border border-graphite/10 bg-white p-4 text-sm text-graphite focus:outline-none"
+        className="rounded-[2px] border border-graphite/10 bg-chalk p-4 text-sm text-graphite focus:outline-none"
       >
         {s.contactSuccess}
       </p>

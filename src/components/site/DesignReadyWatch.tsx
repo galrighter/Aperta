@@ -93,7 +93,7 @@ export default function DesignReadyWatch() {
     >
       <div
         ref={box}
-        className="w-full max-w-[420px] border border-graphite/15 bg-white p-7"
+        className="w-full max-w-[420px] border border-graphite/15 bg-chalk p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-2 text-[22px] font-semibold tracking-tight text-graphite">

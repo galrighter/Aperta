@@ -39,7 +39,7 @@ export function SummaryScreen({
       <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1.4fr_1fr]">
         <div>
           {/* סקיצה פרוסה */}
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.sketchTitle}</CardLabel>
             <div className="overflow-hidden px-1 py-6">
               <svg viewBox={`-2 -2 ${L + 4} ${W + 4}`} className="h-auto w-full" role="img" aria-label={d.sketchTitle}>
@@ -59,7 +59,7 @@ export function SummaryScreen({
           </div>
 
           {/* מפרט */}
-          <div className="mt-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.specTitle}</CardLabel>
             <Row k={d.specKeys.type} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.specKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
@@ -73,7 +73,7 @@ export function SummaryScreen({
           </div>
 
           {/* דיסקליימרים */}
-          <div className="mt-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.disclaimersTitle}</CardLabel>
             <ul className="flex flex-col gap-2.5">
               {d.disclaimers.map((t, i) => (
@@ -88,7 +88,7 @@ export function SummaryScreen({
 
         {/* מחיר */}
         <div className="lg:sticky lg:top-[104px]">
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.priceTitle}</CardLabel>
             {/* שתי שורות, ולא ארבע. תוספת הרוחב ותוספת המורכבות הוסרו יחד עם
                 המעבר למחיר קבוע למוצר (ראו lib/pricing.ts): מה שמובטח בכרטיס
@@ -119,7 +119,7 @@ export function SummaryScreen({
                 className="mt-0.5 flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[2px] text-[13px] text-white"
                 style={{
                   border: `1.5px solid ${s.terms ? LAPIS : "rgba(32,35,38,0.3)"}`,
-                  background: s.terms ? LAPIS : "#fff",
+                  background: s.terms ? LAPIS : "var(--color-chalk)",
                 }}
               >
                 {s.terms ? "✓" : ""}
