@@ -113,6 +113,20 @@ export function buildRenderPrompt(
   /** כמה עמודות בתמונה. נלווה ל-`rows`: מספר הפריטים הוא המכפלה, וצורת התא —
    *  זו שקובעת את היחס המצויר — היא היחס ביניהם. ראה planRender ב-panels.ts. */
   cols = 1,
+  /**
+   * story mode — טווח הרוחב שמותר לעיצוב, במקום רוחב אחד.
+   *
+   * במסלול Story הלקוחה אינה בוחרת רוחב: האורך נגזר מהיקף הגוף שלה והרוחב הוא
+   * של העיצוב, בתוך טווח הייצור. הפסקה למטה מוסרת אז אורך מדויק וטווח רוחב
+   * במקום מידה אחת ויחס — ומה שיצא בפועל נמדד מהציור עצמו (lib/story/mode.ts).
+   *
+   * `d.widthMm` עדיין נמסר כעוגן ("בערך כזה"), כי הוא זה שקבע את צורת הקנבס
+   * ואת מספר הפאנלים; בלי שום עוגן המודל מצייר פס עבה מדי — נמדד, ראה ההערה
+   * על PROPORTIONS למטה.
+   *
+   * ריק = ההתנהגות הקיימת, מילה במילה.
+   */
+  widthRange?: readonly [number, number],
 ): string {
   const product = FAB.products[productType];
   const d: RenderDims = dims ?? {
@@ -241,7 +255,12 @@ export function buildRenderPrompt(
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
     // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
-    `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.` + layout,
+    (widthRange
+      ? // story mode: האורך הוא המדידה, הרוחב הוא של העיצוב. אותו מבנה משפט
+        // בדיוק — מה שהוחלף הוא חצי המשפט על הרוחב.
+        `PROPORTIONS: the piece is exactly ${round1(d.lengthMm)}mm long — that length is a measurement and is fixed. How wide it is, is the design's own call: anywhere from ${round1(widthRange[0])}mm to ${round1(widthRange[1])}mm, whatever the design intent asks for, with around ${round1(d.widthMm)}mm being the usual. Lay it out horizontally taking up exactly that much room and do not thicken it to fill the picture — leave plenty of plain white above and below it. The length says how much room the piece occupies along its span; what its outline does within that room is the design's.`
+      : `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.`
+    ) + layout,
 
     closure,
 

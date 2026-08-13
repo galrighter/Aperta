@@ -32,13 +32,17 @@ const LAST_MODIFIED: Record<string, string> = {
   "/terms": "2026-08-01",
   "/privacy": "2026-08-01",
   "/accessibility": "2026-08-09",
+  // story mode — דף הבית החלופי של הניסוי. מוסתר בניווט ופתוח לאינדוקס
+  // (STORY_FLOW_PLAN.md §3): אין קישור אליו באתר, אבל אפשר לשלוח אליו תנועה
+  // ולמדוד אותה. `/story/create` אינו כאן — הוא שלב בתוך מסע, כמו מסכי `/design`.
+  "/story": "2026-08-13",
 };
 
 export default function sitemap(): MetadataRoute.Sitemap {
   // `/studio` אינו כאן: הוא הכלי הפנימי, ומאז שהוא יושב מאחורי שער האדמין
   // אינדוקס שלו הוא אינדוקס של דף כניסה. גם קודם הוא לא היה שייך למפה —
   // לקוחה שנוחתת עליו מגוגל פוגשת ממשק בודקים ולא את המשפך.
-  const paths = ["", "/design", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy", "/accessibility"];
+  const paths = ["", "/design", "/story", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy", "/accessibility"];
   return paths.map((p) => ({
     url: `${SITE.url}${p}`,
     lastModified: LAST_MODIFIED[p],

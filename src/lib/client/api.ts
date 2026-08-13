@@ -153,6 +153,8 @@ async function startAndAwaitGeneration(
      * ללקוחה ציור שלא ביקשה.
      */
     jobId?: string;
+    /** story mode — נמסר לשרת כמות שהוא. ריק = ההתנהגות הקיימת. */
+    mode?: "story";
   },
   onStage?: (stage: string | null) => void,
   /** המזהה, ברגע שנקבע — כדי שהקורא יוכל לזכור אותו ולמצוא את התוצאה אחר כך. */
@@ -290,6 +292,8 @@ export const api = {
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
       /** ניסיון חוזר על הרצה שנקטעה — ראה `startAndAwaitGeneration`. */
       jobId?: string;
+      /** story mode — המסלול הפשוט. ריק בכל מסלול אחר, וזו ההתנהגות הקיימת. */
+      mode?: "story";
     },
     onStage?: (stage: string | null) => void,
     onJob?: (jobId: string) => void,
@@ -309,7 +313,14 @@ export const api = {
    * ההרצה שההצעה שייכת לה וגם אם לעדכן את שורת הבחירה הקיימת במקום להוסיף
    * חדשה. בלעדיה הוא נופל ל-`current_version_id`, שאינו בהכרח מה שמוצג.
    */
-  chooseCandidate: (designId: string, svg: string, index?: number, fromVersionId?: string) =>
+  chooseCandidate: (
+    designId: string,
+    svg: string,
+    index?: number,
+    fromVersionId?: string,
+    /** story mode — ההצעה נמסגרת למידות של עצמה. ריק = ההתנהגות הקיימת. */
+    mode?: "story",
+  ) =>
     call<{
       version: Version;
       report: ValidationReport;
@@ -318,7 +329,7 @@ export const api = {
       widthMm: number;
     }>(`/api/designs/${designId}/choose`, {
       method: "POST",
-      body: JSON.stringify({ svg, index, fromVersionId }),
+      body: JSON.stringify({ svg, index, fromVersionId, mode }),
     }),
 
   vectorize: (input: {

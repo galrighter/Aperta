@@ -65,6 +65,28 @@ export async function getDesign(id: string): Promise<DesignRow> {
   return data as DesignRow;
 }
 
+/**
+ * story mode — כתיבת הרוחב שנגזר מהעיצוב חזרה לרשומה.
+ *
+ * במסלול Story הרוחב אינו נבחר אלא נמדד ממה שהמודל צייר (lib/story/mode.ts),
+ * ולכן הרשומה חייבת לדעת עליו: היא זו שמסגרת כל מסגור עתידי (בקשת שינוי,
+ * מעבר בין הצעות) ואת מה שהבק־אופיס מציג. בלי הכתיבה הזו העיצוב היה נערך
+ * מאוחר יותר מול הרוחב שנפתח בו — ונמתח אליו.
+ *
+ * עמודה קיימת, בלי מיגרציה ובלי שדה חדש. אינה נקראת מהמסלול הרגיל, שבו הרוחב
+ * הוא בחירה של הלקוחה ואסור שיזוז מתחתיה.
+ *
+ * כשל כאן אינו מפיל יצירה: הגרסה עצמה כבר נושאת את המסגרת שלה ב-viewBox, וזה
+ * מקור האמת של מה שנחתך (ראה geometry/frame.ts).
+ */
+export async function updateDesignWidth(id: string, widthMm: number): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("designs")
+    .update({ width_mm: widthMm })
+    .eq("id", id);
+  if (error) console.error("story: could not store derived width:", error.message);
+}
+
 /** מספר הדוגמה הבא תחת עיצוב-אב, עם הגנה מפני מירוץ מול `idx_designs_root_sample`. */
 async function nextSampleNo(rootId: string): Promise<number> {
   const { data, error } = await supabaseAdmin()

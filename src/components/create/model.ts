@@ -103,6 +103,18 @@ export interface CreateState {
   screen: Screen;
   product: Product | null;
 
+  /**
+   * story mode — הגיעו מהמסלול הפשוט (`/story`).
+   *
+   * הדגל יושב כאן ולא ב-state נפרד של העמוד מאותה סיבה כמו `fromShare`: הוא
+   * חייב לשרוד את היציאה לגוגל וחזרה. `stashCreateState` שומר את המצב הזה
+   * במלואו, ובלי הדגל בתוכו מי שנדרשה להזדהות באמצע הייתה חוזרת מהכניסה
+   * למסלול הרגיל — עם הרוחב, הפקדים והניסוחים שלו.
+   *
+   * `false` בכל מסלול אחר, וזו ברירת המחדל של המערכת.
+   */
+  story: boolean;
+
   // מידות
   wristPreset: string;
   circ: string;
@@ -227,6 +239,7 @@ export interface CreateState {
 export const INITIAL: CreateState = {
   screen: "product",
   product: null,
+  story: false,
   wristPreset: "medium",
   circ: "",
   fit: "regular",
