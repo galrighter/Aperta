@@ -249,12 +249,33 @@ export default function DesignPage() {
     };
   }, [previewsWanted, saved]);
 
+  /**
+   * הבדיקה הראשונית "מי מחובר", כפרומיס — כדי שפעולה שיוצאת לדרך לפני שהיא
+   * חזרה תוכל להמתין לה, במקום להסיק מ-`account === null` שאין חשבון.
+   *
+   * במסלול הרגיל ההבדל אינו קיים: בין הכניסה לעמוד לבין הלחיצה על "ליצור"
+   * עוברים שלושה מסכים, והתשובה חזרה מזמן. במסלול הסיפור היצירה יוצאת לדרך
+   * **בטעינת העמוד עצמה** — `/design?story=1` נכנס ישר להמתנה ומריץ — כלומר
+   * תמיד לפני שהתשובה הגיעה. התוצאה: כל יצירה במסלול הזה פתחה את שער החשבון,
+   * גם למי שמחוברת כבר, ומבחוץ זה נראה כאילו הכניסה לסיפור מוציאה אותך
+   * מהחשבון ודורשת הרשמה מחדש בכל פעם.
+   *
+   * מתאפס ל-`null` ברגע שהתשובה חזרה: מכאן `account` הוא המקור היחיד, והמתנה
+   * מאוחרת לפרומיס הזה הייתה מחזירה תשובה שקדמה ליציאה מהחשבון או להחלפת
+   * משתמש — כלומר יצירה בשם מי שכבר יצא.
+   */
+  const accountProbe = useRef<Promise<Account | null> | null>(null);
   useEffect(() => {
-    api
+    const probe = api
       .account()
-      .then(({ account: a }) => setAccount(a))
+      .then(({ account: a }) => a)
       // אין חשבון או שהבדיקה נכשלה — השער ייפתח בזמן היצירה ממילא.
-      .catch(() => setAccount(null));
+      .catch(() => null);
+    accountProbe.current = probe;
+    void probe.then((a) => {
+      setAccount(a);
+      accountProbe.current = null;
+    });
   }, []);
 
   /**
@@ -366,6 +387,19 @@ export default function DesignPage() {
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   }, []);
+
+  /**
+   * יציאה ממסך ההמתנה חזרה לעיצוב — נסיגה אמיתית ולא דחיפה.
+   *
+   * למסך ההמתנה יש רשומת היסטוריה משלו (היא זו שמחזיקה את הנעילה), ומתחתיה
+   * יושב הבריף. דחיפת רשומת בריף שנייה מעליה הייתה הופכת את ה-Back הבא ללחיצה
+   * מתה. `go` נשאר כנפילה-לאחור למקרה שאין רשומה כזו.
+   */
+  const leaveProcessing = useCallback(() => {
+    if ((window.history.state as HistState | null)?.screen === "processing") {
+      window.history.back();
+    } else go("brief");
+  }, [go]);
 
   /**
    * הרצת מנוע באוויר — יצירה ראשונה (מסך ההמתנה בלי שגיאה) או שינוי שנשלח
@@ -521,12 +555,16 @@ export default function DesignPage() {
 
   /* ===== יצירה ראשונה ===== */
   const startGeneration = useCallback(async (signedIn?: Account) => {
+    // עד כאן אפשר להתקדם בלי להזדהות. מכאן והלאה נוצרת רשומה שצריכה בעלים,
+    // ורצה הרצת מנוע שעולה כסף — ולכן זה הרגע שבו נפתח השער.
+    //
+    // ו-`null` אינו "אין חשבון" כל עוד הבדיקה באוויר: במסלול הסיפור היצירה
+    // מתחילה בטעינת העמוד, לפני שהיא חזרה. ההמתנה כאן היא ההפרש בין שער
+    // שנפתח למי שכבר מחוברת לבין מסך המתנה שממשיך כרגיל (ראו `accountProbe`).
+    const who = signedIn ?? account ?? (await accountProbe.current);
     // המצב מהרפרנס ולא מה-closure: הקריאה שממשיכה אחרי כניסה לחשבון נתפסה לפני
     // שהמשפך שוחזר מה-stash. ראו `stateRef`.
     const cur = stateRef.current;
-    // עד כאן אפשר להתקדם בלי להזדהות. מכאן והלאה נוצרת רשומה שצריכה בעלים,
-    // ורצה הרצת מנוע שעולה כסף — ולכן זה הרגע שבו נפתח השער.
-    const who = signedIn ?? account;
     if (!who) {
       startAfterSignIn.current = true;
       pendingAction.current = "generate";
@@ -1026,7 +1064,21 @@ export default function DesignPage() {
     // החזרה מגוגל טוענת את העמוד מחדש, כלומר ההיסטוריה שלנו נמחקה: הרשומה
     // היחידה שיש היא זו, והמסך שהיא מציגה הוא זה שהגיע מה-stash ולא מסך
     // הפתיחה. בלי הסימון Back כאן היה ניווט שלא משנה כלום.
-    markScreen(stash.state.screen);
+    //
+    // וכשהמסך המשוחזר הוא ההמתנה — רשומה אחת אינה מספיקה, מאותה סיבה בדיוק
+    // שבגללה הכניסה למסלול הסיפור דוחפת שתיים (#219): הנעילה בזמן הרצה עובדת
+    // מתוך `popstate`, שנורה רק על ניווט **בתוך** המסמך. על רשומה בודדת Back
+    // יוצא מהעמוד לגמרי — אחורה אל דף ההזדהות של גוגל שממנו הגענו, שמחזיר
+    // לשם ולא לכאן — בזמן שההרצה באוויר ובלי שהנעילה תראה את הלחיצה בכלל.
+    //
+    // למה זה נגע דווקא במסלול הסיפור: שם השער נפתח כשהמסך כבר `processing`,
+    // ולכן גם המצב שנשמר ב-stash הוא `processing`, ו-`startGeneration`
+    // שממשיך אחרי הכניסה אינו דוחף רשומה משלו (`cur.screen !== "processing"`).
+    // במסלול הרגיל השער נפתח מהבריף, והדחיפה ההיא היא שסיפקה את הרשומה.
+    if (stash.state.screen === "processing") {
+      markScreen("brief");
+      pushHist("processing");
+    } else markScreen(stash.state.screen);
     // המסלול נוסע עם המצב: הרפרנס עצמו לא שורד טעינת עמוד מחדש.
     pendingAction.current = stash.action ?? "generate";
     resumeTarget.current = stash.resumeId ?? null;
@@ -1631,12 +1683,7 @@ export default function DesignPage() {
                 procError: null, procErrorDetail: null, procErrorCode: null,
                 procFailCount: 0, procStage: null,
               });
-              // נסיגה אמיתית ולא דחיפה: למסך ההמתנה יש רשומת היסטוריה משלו
-              // (היא זו שמחזיקה את הנעילה), ומתחתיה יושב הבריף. דחיפת רשומת
-              // בריף שנייה מעליה הייתה הופכת את ה-Back הבא ללחיצה מתה.
-              if ((window.history.state as { screen?: Screen } | null)?.screen === "processing") {
-                window.history.back();
-              } else go("brief");
+              leaveProcessing();
             }}
           />
         )}
@@ -1684,6 +1731,12 @@ export default function DesignPage() {
           startAfterSignIn.current = false;
           setGateError(null);
           setGateOpen(false);
+          // במסלול הסיפור השער נפתח **מעל** מסך ההמתנה: המסע נכנס ישר להמתנה,
+          // והבקשה להזדהות היא הדבר הראשון שקורה שם. ביטול היה משאיר ספינר
+          // שאין מאחוריו הרצה ואין ממנו יציאה — למסך ההמתנה אין Back כל עוד
+          // לא נאמר שמשהו נכשל. הבריף הוא המסך הנכון לחזור אליו: הסיפור כבר
+          // בתיבה, ו"שליחה" פותח את השער שוב.
+          if (stateRef.current.screen === "processing" && !runningRef.current) leaveProcessing();
         }}
         externalError={gateError}
         externalBusy={gateBusy}
