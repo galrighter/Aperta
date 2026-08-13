@@ -27,6 +27,7 @@ import { SummaryScreen } from "@/components/create/SummaryScreen";
 import { CheckoutScreen } from "@/components/create/CheckoutScreen";
 import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
+import { OpeningScreen } from "@/components/create/OpeningScreen";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
 import { popStoryHandoff } from "@/lib/client/storyHandoff";
@@ -111,12 +112,45 @@ function pushScreen(screen: Screen): void {
   pushHist(screen);
 }
 
+/**
+ * גלילה לראש העמוד — **אנכית בלבד**, וזה כל העניין.
+ *
+ * `window.scrollTo(0, 0)` קובע גם את המיקום האופקי, ומעבר בין מסכים במשפך אינו
+ * צריך לגעת בציר הזה מעולם. כל עוד העמוד נכנס בדיוק לרוחב החלון אין לזה ביטוי,
+ * ולכן זה עבר בשקט — אבל ברגע שיש בכלל גלילה אופקית (דפדפן מוטמע שפורס לרוחב
+ * שולחני — וקישור ממייל נפתח באחד כזה, אלמנט שגלש, הגדלת טקסט של המערכת) הקפיצה
+ * הזו נוחתת על "אפס אופקי". בעמוד RTL זו לא נקודת ההתחלה: מנועים שונים אינם
+ * מסכימים בכלל היכן יושב האפס הזה — כרום ופיירפוקס סופרים אותו מקצה התוכן
+ * (הימני) ואילו WebKit ישן ו-WebView של אנדרואיד סופרים מהקצה השמאלי, כלומר מהצד
+ * שאין בו תוכן. הקוד לא צריך להכריע בין המוסכמות; הוא צריך לא להיכנס לוויכוח.
+ *
+ * `scrollTo({ top })` נוגע רק בציר האנכי, והמיקום האופקי נשאר איפה שהמשתמשת
+ * העמידה אותו.
+ */
+function scrollToTop(): void {
+  if (typeof window === "undefined") return;
+  window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+}
+
 export default function DesignPage() {
   const [s, setState] = useState<CreateState>(INITIAL);
   const [maxReached, setMaxReached] = useState(0);
   const [saved, setSaved] = useState<SavedDesign[]>([]);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  /**
+   * העמוד נפתח מכתובת של עיצוב מסוים (`?resume=<id>`), והשליפה עוד באוויר.
+   *
+   * כל עוד זה דלוק המשפך אינו מוצג — במקומו `OpeningScreen`. הדגל הזה קיים
+   * בנפרד מ-`resumingId` כי הם עונים על שתי שאלות שונות: `resumingId` אומר
+   * *איזה* עיצוב נשלף עכשיו, וגם כשנלחץ מהרשימה — ושם החיווי הנכון הוא ספינר
+   * על הכרטיס, לא השתלטות על העמוד. כאן אין מסך אחר להיות בו.
+   *
+   * המספר נשמר לצידו כדי שהמסך יוכל לומר *איזה* עיצוב נפתח — אותו מספר שכתוב
+   * במייל. ידוע רק כשהעיצוב מוכר לדפדפן הזה; מקישור שנפתח במכשיר אחר הוא null.
+   */
+  const [opening, setOpening] = useState(false);
+  const [openingCode, setOpeningCode] = useState<string | null>(null);
   /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
   const [savedOpen, setSavedOpen] = useState(false);
   /**
@@ -368,7 +402,7 @@ export default function DesignPage() {
     });
     const i = RAIL.findIndex((r) => r.screens.includes(screen));
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    scrollToTop();
   }, []);
 
   /**
@@ -386,7 +420,7 @@ export default function DesignPage() {
     });
     const i = RAIL.findIndex((r) => r.screens.includes(screen));
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    scrollToTop();
   }, []);
 
   /**
@@ -459,14 +493,14 @@ export default function DesignPage() {
         setLockNotice(true);
         // ההודעה יושבת בתחתית המסך, וללא זה הדפדפן משחזר את הגלילה של הרשומה
         // שאליה קפצנו — כלומר הלחיצה נראית כמו קפיצה אקראית בתוך העמוד.
-        window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+        scrollToTop();
         return;
       }
       if (at !== null) atIdx = at;
       const screen = st?.screen;
       if (!screen || screen === "processing") return;
       setState((prev) => (prev.screen === screen ? prev : { ...prev, screen }));
-      window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      scrollToTop();
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -604,7 +638,7 @@ export default function DesignPage() {
     };
     setState(st);
     setMaxReached((m) => Math.max(m, 2));
-    if (typeof window !== "undefined") window.scrollTo(0, 0);
+    scrollToTop();
 
     /** העיצוב שההרצה הזו רצה עליו. נקרא גם מה-catch — ראו שם. */
     let ranOn: string | null = null;
@@ -835,7 +869,7 @@ export default function DesignPage() {
       setState(next);
       setMaxReached(3);
       remember(next, entry);
-      if (typeof window !== "undefined") window.scrollTo(0, 0);
+      scrollToTop();
     } catch (e) {
       // נשארים על מסך המידות: מידה אחרת עשויה לעבור, וזו הפעולה שיש למי
       // שנתקל בזה. `rescale_failed` הוא דחייה אמיתית ולא תקלה.
@@ -901,7 +935,7 @@ export default function DesignPage() {
           setMaxReached(2);
           setResumingId(null);
           pushScreen("brief");
-          if (typeof window !== "undefined") window.scrollTo(0, 0);
+          scrollToTop();
           return;
         }
 
@@ -960,7 +994,7 @@ export default function DesignPage() {
         markMyDesignDone(design.id);
         setSaved(listMyDesigns());
         pushScreen("result");
-        if (typeof window !== "undefined") window.scrollTo(0, 0);
+        scrollToTop();
       } catch (e) {
         setResumingId(null);
         const apiErr = e instanceof ClientApiError ? e : null;
@@ -1175,7 +1209,7 @@ export default function DesignPage() {
       pushEntry(s, entryFromGeneration(res, { region: s.region, text: s.editReq.trim() }));
       set({ applying: false, editReq: "" });
       // התוצאה מתחלפת בראש העמוד, והלקוחה עומדת בתיבת הבקשה בתחתיתו.
-      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      scrollToTop();
     } catch (e) {
       runningRef.current = false;
       // בליעה שקטה: הכפתור חזר מ"מחיל…" ל"החלת שינוי" ושום דבר אחר לא זז.
@@ -1335,7 +1369,19 @@ export default function DesignPage() {
 
     if (resumeId) {
       const known = listMyDesigns().find((x) => x.id === resumeId);
-      void resume(known ?? { id: resumeId });
+      /* מסך הפתיחה במקום המשפך, עד שהשליפה חוזרת.
+         מה שהיה כאן: העמוד נטען, הציג את מסך בחירת המוצר — "מה נעצב?", שני
+         מוצרים, כפתורים חיים — וכמה שניות אחר כך התחלף בעיצוב. מי שלחצה
+         מהמייל לעיצוב מסוים קיבלה תחילת מסע חדש כתשובה, ומי שהספיקה לגעת בו
+         בשניות האלה שינתה את המצב שהעיצוב הנשלף נוחת עליו.
+
+         `finally` ולא `then`: כל סיום מוריד את המסך — הצלחה, שגיאה, וגם
+         `account_required` שפותח את שער החשבון. מסך המתנה שנשאר תלוי מעל שער
+         שמבקש להזדהות הוא בדיוק סוג התקיעה שהמסך הזה בא למנוע. `resume` אינו
+         זורק (הכול עטוף שם ב-try/catch), אבל זו לא סיבה להישען על זה. */
+      setOpeningCode(designCode(known?.serial ?? null));
+      setOpening(true);
+      void resume(known ?? { id: resumeId }).finally(() => setOpening(false));
       return;
     }
     if (wantsSignIn) {
@@ -1519,7 +1565,7 @@ export default function DesignPage() {
       clearFunnelDraft();
       setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
       setMaxReached(5);
-      if (typeof window !== "undefined") window.scrollTo(0, 0);
+      scrollToTop();
     } catch {
       // ההזמנה לא הגיעה לשרת. במקום להשאיר את הלקוחה עם "נסו שוב" בלבד —
       // שמשמעותו שכל מה שמילאה נעלם — נבנה `mailto:` עם אותן שורות בדיוק,
@@ -1544,7 +1590,9 @@ export default function DesignPage() {
   }, [s, set]);
 
   /* ===== רינדור ===== */
-  const showRail = s.screen !== "done";
+  // הסרגל יורד גם בפתיחה מקישור: הוא היה מסמן את שלב 1 (בחירת מוצר) בזמן
+  // שנשלף עיצוב גמור — כלומר אומר במפורש שאנחנו בתחילת המסע.
+  const showRail = s.screen !== "done" && !opening;
 
   return (
     // בלי ap-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
@@ -1582,146 +1630,152 @@ export default function DesignPage() {
         </div>
       )}
 
-      <div key={s.screen} className="ap-fade">
-        {s.screen === "product" && (
-          <>
-            <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
-              {/* הגיעו מלינק שיתוף שכבר לא פעיל. בלי המשפט הזה הם נוחתים על
-                  מסך בחירת מוצר רגיל, בלי שום סימן למה שנלחץ. */}
-              {!s.fromShare && s.adoptError && (
-                <div className="mb-6 border border-graphite/15 bg-chalk px-5 py-4 text-[13px] text-ink60">
-                  {s.adoptError}
+      {/* עיצוב שנפתח מכתובת — מסך הפתיחה במקום המשפך, ולא מעליו: מה שמתחת
+          אינו רלוונטי, ולכן גם אין מה להשאיר לחיץ מאחורי שכבה. */}
+      {opening && <OpeningScreen code={openingCode} />}
+
+      {!opening && (
+        <div key={s.screen} className="ap-fade">
+          {s.screen === "product" && (
+            <>
+              <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+                {/* הגיעו מלינק שיתוף שכבר לא פעיל. בלי המשפט הזה הם נוחתים על
+                    מסך בחירת מוצר רגיל, בלי שום סימן למה שנלחץ. */}
+                {!s.fromShare && s.adoptError && (
+                  <div className="mb-6 border border-graphite/15 bg-chalk px-5 py-4 text-[13px] text-ink60">
+                    {s.adoptError}
+                  </div>
+                )}
+                {account && <AccountBar name={account.name} onSwitch={onSwitchAccount} />}
+                <SavedDesigns
+                  items={saved}
+                  onResume={resume}
+                  onRemove={(id) => {
+                    removeMyDesign(id);
+                    setSaved(listMyDesigns());
+                  }}
+                  onOpen={() => setPreviewsWanted(true)}
+                  loadingId={resumingId}
+                  error={resumeError}
+                  defaultOpen={savedOpen}
+                />
+              </div>
+              <ProductScreen
+                onPick={(p: Product) => {
+                  const patch = switchProduct(s, p);
+                  set(patch);
+                  // אם החלפת המוצר ביטלה עיצוב קיים — נועלים חזרה את השלבים שקדימה,
+                  // אחרת קפיצה בסרגל הייתה מציגה תוצאה ריקה (העיצוב אופס).
+                  if (patch.designId === null && s.designId !== null) setMaxReached(1);
+                  go("sizes");
+                }}
+              />
+            </>
+          )}
+
+          {s.screen === "sizes" && (
+            <>
+              {/* מזמינים עיצוב ששותף — אומרים את זה במפורש. בלי זה המסך נראה
+                  כמו תחילת מסע רגיל, ומי שלחץ "להזמין כזה" לא יודע אם העיצוב
+                  שראה עוד איתו. */}
+              {s.fromShare && (
+                <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+                  <div className="border border-lapis/30 bg-lapis/[0.06] px-5 py-4">
+                    <div className="text-[13px] font-semibold text-graphite">
+                      {designCode(s.fromShareSerial)
+                        ? he.share.adoptBanner(designCode(s.fromShareSerial)!)
+                        : he.share.adoptBannerNoCode}
+                    </div>
+                    <p className="mt-1 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+                      {he.share.adoptSizeNote}
+                    </p>
+                    {s.adoptError && (
+                      <p className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>{s.adoptError}</p>
+                    )}
+                  </div>
                 </div>
               )}
-              {account && <AccountBar name={account.name} onSwitch={onSwitchAccount} />}
-              <SavedDesigns
-                items={saved}
-                onResume={resume}
-                onRemove={(id) => {
-                  removeMyDesign(id);
-                  setSaved(listMyDesigns());
-                }}
-                onOpen={() => setPreviewsWanted(true)}
-                loadingId={resumingId}
-                error={resumeError}
-                defaultOpen={savedOpen}
+              <SizesScreen
+                s={s}
+                set={setSizes}
+                // עיצוב ששותף כבר קיים: אין תיאור לכתוב ואין מה לייצר, רק
+                // להתאים אותו למידה שנבחרה כאן.
+                onNext={() => (s.fromShare ? void adoptShared() : go("brief"))}
+                busy={s.adopting}
+                nextLabel={
+                  s.fromShare
+                    ? s.adopting
+                      ? he.share.adoptWorking
+                      : he.share.adoptStart
+                    : undefined
+                }
               />
-            </div>
-            <ProductScreen
-              onPick={(p: Product) => {
-                const patch = switchProduct(s, p);
-                set(patch);
-                // אם החלפת המוצר ביטלה עיצוב קיים — נועלים חזרה את השלבים שקדימה,
-                // אחרת קפיצה בסרגל הייתה מציגה תוצאה ריקה (העיצוב אופס).
-                if (patch.designId === null && s.designId !== null) setMaxReached(1);
-                go("sizes");
+            </>
+          )}
+
+          {s.screen === "brief" && (
+            <BriefScreen
+              s={s}
+              set={set}
+              onSubmit={() => void startGeneration()}
+              // חזרה אחורה מהתוצאה נוחתת כאן, והתוצאה עצמה עדיין בזיכרון. בלי
+              // הדרך חזרה אליה המסך נראה כמו עיצוב שנמחק, והפעולה הראשית שבו
+              // מייצרת עיצוב שני במקום להחזיר את הראשון.
+              hasResult={s.edits.length > 0}
+              onBackToResult={() => go("result")}
+            />
+          )}
+
+          {s.screen === "processing" && (
+            <ProcessingScreen
+              error={s.procError}
+              detail={s.procErrorDetail}
+              code={s.procErrorCode}
+              failCount={s.procFailCount}
+              accountEmail={account?.email ?? null}
+              onFeedback={sendProcFeedback}
+              disconnected={s.procStage === DISCONNECTED_STAGE}
+              locked={running}
+              onRetry={() => void startGeneration()}
+              onBack={() => {
+                // החזרה לעיצוב היא שינוי כיוון — הרצף נשבר: מי שחוזרת, משנה
+                // משהו ומנסה שוב מתחילה ספירה חדשה, לא ממשיכה את הישנה.
+                set({
+                  procError: null, procErrorDetail: null, procErrorCode: null,
+                  procFailCount: 0, procStage: null,
+                });
+                leaveProcessing();
               }}
             />
-          </>
-        )}
+          )}
 
-        {s.screen === "sizes" && (
-          <>
-            {/* מזמינים עיצוב ששותף — אומרים את זה במפורש. בלי זה המסך נראה
-                כמו תחילת מסע רגיל, ומי שלחץ "להזמין כזה" לא יודע אם העיצוב
-                שראה עוד איתו. */}
-            {s.fromShare && (
-              <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
-                <div className="border border-lapis/30 bg-lapis/[0.06] px-5 py-4">
-                  <div className="text-[13px] font-semibold text-graphite">
-                    {designCode(s.fromShareSerial)
-                      ? he.share.adoptBanner(designCode(s.fromShareSerial)!)
-                      : he.share.adoptBannerNoCode}
-                  </div>
-                  <p className="mt-1 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
-                    {he.share.adoptSizeNote}
-                  </p>
-                  {s.adoptError && (
-                    <p className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>{s.adoptError}</p>
-                  )}
-                </div>
-              </div>
-            )}
-            <SizesScreen
+          {s.screen === "result" && (
+            <ResultScreen
               s={s}
-              set={setSizes}
-              // עיצוב ששותף כבר קיים: אין תיאור לכתוב ואין מה לייצר, רק
-              // להתאים אותו למידה שנבחרה כאן.
-              onNext={() => (s.fromShare ? void adoptShared() : go("brief"))}
-              busy={s.adopting}
-              nextLabel={
-                s.fromShare
-                  ? s.adopting
-                    ? he.share.adoptWorking
-                    : he.share.adoptStart
-                  : undefined
-              }
+              set={set}
+              onApply={applyEdit}
+              onChooseCandidate={chooseCandidate}
+              // גם גלילה למעלה: הגרסה מתחלפת בראש העמוד, ו"חזרה לגרסה זו" נלחץ
+              // מיומן הגרסאות שבתחתיתו — בטלפון שום דבר בשדה הראייה לא משתנה.
+              onRestore={(i) => {
+                set({ activeEdit: i });
+                scrollToTop();
+              }}
+              onOrder={() => go("summary")}
             />
-          </>
-        )}
+          )}
 
-        {s.screen === "brief" && (
-          <BriefScreen
-            s={s}
-            set={set}
-            onSubmit={() => void startGeneration()}
-            // חזרה אחורה מהתוצאה נוחתת כאן, והתוצאה עצמה עדיין בזיכרון. בלי
-            // הדרך חזרה אליה המסך נראה כמו עיצוב שנמחק, והפעולה הראשית שבו
-            // מייצרת עיצוב שני במקום להחזיר את הראשון.
-            hasResult={s.edits.length > 0}
-            onBackToResult={() => go("result")}
-          />
-        )}
+          {s.screen === "summary" && (
+            <SummaryScreen s={s} set={set} onNext={() => go("checkout")} />
+          )}
 
-        {s.screen === "processing" && (
-          <ProcessingScreen
-            error={s.procError}
-            detail={s.procErrorDetail}
-            code={s.procErrorCode}
-            failCount={s.procFailCount}
-            accountEmail={account?.email ?? null}
-            onFeedback={sendProcFeedback}
-            disconnected={s.procStage === DISCONNECTED_STAGE}
-            locked={running}
-            onRetry={() => void startGeneration()}
-            onBack={() => {
-              // החזרה לעיצוב היא שינוי כיוון — הרצף נשבר: מי שחוזרת, משנה
-              // משהו ומנסה שוב מתחילה ספירה חדשה, לא ממשיכה את הישנה.
-              set({
-                procError: null, procErrorDetail: null, procErrorCode: null,
-                procFailCount: 0, procStage: null,
-              });
-              leaveProcessing();
-            }}
-          />
-        )}
+          {s.screen === "checkout" && (
+            <CheckoutScreen s={s} set={set} onSubmit={submitOrder} accountEmail={account?.email ?? null} />
+          )}
 
-        {s.screen === "result" && (
-          <ResultScreen
-            s={s}
-            set={set}
-            onApply={applyEdit}
-            onChooseCandidate={chooseCandidate}
-            // גם גלילה למעלה: הגרסה מתחלפת בראש העמוד, ו"חזרה לגרסה זו" נלחץ
-            // מיומן הגרסאות שבתחתיתו — בטלפון שום דבר בשדה הראייה לא משתנה.
-            onRestore={(i) => {
-              set({ activeEdit: i });
-              window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
-            }}
-            onOrder={() => go("summary")}
-          />
-        )}
-
-        {s.screen === "summary" && (
-          <SummaryScreen s={s} set={set} onNext={() => go("checkout")} />
-        )}
-
-        {s.screen === "checkout" && (
-          <CheckoutScreen s={s} set={set} onSubmit={submitOrder} accountEmail={account?.email ?? null} />
-        )}
-
-        {s.screen === "done" && <DoneScreen orderNo={s.orderNo ?? "—"} />}
-      </div>
+          {s.screen === "done" && <DoneScreen orderNo={s.orderNo ?? "—"} />}
+        </div>
+      )}
 
       <AccountGate
         open={gateOpen}
