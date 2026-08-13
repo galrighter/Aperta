@@ -28,12 +28,32 @@ export function StoryHome() {
       style={{ minHeight: "calc(100svh - var(--ap-header-h, 68px))" }}
     >
       <div className="grid items-center gap-8 md:grid-cols-[1.05fr_0.95fr] md:gap-16">
-        {/* ההבטחה.
-            `ap-veil` ולא `ap-surface`: המשטח האטום נשא בדיוק את צבע ה-body, ולכן
-            הוא לא נראה ככרטיס אלא כמלבן שבו לוח האבן האלכסוני נקטע בקו ישר. בנייד,
-            שם עמודת הקריאה היא כמעט כל הרוחב, זה כל מה שנראה מהעמוד. */}
-        <div className="ap-veil">
-          <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis sm:mb-6 sm:text-xs">
+        {/* ההבטחה — בלי משטח כלל, כמו ההירו של דף הבית (`(site)/page.tsx`).
+            שם הטקסט יושב ישירות על `ArchBackground`, וזה כל ההבדל הוויזואלי בין
+            שני העמודים: `/` תוקן ב-§B1 על ידי הכהיית טוקני הטקסט ולא על ידי
+            הוספת משטח, ולכן שמר על הגיאומטריה. `/story` משמש כדף בית בפועל
+            ולכן הוא מיושר אליו.
+
+            **המחיר, ואיך הוא שולם.** בלי משטח, הרקע מתחת למילה הוא מה שיצא
+            מהצטברות הדקורציה באותה נקודה. הגרסה הראשונה של היישור השאירה כאן
+            `lapis` ב-eyebrow ובמספרי השלבים, ושער ה-axe הפיל אותה: הטקסט נחת
+            על קו קצה הלוח (#cbc6bd) ונתן 3.62. **זה לא היה מקרה רע — זה היה
+            החישוב שנעשה מראש, שהתממש.**
+
+            לכן כל טקסט קטן כאן נבחר כך שיעבור 4.5:1 מול אותו קו קצה, שהוא הרקע
+            הכהה ביותר שהוא יכול לנחות עליו בפועל: `lapis-ink` (5.26) במקום
+            `lapis` (3.62), ו-`ink80` (6.05) במקום `mist` (3.85). הבחירה נגזרת
+            מהמדידה ולא ממה שהסורק במקרה סימן — `mist` בחצים לא נתפס באותה
+            ריצה, והוא היה נופל באותה מידה אילו נחת שם.
+
+            **מה שנשאר פתוח.** קו השיער הלאפיסי (0.55) והמעוין המלא נשארים
+            מתחת לסף לכל טוקן חוץ מ-`graphite`, והם עדיין בעמוד. שום טקסט לא
+            נוחת עליהם בשתי הרזולוציות שנסרקות, וזה אומר בדיוק מה שהוא אומר:
+            מיקום, לא מבנה. סגירה אמיתית דורשת להוריד אותם ל-α≤0.39 — כלומר
+            לרוקן את המעוין — או להזיז את הצמד מחוץ לעמודת הקריאה. שתיהן
+            גלובליות ונוגעות בכחול של הלוגו, ולכן הן החלטה של אדם. */}
+        <div>
+          <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis-ink sm:mb-6 sm:text-xs">
             {s.eyebrow}
           </div>
           <h1
@@ -66,12 +86,12 @@ export function StoryHome() {
             {s.steps.map((step, i) => (
               <li key={step.n} className="flex items-center gap-3 sm:gap-4">
                 {i > 0 && (
-                  <span aria-hidden="true" className="font-display text-[12px] text-mist">
+                  <span aria-hidden="true" className="font-display text-[12px] text-ink80">
                     ←
                   </span>
                 )}
                 <span className="flex items-baseline gap-1.5">
-                  <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis">
+                  <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis-ink">
                     {step.n}
                   </span>
                   <span className="text-[14px] font-medium text-graphite sm:text-[15px]">
