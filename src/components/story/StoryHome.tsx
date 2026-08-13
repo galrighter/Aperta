@@ -34,18 +34,26 @@ export function StoryHome() {
             הוספת משטח, ולכן שמר על הגיאומטריה. `/story` משמש כדף בית בפועל
             ולכן הוא מיושר אליו.
 
-            **מה שזה אומר, במפורש.** הטוקנים כאן — `lapis` ב-eyebrow, `ink80`
-            ב-lede, `mist` ו-`lapis` ברצועת השלבים — עוברים על כל הדקורציה חוץ
-            משלושה אלמנטים: קו קצה הלוח (0.14), קו השיער הלאפיסי (0.55) והמעוין
-            המלא. מולם הם נופלים (3.85 / 2.52 / 1.06 ל-`mist`). כלומר הניגודיות
-            כאן נשענת על כך שהטקסט לא נוחת עליהם — בדיוק הבסיס ש-`/` נשען עליו
-            היום, ו-`npm run test:a11y` הוא מה שמאמת את זה בשתי רזולוציות.
+            **המחיר, ואיך הוא שולם.** בלי משטח, הרקע מתחת למילה הוא מה שיצא
+            מהצטברות הדקורציה באותה נקודה. הגרסה הראשונה של היישור השאירה כאן
+            `lapis` ב-eyebrow ובמספרי השלבים, ושער ה-axe הפיל אותה: הטקסט נחת
+            על קו קצה הלוח (#cbc6bd) ונתן 3.62. **זה לא היה מקרה רע — זה היה
+            החישוב שנעשה מראש, שהתממש.**
 
-            מה שיהפוך את זה לבטוח מלכתחילה: הכהיית `mist`/`ink60`/`lapis`
-            והזזת צמד הלאפיס מחוץ לעמודת הקריאה. שתיהן גלובליות, והשנייה נוגעת
-            בכחול של הלוגו — ולכן הן החלטה נפרדת ולא חלק מהיישור הזה. */}
+            לכן כל טקסט קטן כאן נבחר כך שיעבור 4.5:1 מול אותו קו קצה, שהוא הרקע
+            הכהה ביותר שהוא יכול לנחות עליו בפועל: `lapis-ink` (5.26) במקום
+            `lapis` (3.62), ו-`ink80` (6.05) במקום `mist` (3.85). הבחירה נגזרת
+            מהמדידה ולא ממה שהסורק במקרה סימן — `mist` בחצים לא נתפס באותה
+            ריצה, והוא היה נופל באותה מידה אילו נחת שם.
+
+            **מה שנשאר פתוח.** קו השיער הלאפיסי (0.55) והמעוין המלא נשארים
+            מתחת לסף לכל טוקן חוץ מ-`graphite`, והם עדיין בעמוד. שום טקסט לא
+            נוחת עליהם בשתי הרזולוציות שנסרקות, וזה אומר בדיוק מה שהוא אומר:
+            מיקום, לא מבנה. סגירה אמיתית דורשת להוריד אותם ל-α≤0.39 — כלומר
+            לרוקן את המעוין — או להזיז את הצמד מחוץ לעמודת הקריאה. שתיהן
+            גלובליות ונוגעות בכחול של הלוגו, ולכן הן החלטה של אדם. */}
         <div>
-          <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis sm:mb-6 sm:text-xs">
+          <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis-ink sm:mb-6 sm:text-xs">
             {s.eyebrow}
           </div>
           <h1
@@ -78,12 +86,12 @@ export function StoryHome() {
             {s.steps.map((step, i) => (
               <li key={step.n} className="flex items-center gap-3 sm:gap-4">
                 {i > 0 && (
-                  <span aria-hidden="true" className="font-display text-[12px] text-mist">
+                  <span aria-hidden="true" className="font-display text-[12px] text-ink80">
                     ←
                   </span>
                 )}
                 <span className="flex items-baseline gap-1.5">
-                  <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis">
+                  <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis-ink">
                     {step.n}
                   </span>
                   <span className="text-[14px] font-medium text-graphite sm:text-[15px]">
