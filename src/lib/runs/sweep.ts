@@ -1,4 +1,6 @@
-import { listStalledJobs, failJob, claimJobDone, type GenerationJobRow } from "@/lib/db/jobs";
+import {
+  listStalledJobs, failJob, claimJobDone, claimRecovery, type GenerationJobRow,
+} from "@/lib/db/jobs";
 import { versionForGeneration, getDesign } from "@/lib/db/designs";
 import { resultFromVersion, isFirstVersion } from "@/lib/jobRecovery";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
@@ -66,9 +68,12 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
 
   // קודם כול: אולי הגרסה כבר נשמרה והשורה רק לא נסגרה. זו הבדיקה שחייבת
   // לקדום לכל השאר — בלעדיה נייצר גרסה שנייה לאותה הרצה.
-  const version = await versionForGeneration(job.run_id);
+  // לפי מזהה הניסיון ולא לפי `run_id` — ראו את אותה הערה במסלול המשיכה
+  // (`api/generate/[jobId]`): הרצה שהצליחה בניסיון השני שמורה תחת מזהה אחר.
+  const attemptId = ctx.attemptId ?? job.run_id;
+  const version = await versionForGeneration(attemptId);
   if (version) {
-    if (await claimJobDone(jobId, job.run_id, resultFromVersion(job.run_id, version))) {
+    if (await claimJobDone(jobId, job.run_id, resultFromVersion(attemptId, version))) {
       try {
         // העיצוב של **הגרסה**, לא של ה-job: גרסת עריכה יושבת על דוגמה ממוספרת,
         // והמייל צריך להצביע עליה. עריכה ממילא לא שולחת מייל — ראו complete.ts.
@@ -79,6 +84,13 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
       }
     }
     return { jobId, outcome: "recovered" };
+  }
+
+  // ותפיסת בעלות לפני העבודה, מאותה סיבה בדיוק: הבדיקה שלמעלה היא
+  // בדיקה-ואז-פעולה, והלקוחה מושכת במקביל לסריקה. `claimRecovery` הוא מה
+  // שמכריע מי מהם מריץ את ה-ingest — ולא שניהם (ראו את שבע הגרסאות ב-13.8).
+  if (!(await claimRecovery(jobId, job.run_id, job.updated_at))) {
+    return { jobId, outcome: "skipped", detail: "someone else is completing it" };
   }
 
   const outcome = await completeFromContext(jobId, job.run_id, ctx);

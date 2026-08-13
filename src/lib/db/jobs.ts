@@ -156,6 +156,45 @@ export async function claimJobDone(id: string, runId: string, result: unknown): 
   }
   return (data ?? []).length > 0;
 }
+/**
+ * בעלות על **ההשלמה עצמה** — נתפסת לפני שהיא מתחילה, לא אחריה.
+ *
+ * **מה זה מתקן (13.8).** `completeFromContext` מתועדת כ"בטוחה להריץ פעמיים",
+ * בתנאי שהקורא יוודא קודם שאין כבר גרסה להרצה. התנאי הזה הוא בדיקה-ואז-פעולה,
+ * וברירת המחדל היא להפסיד אותו: ההשלמה עצמה נמשכת שתיים-שלוש שניות (איסוף
+ * מהקופסה, מסגור, ולידציה, שמירה), והלקוחה מושכת כל שנייה וחצי — ו-
+ * `DesignReadyWatch` כל שש. כל מי שנכנס בחלון הזה מוצא "אין גרסה", כי הראשון
+ * עוד לא כתב אותה, ורץ ingest משלו.
+ *
+ * נמדד על job 5c555ac8 (13.8, 18:20:10–18:20:14): **שבע** גרסאות זהות בייט-
+ * בייט (אותו md5, אותו `generation_id`), בהפרש 400 מ"ש זו מזו. `claimJobDone`
+ * מנע רק את המייל הכפול — הוא רץ בסוף, אחרי שכל שבע כבר נכתבו.
+ *
+ * כאן העדכון המותנה קודם לעבודה: מי שהצליח להזיז את `updated_at` מהערך שראה
+ * הוא הבעלים, וכל השאר חוזרים "עדיין רצה" ומושכים שוב. הדחיפה של `updated_at`
+ * היא גם התשובה הנכונה לסקר הבא — השלמה בתהליך אינה שורה נטושה.
+ *
+ * `false` = מישהו אחר הקדים (או שהשורה כבר לא `running`). לא שגיאה.
+ */
+export async function claimRecovery(id: string, runId: string, seenAt: string): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const { data, error } = await sb
+    .from("generation_jobs")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("run_id", runId)
+    .eq("status", "running")
+    // הנעילה עצמה: הערך שהקורא ראה. שני קוראים שקראו את אותה שורה — רק אחד
+    // מהם מוצא אותה עדיין בערך הזה כשהוא כותב.
+    .eq("updated_at", seenAt)
+    .select("id");
+  if (error) {
+    console.error(`claim recovery ${id} failed:`, error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
 export const failJob = (id: string, runId: string, error: JobError) =>
   patch(id, runId, { status: "error", stage: null, error });
 

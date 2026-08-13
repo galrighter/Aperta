@@ -14,6 +14,7 @@ const getDesign = vi.fn();
 const notifyDesignReady = vi.fn();
 const requireDesignAccess = vi.fn();
 const failJob = vi.fn();
+const claimRecovery = vi.fn();
 const completeFromContext = vi.fn();
 
 vi.mock("@/lib/db/jobs", async (orig) => ({
@@ -21,6 +22,7 @@ vi.mock("@/lib/db/jobs", async (orig) => ({
   getJob: (...a: unknown[]) => getJob(...a),
   claimJobDone: (...a: unknown[]) => claimJobDone(...a),
   failJob: (...a: unknown[]) => failJob(...a),
+  claimRecovery: (...a: unknown[]) => claimRecovery(...a),
 }));
 vi.mock("@/lib/runs/complete", () => ({
   completeFromContext: (...a: unknown[]) => completeFromContext(...a),
@@ -72,6 +74,7 @@ beforeEach(() => {
   versionForGeneration.mockResolvedValue(savedVersion);
   getDesign.mockResolvedValue(design);
   claimJobDone.mockResolvedValue(true);
+  claimRecovery.mockResolvedValue(true);
   requireDesignAccess.mockResolvedValue(design);
   completeFromContext.mockResolvedValue({ kind: "lost" });
 });
@@ -130,6 +133,18 @@ describe("GET /api/generate/[jobId] — recovery", () => {
     expect((await res.json()).status).toBe("done");
   });
 
+  /**
+   * הרצה שהצליחה רק בניסיון השני שמורה תחת מזהה אחר מזה ששורת ה-job נושאת:
+   * `run_id` נשאר של הניסיון הראשון, ו-`ingestCutouts` מקבל את מזהה הניסיון
+   * שרץ בפועל. חיפוש לפי `run_id` לבדו היה מחמיץ אותה — כלומר מכריז
+   * `job_stalled` על עיצוב ששמור אצלנו.
+   */
+  it("מחפש את הגרסה לפי מזהה הניסיון, לא לפי run_id", async () => {
+    getJob.mockResolvedValue({ ...stuckJob, context: { attemptId: "attempt-2" } });
+    await call();
+    expect(versionForGeneration).toHaveBeenCalledWith("attempt-2");
+  });
+
   it("does not go looking for a version while still rendering", async () => {
     getJob.mockResolvedValue({ ...stuckJob, stage: "rendering" });
     const body = await (await call()).json();
@@ -175,6 +190,21 @@ describe("GET /api/generate/[jobId] — finishing a run nobody was left to finis
     expect(body.status).toBe("error");
     expect(body.error.code).toBe("vectorize_failed");
     expect(failJob).toHaveBeenCalledOnce();
+  });
+
+  /**
+   * שני קוראים על אותה הרצה — רק אחד עושה את העבודה.
+   *
+   * זה מה שהיה שבור: הבדיקה "יש כבר גרסה?" רצה לפני השלמה שנמשכת שתיים-שלוש
+   * שניות, והלקוחה מושכת כל שנייה וחצי. כל מי שנכנס בחלון מצא "אין גרסה" ורץ
+   * ingest משלו. נמדד ב-13.8 על job 5c555ac8: שבע גרסאות זהות בייט-בייט.
+   */
+  it("לא מריץ השלמה שנייה כשמישהו אחר כבר תפס אותה", async () => {
+    claimRecovery.mockResolvedValue(false);
+    const body = await (await call()).json();
+    expect(completeFromContext).not.toHaveBeenCalled();
+    // "עדיין רצה" ולא "נכשל": ההשלמה בעיצומה אצל מי שתפס אותה.
+    expect(body.status).toBe("running");
   });
 
   it("falls back to 'stalled' when the box no longer has the run", async () => {
