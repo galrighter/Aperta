@@ -14,3 +14,17 @@ geometry-service/dist/
 
 # מטמון של docs/brand/build-brand-assets.py (גופנים שמורדים בהרצה)
 docs/brand/.cache/
+
+# קבצי ההוראות-לסוכנים ש-Next מייצר בכל `dev`/`build` מתוך node_modules
+# (next/dist/server/lib/generate-agent-files.js). `CLAUDE.md` הוא שורה אחת
+# שמצביעה על `AGENTS.md`.
+#
+# למה מתעלמים ולא מוסיפים לריפו, למרות ש-Next עצמו ממליץ לקומיט: זהו טקסט
+# שמופנה לסוכנים והתוכן שלו נשלט על ידי תלות — כלומר כל שדרוג של `next` יכול
+# לשנות אותו בלי שאיש יקרא את הדיף. שינוי הוראות לסוכנים בריפו הוא החלטה של
+# אדם, לא תוצר לוואי של `npm update`.
+#
+# אם תרצו לכתוב `CLAUDE.md` משלכם — הסירו את השורה שלו כאן, וכבו את הייצור
+# עם `agentRules: false` ב-next.config כדי ש-Next לא ידרוס אותו.
+AGENTS.md
+CLAUDE.md
