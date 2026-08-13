@@ -191,7 +191,20 @@ describe("ניווט במשפך", () => {
     const at = PAGE.indexOf("if (runningRef.current) {");
     expect(at, "ענף הנעילה לא נמצא").toBeGreaterThan(-1);
     const branch = PAGE.slice(at, PAGE.indexOf("if (at !== null) atIdx = at;"));
-    expect(branch).toContain("window.scrollTo({ top: 0");
+    expect(branch).toContain("scrollToTop()");
+  });
+
+  it("הגלילה לראש העמוד אינה נוגעת בציר האופקי", () => {
+    // `window.scrollTo(0, 0)` מאפס גם את הציר האופקי. בעמוד RTL "אפס אופקי"
+    // אינו נקודת ההתחלה, ומנועים שונים אף אינם מסכימים היכן הוא יושב — ב-WebKit
+    // ישן וב-WebView של אנדרואיד זהו הקצה השמאלי, הצד שאין בו תוכן. מעבר בין
+    // מסכים לא צריך להכריע בוויכוח הזה; הוא צריך לא להיכנס אליו.
+    expect(PAGE).toContain("function scrollToTop()");
+    expect(PAGE).toContain('window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior })');
+    // ומחוץ לפונקציה עצמה אין אף קריאה נוספת ל-scrollTo — כל מסך עובר דרכה,
+    // ובפרט אין אף `scrollTo(0, 0)` שחזר בעריכה מאוחרת.
+    expect(PAGE).not.toContain("window.scrollTo(0, 0);");
+    expect(PAGE.match(/window\.scrollTo\(\{/g)).toHaveLength(1);
   });
 
   it("סרגל השלבים ננעל יחד עם Back", () => {

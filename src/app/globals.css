@@ -219,9 +219,34 @@ body {
 }
 .ap-fade { animation: apFade 0.45s ease; }
 
+/* פס המתנה בלי אחוזים — לפתיחת עיצוב מקישור.
+   `ProgressBar` מודד זמן מול תקרה של דקה וחצי, וזה נכון להרצת מנוע; המתנה
+   לשליפה של עיצוב קיים נמשכת שניות בודדות, ופס שזוחל מ-4% היה משקר לרעה
+   בדיוק על ההמתנה הקצרה. כאן אין מה למדוד — יש מה לומר: משהו קורה.
+   התנועה נכתבת ב-`inset-inline-start` ולא ב-`translateX`: התזוזה צריכה להתחיל
+   בצד שממנו קוראים, ו-`translateX` אינו יודע דבר על כיוון הכתיבה — בעמוד RTL
+   הוא היה מסיע את הפס מהקצה הימני החוצה מהמסגרת, כלומר פס אפור ריק. */
+@keyframes apSweep {
+  from { inset-inline-start: -35%; }
+  to   { inset-inline-start: 100%; }
+}
+.ap-sweep { position: relative; overflow: hidden; }
+.ap-sweep::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 33%;
+  background: var(--color-lapis);
+  animation: apSweep 1.4s ease-in-out infinite;
+}
+
 /* כיבוד העדפת מערכת לצמצום תנועה (WCAG 2.3.3). */
 @media (prefers-reduced-motion: reduce) {
   .ap-fade { animation: none; }
+  /* הכלל הכללי מתחת מקצר כל אנימציה ל-0.01ms, כלומר הפס היה קופא בקצה שאליו
+     נסע — מחוץ למסגרת. כאן הוא נעצר כפס מלא ודומם: חיווי שקיים, בלי תנועה. */
+  .ap-sweep::after { animation: none; width: 100%; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
