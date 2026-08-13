@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
-import { getJob, claimJobDone, failJob, JOB_STALE_MS } from "@/lib/db/jobs";
+import { getJob, claimJobDone, claimRecovery, failJob, JOB_STALE_MS } from "@/lib/db/jobs";
 import { versionForGeneration, getDesign } from "@/lib/db/designs";
 import { mayHaveFinished, resultFromVersion, isFirstVersion } from "@/lib/jobRecovery";
 import { canRerun, completeFromContext, rerunFromContext, type JobContext } from "@/lib/runs/complete";
@@ -48,10 +48,18 @@ export async function GET(req: Request, { params }: Params) {
     // לכן לפני שמכריזים על כישלון — שואלים את המקור שיודע: האם ההרצה הזו הפיקה
     // גרסה. אם כן, העבודה הסתיימה ומה שחסר הוא רק הרישום. ההכרעה עצמה ב-
     // `lib/jobRecovery`, שם היא נבדקת.
+    //
+    // ולפי מזהה הניסיון, לא לפי `run_id`: שורת ה-job נושאת את מזהה הניסיון
+    // הראשון ואינה מתעדכנת בשני, בזמן ש-`ingestCutouts` מקבל `generationId` של
+    // הניסיון שרץ בפועל. על הרצה שהצליחה רק בניסיון השני החיפוש לפי `run_id`
+    // לבדו מחמיץ גרסה שקיימת, ומכריז `job_stalled` על עיצוב ששמור אצלנו.
+    // ההקשר הוא מי שיודע מי רץ אחרון — `setJobContext` נכתב בכל ניסיון.
+    const attemptOf = (runId: string) => (job.context as JobContext | null)?.attemptId ?? runId;
     if (job.design_id && job.run_id && mayHaveFinished(job)) {
-      const version = await versionForGeneration(job.run_id);
+      const attemptId = attemptOf(job.run_id);
+      const version = await versionForGeneration(attemptId);
       if (version) {
-        const result = resultFromVersion(job.run_id, version);
+        const result = resultFromVersion(attemptId, version);
         // תיקון השורה, best-effort: סקר הבא יענה מיד, והיומן יפסיק לדווח על
         // הרצה שהצליחה כאילו היא תקועה. כישלון כאן לא מונע את התשובה.
         //
@@ -97,6 +105,14 @@ export async function GET(req: Request, { params }: Params) {
     const stalled = Date.now() - new Date(job.updated_at).getTime() > JOB_STALE_MS;
     if (stalled && job.design_id && job.run_id && job.context) {
       const ctx = job.context as JobContext;
+      // ההשלמה נתפסת לפני שהיא מתחילה. הבדיקה שלמעלה ("יש כבר גרסה?") אינה
+      // מספיקה לבדה: היא בדיקה-ואז-פעולה מול עבודה שנמשכת שניות, ומי שמושך
+      // כל שנייה וחצי מפסיד אותה בוודאות — ראה `claimRecovery` ואת שבע
+      // הגרסאות הזהות שזה ייצר ב-13.8. מי שלא תפס חוזר "עדיין רצה"; הבעלים
+      // כבר דחף את `updated_at`, ולכן הסקר הבא לא יראה שורה נטושה.
+      if (!(await claimRecovery(jobId, job.run_id, job.updated_at))) {
+        return NextResponse.json({ status: "running", stage: job.stage });
+      }
       const outcome = await completeFromContext(jobId, job.run_id, ctx);
       if (outcome.kind === "done") return NextResponse.json({ status: "done", result: outcome.result });
       if (outcome.kind === "rejected") {

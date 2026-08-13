@@ -10,6 +10,7 @@ import type { GenerationJobRow } from "@/lib/db/jobs";
 const listStalledJobs = vi.fn();
 const failJob = vi.fn();
 const claimJobDone = vi.fn();
+const claimRecovery = vi.fn();
 const versionForGeneration = vi.fn();
 const getDesign = vi.fn();
 const notifyDesignReady = vi.fn();
@@ -20,6 +21,7 @@ vi.mock("@/lib/db/jobs", () => ({
   listStalledJobs: (...a: unknown[]) => listStalledJobs(...a),
   failJob: (...a: unknown[]) => failJob(...a),
   claimJobDone: (...a: unknown[]) => claimJobDone(...a),
+  claimRecovery: (...a: unknown[]) => claimRecovery(...a),
 }));
 vi.mock("@/lib/db/designs", () => ({
   versionForGeneration: (...a: unknown[]) => versionForGeneration(...a),
@@ -60,6 +62,7 @@ beforeEach(() => {
   versionForGeneration.mockResolvedValue(null);
   getDesign.mockResolvedValue({ id: "d-1", profile_id: "p-1" });
   claimJobDone.mockResolvedValue(true);
+  claimRecovery.mockResolvedValue(true);
   completeFromContext.mockResolvedValue({ kind: "lost" });
   rerunFromContext.mockResolvedValue({ kind: "done", result: {} });
 });
@@ -72,6 +75,25 @@ describe("sweepStalledJobs", () => {
     expect(report.entries[0].outcome).toBe("recovered");
     expect(completeFromContext).not.toHaveBeenCalled();
     expect(notifyDesignReady).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  /**
+   * הסריקה והלקוחה רצות במקביל על אותה שורה, וההשלמה נמשכת שניות. בלי תפיסת
+   * בעלות **לפני** העבודה, שתיהן מוצאות "אין גרסה" ושתיהן כותבות אחת — וזה
+   * מה שייצר שבע גרסאות זהות ב-13.8 (job 5c555ac8).
+   */
+  it("לא מריץ השלמה כשמישהו אחר תפס את ההרצה", async () => {
+    claimRecovery.mockResolvedValue(false);
+    const report = await sweepStalledJobs(NOW);
+    expect(completeFromContext).not.toHaveBeenCalled();
+    expect(report.entries[0].outcome).toBe("skipped");
+  });
+
+  it("מחפש את הגרסה לפי מזהה הניסיון, לא לפי run_id", async () => {
+    // ניסיון שני: שורת ה-job עדיין נושאת את המזהה של הראשון.
+    listStalledJobs.mockResolvedValue([job({}, { attemptId: "r-2" })]);
+    await sweepStalledJobs(NOW);
+    expect(versionForGeneration).toHaveBeenCalledWith("r-2");
   });
 
   it("מסיים מההדמיה שהקופסה עדיין מחזיקה — בלי לשלם שוב", async () => {

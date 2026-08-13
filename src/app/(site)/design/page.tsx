@@ -32,6 +32,7 @@ import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client
 import { popStoryHandoff } from "@/lib/client/storyHandoff";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
+import { shrinkReferenceImage } from "@/lib/client/referenceImage";
 import {
   beatPendingJob, clearPendingJob, setPendingJob,
 } from "@/lib/client/pendingJob";
@@ -651,6 +652,16 @@ export default function DesignPage() {
       // נרשם עכשיו, לפני הגנרציה — כדי שהעיצוב יהיה בר-איתור גם אם היא נקטעת.
       remember(withId, null);
 
+      // תמונת ההשראה מכווצת לגודל שהמודל מצייר בו לפני שהיא נכנסת לגוף
+      // הבקשה. עד כאן היא נסעה גולמית — עד ~6.7MB בבסיס64 — על הקו של
+      // הלקוחה, בזמן שמסך הטעינה כבר מסתובב, ובלי שאף פיקסל מהמשקל העודף
+      // מגיע לתוצאה. ההמרה נכשלת בשקט אל המקור; ראה `referenceImage.ts`.
+      // ("מוכן לחיתוך" אינו עובר כאן — שם הרזולוציה היא התוכן.)
+      const referenceImages =
+        st.image && st.imageRole !== "ready"
+          ? [{ kind: "inspiration" as const, dataUrl: await shrinkReferenceImage(st.image.dataUrl) }]
+          : [];
+
       // "קובץ מוכן לחיתוך" → וקטוריזציה ישירה; אחרת גנרציה מהתיאור.
       const res =
         st.imageRole === "ready" && st.image
@@ -664,10 +675,7 @@ export default function DesignPage() {
                 // לפרשנות (docs/research/HEBREW_TEXT_HANDOFF.md).
                 text: st.lettering.trim() || undefined,
                 currentSvg: null,
-                images:
-                  st.image && st.imageRole !== "ready"
-                    ? [{ kind: "inspiration" as const, dataUrl: st.image.dataUrl }]
-                    : [],
+                images: referenceImages,
                 // story mode — הדגל היחיד שנוסע לשרת במסלול הפשוט. בכל מסלול
                 // אחר הוא `undefined`, כלומר הבקשה זהה למה שהייתה.
                 mode: st.story ? ("story" as const) : undefined,
