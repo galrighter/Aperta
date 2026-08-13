@@ -52,7 +52,7 @@ export default function SiteError({
           </summary>
           <pre
             dir="ltr"
-            className="mt-3 overflow-x-auto whitespace-pre-wrap break-words bg-white p-3 font-mono text-[11px] leading-relaxed text-ink60"
+            className="mt-3 overflow-x-auto whitespace-pre-wrap break-words bg-chalk p-3 font-mono text-[11px] leading-relaxed text-ink60"
           >
             {[error.message, error.digest && `digest: ${error.digest}`].filter(Boolean).join("\n")}
           </pre>

@@ -83,7 +83,7 @@ export function CheckoutScreen({
       <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1.4fr_1fr]">
         <div>
           {/* כתובת */}
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.addrTitle}</CardLabel>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
@@ -148,7 +148,7 @@ export function CheckoutScreen({
           </div>
 
           {/* אישורים */}
-          <div className="mt-4 space-y-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 space-y-4 border border-graphite/10 bg-chalk p-6">
             <CheckBox on={s.terms} onChange={(v) => set({ terms: v })}>
               {d.termsLabel}{" "}
               <Link
@@ -169,7 +169,7 @@ export function CheckoutScreen({
           </div>
 
           {/* תשלום */}
-          <div className="mt-4 border border-graphite/10 bg-white p-6">
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.payTitle}</CardLabel>
             <div className="border-s-2 border-lapis bg-porcelain p-5">
               <div className="mb-2 text-sm font-semibold text-graphite">{d.payPendingTitle}</div>
@@ -182,7 +182,7 @@ export function CheckoutScreen({
 
         {/* סיכום דביק */}
         <div className="lg:sticky lg:top-[104px]">
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <CardLabel>{d.checkoutSummaryTitle}</CardLabel>
             <Row k={d.checkoutKeys.item} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.checkoutKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />

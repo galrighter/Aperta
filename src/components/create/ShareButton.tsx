@@ -172,7 +172,7 @@ export function ShareButton({
       </button>
 
       {(url || error) && (
-        <div className="absolute top-[calc(100%+6px)] z-30 w-[min(320px,80vw)] border border-graphite/20 bg-white p-3 shadow-lg ltr:left-0 rtl:right-0">
+        <div className="absolute top-[calc(100%+6px)] z-30 w-[min(320px,80vw)] border border-graphite/20 bg-chalk p-3 shadow-lg ltr:left-0 rtl:right-0">
           {url ? (
             <>
               <p className="mb-2.5 text-[12px] text-ink60">{t.shareHint}</p>

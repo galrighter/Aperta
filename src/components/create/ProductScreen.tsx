@@ -49,7 +49,7 @@ function Item({
     <button
       type="button"
       onClick={onClick}
-      className="group block border border-graphite/[0.16] bg-white text-start transition-all hover:-translate-y-[3px] hover:border-lapis"
+      className="group block border border-graphite/[0.16] bg-chalk text-start transition-all hover:-translate-y-[3px] hover:border-lapis"
     >
       <div className="relative overflow-hidden border-b border-graphite/10" style={{ aspectRatio: "16 / 10" }}>
         <Image

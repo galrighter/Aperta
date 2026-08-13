@@ -160,7 +160,7 @@ export default function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="absolute end-0 top-[calc(100%+6px)] z-30 min-w-[190px] border border-graphite/15 bg-white py-1 shadow-lg"
+          className="absolute end-0 top-[calc(100%+6px)] z-30 min-w-[190px] border border-graphite/15 bg-chalk py-1 shadow-lg"
         >
           <div className="px-3 py-2 text-[12px] text-mist">
             <bdi>{account.email || name}</bdi>

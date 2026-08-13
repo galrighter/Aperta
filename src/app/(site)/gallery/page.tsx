@@ -30,7 +30,7 @@ export default function GalleryPage() {
       <p className="mt-3 max-w-2xl text-lg text-ink60">{s.gallerySubtitle}</p>
 
       {/* צילום מוצר אמיתי — בלוק מוביל, נבדל מרשת האיורים שמתחת */}
-      <figure className="mt-10 grid overflow-hidden border border-graphite/10 bg-white sm:grid-cols-2">
+      <figure className="mt-10 grid overflow-hidden border border-graphite/10 bg-chalk sm:grid-cols-2">
         <div className="flex items-center justify-center bg-porcelain p-4 sm:p-6">
           <Image
             src="/ring-hero.webp"
@@ -54,7 +54,7 @@ export default function GalleryPage() {
 
       <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {s.galleryItems.map((item, i) => (
-          <figure key={i} className="overflow-hidden border border-graphite/10 bg-white">
+          <figure key={i} className="overflow-hidden border border-graphite/10 bg-chalk">
             <div className="flex items-center justify-center bg-porcelain p-6">
               <PatternMark variant={VARIANTS[i]} className="w-full" />
             </div>

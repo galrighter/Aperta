@@ -89,8 +89,9 @@ export function StoryCreate() {
   };
 
   return (
-    <section className="mx-auto max-w-[820px] px-5 py-10 sm:px-10 sm:py-14">
-      <div className="ap-surface">
+    // `ap-veil` ו-`overflow-x-clip` מאותה סיבה כמו ב-`StoryHome` — ראה שם.
+    <section className="mx-auto max-w-[820px] overflow-x-clip px-5 py-10 sm:px-10 sm:py-14">
+      <div className="ap-veil">
         <Eyebrow>{c.eyebrow}</Eyebrow>
 
         {/* 1 · מה ניצור */}
@@ -157,7 +158,7 @@ export function StoryCreate() {
               onChange={(e) => setSize(e.target.value)}
               placeholder={ring ? "54" : "168"}
               aria-invalid={issue || missingSize ? true : undefined}
-              className={`w-full rounded-[2px] border bg-white px-4 py-3.5 text-base transition-colors focus:outline-none ${
+              className={`w-full rounded-[2px] border bg-chalk px-4 py-3.5 text-base transition-colors focus:outline-none ${
                 issue || missingSize ? "border-failred" : "border-graphite/20 focus:border-lapis"
               }`}
             />
@@ -202,7 +203,7 @@ export function StoryCreate() {
             maxLength={4000}
             placeholder={c.storyPlaceholders[ph]}
             aria-invalid={missingStory ? true : undefined}
-            className={`mt-5 w-full resize-y rounded-[2px] border bg-white px-4 py-4 text-[16px] leading-relaxed text-graphite transition-colors focus:outline-none ${
+            className={`mt-5 w-full resize-y rounded-[2px] border bg-chalk px-4 py-4 text-[16px] leading-relaxed text-graphite transition-colors focus:outline-none ${
               missingStory ? "border-failred" : "border-graphite/20 focus:border-lapis"
             }`}
           />

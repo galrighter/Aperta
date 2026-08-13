@@ -49,7 +49,7 @@ export function FieldLabel({ children, htmlFor }: { children: React.ReactNode; h
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`border border-graphite/10 bg-white p-6 ${className}`}>{children}</div>
+    <div className={`border border-graphite/10 bg-chalk p-6 ${className}`}>{children}</div>
   );
 }
 
@@ -103,7 +103,7 @@ export function OptionBtn({
       className="flex-1 rounded-[2px] p-[15px] text-center transition-colors disabled:cursor-not-allowed"
       style={{
         border: `1.5px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
-        background: on ? "rgba(63,98,151,0.06)" : "#fff",
+        background: on ? "rgba(63,98,151,0.06)" : "var(--color-chalk)",
       }}
     >
       {children}
@@ -126,7 +126,7 @@ export function Chip({
       className="flex-1 rounded-[2px] p-[9px] text-center text-[13px] transition-colors disabled:cursor-not-allowed"
       style={{
         border: `1px solid ${on ? LAPIS : "rgba(32,35,38,0.2)"}`,
-        background: on ? LAPIS : "#fff",
+        background: on ? LAPIS : "var(--color-chalk)",
         color: on ? "#fff" : GRAPHITE,
       }}
     >
@@ -216,7 +216,7 @@ export function TextInput({
         autoComplete={autoComplete}
         aria-invalid={error ? true : undefined}
         aria-describedby={msg ? `${id}-msg` : undefined}
-        className={`w-full rounded-[2px] border bg-white px-4 py-3 text-base transition-colors focus:outline-none ${
+        className={`w-full rounded-[2px] border bg-chalk px-4 py-3 text-base transition-colors focus:outline-none ${
           error ? "border-failred focus:border-failred" : "border-graphite/20 focus:border-lapis"
         }`}
       />
@@ -256,7 +256,7 @@ export function CheckBox({
         className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-[2px] text-xs text-porcelain transition-colors"
         style={{
           border: `1.5px solid ${on ? LAPIS : "rgba(32,35,38,0.3)"}`,
-          background: on ? LAPIS : "#fff",
+          background: on ? LAPIS : "var(--color-chalk)",
         }}
       >
         {on ? "✓" : ""}
@@ -371,7 +371,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-graphite/15 bg-white p-7"
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-graphite/15 bg-chalk p-7"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id={titleId} className="mb-5 text-xl font-semibold text-graphite">

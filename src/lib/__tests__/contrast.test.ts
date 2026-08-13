@@ -44,8 +44,25 @@ export function contrast(a: string, b: string): number {
 const SURFACES = {
   porcelain: token("porcelain"),
   "porcelain-slab": token("porcelain-slab"),
+  chalk: token("chalk"),
   white: "#ffffff",
 } as const;
+
+/** מרכיב צבע באטימות `alpha` מעל רקע אטום, ומחזיר את התוצאה כ-hex. */
+function composite(fg: string, alpha: number, bg: string): string {
+  const parse = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [f, b] = [parse(fg), parse(bg)];
+  return `#${f
+    .map((v, i) => Math.round(v * alpha + b[i] * (1 - alpha)).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+/** עוצמת קווי האריגה של `.ap-surface`, מתוך ה-CSS. מקור אחד, כמו הצבעים. */
+function textureAlpha(): number {
+  const m = CSS.match(/--ap-texture-alpha:\s*([\d.]+)/);
+  if (!m) throw new Error("--ap-texture-alpha לא נמצא ב-globals.css");
+  return Number(m[1]);
+}
 
 /** טוקני הטקסט. `mist` הוא הבהיר שבהם, ולכן הוא הגבול התחתון בפועל. */
 const TEXT = {
@@ -57,7 +74,7 @@ const TEXT = {
   "lapis-ink": token("lapis-ink"),
 } as const;
 
-/** צבעי מצב הייצור. הם נצבעים על כרטיס לבן בלבד (ResultScreen). */
+/** צבעי מצב הייצור. הם נצבעים על כרטיס בלבד (ResultScreen) — היום `chalk`. */
 const STATUS = {
   successgreen: token("successgreen"),
   warnamber: token("warnamber"),
@@ -79,15 +96,60 @@ describe("חוזה הניגודיות", () => {
     }
   }
 
+  /**
+   * האריגה של `.ap-surface` מוסיפה קווי גרפיט דקים *מעל* המשטח האטום, כלומר
+   * מזיזה את הרקע בפועל מתחת לטקסט. ההזזה קטנה, אבל "קטנה" היא בדיוק הטענה
+   * שהחוזה הזה קיים כדי לא להאמין לה על סמך עין. הנקודה הכהה ביותר של משטח
+   * ארוג היא צומת של שני קווים — ושם, ולא בממוצע, נמדדת הניגודיות.
+   */
+  const ALPHA = textureAlpha();
+  for (const [textName, textHex] of Object.entries(TEXT)) {
+    for (const [surfaceName, surfaceHex] of Object.entries(SURFACES)) {
+      const woven = composite(TEXT.graphite, ALPHA, surfaceHex);
+      it(`${textName} על ${surfaceName} ארוג עובר ${AA}:1`, () => {
+        const ratio = contrast(textHex, woven);
+        expect(
+          ratio,
+          `${textName} (${textHex}) על ${surfaceName} ארוג (${woven}) נותן ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(AA);
+      });
+    }
+  }
+
   for (const [name, hex] of Object.entries(STATUS)) {
-    it(`${name} על לבן עובר ${AA}:1`, () => {
-      const ratio = contrast(hex, "#ffffff");
-      expect(ratio, `${name} (${hex}) נותן ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA);
-    });
+    for (const surfaceName of ["white", "chalk"] as const) {
+      it(`${name} על ${surfaceName} עובר ${AA}:1`, () => {
+        const surface = SURFACES[surfaceName];
+        const ratio = contrast(hex, surface);
+        expect(ratio, `${name} (${hex}) על ${surfaceName} נותן ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA);
+      });
+    }
   }
 
   it("porcelain כטקסט על graphite עובר — זה ה-CTA הראשי", () => {
     expect(contrast(TEXT.graphite, SURFACES.porcelain)).toBeGreaterThanOrEqual(AA);
+  });
+
+  /**
+   * `.ap-veil` מחליף את המשטח האטום בכתם מטושטש, ולכן האטימות מתחת לטקסט אינה
+   * 100% אלא פונקציה של שני מספרים. קצה חד שעבר גאוסיאן ב-σ מגיע ל-97.7%
+   * אטימות במרחק 2σ פנימה, ולכן הגלישה מחוץ לתיבת התוכן חייבת להיות ≥2×הטשטוש
+   * — אחרת הטקסט יושב על משטח שקוף למחצה, שהוא בדיוק המצב ש-§B1 תיאר.
+   *
+   * הבדיקה על היחס ולא על הערכים: מותר לכוון את הרכות, אסור לנתק את הקשר.
+   */
+  it("הגלישה של ap-veil מכסה את הטשטוש — הטקסט יושב על אטימות מלאה", () => {
+    const px = (name: string): number => {
+      const m = CSS.match(new RegExp(`--ap-veil-${name}:\\s*([\\d.]+)px`));
+      if (!m) throw new Error(`--ap-veil-${name} לא נמצא ב-globals.css`);
+      return Number(m[1]);
+    };
+    const blur = px("blur");
+    const bleed = px("bleed");
+    expect(
+      bleed,
+      `גלישה ${bleed}px מול טשטוש ${blur}px — צריך לפחות ${2 * blur}px`,
+    ).toBeGreaterThanOrEqual(2 * blur);
   });
 
   /**

@@ -90,7 +90,7 @@ export function SizesScreen({
             onChange={(e) => set(ring ? { ringSize: e.target.value } : { circ: e.target.value })}
             placeholder={ring ? d.ringSizePlaceholder : d.circPlaceholder}
             aria-invalid={issue ? true : undefined}
-            className={`w-full rounded-[2px] border bg-white px-4 py-3.5 text-base transition-colors focus:outline-none ${
+            className={`w-full rounded-[2px] border bg-chalk px-4 py-3.5 text-base transition-colors focus:outline-none ${
               issue ? "border-failred" : "border-graphite/20 focus:border-lapis"
             }`}
           />
@@ -135,7 +135,7 @@ export function SizesScreen({
           {/* דיסקליימר טבעת — מוצג תמיד */}
           {ring && (
             <p
-              className="mt-7 border-s-2 border-lapis bg-white p-4 text-sm leading-relaxed text-ink80"
+              className="mt-7 border-s-2 border-lapis bg-chalk p-4 text-sm leading-relaxed text-ink80"
               style={{ textWrap: "pretty" }}
             >
               {d.ringDisclaimer}
@@ -151,7 +151,7 @@ export function SizesScreen({
 
         {/* תצוגת רוחב — פאנל דביק */}
         <div className="md:sticky md:top-[104px]">
-          <div className="border border-graphite/10 bg-white p-6">
+          <div className="border border-graphite/10 bg-chalk p-6">
             <div className="mb-4 font-display text-xs tracking-[0.15em] text-mist">
               {d.widthPreviewTitle}
             </div>

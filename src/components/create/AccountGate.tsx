@@ -196,7 +196,7 @@ export function AccountGate({
     >
       <div
         ref={box}
-        className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-white p-7"
+        className="max-h-[88vh] w-full max-w-[440px] overflow-y-auto border border-graphite/15 bg-chalk p-7"
       >
         <h2 className="mb-2 text-[22px] font-semibold tracking-tight text-graphite">
           {step === "code" ? d.acctCodeTitle : d.acctTitle}
@@ -213,7 +213,7 @@ export function AccountGate({
               type="button"
               onClick={() => void withGoogle()}
               disabled={busy}
-              className="flex w-full items-center justify-center gap-3 rounded-[2px] border border-graphite/25 bg-white px-6 py-3 text-base font-medium text-graphite transition-colors hover:bg-porcelain disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-3 rounded-[2px] border border-graphite/25 bg-chalk px-6 py-3 text-base font-medium text-graphite transition-colors hover:bg-porcelain disabled:opacity-50"
             >
               <GoogleMark />
               {d.acctGoogle}

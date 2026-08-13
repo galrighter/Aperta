@@ -20,13 +20,19 @@ const s = story.home;
 
 export function StoryHome() {
   return (
+    // `overflow-x-clip` בגלל הצעיף: הוא גולש 30px מחוץ לעמודת התוכן ועוד כרוחב
+    // הטשטוש, ובנייד זה עובר את קצה המסך. `clip` ולא `hidden` — האחרון יוצר מכל
+    // גלילה, וזה היה שובר את ה-`sticky` של הכותרת.
     <section
-      className="mx-auto flex max-w-[1240px] flex-col justify-center px-5 py-8 sm:px-10 sm:py-12"
+      className="mx-auto flex max-w-[1240px] flex-col justify-center overflow-x-clip px-5 py-8 sm:px-10 sm:py-12"
       style={{ minHeight: "calc(100svh - var(--ap-header-h, 68px))" }}
     >
       <div className="grid items-center gap-8 md:grid-cols-[1.05fr_0.95fr] md:gap-16">
-        {/* ההבטחה */}
-        <div className="ap-surface">
+        {/* ההבטחה.
+            `ap-veil` ולא `ap-surface`: המשטח האטום נשא בדיוק את צבע ה-body, ולכן
+            הוא לא נראה ככרטיס אלא כמלבן שבו לוח האבן האלכסוני נקטע בקו ישר. בנייד,
+            שם עמודת הקריאה היא כמעט כל הרוחב, זה כל מה שנראה מהעמוד. */}
+        <div className="ap-veil">
           <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis sm:mb-6 sm:text-xs">
             {s.eyebrow}
           </div>
@@ -79,15 +85,15 @@ export function StoryHome() {
 
         {/* התרגום, כדוגמה */}
         <div className="relative">
-          {/* מסגרת לאפיס מוסטת — אותה שפה דקורטיבית של דף הבית הקיים */}
+          {/* מסגרת לאפיס מוסטת — אותה שפה דקורטיבית של דף הבית הקיים.
+              היא גלויה גם בנייד מאז שהכרטיס התמלא הוסר: קודם המילוי והמסגרת שלו
+              היו מה שאמר "כאן דוגמה", ועכשיו זה תפקידה. ההיסט קטן יותר בנייד כדי
+              שתישאר בתוך שולי העמוד. */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -top-4 -left-4 hidden h-full w-full border-[1.5px] border-lapis/40 sm:block"
+            className="pointer-events-none absolute -top-3 -left-3 h-full w-full border-[1.5px] border-lapis/40 sm:-top-4 sm:-left-4"
           />
           <StoryExamples className="relative" />
-          <p className="mt-3 text-center font-display text-[11px] tracking-[0.14em] text-mist">
-            {s.examplesHint}
-          </p>
         </div>
       </div>
     </section>

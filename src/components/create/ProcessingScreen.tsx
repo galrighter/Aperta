@@ -144,7 +144,7 @@ export function ProcessingScreen({
             והוא צריך להיות הקריא ביותר במסך, לא החיוור ביותר. */}
         <p
           role="alert"
-          className="mx-auto mb-9 max-w-md border-s-2 border-lapis bg-white px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
+          className="mx-auto mb-9 max-w-md border-s-2 border-lapis bg-chalk px-4 py-3 text-start font-mono text-[13px] leading-relaxed text-ink80"
         >
           {error}
           {/* מזהה טכני — בלי זה כשל אצל הלקוחה מגיע אלינו כ"משהו השתבש"
@@ -155,7 +155,7 @@ export function ProcessingScreen({
         {/* משוב מתוך הודעת השגיאה — רק בתקלה חוזרת. `aria-live` על אזור
             הסטטוס: מי שאינו רואה את המסך צריך לשמוע ש"נשלח" קרה. */}
         {recurring && (
-          <div className="mb-9 w-full max-w-md border border-graphite/15 bg-white px-5 py-5 text-start">
+          <div className="mb-9 w-full max-w-md border border-graphite/15 bg-chalk px-5 py-5 text-start">
             {fbDone ? (
               <p aria-live="polite" className="text-[14px] leading-relaxed text-graphite">
                 {fbDone === "mailed" && accountEmail
@@ -174,7 +174,7 @@ export function ProcessingScreen({
                   maxLength={2000}
                   aria-label={d.procFeedbackLabel}
                   placeholder={d.procFeedbackLabel}
-                  className="mb-3 w-full resize-y border border-graphite/25 bg-white px-3 py-2 text-[14px] leading-relaxed text-graphite outline-none focus:border-lapis"
+                  className="mb-3 w-full resize-y border border-graphite/25 bg-chalk px-3 py-2 text-[14px] leading-relaxed text-graphite outline-none focus:border-lapis"
                 />
                 {accountEmail && (
                   <p className="mb-3 text-[12px] leading-relaxed text-ink60">
@@ -259,7 +259,7 @@ export function ProcessingScreen({
       {/* הנעילה נאמרת, ולא רק נאכפת. מחוץ ל-`aria-live` שלמעלה: זו עובדה
           קבועה של המסך ולא עדכון, ואין סיבה להקריא אותה שוב בכל שינוי מצב. */}
       {locked && (
-        <p className="mb-12 max-w-[440px] border border-graphite/15 bg-white px-4 py-3 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+        <p className="mb-12 max-w-[440px] border border-graphite/15 bg-chalk px-4 py-3 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
           {d.procLockNote}
         </p>
       )}

@@ -1568,7 +1568,7 @@ export default function DesignPage() {
           aria-live="assertive"
           className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-5"
         >
-          <p className="max-w-[520px] border border-graphite/15 bg-white px-5 py-4 text-[14px] leading-relaxed text-graphite shadow-[0_2px_18px_rgba(0,0,0,0.10)]" style={{ textWrap: "pretty" }}>
+          <p className="max-w-[520px] border border-graphite/15 bg-chalk px-5 py-4 text-[14px] leading-relaxed text-graphite shadow-[0_2px_18px_rgba(0,0,0,0.10)]" style={{ textWrap: "pretty" }}>
             {d.lockedBusy}
           </p>
         </div>
@@ -1581,7 +1581,7 @@ export default function DesignPage() {
               {/* הגיעו מלינק שיתוף שכבר לא פעיל. בלי המשפט הזה הם נוחתים על
                   מסך בחירת מוצר רגיל, בלי שום סימן למה שנלחץ. */}
               {!s.fromShare && s.adoptError && (
-                <div className="mb-6 border border-graphite/15 bg-white px-5 py-4 text-[13px] text-ink60">
+                <div className="mb-6 border border-graphite/15 bg-chalk px-5 py-4 text-[13px] text-ink60">
                   {s.adoptError}
                 </div>
               )}

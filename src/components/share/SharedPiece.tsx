@@ -78,7 +78,7 @@ export default function SharedPiece(p: SharedPieceProps) {
         </div>
       )}
 
-      <div className="border border-graphite/10 bg-white">
+      <div className="border border-graphite/10 bg-chalk">
         {showRolled ? (
           <div style={{ background: "linear-gradient(180deg,#efeae1,#e0d9cd)" }}>
             <div className="relative h-[320px] w-full sm:h-[440px]">

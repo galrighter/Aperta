@@ -34,7 +34,7 @@ export default function HowItWorksPage() {
                 {i + 1}
               </span>
             </div>
-            <div className="border border-graphite/10 bg-white p-6">
+            <div className="border border-graphite/10 bg-chalk p-6">
               <h2 className="text-xl font-semibold text-graphite">{step.t}</h2>
               <p className="mt-2 leading-relaxed text-ink60">{step.b}</p>
               <PatternMark variant={step.v} className="mt-5 w-full max-w-md" />
