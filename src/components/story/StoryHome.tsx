@@ -24,7 +24,7 @@ export function StoryHome() {
     // הטשטוש, ובנייד זה עובר את קצה המסך. `clip` ולא `hidden` — האחרון יוצר מכל
     // גלילה, וזה היה שובר את ה-`sticky` של הכותרת.
     <section
-      className="mx-auto flex max-w-[1240px] flex-col justify-center overflow-x-clip px-5 py-8 sm:px-10 sm:py-12"
+      className="mx-auto flex max-w-[1240px] flex-col justify-center overflow-x-clip px-5 py-8 sm:px-10 sm:py-10"
       style={{ minHeight: "calc(100svh - var(--ap-header-h, 68px))" }}
     >
       <div className="grid items-center gap-8 md:grid-cols-[1.05fr_0.95fr] md:gap-16">

@@ -73,7 +73,7 @@ export function ShowcaseStage({
     // הגובה קבוע כדי שהקנבס יהיה לו מה למדוד, ושהופעת ההדמיה לא תזיז את
     // העמוד. תחת תנועה מופחתת אין קנבס לעולם, ולכן אין מה לשמור: התיבה
     // מתכווצת לפריסה השטוחה במקום להשאיר סביבה חצי מסך ריק.
-    <div ref={boxRef} className="relative h-[240px] w-full motion-reduce:h-auto sm:h-[300px]">
+    <div ref={boxRef} className="relative h-[230px] w-full motion-reduce:h-auto sm:h-[260px]">
       {live && !failed && material.length > 0 && (
         <Rolled3D
           material={material}
