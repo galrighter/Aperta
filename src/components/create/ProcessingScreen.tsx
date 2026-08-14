@@ -4,70 +4,13 @@
 // (לא טיימר, כנדרש ב-§5). מצב הכשל נוסף כאן — §11.2 מסמן אותו כחסר.
 import { useEffect, useMemo, useState } from "react";
 import { he } from "@/i18n/he";
+import { ElapsedNotice } from "./ElapsedNotice";
 import { RECURRING_FAILURES } from "./model";
 import { ProgressBar } from "./ProgressBar";
 import { GhostBtn, PrimaryBtn } from "./ui";
 
 const d = he.design;
 const QUOTE_MS = 7000;
-
-/**
- * מתי ההמתנה מפסיקה להיות טיפוסית ומתחילה להיראות תקועה.
- *
- * הרצה רגילה נגמרת ב-30–90 שניות. שתיים וחצי דקות הן מעבר לזנב שלה, ועדיין
- * הרבה לפני הגבולות שהצינור מרשה לעצמו (240ש׳ לרנדר, 300ש׳ לבקשה) — כלומר
- * נקודה שבה ההרצה עדיין בריאה לגמרי, אבל מי שיושב מולה כבר לא יודע את זה.
- */
-const SLOW_AFTER_MS = 150_000;
-
-/** m:ss. השעון נקרא בסקירה מהירה, ולא נסרק כמספר. */
-function clockOf(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
-
-/**
- * כמה זמן ההמתנה הנוכחית רצה — ומתי היא חוצה את הטיפוסי.
- *
- * **רכיב נפרד, ובכוונה.** הספירה חייבת להתחיל מחדש בכל ניסיון, ו-`error`
- * מחליף כאן את כל תת-העץ (מצב הכשל מחזיר `section` אחר לגמרי) — כלומר
- * הרכיב הזה מתפרק בכשל ונטען מחדש ב"נסו שוב", והאיפוס הוא ההרכבה עצמה.
- * שעון שהיה חי ב-`ProcessingScreen` היה סופר את שני הניסיונות יחד, כלומר
- * משקר בדיוק על המספר שהוא קיים בשבילו.
- */
-function ElapsedNotice({ quiet }: { quiet: boolean }) {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    const from = Date.now();
-    const t = setInterval(() => setElapsed(Date.now() - from), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  return (
-    <>
-      {/* השעון. מחוץ ל-`aria-live` במכוון — מספר שמתחלף כל שנייה בתוך אזור חי
-          הוא הקראה בלולאה, וזה ההפך ממה שהוא נועד לתת. הוא כאן כדי שהמסך
-          ייראה בדקה הרביעית אחרת מאשר בשנייה השלישית: בלעדיו אין על המסך הזה
-          שום דבר שמבדיל בין "עובד" לבין "מת". */}
-      <p className="mb-4 font-mono text-[13px] tabular-nums text-mist">
-        {d.procElapsed(clockOf(elapsed))}
-      </p>
-
-      {/* חצינו את הטיפוסי. ההרצה עדיין באוויר — ולכן זו לא שגיאה אלא ידיעה,
-          והיא **כן** נאמרת בקול: מי שאינו רואה את המסך צריך לשמוע שמותר לו
-          ללכת. לא מוצג בניתוק — שם הכותרת כבר אומרת את אותו הדבר. */}
-      {!quiet && elapsed >= SLOW_AFTER_MS && (
-        <p
-          aria-live="polite"
-          className="mb-8 max-w-[440px] text-[14px] leading-relaxed text-ink60"
-          style={{ textWrap: "pretty" }}
-        >
-          {d.procSlow}
-        </p>
-      )}
-    </>
-  );
-}
 
 /** ערבוב Fisher-Yates — סדר אקראי בלי חזרות עד שהרשימה מוצתה. */
 function shuffled<T>(items: readonly T[]): T[] {
@@ -129,9 +72,10 @@ export function ProcessingScreen({
   /**
    * ההרצה באוויר, ולכן המסע נעול — Back וסרגל השלבים אינם זזים מכאן.
    *
-   * נאמר על המסך ולא רק נאכף מאחוריו: ההמתנה נמשכת עד כשתי דקות, היד הולכת
-   * ללחצן האחורה מעצמה, ומסך שחוסם בלי להסביר נראה תקוע. הסיבה עצמה גם היא
-   * לא סוד — חזרה אחורה באמצע הייתה מייצרת עיצוב שני על אותו תיאור.
+   * נאמר על המסך ולא רק נאכף מאחוריו: ההמתנה נמשכת דקות — כמה, אומר השעון
+   * ולא הבטחה קבועה — היד הולכת ללחצן האחורה מעצמה, ומסך שחוסם בלי להסביר
+   * נראה תקוע. הסיבה עצמה גם היא לא סוד — חזרה אחורה באמצע הייתה מייצרת
+   * עיצוב שני על אותו תיאור.
    */
   locked?: boolean;
   onRetry: () => void;
@@ -314,7 +258,9 @@ export function ProcessingScreen({
         className="mb-4"
       />
 
-      <ElapsedNotice quiet={Boolean(disconnected)} />
+      {/* בניתוק אין מה להוסיף כשההמתנה מתארכת — הכותרת כבר אומרת את אותו
+          הדבר, והשעון עצמו נשאר. */}
+      <ElapsedNotice slow={disconnected ? null : d.procSlow} />
 
       {/* הנעילה נאמרת, ולא רק נאכפת. מחוץ ל-`aria-live` שלמעלה: זו עובדה
           קבועה של המסך ולא עדכון, ואין סיבה להקריא אותה שוב בכל שינוי מצב. */}
