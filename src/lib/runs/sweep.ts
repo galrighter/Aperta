@@ -29,6 +29,20 @@ export const SWEEP_LIMIT = 10;
  */
 export const RERUN_MAX_AGE_MS = 60 * 60_000;
 
+/**
+ * עד איזה גיל מייל "העיצוב שלך מוכן" הוא בשורה ולא בלבול.
+ *
+ * הסריקה סוגרת גם הרצות ישנות מאוד — שורה שנתקעה לפני שבוע ואיש לא הגיע
+ * אליה נסגרת בסבב הראשון שרואה אותה. הסגירה עצמה נכונה בכל גיל; המייל אינו.
+ * "העיצוב שלך מוכן" על משהו שהלקוחה ראתה נכשל, עזבה, והמשיכה הלאה — הוא
+ * הודעה על דבר שהיא כבר לא מחכה לו, והלינק שבו מוביל לעיצוב שאין לה הקשר
+ * אליו יותר.
+ *
+ * יממה, ולא שעה כמו `RERUN_MAX_AGE_MS`: שם הגבול הוא גם הוצאה כספית, וכאן
+ * אין מחיר מלבד הרלוונטיות. מי שחזרה למחרת עדיין תשמח למצוא אותו.
+ */
+export const NOTIFY_MAX_AGE_MS = 24 * 60 * 60_000;
+
 export interface SweepEntry {
   jobId: string;
   outcome:
@@ -65,28 +79,41 @@ export async function sweepStalledJobs(now = Date.now()): Promise<SweepReport> {
 
 async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry> {
   const jobId = job.id;
-  if (!job.design_id || !job.run_id || !job.context) return { jobId, outcome: "skipped" };
-  const ctx = job.context as JobContext;
+  if (!job.design_id || !job.run_id) return { jobId, outcome: "skipped" };
+  const ctx = (job.context ?? null) as JobContext | null;
 
   // קודם כול: אולי הגרסה כבר נשמרה והשורה רק לא נסגרה. זו הבדיקה שחייבת
   // לקדום לכל השאר — בלעדיה נייצר גרסה שנייה לאותה הרצה.
+  //
+  // **והיא אינה דורשת `context`.** זה הסדר שנשבר כאן קודם: התנאי על ההקשר
+  // ישב בשורה הראשונה של הפונקציה ופסל את השורה לפני שמישהו שאל אם היא
+  // בכלל הצליחה. שורה שההרצה שלה נשמרה ומתה לפני הסגירה צריכה `run_id`
+  // בלבד — וזו בדיוק השורה שנשארה `running` שמונה ימים (ראו `listStalledJobs`).
+  //
   // לפי מזהה הניסיון ולא לפי `run_id` — ראו את אותה הערה במסלול המשיכה
   // (`api/generate/[jobId]`): הרצה שהצליחה בניסיון השני שמורה תחת מזהה אחר.
-  const attemptId = ctx.attemptId ?? job.run_id;
+  // בלי הקשר אין מזהה ניסיון, ו-`run_id` הוא מה שיש.
+  const attemptId = ctx?.attemptId ?? job.run_id;
   const version = await versionForGeneration(attemptId);
   if (version) {
     if (await claimJobDone(jobId, job.run_id, resultFromVersion(attemptId, version))) {
       try {
         // העיצוב של **הגרסה**, לא של ה-job: גרסת עריכה יושבת על דוגמה ממוספרת,
         // והמייל צריך להצביע עליה. עריכה ממילא לא שולחת מייל — ראו complete.ts.
-        const isEdit = Boolean(ctx.inputs?.editedFromCurrent);
-        await notifyDesignReady(await getDesign(version.design_id), isFirstVersion(version) && !isEdit);
+        const isEdit = Boolean(ctx?.inputs?.editedFromCurrent);
+        const fresh = now - new Date(job.created_at).getTime() <= NOTIFY_MAX_AGE_MS;
+        await notifyDesignReady(await getDesign(version.design_id), fresh && isFirstVersion(version) && !isEdit);
       } catch (e) {
         console.error("sweep: design-ready mail skipped:", (e as Error).message);
       }
     }
     return { jobId, outcome: "recovered" };
   }
+
+  // מכאן והלאה הכול נשען על ההקשר — איסוף מהקופסה, מסגור, שמירה. בלעדיו אין
+  // מה לעשות מלבד לדלג. הדילוג כאן ולא בראש הפונקציה הוא כל התיקון: השורה
+  // עולה שאילתה אחת ("יש כבר גרסה?") במקום להיפסל לפניה.
+  if (!ctx) return { jobId, outcome: "skipped", detail: "no context to finish from" };
 
   // ותפיסת בעלות לפני העבודה, מאותה סיבה בדיוק: הבדיקה שלמעלה היא
   // בדיקה-ואז-פעולה, והלקוחה מושכת במקביל לסריקה. `claimRecovery` הוא מה

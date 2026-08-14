@@ -253,13 +253,23 @@ export async function listRecentJobs(limit = 80): Promise<JobListRow[]> {
 }
 
 /**
- * ההרצות שנתקעו: `running` שאיש לא נגע בהן מעבר לסף, ושיש להן הקשר לסיים ממנו.
+ * ההרצות שנתקעו: `running` שאיש לא נגע בהן מעבר לסף.
  *
  * מיון מהוותיקה לחדשה — מי שממתינה הכי הרבה זמן נענית ראשונה, וסריקה שנחתכת
  * בתקרה לא מרעיבה אף אחת: הבאה בתור תיאסף בסבב הבא.
  *
- * שורה בלי `context` אינה נשלפת כלל. אין מה לעשות איתה, והיא רק הייתה תופסת
- * מקום בתקרה על חשבון שורה שכן ניתן לסיים.
+ * **שורה בלי `context` נשלפת גם היא, וזה תיקון.** כאן ישב `.not("context",
+ * "is", null)` בנימוק ש"אין מה לעשות איתה" — נכון לגבי *השלמה מהקשר*, ולא
+ * נכון לגבי הבדיקה שקודמת לה: "אולי הגרסה כבר נשמרה והשורה רק לא נסגרה"
+ * צריכה `run_id` בלבד. שורה שההרצה שלה הצליחה ומתה בין `ingestCutouts`
+ * ל-`claimJobDone` נפלה בדיוק בין הכיסאות — היא לא צריכה context כדי
+ * להיסגר, והפילטר הזה הבטיח שאיש לא יגיע אליה לעולם.
+ *
+ * נמדד ב-14.8: `db7c0cae` יושבת `running`/`saving` מ-5.8, בעוד הגרסה שלה
+ * נשמרה ארבע שניות אחרי העדכון האחרון שלה. שמונה ימים כ"רצה" בכל שאילתה.
+ *
+ * מה שמונע את הצפת התקרה בשורות חסרות תועלת הוא `sweepOne`, שמדלג עליהן
+ * מיד אחרי הבדיקה הזו — כלומר הן עולות שאילתה אחת ולא סבב שלם.
  */
 export async function listStalledJobs(limit = 20): Promise<GenerationJobRow[]> {
   const sb = supabaseAdmin();
@@ -269,7 +279,6 @@ export async function listStalledJobs(limit = 20): Promise<GenerationJobRow[]> {
     .select("*")
     .eq("status", "running")
     .lt("updated_at", cutoff)
-    .not("context", "is", null)
     .order("updated_at", { ascending: true })
     .limit(limit);
   if (error) throw new Error(error.message);

@@ -36,7 +36,7 @@ vi.mock("../complete", async (orig) => ({
   rerunFromContext: (...a: unknown[]) => rerunFromContext(...a),
 }));
 
-const { sweepStalledJobs, RERUN_MAX_AGE_MS } = await import("../sweep");
+const { sweepStalledJobs, RERUN_MAX_AGE_MS, NOTIFY_MAX_AGE_MS } = await import("../sweep");
 
 const NOW = 1_700_000_000_000;
 
@@ -156,5 +156,56 @@ describe("sweepStalledJobs", () => {
     const report = await sweepStalledJobs(NOW);
     expect(report.entries[0].outcome).toBe("skipped");
     expect(completeFromContext).not.toHaveBeenCalled();
+    // אבל **אחרי** שנשאלה השאלה הזולה: אולי היא בכלל הצליחה. הדילוג הוא על
+    // ההשלמה, לא על השורה — ראו את הטסט הבא.
+    expect(versionForGeneration).toHaveBeenCalledWith("r-1");
+  });
+
+  /**
+   * שורה בלי הקשר שההרצה שלה **הצליחה** — והיא זו שנשארה תקועה לנצח.
+   *
+   * `db7c0cae` (נמדד 14.8): `running`/`saving` מ-5.8, בעוד הגרסה שלה נשמרה
+   * ארבע שניות אחרי העדכון האחרון שלה. ה-isolate מת בין `ingestCutouts`
+   * ל-`claimJobDone`. `listStalledJobs` סיננה שורות בלי הקשר, ולכן איש לא
+   * הגיע אליה — שמונה ימים כ"רצה" בכל שאילתה על מצב המערכת.
+   *
+   * להשלמה מהקשר היא אכן לא מועמדת. לסגירה — כן, ובלי שום עבודה: הגרסה
+   * קיימת, ומה שחסר הוא הרישום בלבד.
+   */
+  it("סוגר שורה בלי הקשר שההרצה שלה כן הצליחה", async () => {
+    listStalledJobs.mockResolvedValue([job({ context: null })]);
+    versionForGeneration.mockResolvedValue({ id: "v-1", version_no: 1, svg: "<svg/>" });
+    const report = await sweepStalledJobs(NOW);
+    expect(report.entries[0].outcome).toBe("recovered");
+    // בלי הקשר אין `attemptId`, ו-`run_id` הוא מה שיש.
+    expect(versionForGeneration).toHaveBeenCalledWith("r-1");
+    expect(claimJobDone).toHaveBeenCalledOnce();
+    expect(completeFromContext).not.toHaveBeenCalled();
+  });
+
+  /**
+   * הסגירה נכונה בכל גיל; המייל אינו.
+   *
+   * "העיצוב שלך מוכן" על הרצה מלפני שבוע הוא הודעה על משהו שהלקוחה כבר ראתה
+   * נכשל ועזבה. הסריקה סוגרת אותה בשקט — היא לא צריכה להיראות `running`
+   * לנצח — אבל לא מודיעה עליה.
+   */
+  it("אינו שולח מייל על הרצה ישנה שנסגרה", async () => {
+    listStalledJobs.mockResolvedValue([
+      job({ created_at: new Date(NOW - NOTIFY_MAX_AGE_MS - 1).toISOString() }),
+    ]);
+    versionForGeneration.mockResolvedValue({ id: "v-1", version_no: 1, svg: "<svg/>" });
+    const report = await sweepStalledJobs(NOW);
+    expect(report.entries[0].outcome).toBe("recovered");
+    expect(claimJobDone).toHaveBeenCalledOnce();
+    expect(notifyDesignReady).toHaveBeenCalledWith(expect.anything(), false);
+  });
+
+  it("כן שולח מייל על הרצה טרייה שנסגרה", async () => {
+    // הגבול משמעותי רק אם הצד השני שלו חי: מי שההרצה שלה נתקעה לפני עשר
+    // דקות עדיין מחכה לה, וזה בדיוק המסלול שהמייל קיים בשבילו.
+    versionForGeneration.mockResolvedValue({ id: "v-1", version_no: 1, svg: "<svg/>" });
+    await sweepStalledJobs(NOW);
+    expect(notifyDesignReady).toHaveBeenCalledWith(expect.anything(), true);
   });
 });
