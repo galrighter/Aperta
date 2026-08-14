@@ -58,7 +58,9 @@
 | `src/app/(site)/story/page.tsx` | דף הבית החלופי (Server Component + metadata). |
 | `src/app/(site)/story/create/page.tsx` | עטיפת metadata למסך היצירה. |
 | `src/components/story/StoryHome.tsx` | ה-Hero, רצועת ארבעת השלבים וה-CTA. |
-| `src/components/story/StoryExamples.tsx` | הדוגמה החיה: סיפור ↓ תרגום, מתחלפת בין 4 דוגמאות (Client). |
+| `src/components/story/StoryShowcase.tsx` | הוויטרינה: סיפור → שלוש אפשרויות → הדמיה חיה, מתחלפת בין 4 סיפורים (Client). |
+| `src/components/story/ShowcaseStage.tsx` | ההדמיה התלת-ממדית של הוויטרינה, מאחורי שער נראוּת (Client). |
+| `src/lib/story/showcase.ts` + `showcaseData.ts` | הסיפורים והעיצובים עצמם — SVG קנוני לכל אפשרות. |
 | `src/components/story/StoryCreate.tsx` | מסך היצירה: מוצר · סיפור · CTA · לינק לעורך (Client). |
 | `src/lib/client/storyHandoff.ts` | העברת `{product, story}` מ-`/story/create` ל-`/design` (sessionStorage). |
 | `src/lib/story/mode.ts` | שרת: `STORY_MODE`, `storyFrameDims()` — גזירת הרוחב מהיחס שהמודל צייר, בתוך טווח הייצור. |
@@ -321,7 +323,10 @@ grep -rn "story mode" src/
 
 - [ ] `/story` — viewport אחד, מובייל ודסקטופ, בשפת המותג הקיימת.
 - [ ] המסר Story → Translation → Choice → Jewelry מובן תוך שניות, בלי הסבר על AI.
-- [ ] לפחות דוגמה ויזואלית אחת של סיפור → תכשיט (מתחלפת).
+- [x] לפחות דוגמה ויזואלית אחת של סיפור → תכשיט (מתחלפת). **מומש כוויטרינה**:
+      ארבעה סיפורים, לכל אחד שלוש אפשרויות אמיתיות (SVG קנוני שעובר את
+      הוולידציה של המנוע) והדמיה תלת-ממדית חיה של הנבחרת — אותה הדמיה של מסע
+      היצירה, מסתובבת מעצמה וניתנת לגרירה. בחירה באפשרות אחרת מחליפה אותה.
 - [ ] `/story/create` — טבעת/צמיד, textarea, CTA אחד ראשי, לינק משני לעורך, **בלי בורר רוחב ובלי שדה מידה**.
 - [ ] היצירה רצה בצינור הקיים; הרוחב נגזר; היחס נשמר.
 - [ ] "להזמין" מהתוצאה פותח את מסך המידות — עם הפריסטים הקבועים מראש — ורק אחריו הסיכום.
