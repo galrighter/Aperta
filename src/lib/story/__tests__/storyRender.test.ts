@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { STORY_RENDER } from "../mode";
+import { STORY_RENDER, STORY_RENDER_FALLBACK } from "../mode";
 
 /**
  * story mode — המודל והמאמץ שהמסלול רץ בהם.
@@ -45,5 +45,22 @@ describe("STORY_RENDER", () => {
   it("ברירת המחדל של הקופסה נשארה הזולה — המסלול הזה חורג ממנה, לא מחליף אותה", () => {
     expect(/^MODEL = "gpt-image-1-mini"$/m.test(imagegenPy)).toBe(true);
     expect(/^QUALITY = "low"$/m.test(imagegenPy)).toBe(true);
+  });
+});
+
+describe("STORY_RENDER_FALLBACK", () => {
+  /**
+   * מודל הגיבוי רץ **רק** כששלב הטקסט נפל — כלומר בדיוק במצב שבו אף אחד לא
+   * מסתכל, כי הלקוחה קיבלה תוצאה ולא הרגישה כלום. שם 400 מהקופסה על שם מודל
+   * שאינו ברשימה היה הופך תקלה שקטה לכשל יצירה מלא, אצל מי שכבר נפגע פעם אחת.
+   */
+  it("גם הוא ברשימות שהקופסה מתירה", () => {
+    expect(allowlist("ALLOWED_MODELS")).toContain(STORY_RENDER_FALLBACK.model);
+    expect(allowlist("ALLOWED_QUALITIES")).toContain(STORY_RENDER_FALLBACK.quality);
+  });
+
+  it("והוא באמת אחר — גיבוי שזהה לרגיל אינו פיצוי על כלום", () => {
+    expect(STORY_RENDER_FALLBACK.model).not.toBe(STORY_RENDER.model);
+    expect(STORY_RENDER_FALLBACK.quality).not.toBe(STORY_RENDER.quality);
   });
 });

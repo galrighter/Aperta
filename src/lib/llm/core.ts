@@ -47,6 +47,34 @@ export interface LlmAnswer {
   usage: LlmUsage | null;
 }
 
+/**
+ * שתי מדידות לאחת — לקורא שמנסה שוב.
+ *
+ * ניסיון שנפל שולם עליו במלואו: מודל שחשב שתי דקות ואז פג לו הזמן, או כזה
+ * שהחזיר JSON פסול, מחויב על כל מה שהספיק. חיבור המדידות הוא מה שמונע
+ * מהניסיונות האלה להיעלם מהחשבון, וזה בדיוק המקרה שבו החשבון הכי גבוה.
+ *
+ * `null` + `null` נשאר `null`: אין מדידה אינו אפס.
+ */
+export function addLlmUsage(a: LlmUsage | null, b: LlmUsage | null): LlmUsage | null {
+  if (!a) return b;
+  if (!b) return a;
+  const sum: LlmUsage = {
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+  };
+  // הפירוט נשמר רק אם לפחות אחד הצדדים דיווח אותו, כדי שמודל שאינו מדווח
+  // לא יקבל אפס שנראה כמו מדידה.
+  if (a.reasoningTokens != null || b.reasoningTokens != null) {
+    sum.reasoningTokens = (a.reasoningTokens ?? 0) + (b.reasoningTokens ?? 0);
+  }
+  if (a.cachedInputTokens != null || b.cachedInputTokens != null) {
+    sum.cachedInputTokens = (a.cachedInputTokens ?? 0) + (b.cachedInputTokens ?? 0);
+  }
+  return sum;
+}
+
 /** מי ענה בפועל — לשקיפות מול הלקוח ולאבחון נסיגה בין ספקים. */
 export interface LlmReply {
   text: string;

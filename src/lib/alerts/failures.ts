@@ -3,6 +3,7 @@ import { failureSpikeMail, stalledJobMail } from "@/lib/mailTemplates";
 import { countErrorRunsSince } from "@/lib/db/runs";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { wakeDutyAgent, dutyConfigured } from "./duty";
+import { sendTelegram, telegramConfigured } from "./telegram";
 import { isQuotaFailure } from "./quota";
 import { ApiError } from "@/lib/api";
 import { LlmError } from "@/lib/llm/core";
@@ -108,6 +109,52 @@ export async function alertUnexpectedFailure(err: unknown, ctx: FailureAlertCont
     );
   } catch (e) {
     console.error("failure spike alert failed:", (e as Error).message);
+  }
+}
+
+/**
+ * שלב הטקסט של Story נפל בכל הניסיונות.
+ *
+ * **למה זה התראה בפני עצמה ולא עוד כשל.** ההרצה לא נכשלה — הלקוחה מקבלת
+ * עיצובים, ממודל תמונה חזק יותר, ואינה אמורה להרגיש דבר. כלומר זו תקלה
+ * ש**אין לה קורבן שיתלונן**, והיא היחידה מסוגה: שום שער אחר לא ידלק עליה,
+ * ובלי ההתראה הזו היא יכולה להימשך ימים כשכל מה שרואים הוא חשבון גדול יותר
+ * (המודל החזק ב-high עולה פי 20–50) ועיצובים פחות טובים.
+ *
+ * הוויסות נדיב יותר משאר ההתראות — פעם בעשרים דקות — כי מדובר במשהו שמתחיל
+ * לעלות כסף מהרגע הראשון, ולא בסימפטום של משהו שכבר שבור.
+ */
+const DESIGN_STAGE_THROTTLE_MS = 20 * 60_000;
+
+export async function alertDesignStageDown(input: {
+  runId: string;
+  designRef?: string | null;
+  attempts: number;
+  reason: string;
+  fallbackModel: string;
+  fallbackQuality: string;
+}): Promise<void> {
+  try {
+    if (!dutyConfigured() && !telegramConfigured()) return;
+    // `true` = כבר הותרע בחלון הזה. הקריאה גם רושמת את ההתראה הנוכחית.
+    if (await tooManyAttempts("alert:designstage", DESIGN_STAGE_THROTTLE_MS, 1)) return;
+
+    const lines = [
+      `שלב הטקסט של Story נפל ב-${input.attempts} ניסיונות רצופים.`,
+      `הרצה: ${input.runId}${input.designRef ? ` (עיצוב ${input.designRef})` : ""}.`,
+      `היצירה המשיכה עם ${input.fallbackModel} ב-${input.fallbackQuality} — הלקוחה קיבלה תוצאה.`,
+      `נוסח הכשל: ${input.reason.slice(0, 300)}`,
+    ];
+    // שני היעדים במקביל ולא בטור: שניהם עם פסק זמן של 10 שנ׳, והם יושבים
+    // בתוך בקשה שהלקוחה ממתינה לה — בטור זה עשרים שניות שנוספות להמתנה.
+    await Promise.allSettled([
+      // תיאור עובדתי בלבד — הסשן מקבל אותו כקלט לא-אמין (routine-fire-payload)
+      // ומצליב מול Ops status לפי docs/AUTOFIX_ROUTINE.md.
+      wakeDutyAgent([...lines, "בדוק את מצב ספק ה-LLM ואת lib/story/designStage.ts."].join("\n")),
+      sendTelegram(["⚠️ Aperta — שלב הטקסט של Story נפל", ...lines].join("\n")),
+    ]);
+  } catch (e) {
+    console.error("design stage alert failed:", (e as Error).message);
   }
 }
 

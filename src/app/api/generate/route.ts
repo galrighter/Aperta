@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
-import { STORY_MODE, STORY_RENDER, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { STORY_MODE, STORY_RENDER, STORY_RENDER_FALLBACK, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import {
   DESIGN_COUNT, STORY_DESIGN, buildDesignPrompt, buildStagedRenderPrompt, runDesignStage,
@@ -30,7 +30,7 @@ import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
-import { alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
+import { alertDesignStageDown, alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
 
@@ -463,14 +463,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // אותו טקסט שרץ עד עכשיו. יצירה לא נכשלת בגלל השלב הזה.
     //
     // רץ **אחרי** שהתכנון והקנבס ידועים ולפני הרנדר, כי האורך נכנס לפרומפט
-    // שלו. אין כאן ניסיון חוזר — ראה runDesignStage.
-    const designStage = storyCreate && !body.promptOverride?.trim()
+    // שלו. יש ניסיון חוזר אחד — ראה runDesignStage.
+    const stage = storyCreate && !body.promptOverride?.trim()
       ? await runDesignStage({
           productType: design.product_type,
           userInput: body.userPrompt,
           lengthMm: dims.lengthMm,
         })
       : null;
+    const designStage = stage?.ok ? stage : null;
+    /**
+     * השלב רץ ונפל בכל הניסיונות.
+     *
+     * מכאן שני דברים קורים, ושניהם **לא** נראים ללקוחה: הרנדר עובר למודל
+     * החזק ב-high (`STORY_RENDER_FALLBACK`), והתורן והטלגרם מקבלים הודעה.
+     * ההתראה נשלחת אחרי שהרנדר הצליח ולא כאן — ראה למטה.
+     */
+    const stageDown = stage && !stage.ok ? stage : null;
+    /** המודל והמאמץ שהרנדר ירוץ בהם במסלול Story — הרגיל, או הפיצוי. */
+    const storyRender = stageDown ? STORY_RENDER_FALLBACK : STORY_RENDER;
 
     const prompt =
       body.promptOverride?.trim() ||
@@ -512,7 +523,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** המאמץ שנשלח למודל. `render_model` כבר נשמר מתשובת הקופסה, וזה החצי
          *  השני של אותה שאלה — ובלי שניהם אי אפשר להסביר ביומן למה שתי הרצות
          *  של אותו פריט חזרו ברמת פירוט שונה לגמרי. */
-        renderQuality: story ? STORY_RENDER.quality : undefined,
+        renderQuality: story ? storyRender.quality : undefined,
         /**
          * שלב העיצוב: האם רץ, במה, וכמה זמן לקח.
          *
@@ -525,14 +536,22 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               ok: Boolean(designStage),
               model: STORY_DESIGN.model,
               effort: STORY_DESIGN.effort,
-              ms: designStage?.ms,
+              ms: stage?.ms,
+              /** כמה ניסיונות נדרשו. 2 בהצלחה = הספק מגמגם וזה עדיין עבד;
+               *  2 בכשל = זה מה שהעיר את התורן. בלי המספר שתי ההרצות האלה
+               *  נראות ביומן כמו הרצה רגילה. */
+              attempts: stage?.attempts,
+              /** נוסח הכשל האחרון, כשנפל. זה מה שנשלח לתורן ולטלגרם, וכאן
+               *  הוא נשאר גם אחרי שההודעות נמחקו. */
+              failure: stageDown?.reason.slice(0, 500),
               /** המפרט עצמו. זה מה שמודל התמונה קרא, ובלעדיו אי אפשר להסביר
                *  ביומן למה תמונה יצאה כמו שיצאה — הפרומפט לבדו רק מפנה אליו.
                *  חתוך: שורת יומן אינה מקום לטקסט בלי גבול. */
               spec: designStage?.json.slice(0, 8000),
               // מה השלב חייב. יחד עם `renderUsage` שנכתב אחרי שהקופסה עונה,
-              // זה כל מה שהרצת Story עלתה.
-              usage: designStage?.usage ?? undefined,
+              // זה כל מה שהרצת Story עלתה. נלקח מ-`stage` ולא מ-`designStage`:
+              // ניסיונות שנפלו שולם עליהם, וזה בדיוק המקרה שבו החשבון גבוה.
+              usage: stage?.usage ?? undefined,
             }
           : undefined,
         /**
@@ -655,8 +674,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         //    והפריט מצויר בכ-8.6 px/mm; ראה את המחיר שם.
         // הכיתוב קודם: הרצה שנושאת אותו חייבת את המודל שמעתיק נאמנה, וממילא
         // אין כיתוב במסלול Story.
-        model: lettering ? LETTERING_MODEL : story ? STORY_RENDER.model : undefined,
-        quality: story ? STORY_RENDER.quality : undefined,
+        // כששלב הטקסט נפל, מודל התמונה חוזר לפרש סיפור בעצמו — ולזה הוא צריך
+        // להיות חזק. ראה `STORY_RENDER_FALLBACK`.
+        model: lettering ? LETTERING_MODEL : story ? storyRender.model : undefined,
+        quality: story ? storyRender.quality : undefined,
         // הפרומפט של המסלול הדו-שלבי נושא בתוכו את ה-JSON של שלב העיצוב, שאינו
         // זהה בין ניסיונות — ולכן מזהה ה-job מול הקופסה נגזר מהקלט היציב ולא
         // ממנו. בלי זה כל ניתוק היה קונה רנדר שני. ראה `requestKey`.
@@ -670,7 +691,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               }),
               rows: plan.rows, cols: plan.cols, size: sizeParam(canvas),
               heightMm: dims.widthMm, minHoleMm,
-              model: STORY_RENDER.model, quality: STORY_RENDER.quality,
+              model: storyRender.model, quality: storyRender.quality,
             })
           : undefined,
         renderPaths,
@@ -729,6 +750,26 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         },
       });
       persisted = true;
+
+      // שלב הטקסט נפל, והרנדר שפיצה עליו כבר מאחורינו — מכאן אפשר להתריע.
+      //
+      // **למה כאן ולא ברגע הכשל.** ההתראה אומרת "היצירה המשיכה עם המודל
+      // החזק", וזה נכון רק אחרי שהוא באמת החזיר. אילו נשלחה מוקדם יותר,
+      // הרצה שגם הרנדר שלה נפל הייתה שולחת לגל הודעה מרגיעה על יצירה שלא
+      // קיימת — ואת הכשל האמיתי כבר מדווח `alertUnexpectedFailure`.
+      //
+      // הכשל נרשם ליומן לפני כן (`designStage.failure`), ולכן הוא לא הולך
+      // לאיבוד גם אם ההתראה עצמה נכשלת.
+      if (stageDown) {
+        await alertDesignStageDown({
+          runId: attemptId,
+          designRef,
+          attempts: stageDown.attempts,
+          reason: stageDown.reason,
+          fallbackModel: storyRender.model,
+          fallbackQuality: storyRender.quality,
+        });
+      }
 
       // הרנדר מאחורינו; מכאן זה מסגור, ולידציה ושמירה. הלקוחה רואה את המעבר.
       await setJobStage(jobId, runId, "saving");
