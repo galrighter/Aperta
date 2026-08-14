@@ -16,6 +16,7 @@ import {
   Eyebrow, ScreenTitle, CardLabel, PrimaryBtn, LAPIS,
 } from "./ui";
 import { FlatDrawing, RegionChips, type IssueMark } from "./Artwork";
+import { ElapsedNotice } from "./ElapsedNotice";
 import { ProgressBar } from "./ProgressBar";
 import { RolledStage } from "./RolledStage";
 import { ShareButton } from "./ShareButton";
@@ -329,16 +330,26 @@ export function ResultScreen({
                 {s.applying ? d.editApplying : d.editApply}
               </button>
             </div>
-            {/* השינוי לוקח כדקה וחצי — אותה המתנה בדיוק כמו ביצירה הראשונה,
-                ולכן אותו פס. עד כאן היה כאן משפט בלבד: הכפתור אמר "מחיל…",
-                הטקסט אמר "זה ייקח", ושום דבר על המסך לא זז בזמן שזה רץ. */}
+            {/* השינוי רץ באותו צינור כמו היצירה הראשונה ולוקח בערך אותו זמן,
+                ולכן אותו פס ואותו שעון. עד כאן היה כאן משפט בלבד: הכפתור אמר
+                "מחיל…", הטקסט אמר "זה ייקח", ושום דבר על המסך לא זז בזמן שזה
+                רץ — ובהמתנה שחוצה את שלוש הדקות זה נראה בדיוק כמו תקוע. */}
             {s.applying && (
-              // `role="status"` — בקשת השינוי לוקחת כדקה וחצי, ומי שאינו רואה
-              // את הפס אינו יודע שהיא התחילה בכלל.
-              <div role="status">
-                <ProgressBar active label={d.editApplying} className="mt-3.5" />
-                <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">{d.editApplyingNote}</p>
-              </div>
+              <>
+                {/* `role="status"` — בקשת השינוי לוקחת דקות, ומי שאינו רואה
+                    את הפס אינו יודע שהיא התחילה בכלל. */}
+                <div role="status">
+                  <ProgressBar active label={d.editApplying} className="mt-3.5" />
+                  <p className="mt-2.5 text-[13px] leading-relaxed text-ink60">
+                    {d.editApplyingNote}
+                  </p>
+                </div>
+                {/* השעון יושב **מחוץ** ל-`role="status"` שמעליו: מספר שמתחלף
+                    כל שנייה בתוך אזור חי הוא הקראה בלולאה. הרכיב עצמו חי בתוך
+                    `s.applying`, ולכן הוא מתפרק בסוף כל שינוי והספירה מתחילה
+                    מאפס בשינוי הבא. */}
+                <ElapsedNotice tone="inline" slow={d.editSlow} />
+              </>
             )}
             {s.editError && (
               <p className="mt-2.5 text-[13px] leading-relaxed" style={{ color: STATUS_COLOR.fail }}>

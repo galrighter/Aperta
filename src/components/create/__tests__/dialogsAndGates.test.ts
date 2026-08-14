@@ -223,8 +223,56 @@ describe("ניווט במשפך", () => {
   });
 
   it("מסך ההמתנה אומר שהוא נעול", () => {
-    // ההמתנה נמשכת עד כשתי דקות. מסך שחוסם בלי להסביר נראה תקוע.
+    // ההמתנה נמשכת דקות. מסך שחוסם בלי להסביר נראה תקוע.
     expect(read("src/components/create/ProcessingScreen.tsx")).toContain("d.procLockNote");
+  });
+});
+
+describe("ההמתנה אומרת את אותו דבר בכל מקום", () => {
+  // מסך ההמתנה החליף הבטחת זמן קבועה בשעון שרץ, אבל אותה הבטחה נשארה בטקסטים
+  // שמוצגים **לצדו**: `lockedBusy` קופץ כשמנסים לצאת מהמסך, כלומר בדיוק ברגע
+  // שהשעון כבר עומד על 4:00. מסך שמראה ארבע וחלון שמבטיח שתיים גרועים משניהם
+  // לחוד. מה שנשאר מותר הוא "דקה עד שתיים" כטיפוסי — לא "עד" כגבול.
+  it("שום טקסט ללקוחה לא מבטיח גבול של שתי דקות", () => {
+    const i18n = read("src/i18n/he.ts");
+    // רק שורות טקסט, לא הערות תיעוד — ההערות דווקא צריכות להסביר למה זה ירד.
+    const promises = i18n
+      .split("\n")
+      .filter((l) => !l.trimStart().startsWith("*") && !l.trimStart().startsWith("//"))
+      .filter((l) => /עד כשתי דקות|עד שתי דקות/.test(l));
+    expect(promises, `הבטחת "עד כשתי דקות" חזרה: ${promises.join(" | ")}`).toEqual([]);
+  });
+
+  it("גם מסלול העריכה מקבל שעון, ומאותו רכיב", () => {
+    // אותו צינור, אותם גבולות, אותה המתנה — ועד כאן מסלול העריכה הראה "מחיל…"
+    // ותו לא. שני שעונים נפרדים היו נפרדים גם ב-`SLOW_AFTER_MS`.
+    for (const path of [
+      "src/components/create/ProcessingScreen.tsx",
+      "src/components/create/ResultScreen.tsx",
+    ]) {
+      expect(read(path), path).toContain('from "./ElapsedNotice"');
+      expect(read(path), path).toContain("<ElapsedNotice");
+    }
+  });
+
+  it("השעון יושב מחוץ לאזור החי", () => {
+    // מספר שמתחלף כל שנייה בתוך `aria-live`/`role="status"` הוא הקראה בלולאה.
+    const src = read("src/components/create/ResultScreen.tsx");
+    const status = src.indexOf('<div role="status">');
+    const close = src.indexOf("</div>", status);
+    const clock = src.indexOf("<ElapsedNotice");
+    expect(status, 'role="status" לא נמצא').toBeGreaterThan(-1);
+    expect(clock, "השעון לא נמצא").toBeGreaterThan(close);
+  });
+
+  it("ההודעה על המתנה ארוכה בעריכה לא מבטיחה מייל", () => {
+    // `first: false` ב-`pendingJob` — עריכה אינה "העיצוב שלך מוכן" ואינה
+    // מוציאה מייל. `procSlow` כן מבטיח מייל, ולכן הוא לא הטקסט של המסלול הזה.
+    const i18n = read("src/i18n/he.ts");
+    const at = i18n.indexOf("editSlow:");
+    expect(at, "editSlow לא נמצא").toBeGreaterThan(-1);
+    expect(i18n.slice(at, at + 400).split("\n").slice(0, 3).join("\n")).not.toContain("מייל");
+    expect(read("src/components/create/ResultScreen.tsx")).toContain("slow={d.editSlow}");
   });
 });
 
