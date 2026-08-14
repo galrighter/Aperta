@@ -699,6 +699,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           deliveredPanels: job.candidates.length,
           offeredPanels: plan.offered,
           attempt: attemptNo,
+          // מה שמודל התמונה חייב, ליד המודל והמאמץ שקבעו אותו. ידוע רק אחרי
+          // שהקופסה ענתה, כמו המספרים שמעליו.
+          renderUsage: job.usage ?? undefined,
           // מה שהמודל **באמת** צייר, מול מה שהוזמן. נגזר מה-SVG שנשמר על
           // השורה עצמה (`raw.cutouts_svg`, ראה persistRun), כדי שהמספר
           // והתמונה ביומן יתארו את אותו דבר.

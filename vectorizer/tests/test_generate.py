@@ -32,6 +32,18 @@ def striped_png(rows: int) -> bytes:
     return buf.getvalue()
 
 
+def usage_of(calls: int) -> dict:
+    """One round's usage, at round numbers so a sum is readable in a failure."""
+    return {
+        "calls": calls,
+        "input_tokens": 100 * calls,
+        "output_tokens": 400 * calls,
+        "total_tokens": 500 * calls,
+        "text_tokens": 90 * calls,
+        "image_tokens": 10 * calls,
+    }
+
+
 # --- stand-ins for the tracer, shaped like the real PipelineResult ------------
 
 
@@ -78,7 +90,8 @@ def wired(monkeypatch):
         state["model"] = model
         state["size"] = size
         state["quality"] = quality
-        return [striped_png(state.get("rows", 1)) for _ in range(calls)]
+        images = [striped_png(state.get("rows", 1)) for _ in range(calls)]
+        return generate.imagegen.Renders(images=images, usage=usage_of(calls))
 
     async def put_all(items, content_type="image/png"):
         state["uploads"] = [url for url, _ in items]
@@ -404,7 +417,7 @@ def rounds_of(monkeypatch, *rounds: list[bytes]) -> list[int]:
         batch = rounds[len(asked) - 1]
         if isinstance(batch, Exception):
             raise batch
-        return batch
+        return generate.imagegen.Renders(images=list(batch), usage=usage_of(len(batch)))
 
     monkeypatch.setattr(generate.imagegen, "render_many", render_many)
     return asked
@@ -454,6 +467,117 @@ def test_a_clean_run_costs_no_extra_call_and_says_so(wired, monkeypatch):
     assert stage["name"] == "edges"
     assert stage["status"] == "ok"
     assert "warnings" not in out["debug"]
+
+
+# --- what the run cost -------------------------------------------------------
+
+
+def test_what_the_image_model_charged_comes_back_with_the_run(wired):
+    """The model and the quality are chosen per run, and they are the two most
+    expensive knobs in the pipeline. Until now nothing recorded what they cost:
+    the price came off a pricing page, by hand, once."""
+    out = run(generate.GenerateJob(prompt="p", calls=2, rows=1))
+    assert out["usage"] == usage_of(2)
+    # and next to the two choices that set it, so the number can be read against
+    # what produced it
+    assert out["model"] == imagegen.MODEL
+    assert out["quality"] == "low"
+
+
+def test_a_replaced_render_is_still_paid_for(wired, monkeypatch):
+    """The clipped-render retry buys a second render. Whether its picture is kept
+    is a quality decision; the charge already happened either way, and a total
+    that counts only the kept pictures understates the run."""
+    rounds_of(monkeypatch, [clipped_png(), striped_png(1)], [striped_png(1)])
+    out = run(generate.GenerateJob(prompt="p", calls=2, rows=1))
+    assert out["usage"]["calls"] == 3  # two asked for, one bought again
+    assert out["usage"]["total_tokens"] == 500 * 3
+
+
+def test_a_retry_that_failed_charges_nothing_extra(wired, monkeypatch):
+    rounds_of(monkeypatch, [clipped_png()], imagegen.ImageGenError("429 rate limited"))
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert out["usage"] == usage_of(1)
+
+
+def test_usage_is_read_off_each_response_and_summed(monkeypatch):
+    """render_many's own aggregation, below the fakes above."""
+
+    async def scenario():
+        seen = {"n": 0}
+
+        async def one(client, key, prompt, reference, model=None, size=None, quality=None):
+            seen["n"] += 1
+            return b"png", {
+                "input_tokens": 10,
+                "output_tokens": 400,
+                "total_tokens": 410,
+                "input_tokens_details": {"text_tokens": 7, "image_tokens": 3},
+            }
+
+        monkeypatch.setattr(imagegen, "_one", one)
+        out = await imagegen.render_many("k", "prompt", 3)
+        assert out.images == [b"png", b"png", b"png"]
+        assert out.usage == {
+            "calls": 3,
+            "input_tokens": 30,
+            "output_tokens": 1200,
+            "total_tokens": 1230,
+            "text_tokens": 21,
+            "image_tokens": 9,
+        }
+
+    asyncio.run(scenario())
+
+
+def test_a_render_without_usage_does_not_fail_the_run(monkeypatch):
+    """Usage is bookkeeping. A provider that stops sending it, or renames a
+    field, must cost us the number — never the render."""
+
+    async def scenario():
+        async def one(client, key, prompt, reference, model=None, size=None, quality=None):
+            return b"png", None
+
+        monkeypatch.setattr(imagegen, "_one", one)
+        out = await imagegen.render_many("k", "prompt", 2)
+        assert out.images == [b"png", b"png"]
+        # zero calls counted, not two: a total divided by renders-that-reported
+        # is a real average, one divided by renders-attempted is a made-up one.
+        assert out.usage == imagegen.empty_usage()
+
+    asyncio.run(scenario())
+
+
+def test_usage_survives_one_render_of_several_failing(monkeypatch):
+    """A failed call is not a failed run — and the ones that did come back were
+    still charged for."""
+
+    async def scenario():
+        calls = {"n": 0}
+
+        async def one(client, key, prompt, reference, model=None, size=None, quality=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise imagegen.ImageGenError("429 rate limited")
+            return b"png", {"input_tokens": 10, "output_tokens": 400, "total_tokens": 410}
+
+        monkeypatch.setattr(imagegen, "_one", one)
+        out = await imagegen.render_many("k", "prompt", 2)
+        assert len(out.images) == 1
+        assert out.usage["calls"] == 1
+        assert out.usage["total_tokens"] == 410
+
+    asyncio.run(scenario())
+
+
+def test_the_usage_block_is_read_off_the_response_body():
+    image, usage = imagegen._extract(
+        {"data": [{"b64_json": "aGk="}], "usage": {"total_tokens": 7}}
+    )
+    assert image == b"hi"
+    assert usage == {"total_tokens": 7}
+    # a body without one parses the same way
+    assert imagegen._extract({"data": [{"b64_json": "aGk="}]}) == (b"hi", None)
 
 
 # --- the canvas shape --------------------------------------------------------

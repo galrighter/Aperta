@@ -128,9 +128,16 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     # rasterised here, so nothing upstream has the bytes. Rebuilding it from the
     # same inputs is not the same claim as keeping what was sent.
     reference = _reference(job)
-    renders = await imagegen.render_many(
+    first = await imagegen.render_many(
         openai_key, job.prompt, job.calls, reference, model, size=job.size, quality=job.quality
     )
+    renders = first.images
+    # What the image model charged, across every call this run made — including
+    # the retry below, whose renders are paid for whether or not they are kept.
+    # It lands in forme's run log next to the model and the quality that set it,
+    # so the cost of those two choices is readable per run instead of estimated
+    # off a pricing page.
+    usage = first.usage
 
     # A render whose metal touches the canvas edge holds only part of the piece:
     # the model drew past the border despite being asked for white all around,
@@ -145,9 +152,11 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     clipped = {i: edges for i, r in enumerate(renders) if (edges := clipped_edges(r))}
     if clipped:
         try:
-            replacements = await imagegen.render_many(
+            retry = await imagegen.render_many(
                 openai_key, job.prompt, len(clipped), reference, model, size=job.size, quality=job.quality
             )
+            replacements = retry.images
+            imagegen.merge_usage(usage, retry.usage)
         except imagegen.ImageGenError as exc:
             replacements = []
             edge_notes.append(f"clipped-render retry failed: {exc}")
@@ -260,6 +269,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
         "size": imagegen.resolve_size(job.size),
         "quality": imagegen.resolve_quality(job.quality),
         "calls": job.calls,
+        "usage": usage,
         "panels": len(panels),
         "renders": len(renders),
         "selected_panel": chosen,
