@@ -55,7 +55,7 @@ declare module "clipper-lib" {
     AddPaths(paths: Paths, polyType: PolyType, closed: boolean): boolean;
     Execute(
       clipType: ClipType,
-      solution: Paths,
+      solution: Paths | PolyTree,
       subjFillType?: PolyFillType,
       clipFillType?: PolyFillType,
     ): boolean;

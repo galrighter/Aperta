@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { normalizeSvg, dropThinCutouts } from "../normalize";
 import { validateNormalized } from "../validate";
+import { frameCutoutsDims } from "../frameCutouts";
+import { difference, differenceSafe, intersection, intersectionSafe, rectPolygon } from "../poly";
 
 // הכלל שמנקה גרסאות שנשמרו לפני שהווקטורייזר התחיל לסנן: מה שאי אפשר לחתוך
 // מוסר במקום לפסול את הפס כולו — פתח שלם שקטן מדי (אותו סף בדיוק ש-V5 מריץ),
@@ -85,5 +87,83 @@ describe("dropThinCutouts", () => {
     const cleaned = dropThinCutouts(n, 0.5);
     const area = (d: typeof n) => validateNormalized(d, DIMS).metrics.openAreaPct;
     expect(area(n) - area(cleaned)).toBeLessThan(0.02);
+  });
+});
+
+/* AP: ה-canary נכשל ב-14.8 גם אחרי התיקון של #235. הפרומפט הקבוע — "עיגולים
+   חופפים בגדלים שונים לאורך הצמיד", צמיד 160×12 — חזר כדחייה נקייה במקום
+   קריסה, אבל **נכשל לגמרי**:
+
+       422 vectorize_failed — "Unable to complete output ring starting at
+       [52.301, 11.73]. Last matching segment found ends at [52.425, 11.949]."
+
+   #235 עטף את שתי נקודות הקריסה ולכן הפסיק להפיל בקשה שכבר הצליחה; הוא לא
+   נגע בסיבה שבגללה המסגור נכשל מלכתחילה. זו כאן.
+
+   השגיאה עצמה היא של polygon-clipping (`RingOut.factory` — שרשרת מקטעים שאינה
+   נסגרת לטבעת), אבל **הקלט שמפיל אותו נבנה אצלנו**: `uncuttableParts` מעמיד
+   את הפתח הגולמי — צף, מדגימת הקשתות — מול הפתיחה המורפולוגית שלו, שכולה
+   `offset` ולכן כבר יושבת על רשת 0.001 מ"מ. שני עותקים של אותו מתאר שנבדלים
+   בשארית העיגול, וההודעה מודה בזה: ההפרש בין הנקודה שחיפש לזו שמצא הוא 1e-15.
+   בקינון עמוק אותו קלט מפיל את `isExteriorRing` הרקורסיבי במקום — וזה בדיוק
+   ה-"Maximum call stack size exceeded" של #235, מאותו מקור.
+
+   נמדד לפני התיקון על שני מאגרים סינתטיים. 612 עיצובי עיגולים חופפים: 135
+   כשלים (104 "output ring", 31 "call stack"). 1800 עיצובים נוספים — עיגולים,
+   אליפסות ומעורב, צמיד וטבעת, חמישה עוביים: 352 כשלים. **כל אחד מהם** בשתי
+   השורות של `uncuttableParts`.
+
+   אחרי התיקון: 612/612 ו-1800/1800 עוברים, ו-1448 העיצובים שעברו גם קודם
+   החזירו תוצאה זהה עד הביט האחרון — אותו סטטוס, אותם V1–V5, אותו שטח חתוך,
+   אותו משקל, אותו מספר גשרים, אותו SVG.
+
+   הזהות הזו היא **למה הרשת היא נפילה-לאחור ולא המסלול הראשי**: גרסה שהעבירה
+   את כל הפעולות לרשת תיקנה בדיוק אותם 352, אבל גם הזיזה את השטח החתוך ב-201
+   עיצובים שעבדו קודם והפכה שני דוחות `pass` ל-`fail`. ראה `safely` ב-poly.ts. */
+describe("עיגולים חופפים — הגיאומטריה שהפילה את ה-canary", () => {
+  const CANARY = { productType: "bracelet" as const, lengthMm: 160, widthMm: 12, thicknessMm: 1 };
+
+  /** אותו LCG בכל הרצה — שחזור דטרמיניסטי, לא הגרלה. */
+  function circles(n: number, seed: number, rMin: number, rMax: number): string {
+    let s = seed >>> 0;
+    const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const els: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = (rMin + rnd() * (rMax - rMin)).toFixed(3);
+      els.push(`<circle cx="${(rnd() * 160).toFixed(3)}" cy="${(rnd() * 12).toFixed(3)}" r="${r}"/>`);
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 12"><g id="cutouts">${els.join("")}</g></svg>`;
+  }
+
+  // שלושה קלטים שנמדדו כנכשלים לפני התיקון — שניים על "output ring" ואחד על
+  // הרקורסיה. הם נבדלים במספר העיגולים ובטווח הרדיוסים, כלומר בטופולוגיה של
+  // החפיפה, ולא רק ב-seed.
+  it.each([
+    ["output ring, 10 עיגולים", 10, 2, 1, 3],
+    ["output ring, 20 עיגולים", 20, 3, 2, 5],
+    ["call stack, 80 עיגולים", 80, 3, 0.6, 6],
+  ])("ממסגר את %s במקום לזרוק", (_label, n, seed, rMin, rMax) => {
+    const framed = frameCutoutsDims(CANARY, circles(n, seed, rMin, rMax));
+    // לא רק "לא זרק": הוולידציה באמת רצה והחזירה דוח מלא על גיאומטריה קיימת.
+    expect(framed.report.checks.map((c) => c.check)).toEqual(["V1", "V2", "V3", "V4", "V5"]);
+    expect(framed.normalized).not.toBeNull();
+    expect(framed.report.metrics.cutAreaMm2).toBeGreaterThan(0);
+  });
+
+  // השער שמגן על התיקון: הנפילה לרשת שמורה למי שנכשל, ואסור לה לגעת בעיצוב
+  // שאין בו מה לנקות. `dropThinCutouts` עדיין מחזיר את **אותו אובייקט** —
+  // ולכן ה-d המקורי לא נכתב מחדש.
+  it("לא נוגע בפתח נקי", () => {
+    const n = normalizeSvg(svg(LEAF), 160, 15);
+    expect(dropThinCutouts(n, 1.5)).toBe(n);
+  });
+
+  // והשער השני: כשה-polygon-clipping מצליח — כלומר בכל עיצוב שעובד היום —
+  // העטיפה מחזירה בדיוק את מה שהוא החזיר, ולא את גרסת הרשת.
+  it("מחזירה את תוצאת polygon-clipping כשהיא קיימת", () => {
+    const box = [rectPolygon(0, 0, 10, 10)];
+    const bite = [rectPolygon(4, 4, 12, 6)];
+    expect(differenceSafe(box, bite)).toEqual(difference(box, bite));
+    expect(intersectionSafe(box, bite)).toEqual(intersection(box, bite));
   });
 });
