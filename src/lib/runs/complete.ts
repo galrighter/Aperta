@@ -146,6 +146,7 @@ async function finishFromRender(
     inputs: {
       ...ctx.inputs,
       deliveredPanels: box.candidates.length,
+      approvedPanels: box.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg).length,
       // אותו מדד כמו במסלול החי: מה שהוזמן מול מה שהמודל צייר. הרצה שנאספה
       // מהקופסה אינה שונה בשום דבר שרלוונטי לו, וחור במדידה דווקא בהרצות
       // שהתאוששו היה מטה את התשובה על "כמה מההרצות נמתחות".

@@ -377,6 +377,27 @@ export function buildDesignPrompt(input: {
 
 /* ===== שלב 2: הפרומפט למודל התמונה ===== */
 
+/**
+ * הפרומפט שמודל התמונה מבצע לפיו.
+ *
+ * ⚠ **פסקת ה-SCALE אינה קוסמטיקה — היא תקציב הפיקסלים של כל הצינור.**
+ *
+ * הקנבס הוא 1536 פיקסלים לרוחב, והציר הארוך של הפריט מצויר בתוכו. צמיד של
+ * ~160 מ"מ שמצויר לרוחב מלא מקבל ~8.6 px/mm; אותו צמיד שמצויר ב-70% מהרוחב
+ * מקבל 6.0, וב-60% — 5.2. הרצפה ידועה ומתועדת ב-`render/canvas.ts`: הפתח
+ * הקטן ביותר שהמסלול מרשה (0.5 מ"מ) צריך שלושה פיקסלים כדי לשרוד את המעקב,
+ * כלומר **6 px/mm**. מתחת לזה הפתחים פשוט אינם קיימים בקובץ שנחתך.
+ *
+ * מה שקורה אז אינו נראה כמו כשל של המודל אלא כמו כשל שלנו: ההדמיה נראית
+ * מצוינת לעין, ובשלב ה-conditioning — שמבינר בסף 0.5 וממלא כל חור מתחת
+ * ל-`min_frac` — הפתחים נסגרים והגשרים הדקים נשברים. המועמד נפסל בוולידציה,
+ * ומשלוש ההצעות נשארת אחת (עיצוב 165, 14.8).
+ *
+ * הגרסה הראשונה של הפרומפט הזה אמרה "MAY span almost the full available
+ * width... generous white space is acceptable" — כלומר הפכה את מה שהיה דרישה
+ * בפרומפט של שלב אחד (`story/prompt.ts`: "spanning almost the full width of
+ * the image") לרשות. זו הייתה הרגרסיה.
+ */
 const RENDER_PROMPT = `Create ONE clean product-design image for Aperta containing exactly THREE different manufacturable jewelry flat blanks.
 
 The jewelry designs have already been developed by a separate jewelry-design model.
@@ -524,11 +545,19 @@ Do not overlap them.
 
 Show every design whole and unclipped.
 
-Each blank may span almost the full available width while preserving its correct physical length-to-width proportion.
+SCALE — this is a hard requirement, not a stylistic preference:
 
-Do NOT artificially increase the width of narrow jewelry merely to fill the image.
+Each blank MUST span almost the full width of the image.
 
-Generous white space is acceptable.
+Its bounding box must reach from close to the left edge to close to the right edge, leaving only a thin white margin at each end.
+
+Do NOT draw the blanks small in the middle of the row.
+
+Do NOT leave large empty margins to the left or right of a blank.
+
+While doing so, preserve each design's correct physical length-to-width proportion: the extra vertical room in each row is filled with plain white space above and below the blank, never by thickening the piece.
+
+Do NOT artificially increase the WIDTH (the short axis) of narrow jewelry to fill the image.
 
 ---
 
@@ -589,7 +618,8 @@ Verify visually that:
 6. The pieces are completely flat and orthographic.
 7. The outer silhouettes follow the supplied designs rather than defaulting to identical rectangles.
 8. BLACK represents remaining metal and WHITE represents laser-cut removal.
-9. No extra visual elements appear.`;
+9. No extra visual elements appear.
+10. Each design spans almost the full width of the image, with only a thin white margin at each end.`;
 
 /** הפרומפט למודל התמונה, עם מפרט העיצוב בתוכו. */
 export const buildStagedRenderPrompt = (designJson: string): string =>

@@ -123,7 +123,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * status 0 — הבקשה לא קיבלה תשובה בכלל.
  * 5xx בלי קוד שגיאה של האפליקציה — התשובה לא הגיעה מהקוד שלנו: ה-isolate של
  * Cloudflare נהרג. זה קורה *אחרי* שהצינור סיים (נמדד: הרצה שנרשמה approved
- * אחרי 41 שניות, בזמן שהלקוחה קיבלה 503 בלי גוף), וכיוון ש-finishJob נכתב לפני
+ * אחרי 41 שניות, בזמן שהלקוחה קיבלה 503 בלי גוף), וכיוון שהסגירה נכתבת לפני
  * שהתשובה נשלחת — התוצאה כבר בשורה. לזרוק כאן פירושו למחוק יצירה שהצליחה.
  *
  * truncated — 200 שגופו נקטע. ההרצה הצליחה; רק המשלוח לא שרד.
@@ -164,40 +164,106 @@ async function startAndAwaitGeneration(
   // מה עלה בגורל ההרצה במקום להניח שאבדה.
   const jobId = input.jobId ?? crypto.randomUUID();
   onJob?.(jobId);
-  let started: { jobId?: string } & Partial<GenerationResult>;
+
+  /* ===== המשמר: השורה נשאלת **במקביל** לבקשה, לא רק אחריה =====
+
+     הבקשה היא זו שמריצה, אבל **השורה** היא זו שיודעת איך ההרצה נגמרה — והיא
+     היחידה מבין השתיים ששורדת את מות הבקשה. עד כאן היא נשאלה רק כשהבקשה
+     *נכשלה*, כלומר כשהדפדפן קיבל שגיאה. מה שאין לזה כיסוי הוא בקשה שלא חוזרת
+     **ולא נכשלת**: isolate שנהרג באמצע שליחת התשובה, proxy שמנתק בלי לסגור,
+     לשונית במובייל שהסוקט שלה מת בשקט. `fetch` פשוט אינו נפתר לעולם, ואף אחד
+     מהמסלולים למטה לא רץ.
+
+     נמדד על עיצוב 165 (14.8): מסך ההמתנה נשאר מסתובב בזמן שההרצה הסתיימה,
+     נשמרה, ואפילו שלחה את מייל "העיצוב שלך מוכן" — הלקוח נכנס דרך המייל אל
+     העיצוב שהמסך שלו טען שעדיין נוצר.
+
+     מכאן המשמר רץ מהרגע שהמזהה נקבע. מי שמגיע ראשון להכרעה הוא התשובה, ואין
+     מצב שבו שתיהן שותקות. בונוס שאינו במקרה: `onStage` מקבל עכשיו את שלב
+     ההרצה האמיתי (`rendering` → `saving`) לאורך המסלול התקין — עד כה הוא לא
+     נקרא שם אפילו פעם אחת. */
+
+  /** הבקשה עדיין באוויר, ולכן 404 מהשורה הוא "עוד לא נוצרה" ולא "אינה קיימת". */
+  let requestOpen = true;
+  /** ההכרעה כבר נפלה; אין למי לסקור. */
+  let decided = false;
+
+  const watched = pollJob(jobId, onStage, POLL_TIMEOUT_MS, {
+    unborn: () => requestOpen,
+    cancelled: () => decided,
+  });
+  // ההכרעה של המשמר נקראת למטה בשני מסלולים; זה רק מונע unhandled rejection
+  // במסלול שבו הבקשה הקדימה אותו.
+  watched.catch(() => {});
+
+  type Settled =
+    | { via: "request"; body: { jobId?: string } & Partial<GenerationResult> }
+    | { via: "job"; result: GenerationResult };
+
+  const requested: Promise<Settled> = call<{ jobId?: string } & Partial<GenerationResult>>(
+    "/api/generate",
+    { method: "POST", body: JSON.stringify({ ...input, jobId }) },
+  ).then(
+    (body) => {
+      requestOpen = false;
+      return { via: "request", body } as Settled;
+    },
+    (e) => {
+      requestOpen = false;
+      if (!(e instanceof ClientApiError) || !mayHaveSurvived(e)) throw e;
+      // ההרצה עדיין באוויר; ההכרעה עוברת כולה לשורה.
+      //
+      // **עד מתי — וכמה זמן זה היה שבור.** כאן היה חלון של 12 שניות, בנימוק
+      // ש"אם ה-isolate מת אף אחד כבר לא יכתוב לשורה". הנימוק נכון למקרה אחד
+      // ולא נכון לשכיח: ניתוק **אצל הלקוחה** — 4G שנופל, מסך שננעל — לא הורג
+      // את השרת. הוא ממשיך לרוץ עוד 20 עד 80 שניות ואז כותב את התוצאה, בזמן
+      // שהחלון כאן כבר פג והלקוחה קיבלה "היצירה נכשלה" על הרצה שהצליחה
+      // (AP-0090). היא לחצה "נסו שוב", וזה, כמובן, "הסתדר".
+      //
+      // מכאן מחכים עד שיש **הכרעה**, ולא עד שנמאס לנו: `done`, `error`, או
+      // `job_stalled` — שהשרת מכריז אחרי שש דקות על שורה שאיש לא נגע בה. זה
+      // המחיר: על isolate שבאמת מת ההמתנה מתארכת מ-12 שניות לשש דקות. לכן
+      // המסך אומר מה קורה במקום להסתובב בשקט (`DISCONNECTED_STAGE`), ולכן
+      // הרשומה ב-`pendingJob` ממשיכה להחזיק את החוט גם אם היא סוגרת את הלשונית.
+      onStage?.(DISCONNECTED_STAGE);
+      return watched.then(
+        (result) => ({ via: "job", result }) as Settled,
+        (pollErr) => {
+          // 404 — המזהה לא מוכר לשרת, כלומר הבקשה לא הגיעה מעולם. שם השגיאה
+          // המקורית היא התשובה האמיתית. בכל מקרה אחר ההכרעה של השורה עדכנית
+          // מהניתוק שקדם לה, והיא זו שמוצגת.
+          if (pollErr instanceof ClientApiError && pollErr.status === 404) throw e;
+          throw pollErr;
+        },
+      );
+    },
+  );
+
+  const watching: Promise<Settled> = watched.then(
+    (result) => ({ via: "job", result }) as Settled,
+    (err) => {
+      // 404 הוא הכשל היחיד של המשמר שאינו הכרעה: הוא אומר "אין שורה", והתשובה
+      // למה אין אותה נמצאת אצל הבקשה — ושם היא מתורגמת לשגיאה המקורית. לכן
+      // הזרוע הזו פשוט מפסיקה להתחרות במקום להכריע במקומה. כל השאר — `error`
+      // על השורה, `job_stalled`, תפוגה — הם הכרעה של השרת, והיא גוברת גם על
+      // בקשה שעדיין תלויה.
+      if (err instanceof ClientApiError && err.status === 404) return new Promise<Settled>(() => {});
+      throw err;
+    },
+  );
+
+  let settled: Settled;
   try {
-    started = await call<{ jobId?: string } & Partial<GenerationResult>>("/api/generate", {
-      method: "POST",
-      body: JSON.stringify({ ...input, jobId }),
-    });
-  } catch (e) {
-    if (!(e instanceof ClientApiError) || !mayHaveSurvived(e)) throw e;
-    // ההרצה עדיין באוויר; שואלים על השורה במקום להכריז על אובדן.
-    //
-    // **עד מתי — וכמה זמן זה היה שבור.** כאן היה חלון של 12 שניות, בנימוק
-    // ש"אם ה-isolate מת אף אחד כבר לא יכתוב לשורה". הנימוק נכון למקרה אחד
-    // ולא נכון לשכיח: ניתוק **אצל הלקוחה** — 4G שנופל, מסך שננעל — לא הורג
-    // את השרת. הוא ממשיך לרוץ עוד 20 עד 80 שניות ואז כותב את התוצאה, בזמן
-    // שהחלון כאן כבר פג והלקוחה קיבלה "היצירה נכשלה" על הרצה שהצליחה
-    // (AP-0090). היא לחצה "נסו שוב", וזה, כמובן, "הסתדר".
-    //
-    // מכאן מחכים עד שיש **הכרעה**, ולא עד שנמאס לנו: `done`, `error`, או
-    // `job_stalled` — שהשרת מכריז אחרי שש דקות על שורה שאיש לא נגע בה. זה
-    // המחיר: על isolate שבאמת מת ההמתנה מתארכת מ-12 שניות לשש דקות. לכן
-    // המסך אומר מה קורה במקום להסתובב בשקט (`DISCONNECTED_STAGE`), ולכן
-    // הרשומה ב-`pendingJob` ממשיכה להחזיק את החוט גם אם היא סוגרת את הלשונית.
-    onStage?.(DISCONNECTED_STAGE);
-    try {
-      return await pollJob(jobId, onStage);
-    } catch (pollErr) {
-      // 404 — המזהה לא מוכר לשרת, כלומר הבקשה לא הגיעה מעולם. שם השגיאה
-      // המקורית היא התשובה האמיתית. בכל מקרה אחר ההכרעה של השורה עדכנית
-      // מהניתוק שקדם לה, והיא זו שמוצגת.
-      if (pollErr instanceof ClientApiError && pollErr.status === 404) throw e;
-      throw pollErr;
-    }
+    settled = await Promise.race<Settled>([requested, watching]);
+  } finally {
+    // בין אם הכריעה הבקשה ובין אם הכריע המשמר — השני מפסיק לסקור. בלי זה
+    // הרצה שהסתיימה בדקה השנייה הייתה משאירה סקר פתוח עוד שבע דקות.
+    decided = true;
   }
+
+  if (settled.via === "job") return settled.result;
   // השרת מריץ בתוך הבקשה ומחזיר את התוצאה. 202 עם מזהה הוא מסלול ישן/חלופי.
+  const started = settled.body;
   if (!started.jobId) return started as GenerationResult;
   // במסלול הזה המזהה הוא של השרת. בפועל הוא שווה לשלנו (הוא מקבל אותו בגוף),
   // אבל אם ייבדל — מי שזוכר אותו צריך לדעת על מה באמת לשאול.
@@ -205,22 +271,35 @@ async function startAndAwaitGeneration(
   return pollJob(started.jobId, onStage);
 }
 
+/** מה שמבדיל משמר שרץ לצד הבקשה מסקר שרץ במקומה. */
+interface PollGuards {
+  /** השורה עוד לא נוצרה — 404 הוא "עוד לא", ולא "אינה קיימת". */
+  unborn?: () => boolean;
+  /** ההכרעה נפלה במקום אחר; הלולאה מפסיקה. */
+  cancelled?: () => boolean;
+}
+
 /** מושכת את מצב ההרצה עד לתוצאה. */
 async function pollJob(
   jobId: string,
   onStage?: (stage: string | null) => void,
   windowMs = POLL_TIMEOUT_MS,
+  guards: PollGuards = {},
 ): Promise<GenerationResult> {
   const deadline = Date.now() + windowMs;
   while (Date.now() < deadline) {
     await sleep(POLL_MS);
+    if (guards.cancelled?.()) throw new ClientApiError("cancelled", he.errGeneric, 0);
     let state: { status: string; stage?: string | null; result?: GenerationResult; error?: { code?: string } };
     try {
       state = await call(`/api/generate/${jobId}`);
     } catch (e) {
       // 404 אומר שהמזהה לא קיים — אין טעם להמשיך. כל השאר (רשת, 5xx חולף)
       // הוא כשל של המשיכה, לא של היצירה, והעבודה ממשיכה בשרת בלי קשר.
-      if (e instanceof ClientApiError && e.status === 404) throw e;
+      //
+      // חריג אחד: משמר שרץ לצד הבקשה שיוצרת את השורה. הסקר הראשון שלו יכול
+      // להקדים את `startJob` — ואז 404 הוא תזמון, לא תשובה.
+      if (e instanceof ClientApiError && e.status === 404 && !guards.unborn?.()) throw e;
       continue;
     }
     if (state.status === "done" && state.result) {

@@ -94,6 +94,27 @@ describe("buildStagedRenderPrompt", () => {
     expect(p).toContain("BLACK = METAL THAT REMAINS");
     expect(p).toContain("Pure white background");
   });
+
+  /* עיצוב 165 (14.8): הפרומפט הרשה לצייר קטן ("MAY span... generous white
+     space is acceptable"), והרוחב שהמודל בוחר הוא תקציב הפיקסלים של כל
+     הצינור — 8.6 px/mm בציור לרוחב מלא, 5.2 ב-60%, מול רצפה של 6 (canvas.ts).
+     מתחת לרצפה הפתחים לא שורדים את ה-conditioning, המועמד נפסל, ומשלוש
+     ההצעות נשארת אחת. הדרישה חוזרת להיות דרישה. */
+  it("קנה המידה הוא דרישה ולא רשות — הפריט משתרע כמעט על כל רוחב התמונה", () => {
+    const p = buildStagedRenderPrompt(SPEC(3));
+    expect(p).toContain("MUST span almost the full width of the image");
+    expect(p).toContain("Do NOT draw the blanks small in the middle of the row");
+    expect(p).not.toMatch(/may span almost the full/i);
+    expect(p).not.toMatch(/generous white space is acceptable/i);
+  });
+
+  it("ורוחב הפריט עצמו עדיין אינו נמתח כדי למלא את המסגרת", () => {
+    // הצד השני של אותה פסקה: המקום העודף מתמלא בלבן מעל ומתחת, לא בהעבה של
+    // הפריט. בלי זה "משתרע על כל הרוחב" היה מזמין צמיד רחב פי שניים.
+    const p = buildStagedRenderPrompt(SPEC(3));
+    expect(p).toContain("preserve each design's correct physical length-to-width proportion");
+    expect(p).toContain("Do NOT artificially increase the WIDTH");
+  });
 });
 
 describe("parseDesignSpec", () => {
