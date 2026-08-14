@@ -1,6 +1,6 @@
 // קריאות OpenAI API מצד שרת בלבד — fetch ישיר, אותו חוזה כמו הספק של Anthropic.
 
-import { LLM_TIMEOUT_MS, LlmError, type LlmRequest } from "./core";
+import { LLM_TIMEOUT_MS, LlmError, type LlmAnswer, type LlmRequest, type LlmUsage } from "./core";
 
 export function openaiModel(): string {
   return process.env.OPENAI_MODEL || "gpt-5.6-luna";
@@ -14,7 +14,43 @@ export function hasOpenAiKey(): boolean {
   return Boolean(openaiKey());
 }
 
-export async function callOpenAi(req: LlmRequest): Promise<string> {
+/**
+ * `usage` של תשובת OpenAI → `LlmUsage`.
+ *
+ * מיוצא כדי שיהיה מה לבדוק. שדה שהשתנה או חסר אינו מפיל את הקריאה — זו הנהלת
+ * חשבונות, והתשובה עצמה כבר בידנו ושולמה. אבל דיווח שאין בו שום מספר נשמר
+ * כ-`null` ולא כאפסים: אפס ביומן נקרא כקריאה שלא עלתה כלום.
+ */
+export function parseOpenAiUsage(raw: unknown): LlmUsage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const box = raw as Record<string, unknown>;
+  const num = (value: unknown) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const outDetails = box.completion_tokens_details as Record<string, unknown> | undefined;
+  const inDetails = box.prompt_tokens_details as Record<string, unknown> | undefined;
+  const usage: LlmUsage = {
+    inputTokens: num(box.prompt_tokens),
+    outputTokens: num(box.completion_tokens),
+    totalTokens: num(box.total_tokens),
+  };
+  if (outDetails && typeof outDetails === "object") {
+    usage.reasoningTokens = num(outDetails.reasoning_tokens);
+  }
+  if (inDetails && typeof inDetails === "object") {
+    usage.cachedInputTokens = num(inDetails.cached_tokens);
+  }
+  return usage.totalTokens > 0 || usage.inputTokens > 0 || usage.outputTokens > 0 ? usage : null;
+}
+
+/**
+ * הקריאה עצמה, עם מה שהיא עלתה.
+ *
+ * `callOpenAi` הוא העטיפה שמחזירה את הטקסט בלבד — זה מה שרוב הקוראים צריכים,
+ * ושינוי החתימה שלהם היה רעש. מי שרוצה גם את החשבון קורא לזה.
+ */
+export async function askOpenAi(req: LlmRequest): Promise<LlmAnswer> {
   const apiKey = openaiKey();
   if (!apiKey) throw new LlmError("OPENAI_KEY is not configured", false);
 
@@ -65,10 +101,11 @@ export async function callOpenAi(req: LlmRequest): Promise<string> {
     }
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string | null } }>;
+      usage?: unknown;
     };
     const text = data.choices?.[0]?.message?.content ?? "";
     if (!text.trim()) throw new LlmError("LLM returned empty response", true);
-    return text;
+    return { text, usage: parseOpenAiUsage(data.usage) };
   } catch (e) {
     if (e instanceof LlmError) throw e;
     if (e instanceof Error && e.name === "AbortError") {
@@ -78,4 +115,8 @@ export async function callOpenAi(req: LlmRequest): Promise<string> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function callOpenAi(req: LlmRequest): Promise<string> {
+  return (await askOpenAi(req)).text;
 }

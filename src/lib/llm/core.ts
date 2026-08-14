@@ -22,6 +22,31 @@ export interface LlmRequest {
 
 export const LLM_TIMEOUT_MS = 120_000;
 
+/**
+ * מה שקריאת ה-LLM חייבה.
+ *
+ * **`reasoningTokens` הוא הסיבה שזה קיים.** מודל reasoning חושב בטוקנים
+ * שמחויבים כפלט ואינם מופיעים בטקסט שחוזר, ולכן קריאה שהחזירה JSON קצר יכולה
+ * לעלות פי כמה ממה שנראה. אי אפשר לגזור את זה מהתשובה — רק לקרוא את זה מהדיווח.
+ *
+ * מודל שאינו מדווח פירוט משאיר אותו `undefined`; הסכומים עצמם קיימים תמיד.
+ */
+export interface LlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  /** מתוך הפלט. חלק מהמודלים אינם מפרטים אותו. */
+  reasoningTokens?: number;
+  /** מתוך הקלט: מה שנענה מהמטמון וזול יותר. */
+  cachedInputTokens?: number;
+}
+
+/** תשובה שנושאת גם את מה שהיא עלתה. `usage` ריק = הספק לא דיווח. */
+export interface LlmAnswer {
+  text: string;
+  usage: LlmUsage | null;
+}
+
 /** מי ענה בפועל — לשקיפות מול הלקוח ולאבחון נסיגה בין ספקים. */
 export interface LlmReply {
   text: string;
