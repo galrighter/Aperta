@@ -169,19 +169,48 @@ def cutouts_from_metal(metal: BaseGeometry, width_mm: float, height_mm: float) -
 
 
 def drop_thin_cutouts(cutouts: BaseGeometry, min_hole_mm: float) -> BaseGeometry:
-    """Drop every opening the cutter cannot make, using forme's minimum.
+    """Remove everything the cutter cannot make, using forme's minimum.
 
     Tracing a photographed pattern leaves hairlines along an edge — a 1.5x0.17mm
     sliver beside a leaf. They read as design in the SVG but are far below what
     the laser can open, so forme rejects the whole strip over one of them. The
     minimum is forme's number, passed in per run; we only apply it.
 
-    The test is the same erosion forme validates with: an opening survives if it
-    still has area after being pulled in by half the minimum on every side.
+    **The erosion is the operation, not a test.** It used to be a predicate —
+    keep the polygon if it still has area after being pulled in by half the
+    minimum — and that only ever caught a hairline that was an opening *of its
+    own*. A hairline that grows *out of* a real opening is part of that
+    opening's polygon, the polygon is plainly wide enough, and the whole thing
+    was kept with the tentacle attached.
+
+    Measured on AP-0165 (14.8): six cutouts, none of them thin as a whole
+    (4A/P from 4.1 to 13.4mm), every one of them carrying hairline tentacles off
+    its tips. Nothing here dropped them, forme's V5 asks the same question the
+    same way and passed them too — and V4 then failed all three candidates on
+    the 0.2mm necks those tentacles pinched into the metal. The customer got one
+    design instead of three, and every gate said the strip was fine.
+
+    A morphological opening — erode by half the minimum, dilate back — removes
+    exactly the parts narrower than the minimum and leaves the rest where it
+    was, whether the thin part stands alone or hangs off something wide. The
+    intersection afterwards is the guarantee that this only ever *removes*
+    cutout: dilating rounds a sharp convex corner outward, and cutout the tracer
+    never found is not ours to invent.
+
+    A sharp tip of a real opening comes back rounded to the minimum's radius.
+    That is not a loss — a 0.25mm inside corner is not a shape the cutter can
+    make either.
     """
     if min_hole_mm <= 0:
         return cutouts
-    kept = [p for p in _as_polygons(cutouts) if not p.buffer(-min_hole_mm / 2).is_empty]
+    r = min_hole_mm / 2
+    kept: list = []
+    for p in _as_polygons(cutouts):
+        opened = p.buffer(-r).buffer(r)
+        if opened.is_empty:
+            continue
+        kept.extend(_as_polygons(opened.intersection(p)))
+    kept = [p for p in kept if not p.is_empty]
     if not kept:
         return MultiPolygon()
     return cleanup(MultiPolygon(kept) if len(kept) > 1 else kept[0])
