@@ -146,6 +146,7 @@ async function finishFromRender(
     inputs: {
       ...ctx.inputs,
       deliveredPanels: box.candidates.length,
+      approvedPanels: box.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg).length,
       // ההרצה נאספה מהקופסה, וה-usage נאסף איתה: הדמיה ששולמה לפני שהבקשה מתה
       // עלתה בדיוק אותו דבר, וחור במדידה דווקא בהרצות האלה היה מטה את הסכום.
       renderUsage: box.usage ?? undefined,

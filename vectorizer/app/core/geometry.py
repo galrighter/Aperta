@@ -168,20 +168,76 @@ def cutouts_from_metal(metal: BaseGeometry, width_mm: float, height_mm: float) -
     return diff if diff.is_valid else make_valid(diff)
 
 
+def _drawn_area(min_hole_mm: float) -> float:
+    """Below this, a thin part is the erosion's own rounding and not a feature.
+
+    Half the minimum squared. A convex corner sharper than the erosion radius
+    loses at most ``(min/2)²(1-π/4)`` ≈ 0.054·min² when the shape is eroded and
+    dilated back — 0.013mm² at forme's 0.5mm — while the hairlines this filter
+    exists for are two orders above it (the 12x0.2mm tentacle on AP-0165 is
+    2.4mm²). Anything in between is a judgement call nobody has had to make.
+    """
+    return min_hole_mm * min_hole_mm / 2
+
+
 def drop_thin_cutouts(cutouts: BaseGeometry, min_hole_mm: float) -> BaseGeometry:
-    """Drop every opening the cutter cannot make, using forme's minimum.
+    """Remove everything the cutter cannot make, using forme's minimum.
 
     Tracing a photographed pattern leaves hairlines along an edge — a 1.5x0.17mm
     sliver beside a leaf. They read as design in the SVG but are far below what
     the laser can open, so forme rejects the whole strip over one of them. The
     minimum is forme's number, passed in per run; we only apply it.
 
-    The test is the same erosion forme validates with: an opening survives if it
-    still has area after being pulled in by half the minimum on every side.
+    **The erosion decides what to remove, not whether to keep.** It used to be
+    a predicate — keep the polygon if it still has area after being pulled in by
+    half the minimum — and that only ever caught a hairline that was an opening
+    *of its own*. A hairline that grows *out of* a real opening is part of that
+    opening's polygon, the polygon is plainly wide enough, and the whole thing
+    was kept with the tentacle attached.
+
+    Measured on AP-0165 (14.8): six cutouts, none of them thin as a whole
+    (4A/P from 4.1 to 13.4mm), every one of them carrying hairline tentacles off
+    its tips. Nothing here dropped them, forme's V5 asks the same question the
+    same way and passed them too — and V4 then failed all three candidates on
+    the 0.2mm necks those tentacles pinched into the metal. The customer got one
+    design instead of three, and every gate said the strip was fine.
+
+    So an opening is now measured part by part: erode by half the minimum and
+    dilate back, and whatever that loses is narrower than the minimum — whether
+    it stands alone or hangs off something wide.
+
+    **What is subtracted is only what was drawn.** Erode-and-dilate also shaves
+    a sliver off every convex corner sharper than the radius, at most
+    ``r²(1-π/4)`` ≈ 0.054·min² each, and subtracting those would rewrite the
+    outline of every clean design in exchange for nothing. ``DRAWN_AREA_MM2``
+    sits an order of magnitude above one such corner and two below a hairline
+    worth removing, so a design with nothing wrong with it comes back as the
+    very same object — corners and all.
     """
     if min_hole_mm <= 0:
         return cutouts
-    kept = [p for p in _as_polygons(cutouts) if not p.buffer(-min_hole_mm / 2).is_empty]
+    r = min_hole_mm / 2
+    floor = _drawn_area(min_hole_mm)
+    kept: list = []
+    for p in _as_polygons(cutouts):
+        opened = p.buffer(-r).buffer(r)
+        # Nothing in it survives the erosion: the whole opening is uncuttable.
+        # This is the case the predicate used to handle, and it still holds.
+        if opened.is_empty:
+            continue
+        thin = [g for g in _as_polygons(p.difference(opened.intersection(p))) if g.area >= floor]
+        if not thin:
+            kept.append(p)
+            continue
+        rest = p
+        for g in thin:
+            rest = rest.difference(g)
+        # What is left can come apart: subtracting a tentacle sometimes leaves a
+        # stub as a polygon of its own, and a stub standing alone is exactly the
+        # case the first branch drops. Without this the filter would trade a
+        # neck for an uncuttable opening — measured on AP-0165.
+        kept.extend(q for q in _as_polygons(rest) if not q.buffer(-r).is_empty)
+    kept = [p for p in kept if not p.is_empty]
     if not kept:
         return MultiPolygon()
     return cleanup(MultiPolygon(kept) if len(kept) > 1 else kept[0])

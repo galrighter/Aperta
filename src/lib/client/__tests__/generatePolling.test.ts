@@ -95,7 +95,7 @@ describe("generate — start and poll", () => {
 
 describe("generate — the isolate died holding the answer", () => {
   it("recovers the result behind a bodyless 503", async () => {
-    // Cloudflare הורג את ה-isolate *אחרי* שהצינור סיים; finishJob כבר נכתב,
+    // Cloudflare הורג את ה-isolate *אחרי* שהצינור סיים; הסגירה כבר נכתבה,
     // אז התוצאה קיימת — רק המשלוח לא שרד. לזרוק כאן מוחק יצירה שהצליחה.
     fetchMock
       .mockResolvedValueOnce(new Response("error code: 1102", { status: 503 }))
@@ -207,5 +207,78 @@ describe("generate — a connection that drops mid-request", () => {
     const err = await withTimers(api.generate(INPUT)).catch((e) => e);
     expect((err as ClientApiError).code).toBe("job_stalled");
     expect((err as ClientApiError).message).not.toBe(he.errNetwork);
+  });
+});
+
+/* ===== עיצוב 165 (14.8): בקשה שלא חוזרת **ולא נכשלת** =====
+
+   כל הבדיקות שלמעלה נשענות על כך שהבקשה *נדחית* — `TypeError`, 503, גוף
+   קטוע — וכל אחת מהן מפעילה את מסלול ההתאוששות. מה שאין להן כיסוי הוא
+   `fetch` שפשוט אינו נפתר: isolate שנהרג באמצע שליחת התשובה, proxy ששותק,
+   סוקט של לשונית שמת ברקע. אז אף `catch` לא רץ, ומסך ההמתנה נשאר מסתובב על
+   הרצה שהסתיימה, נשמרה, ואפילו שלחה את מייל "העיצוב שלך מוכן".
+
+   מכאן השורה נצפית **במקביל** לבקשה, ולא רק אחריה. */
+
+/** נתב לפי כתובת ולא לפי סדר: הבקשה והמשמר רצים בו-זמנית. */
+function route(post: () => Promise<Response>, states: Response[]) {
+  return (url: unknown) =>
+    String(url) === "/api/generate"
+      ? post()
+      : Promise.resolve(states.shift() ?? json({ status: "running" }));
+}
+
+describe("generate — a request that never comes back", () => {
+  it("takes the answer from the job row while the request still hangs", async () => {
+    fetchMock.mockImplementation(
+      route(() => new Promise<Response>(() => {}), [
+        json({ status: "running", stage: "rendering" }),
+        json({ status: "running", stage: "saving" }),
+        json({ status: "done", result: RESULT }),
+      ]),
+    );
+
+    const stages: Array<string | null> = [];
+    await expect(withTimers(api.generate(INPUT, (s) => stages.push(s)))).resolves.toMatchObject({
+      version: { id: "v1" },
+    });
+    // ובדרך המסך קיבל את שלב ההרצה האמיתי — במסלול התקין `onStage` לא נקרא
+    // עד כה אפילו פעם אחת.
+    expect(stages).toEqual(["rendering", "saving", null]);
+  });
+
+  it("treats a row that is not there yet as timing, not as a missing job", async () => {
+    // הסקר הראשון של המשמר יכול להקדים את `startJob`. ויתור על 404 שם היה
+    // מכבה את המשמר שנייה וחצי אחרי שהתחיל, כלומר תמיד.
+    fetchMock.mockImplementation(
+      route(() => new Promise<Response>(() => {}), [
+        json({ error: { code: "not_found" } }, 404),
+        json({ status: "done", result: RESULT }),
+      ]),
+    );
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+  });
+
+  it("still prefers the original error when the request failed and there is no row", async () => {
+    // אחרי שהבקשה ענתה, 404 חוזר להיות תשובה: אין שורה כי הבקשה לא הגיעה.
+    fetchMock.mockImplementation(
+      route(() => Promise.resolve(new Response("error code: 1102", { status: 503 })), [
+        json({ error: { code: "not_found" } }, 404),
+      ]),
+    );
+
+    const err = await withTimers(api.generate(INPUT)).catch((e) => e);
+    expect((err as ClientApiError).status).toBe(503);
+  });
+
+  it("stops watching the row once the request answered", async () => {
+    // הצלחה במסלול התקין מכבה את המשמר. בלעדי זה הרצה שנגמרה בדקה השנייה
+    // הייתה משאירה סקר פתוח עוד שבע דקות.
+    fetchMock.mockImplementation(route(() => Promise.resolve(json(RESULT)), []));
+
+    await expect(withTimers(api.generate(INPUT))).resolves.toMatchObject({ version: { id: "v1" } });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]) !== "/api/generate")).toHaveLength(0);
   });
 });

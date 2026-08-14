@@ -331,6 +331,9 @@ export function normalizeSvg(rawSvg: string, lengthMm: number, widthMm: number):
  * מספר אחד לשני הצדדים, ובכוונה מיוצא: הניקוי כאן ובדיקת V5 הריצו שני ספים
  * (`> 1e-9` מול `< 1e-4`) על אותו predicate, ולכן הניקוי השאיר בדיוק את מה
  * ש-V5 פסל — פתח בשטח הביניים עבר את המנקה ואז הפיל את הוולידציה.
+ *
+ * זהו הסף של **פתח שלם** שקטן מדי. מה שמבדיל חלק דק *בתוך* פתח תקין הוא
+ * `drawnArea`, וזו שאלה אחרת: לא "האם נשאר משהו" אלא "האם מה שאבד היה שם".
  */
 export const OPENING_AREA_EPS = 1e-4;
 
@@ -346,24 +349,75 @@ export function isCuttableOpening(poly: Polygon, minHoleMm: number): boolean {
 }
 
 /**
- * מסיר כל cutout שאי אפשר לחתוך — אותה בדיקה בדיוק ש-V5 מריץ
- * (`isCuttableOpening`, אותו סף ואותה גרנולריות).
+ * החלקים של פתח שאי אפשר לחתוך — ריק כשאין כאלה.
  *
- * הווקטורייזר כבר מסנן בייצור, אבל גרסאות שנשמרו לפני כן עדיין נושאות שערות
- * של 0.17–0.3 מ"מ ונפסלות. כאן זה חל על כל SVG שנכנס לגרסה — כולל עריכה של
- * עיצוב ישן — כך שעיצוב קיים מתנקה כשהוא עובר במסלול, בלי יצירה מחדש.
+ * **למה זה לא predicate.** `isCuttableOpening` שואל על הפוליגון כולו, וזה תופס
+ * שערה ש**שוכבת ליד** פתח. שערה ש**יוצאת מתוך** פתח היא חלק מהפוליגון שלו,
+ * הפוליגון רחב לגמרי, והשאלה נענית "כן" עם הזרוע מחוברת.
+ *
+ * נמדד על AP-0165 (14.8): שישה פתחים, אף אחד לא דק כשלם, ולכל אחד זרועות חוט
+ * שיוצאות מהקצוות. המנקה השאיר את כולן, V5 שואל את אותה שאלה באותה צורה וכתב
+ * "All cutouts ≥ 0.5mm", ואז V4 — שמודד רוחב על החומר — הפיל את שלושת
+ * המועמדים על הצווארים שהזרועות צבטו. הלקוח קיבל עיצוב אחד במקום שלושה.
+ *
+ * הכיווץ הופך למדידה חלק-אחר-חלק: מכווצים בחצי המינימום, מרחיבים חזרה, ומה
+ * שאבד בדרך צר מהמינימום — בין אם הוא עומד לבד ובין אם הוא תלוי במשהו רחב.
+ *
+ * **ומה שמוחזר הוא רק מה שצויר.** כיווץ-והרחבה מגלח גם פינה קמורה חדה מרדיוס
+ * הכיווץ, לכל היותר `r²(1−π/4)` ≈ 0.054·min² לפינה, והחזרת אלה הייתה משכתבת
+ * את המתאר של כל עיצוב נקי בקטלוג בתמורה לכלום. `drawnArea` יושב סדר גודל
+ * מעל פינה בודדת ושניים מתחת לשערה ששווה להסיר — ולכן עיצוב שאין בו כזו חוזר
+ * זהה, פינה בפינה, ו-`dropThinCutouts` מחזיר את אותו אובייקט.
+ */
+export function uncuttableParts(poly: Polygon, minHoleMm: number): MultiPolygon {
+  // הפתח כולו קטן מהמינימום — המקרה שה-predicate טיפל בו, ובאותו סף בדיוק,
+  // כדי ש-V5 והמנקה ימשיכו להסכים עליו מילה במילה.
+  if (!isCuttableOpening(poly, minHoleMm)) return [poly];
+  const r = minHoleMm / 2;
+  const opened = intersection(offset(offset([poly], -r), r), [poly]);
+  if (opened.length === 0) return [poly];
+  return difference([poly], opened).filter((p) => polygonArea(p) >= drawnArea(minHoleMm));
+}
+
+/** מתחת לזה, חלק דק הוא העיגול של הכיווץ עצמו ולא משהו שצויר. ראה
+ *  `uncuttableParts`. */
+const drawnArea = (minHoleMm: number): number => (minHoleMm * minHoleMm) / 2;
+
+/**
+ * מסיר מכל cutout את מה שאי אפשר לחתוך — פתח שלם שקטן מדי, וגם חלק דק מדי
+ * בתוך פתח שאחרת תקין (`uncuttableParts`).
+ *
+ * הווקטורייזר מסנן את אותו דבר בקופסה, אבל לא כל SVG מגיע משם: גרסאות שנשמרו
+ * לפני הסינון עדיין נושאות שערות של 0.17–0.3 מ"מ ונפסלות, וכל עריכה שלהן
+ * עוברת כאן. כך עיצוב קיים מתנקה כשהוא עובר במסלול, בלי יצירה מחדש — וכך גם
+ * התיקון של AP-0165 חל מיד עם פריסת האפליקציה, בלי להמתין לפריסת הקופסה.
+ *
+ * **היחס ל-V5 השתנה, ולטובה.** קודם שניהם שאלו בדיוק את אותה שאלה, כי מנקה
+ * חלש יותר מהבדיקה משאיר בשקט את מה שהיא פוסלת. עכשיו המנקה מסיר **על-קבוצה**
+ * של מה ש-V5 פוסל, וזה הכיוון הבטוח: אין גאומטריה שהמנקה משאיר ו-V5 נופל
+ * עליה. V5 עצמו לא זז — הוא שער שנקרא ומדווח, ואי אפשר להחמיר אותו בלי לסכן
+ * פסילה שקרית של כל פתח מעוגל בקטלוג.
  *
  * מחזיר את אותו אובייקט כשאין מה להסיר, כדי שהמסלול הנפוץ לא ישלם על בנייה
  * מחדש של ה-SVG ולא ישנה את ה-d המקורי לחינם.
  */
 export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): NormalizedDesign {
   if (minHoleMm <= 0) return n;
-  const before = n.cutouts.reduce((sum, mp) => sum + mp.length, 0);
+  let changed = false;
   const kept = n.cutouts
-    .map((mp) => mp.filter((poly) => isCuttableOpening(poly, minHoleMm)))
+    .map((mp) =>
+      mp.flatMap((poly) => {
+        const drop = uncuttableParts(poly, minHoleMm);
+        if (drop.length === 0) return [poly];
+        changed = true;
+        // מה שנשאר יכול להתפרק: הסרה של זרוע מותירה לפעמים גדם כפוליגון בפני
+        // עצמו, וגדם עומד לבדו הוא בדיוק מה שהבדיקה הראשונה פוסלת. בלי המסננת
+        // הזו המנקה היה מחליף כשל V4 בכשל V5 — נמדד על AP-0165.
+        return difference([poly], drop).filter((p) => isCuttableOpening(p, minHoleMm));
+      }),
+    )
     .filter((mp) => mp.length > 0);
-  const after = kept.reduce((sum, mp) => sum + mp.length, 0);
-  if (after === before) return n;
+  if (!changed) return n;
 
   const cutUnion = union(...kept);
   const pathEls = kept.flatMap((mp) => mp.map((poly) => `<path d="${polygonToPathD(poly)}" fill="black"/>`));

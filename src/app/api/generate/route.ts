@@ -24,9 +24,10 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
+import { noteRunVerdicts } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
-import { startJob, failJob, finishJob, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
+import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
 import { alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
@@ -170,11 +171,15 @@ export async function POST(req: Request) {
 
     // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה
     // למיגרציה) היצירה עדיין רצה.
+    //
+    // האם היא קיימת בכלל — זה מה שקובע מי בעל ההתראה בסוף. ראה למטה.
+    let jobTracked = false;
     try {
       await startJob({ id: jobId, designId: design.id, runId });
+      jobTracked = true;
     } catch (e) {
       // job של עיצוב אחר אינו חלון מיגרציה — דוחים במקום להריץ בשקט ולתת
-      // ל-finishJob לכתוב על שורה זרה. חידוש של הרצה שעדיין רצה על אותו עיצוב
+      // לסגירה לכתוב על שורה זרה. חידוש של הרצה שעדיין רצה על אותו עיצוב
       // כן מותר, ו-startJob מבדיל ביניהם. job שהסתיים על אותו עיצוב מקבל את
       // התשובה שלו — ראה `replayFinishedJob`.
       if (e instanceof JobConflictError) {
@@ -188,11 +193,20 @@ export async function POST(req: Request) {
     try {
       pipelineStarted = true;
       const payload = await runGeneration(body, runId, jobId);
-      await finishJob(jobId, runId, payload);
+      // **הסגירה מותנית, כמו בכל שאר הקוראים.** כאן נכתב `done` בלי
+      // תנאי, וזה היה בסדר כל עוד הבקשה הייתה הקורא היחיד בזמן שההרצה רצה.
+      // מאז שהלקוחה מסתכלת על השורה **במקביל** לבקשה (`lib/client/api.ts`) זה
+      // כבר לא נכון: הגרסה נכתבת בסוף `ingestCutouts`, השורה נמצאת ב-`saving`,
+      // ולכן סקר שנוחת בין השתיים מוצא גרסה, סוגר את השורה — ושולח את המייל.
+      // סגירה לא מותנית כאן הייתה שולחת אותו שוב, שני מיילים על אותו עיצוב.
+      //
+      // `claimJobDone` נותן `true` לקורא אחד בלבד, וההתראה נתלית בו. בלי שורה
+      // כלל (חלון מיגרציה) אין מי שיתחרה, וההתראה נשארת של הבקשה.
+      const owns = jobTracked ? await claimJobDone(jobId, runId, payload) : true;
       // מי שסגרה את החלון באמצע היצירה לא ידעה שהעיצוב מוכן. `design` נקרא
       // *לפני* ההרצה, ולכן `current_version_id` שלו הוא המצב שקדם לה — וזה מה
       // שמבדיל יצירה ראשונה מעריכה.
-      await notifyDesignReady(design, !design.current_version_id);
+      if (owns) await notifyDesignReady(design, !design.current_version_id);
       return NextResponse.json(payload);
     } catch (err) {
       await failJob(jobId, runId, toJobError(err));
@@ -697,6 +711,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           // השניים אומר שהמודל לא צייר את הרשת שהתבקשה.
           plannedCandidates: plan.candidates,
           deliveredPanels: job.candidates.length,
+          // ומכמה מהם בכלל אפשר להמשיך. ראה `approvedPanels` ב-db/runs.ts:
+          // בלי זה "צוירו שלושה, הוצעה אחת" הוא מספר בלי סיפור.
+          approvedPanels: job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg).length,
           offeredPanels: plan.offered,
           attempt: attemptNo,
           // מה שמודל התמונה חייב, ליד המודל והמאמץ שקבעו אותו. ידוע רק אחרי
@@ -752,6 +769,18 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // ששתי ההצעות הראשונות שהלקוחה רואה לא יהיו הדומות ביותר זו לזו.
       // ראה orderByVariety.
       const framed = story ? orderByVariety(ranked) : ranked;
+      // ומה עלה בגורל כל אחד מהם. השורה נכתבה למעלה, לפני שהמסגור רץ, ולכן
+      // הפסילות שקורות כאן לא הופיעו בה מעולם: `offeredRows` שנשמר על הגרסה
+      // מכיל רק את מי שעבר. הרצה שבה שלושה פסים נפלו ושלושתם נעלמו נראית
+      // ביומן כמו הרצה `approved` רגילה. ראה `noteRunVerdicts` ועיצוב 165.
+      await noteRunVerdicts(
+        attemptId,
+        framed.map((c) => ({
+          status: c.report.status,
+          failed: c.report.checks.filter((k) => k.status === "fail").map((k) => k.check),
+          stretch: Math.round(c.stretch * 1000) / 1000,
+        })),
+      );
       return { job, renderPngPath, framed };
     };
 

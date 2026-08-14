@@ -59,6 +59,17 @@ export interface RenderUsage {
  * נשמר כ-jsonb ולא כעמודות: זו תצוגה לבק־אופיס, לא מפתח לשאילתה, והשדות
  * משתנים עם הצינור.
  */
+/** מועמד אחד אחרי המסגור: מה הוולידציה אמרה עליו, ומה הפיל אותו. */
+export interface RunPanelVerdict {
+  /** `pass` / `warn` / `fail` — הסטטוס של הדוח, לא של הקופסה. */
+  status: string;
+  /** קודי הבדיקות שנפלו (`V4`), ריק כשעבר. הקוד ולא ההודעה: הוא מה שמאפשר
+   *  לספור על פני הרצות "כמה נפלו על צוואר" בלי לקרוא טקסט. */
+  failed?: string[];
+  /** פי כמה המסגור מתח אותו. במסלול Story הוא אמור להיות 1. */
+  stretch?: number;
+}
+
 export interface RunInputs {
   productType?: ProductType;
   lengthMm?: number;
@@ -117,6 +128,25 @@ export interface RunInputs {
    */
   plannedCandidates?: number;
   deliveredPanels?: number;
+  /**
+   * מתוך הפסים שחזרו — כמה הקופסה אישרה.
+   *
+   * זה החוליה שהייתה חסרה בין "המודל צייר שלושה" לבין "הלקוחה ראתה אחד".
+   * `deliveredPanels` סופר את מה שנחתך, אבל רק פס עם `status === "approved"`
+   * מגיע למסגור, ורק מי שגם שרד את הוולידציה מוצע — כך שהצטמצמות מ-3 ל-1
+   * יכולה לקרות בשני מקומות שונים לגמרי, ובלי המספר הזה אי אפשר לדעת באיזה.
+   * נמדד על עיצוב 165 (14.8), ששם הייתה זו בדיוק השאלה.
+   */
+  approvedPanels?: number;
+  /**
+   * מה עלה בגורל כל מועמד **אחרי** המסגור: הוולידציה שלו, והבדיקות שהפילו
+   * אותו. נכתב בעדכון שני (`noteRunVerdicts`), כי בזמן כתיבת השורה המסגור
+   * עדיין לא רץ.
+   *
+   * זה מה שהופך "3 פסים, הרצה approved, הצעה אחת על המסך" מחידה לשורה
+   * קריאה. ראה `noteRunVerdicts` ואת עיצוב 165.
+   */
+  panelVerdicts?: RunPanelVerdict[];
   /**
    * כמה מהפסים הוצעו ללקוחה. מ-11.8 הייצור נגזר מהיחס ומתקציב הפיקסלים
    * והתצוגה נחתכת ב-`MAX_CANDIDATES`, ולכן השניים כבר לא זהים: פס צר יכול
@@ -338,6 +368,40 @@ export function describeFailure(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
   const code = (err as { code?: unknown }).code;
   return typeof code === "string" && code ? `${code} · ${err.message}` : err.message;
+}
+
+/**
+ * מוסיף לשורת ההרצה מה שידוע רק **אחרי** שהיא נכתבה: מה עלה בגורל כל מועמד
+ * במסגור ובוולידציה.
+ *
+ * **למה זה נדרש, ולמה זו הייתה נקודה עיוורת.** השורה נכתבת מיד כשהקופסה עונה,
+ * לפני המסגור — במכוון, כדי שקריסה במסגור עדיין תשאיר יומן. אבל הוולידציה
+ * רצה אחריה, ומה שהיא פוסלת **נעלם**: `offeredRows` שנשמר על הגרסה מכיל רק
+ * מועמדים שעברו, ומועמד שנפל אינו נשמר בשום מקום.
+ *
+ * נמדד על עיצוב 165 (14.8): הקופסה חתכה שלושה פסים ואישרה, כל שלושת המועמדים
+ * נפלו ב-V4 (צוואר מתחת ל-0.75 מ"מ), הרשימה התרוקנה, והמסך הציג את הגרסה
+ * השמורה לבדה. ביומן זה נראה כמו הרצה `approved` עם שלושה פסים — ולא היה שום
+ * שדה שאומר שאף אחד מהם לא הוצע, ובוודאי לא **למה**.
+ *
+ * קריאה-ואז-כתיבה של `inputs` בלבד, ולא `persistRun` שני: הקריאה השנייה הייתה
+ * כותבת מחדש את `debug_full` על כל ה-SVG שבתוכו. best-effort, כמו כל כתיבת
+ * יומן — הרצה שהצליחה לא נופלת על רישום.
+ */
+export async function noteRunVerdicts(id: string, verdicts: RunPanelVerdict[]): Promise<void> {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb.from("generation_runs").select("inputs").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    const inputs = ((data?.inputs ?? {}) as RunInputs) ?? {};
+    const patched = await sb
+      .from("generation_runs")
+      .update({ inputs: { ...inputs, panelVerdicts: verdicts } })
+      .eq("id", id);
+    if (patched.error) throw new Error(patched.error.message);
+  } catch (e) {
+    console.error(`note run ${id} verdicts failed:`, (e as Error).message);
+  }
 }
 
 export async function markRunError(id: string, message: string): Promise<void> {
