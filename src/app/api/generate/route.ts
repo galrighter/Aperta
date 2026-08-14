@@ -5,6 +5,9 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
 import { STORY_MODE, STORY_RENDER, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
+import {
+  DESIGN_COUNT, STORY_DESIGN, buildDesignPrompt, buildStagedRenderPrompt, runDesignStage,
+} from "@/lib/story/designStage";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -13,7 +16,7 @@ import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
-import { canvasFor, sizeParam } from "@/lib/render/canvas";
+import { LANDSCAPE, canvasFor, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
@@ -365,7 +368,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // בקנבס לרוחב וארוך מכדי לקבל עמודה שנייה, קנבס לאורך הוא הידית היחידה.
     // היא נבחרת כאן, לפני תמונת הבסיס: תמונת הייחוס חייבת להצטייר על אותו קנבס
     // שיתבקש מהמודל — ייחוס לרוחב מול קנבס לאורך מחזיר פריט חתוך בקצוות.
-    const canvas = canvasFor(dims.lengthMm);
+    const story = isStory(body.mode);
+    // יצירה מאפס במסלול Story רצה דו-שלבית: מודל טקסט מתרגם את הסיפור לשלושה
+    // כיווני עיצוב, ומודל התמונה מבצע אותם. בקשת שינוי וכיתוב אינן עוברות שם.
+    const storyCreate = story && !body.currentSvg && !body.text?.trim();
+    // הקנבס נגזר מהאורך — חוץ מהמסלול הדו-שלבי, שבו הפרומפט של שלב 2 מבקש
+    // במפורש "ONE landscape / wide image" עם שלוש שורות. קנבס לאורך היה סותר
+    // את הטקסט שנשלח. בפועל שני המוצרים נופלים ממילא על לרוחב במידות ברירת
+    // המחדל; הקיבוע כאן הוא כדי שזה יישאר נכון גם אם הן ישתנו.
+    const canvas = storyCreate ? LANDSCAPE : canvasFor(dims.lengthMm);
     const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
@@ -386,7 +397,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           offered: Math.min(body.rowsOverride, MAX_CANDIDATES),
           canvas,
         }
-      : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
+      : storyCreate
+        // שני הפרומפטים של המסלול הדו-שלבי אומרים "exactly THREE", ומספר
+        // אחר בתכנון היה חותך שורה שלא צוירה או זורק אחת שכן. `planRender`
+        // מחזיר ממילא 3×1 לשני המוצרים במידות ברירת המחדל (יחס 8.9 מול יחס
+        // טבעי 9.05 בשלוש שורות) — הקיבוע רק מונע פער אם משהו מהם יזוז.
+        ? { rows: DESIGN_COUNT, cols: 1, calls: 1 as const, candidates: DESIGN_COUNT, offered: DESIGN_COUNT, canvas }
+        : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
     // תמונת הייחוס היא כבר העיצוב הקיים, והכיתוב יושב בתוכו; שתי תמונות אין
@@ -425,26 +442,42 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // חייב לדבר עליה ("שנה רק את X") — וזה מה ש-`buildRenderPrompt` עושה במצב
     // `editing`. אותו נימוק חל על כיתוב: הבלוק ששומר על האותיות יושב שם. בשני
     // המקרים המסלול ממשיך לקבל את הטווח במקום מידה אחת, כמו קודם.
-    const story = isStory(body.mode);
-    const storyCreate = story && !editSvg && !lettering;
+    //
+    // **שלב העיצוב.** ביצירה מאפס במסלול Story רץ כאן מודל טקסט שמתרגם את
+    // הסיפור לשלושה כיווני עיצוב גיאומטריים, ומודל התמונה מקבל אותם במקום את
+    // הסיפור. `null` = השלב לא הצליח, והפרומפט חוזר להיות זה של שלב אחד —
+    // אותו טקסט שרץ עד עכשיו. יצירה לא נכשלת בגלל השלב הזה.
+    //
+    // רץ **אחרי** שהתכנון והקנבס ידועים ולפני הרנדר, כי האורך נכנס לפרומפט
+    // שלו. אין כאן ניסיון חוזר — ראה runDesignStage.
+    const designStage = storyCreate && !body.promptOverride?.trim()
+      ? await runDesignStage({
+          productType: design.product_type,
+          userInput: body.userPrompt,
+          lengthMm: dims.lengthMm,
+        })
+      : null;
+
     const prompt =
       body.promptOverride?.trim() ||
-      (storyCreate
-        ? buildStoryRenderPrompt({
-            story: body.userPrompt,
-            productType: design.product_type,
-            rows: plan.rows,
-            cols: plan.cols,
-            canvas,
-            thicknessMm: dims.thicknessMm,
-          })
-        : buildRenderPrompt(
-            body.userPrompt, design.product_type, dims, plan.rows,
-            Boolean(editSvg), Boolean(lettering), plan.cols,
-            // הרוחב של הפריט שנערך יכול לשבת מחוץ לטווח הייצור מאז שהצביטה
-            // הוסרה — הטווח נפתח כדי להכיל אותו. ראה widthRangeOf.
-            story ? { widthRange: widthRangeOf(design.product_type, dims.widthMm) } : undefined,
-          ));
+      (designStage
+        ? buildStagedRenderPrompt(designStage.json)
+        : storyCreate
+          ? buildStoryRenderPrompt({
+              story: body.userPrompt,
+              productType: design.product_type,
+              rows: plan.rows,
+              cols: plan.cols,
+              canvas,
+              thicknessMm: dims.thicknessMm,
+            })
+          : buildRenderPrompt(
+              body.userPrompt, design.product_type, dims, plan.rows,
+              Boolean(editSvg), Boolean(lettering), plan.cols,
+              // הרוחב של הפריט שנערך יכול לשבת מחוץ לטווח הייצור מאז שהצביטה
+              // הוסרה — הטווח נפתח כדי להכיל אותו. ראה widthRangeOf.
+              story ? { widthRange: widthRangeOf(design.product_type, dims.widthMm) } : undefined,
+            ));
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
     // שבנו אותו. הוא נבנה כאן ולא בתוך persistRun כדי ששתי הקריאות — ההצלחה
@@ -466,6 +499,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
          *  השני של אותה שאלה — ובלי שניהם אי אפשר להסביר ביומן למה שתי הרצות
          *  של אותו פריט חזרו ברמת פירוט שונה לגמרי. */
         renderQuality: story ? STORY_RENDER.quality : undefined,
+        /**
+         * שלב העיצוב: האם רץ, במה, וכמה זמן לקח.
+         *
+         * בלי זה אי אפשר להבדיל ביומן בין הרצה דו-שלבית להרצה שנפלה חזרה
+         * לפרומפט של שלב אחד — והן נראות זהות בכל שדה אחר, כולל בתוצאה. וזו
+         * בדיוק ההשוואה שהניסוי הזה קיים בשבילה.
+         */
+        designStage: storyCreate
+          ? {
+              ok: Boolean(designStage),
+              model: STORY_DESIGN.model,
+              effort: STORY_DESIGN.effort,
+              ms: designStage?.ms,
+              /** המפרט עצמו. זה מה שמודל התמונה קרא, ובלעדיו אי אפשר להסביר
+               *  ביומן למה תמונה יצאה כמו שיצאה — הפרומפט לבדו רק מפנה אליו.
+               *  חתוך: שורת יומן אינה מקום לטקסט בלי גבול. */
+              spec: designStage?.json.slice(0, 8000),
+            }
+          : undefined,
         /**
          * מה שהוזמן מול מה שהתא שנבחר מסוגל לתת. שניהם ידועים כאן, לפני
          * שהמודל רץ, ושניהם נשמרים — הפער ביניהם הוא כל מה שהמסגור ייאלץ
@@ -588,6 +640,22 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // אין כיתוב במסלול Story.
         model: lettering ? LETTERING_MODEL : story ? STORY_RENDER.model : undefined,
         quality: story ? STORY_RENDER.quality : undefined,
+        // הפרומפט של המסלול הדו-שלבי נושא בתוכו את ה-JSON של שלב העיצוב, שאינו
+        // זהה בין ניסיונות — ולכן מזהה ה-job מול הקופסה נגזר מהקלט היציב ולא
+        // ממנו. בלי זה כל ניתוק היה קונה רנדר שני. ראה `requestKey`.
+        requestKey: designStage
+          ? JSON.stringify({
+              v: "story-2stage",
+              designPrompt: buildDesignPrompt({
+                productType: design.product_type,
+                userInput: body.userPrompt,
+                lengthMm: dims.lengthMm,
+              }),
+              rows: plan.rows, cols: plan.cols, size: sizeParam(canvas),
+              heightMm: dims.widthMm, minHoleMm,
+              model: STORY_RENDER.model, quality: STORY_RENDER.quality,
+            })
+          : undefined,
         renderPaths,
         stagePaths,
         // הרגע שבו ההרצה מפסיקה להיות תלויה בבקשה הזו: הקופסה קיבלה אותה,
