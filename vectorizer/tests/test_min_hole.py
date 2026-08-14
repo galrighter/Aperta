@@ -1,14 +1,16 @@
 """The minimum-opening filter — forme's number, applied here.
 
-Tracing a photographed pattern leaves hairlines beside the real openings. They
-are far below what the cutter can make, so forme rejects the whole strip over
-one of them. These tests pin the rule: an opening survives only if it still has
-area after being pulled in by half the minimum on every side.
+Tracing a photographed pattern leaves hairlines beside the real openings — and,
+as AP-0165 showed, *out of* them. They are far below what the cutter can make,
+so forme rejects the whole strip over one of them.
+
+These tests pin the rule: what is narrower than the minimum is subtracted, part
+by part, whether it stands alone or hangs off something wide — and a shape with
+no such part comes back untouched.
 """
 
 from __future__ import annotations
 
-import math
 
 import pytest
 from shapely.geometry import MultiPolygon, box
@@ -28,27 +30,27 @@ def test_drops_a_sliver_and_keeps_the_opening_beside_it():
     # hairline the tracer left along its edge.
     cutouts = MultiPolygon([box(0, 0, 4, 2), box(5, 0, 6.5, 0.17)])
     kept = drop_thin_cutouts(cutouts, 0.5)
-    assert len(_areas(kept)) == 1
-    # 8.0 minus the four corner fillets — see the next test.
-    assert kept.area == pytest.approx(7.946, abs=0.002)
+    assert _areas(kept) == [8.0]
 
 
-def test_a_kept_opening_comes_back_with_filleted_corners():
-    """The visible cost of removing thin parts by opening instead of by vote.
-
-    Erode-then-dilate cannot restore a corner sharper than the radius it was
-    eroded by, so every kept opening comes back with its corners rounded to
-    0.25mm. That is deliberate and it is small: 0.013mm² per corner, well inside
-    the curve fit's own error budget, and an inside corner that sharp is not a
-    shape the cutter makes cleanly anyway.
-
-    It is pinned here because it is the one way this filter now touches geometry
-    that has nothing wrong with it — a regression in that number is a change in
-    every run, not only the broken ones.
-    """
+def test_keeps_an_opening_exactly_above_the_minimum():
     cutouts = MultiPolygon([box(0, 0, 3, 0.6)])
-    kept = drop_thin_cutouts(cutouts, 0.5)
-    assert kept.area == pytest.approx(1.8 - 4 * 0.0625 * (1 - math.pi / 4), abs=0.002)
+    assert _areas(drop_thin_cutouts(cutouts, 0.5)) == [1.8]
+
+
+def test_a_clean_opening_comes_back_untouched():
+    """The corners of a design with nothing wrong with it are not rewritten.
+
+    Erode-and-dilate cannot restore a convex corner sharper than the radius it
+    was eroded by, so subtracting everything the erosion loses would round every
+    corner of every cutout in the catalogue — 0.013mm² a corner, for nothing.
+    Only thin parts big enough to have been drawn are subtracted, and a shape
+    that has none comes back identical, corner for corner.
+    """
+    original = box(0, 0, 4, 2)
+    kept = drop_thin_cutouts(MultiPolygon([original]), 0.5)
+    assert kept.area == pytest.approx(original.area, abs=1e-9)
+    assert kept.equals(original)
 
 
 def test_a_zero_minimum_keeps_everything():
@@ -82,9 +84,8 @@ def test_a_tentacle_on_a_wide_opening_is_cut_off():
     leaf = box(0, 0, 4, 2)
     tentacle = box(4, 0.9, 16, 1.1)
     kept = drop_thin_cutouts(leaf.union(tentacle), 0.5)
-    # The opening stays (rounded corners cost it a little); the tentacle goes.
-    assert 7.5 < kept.area < 8.0
-    assert kept.bounds[2] < 4.3
+    assert kept.area == pytest.approx(leaf.area, abs=0.05)
+    assert kept.bounds[2] == pytest.approx(4.0, abs=0.3)
 
 
 def test_the_opening_it_hangs_off_is_not_dropped_with_it():
@@ -95,8 +96,9 @@ def test_the_opening_it_hangs_off_is_not_dropped_with_it():
 
 
 def test_it_never_adds_cutout_the_tracer_did_not_find():
-    # Dilating back rounds a sharp convex corner outward. Clipping to the
-    # original is what keeps the piece from quietly growing an opening.
-    original = box(0, 0, 4, 2)
+    # Dilating back rounds a sharp convex corner outward, and a cutout the
+    # tracer never found is not ours to invent — so the result is only ever a
+    # subtraction from what came in.
+    original = box(0, 0, 4, 2).union(box(4, 0.9, 16, 1.1))
     kept = drop_thin_cutouts(original, 0.5)
     assert kept.difference(original).area < 1e-9
