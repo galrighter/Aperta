@@ -10,6 +10,14 @@ export interface LlmRequest {
   userText: string;
   images?: LlmImage[];
   maxTokens?: number;
+  /** מודל מסוים לקריאה הזו, במקום ברירת המחדל של הספק. הקורא בוחר אותו
+   *  כשהסיבה חיה אצלו — ראה `STORY_DESIGN` ב-lib/story/designStage.ts. */
+  model?: string;
+  /** עומק החשיבה, למודלי reasoning. ריק = ברירת המחדל של הספק. */
+  reasoningEffort?: "low" | "medium" | "high";
+  /** תקרת המתנה משלה לקריאה הזו. ריק = `LLM_TIMEOUT_MS`. קיים בשביל קורא
+   *  שיושב **בתוך** בקשה ארוכה יותר ואינו יכול לבלוע את כל התקציב שלה. */
+  timeoutMs?: number;
 }
 
 export const LLM_TIMEOUT_MS = 120_000;

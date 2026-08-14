@@ -56,7 +56,31 @@ def resolve_size(size: str | None) -> str:
     than failing: a render on the wrong shape is recoverable, a dead run is not.
     """
     return size if size in ALLOWED_SIZES else SIZE
+
+
+# How hard the model works on the picture. "low" is the default and was the only
+# value until forme started choosing, and it is the single biggest lever on both
+# cost and detail:
+#
+#     gpt-image-1-mini - low  - 1536x1024 = $0.0057
+#     gpt-image-1-mini - high - 1536x1024 = $0.05
+#     gpt-image-1      - high - 1536x1024 = $0.25
+#
+# It matters most where the picture is subdivided. A render split into three
+# rows draws each piece in roughly 1380x170 px, and at 8.6 px/mm a 0.5mm opening
+# is four pixels — "low" there returns blocks, not a design.
+#
+# Same allowlist reasoning as models and sizes: the value reaches OpenAI on our
+# key, and an unrecognised one is a 400.
 QUALITY = "low"
+ALLOWED_QUALITIES = frozenset({"low", "medium", "high", "auto"})
+
+
+def resolve_quality(quality: str | None) -> str:
+    """The requested quality, or the default. Falls back rather than failing,
+    for the same reason as the canvas."""
+    return quality if quality in ALLOWED_QUALITIES else QUALITY
+
 TIMEOUT_S = 120.0
 
 
@@ -111,6 +135,7 @@ async def _one(
     reference: tuple[bytes, str] | None,
     model: str = MODEL,
     size: str = SIZE,
+    quality: str = QUALITY,
 ) -> bytes:
     headers = {"authorization": f"Bearer {key}"}
     if reference is not None:
@@ -120,14 +145,14 @@ async def _one(
         resp = await client.post(
             "https://api.openai.com/v1/images/edits",
             headers=headers,
-            data={"model": model, "prompt": prompt, "size": size, "quality": QUALITY},
+            data={"model": model, "prompt": prompt, "size": size, "quality": quality},
             files={"image": ("reference.png", data, media_type)},
         )
     else:
         resp = await client.post(
             "https://api.openai.com/v1/images/generations",
             headers={**headers, "content-type": "application/json"},
-            json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": QUALITY},
+            json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": quality},
         )
     if resp.status_code >= 400:
         quota = _is_quota(resp.text)
@@ -146,6 +171,7 @@ async def render_many(
     reference: tuple[bytes, str] | None = None,
     model: str | None = None,
     size: str | None = None,
+    quality: str | None = None,
 ) -> list[bytes]:
     """Ask the model for `calls` renders of the same prompt, concurrently.
 
@@ -161,10 +187,14 @@ async def render_many(
         raise ImageGenError("OPENAI_KEY is not configured for image generation", retriable=False)
     chosen = resolve_model(model)
     canvas = resolve_size(size)
+    effort = resolve_quality(quality)
 
     async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
         results = await asyncio.gather(
-            *(_one(client, key, prompt, reference, chosen, size=canvas) for _ in range(max(1, calls))),
+            *(
+                _one(client, key, prompt, reference, chosen, size=canvas, quality=effort)
+                for _ in range(max(1, calls))
+            ),
             return_exceptions=True,
         )
 

@@ -174,6 +174,9 @@ class GenerateIn(BaseModel):
     # Which image model to render with. Validated against imagegen.ALLOWED_MODELS
     # rather than passed through: the name goes to OpenAI on our key.
     model: str | None = None
+    # How hard the model works on the picture. None = the default ("low").
+    # Validated against imagegen.ALLOWED_QUALITIES, same reason as the two above.
+    quality: str | None = None
     artifacts: ArtifactsIn = Field(default_factory=ArtifactsIn)
     # An id forme derived from its own job id (see docs/C2_RESILIENT_GENERATION.md).
     # Supplying it moves the run into the background and makes it *addressable*:
@@ -202,6 +205,8 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad model"})
     if body.size is not None and body.size not in imagegen.ALLOWED_SIZES:
         raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad size"})
+    if body.quality is not None and body.quality not in imagegen.ALLOWED_QUALITIES:
+        raise HTTPException(400, detail={"error_code": "INVALID_DIMENSIONS", "message": "bad quality"})
 
     inspiration = None
     if body.inspiration is not None:
@@ -222,6 +227,7 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
         min_hole_mm=body.min_hole_mm,
         model=body.model,
         size=body.size,
+        quality=body.quality,
     )
     artifacts = generate.Artifacts(renders=body.artifacts.renders, stages=body.artifacts.stages)
 

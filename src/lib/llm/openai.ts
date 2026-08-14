@@ -27,7 +27,9 @@ export async function callOpenAi(req: LlmRequest): Promise<string> {
   }
   content.push({ type: "text", text: req.userText });
 
-  const model = openaiModel();
+  // מודל שהקורא ביקש במפורש גובר על ברירת המחדל של הסביבה: יש קריאות שהמודל
+  // שלהן הוא החלטה של הקורא ולא הגדרה גלובלית.
+  const model = req.model || openaiModel();
   const body: Record<string, unknown> = {
     model,
     // מודלי reasoning צורכים טוקנים "פנימיים" מתוך אותה מכסה — משאירים מרווח.
@@ -40,11 +42,12 @@ export async function callOpenAi(req: LlmRequest): Promise<string> {
   // מודלי -chat אינם מודלי reasoning ודוחים את הפרמטר; לשאר —
   // "medium" חורג ממגבלת ה-120s על יצירת SVG מלא, "low" מהיר ועדיין חושב
   if (/^(gpt-5|o\d)/.test(model) && !model.includes("-chat")) {
-    body.reasoning_effort = process.env.OPENAI_REASONING_EFFORT || "low";
+    body.reasoning_effort = req.reasoningEffort || process.env.OPENAI_REASONING_EFFORT || "low";
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  const timeoutMs = req.timeoutMs ?? LLM_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -69,7 +72,7 @@ export async function callOpenAi(req: LlmRequest): Promise<string> {
   } catch (e) {
     if (e instanceof LlmError) throw e;
     if (e instanceof Error && e.name === "AbortError") {
-      throw new LlmError("LLM request timed out after 120s", true);
+      throw new LlmError(`LLM request timed out after ${Math.round(timeoutMs / 1000)}s`, true);
     }
     throw new LlmError(`LLM request failed: ${e instanceof Error ? e.message : e}`, true);
   } finally {

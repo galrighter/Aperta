@@ -71,12 +71,13 @@ def wired(monkeypatch):
     """Patch out the model, the tracer and the network; keep the real splitter."""
     state: dict = {"calls": 0, "uploads": []}
 
-    async def render_many(key, prompt, calls, reference=None, model=None, size=None):
+    async def render_many(key, prompt, calls, reference=None, model=None, size=None, quality=None):
         state["calls"] = calls
         state["prompt"] = prompt
         state["reference"] = reference
         state["model"] = model
         state["size"] = size
+        state["quality"] = quality
         return [striped_png(state.get("rows", 1)) for _ in range(calls)]
 
     async def put_all(items, content_type="image/png"):
@@ -310,7 +311,7 @@ def test_a_spent_budget_survives_the_aggregation(monkeypatch):
     from app import imagegen
 
     async def scenario():
-        async def one(client, key, prompt, reference, model=None, size=None):
+        async def one(client, key, prompt, reference, model=None, size=None, quality=None):
             raise imagegen.ImageGenError('429 {"code":"insufficient_quota"}', quota=True)
 
         monkeypatch.setattr(imagegen, "_one", one)
@@ -398,7 +399,7 @@ def rounds_of(monkeypatch, *rounds: list[bytes]) -> list[int]:
     each round asked for."""
     asked: list[int] = []
 
-    async def render_many(key, prompt, calls, reference=None, model=None, size=None):
+    async def render_many(key, prompt, calls, reference=None, model=None, size=None, quality=None):
         asked.append(calls)
         batch = rounds[len(asked) - 1]
         if isinstance(batch, Exception):
@@ -494,6 +495,45 @@ def test_the_canvas_is_reported_back_so_the_log_can_tell_two_runs_apart(wired):
     out = run(generate.GenerateJob(prompt="p", calls=1, rows=1, size="1024x1536"))
     assert out["size"] == "1024x1536"
     assert run(generate.GenerateJob(prompt="p", calls=1, rows=1))["size"] == "1536x1024"
+
+
+# --- how hard the model works -----------------------------------------------
+#
+# The single most expensive knob in the pipeline, and the one that decides
+# whether a subdivided render comes back as a design or as blocks. Same shape as
+# the canvas above: forme chooses, an unknown value falls back, and the value is
+# reported so two runs of the same piece can be told apart in the log.
+
+
+def test_the_quality_defaults_to_low_when_forme_does_not_choose(wired):
+    """Every run before forme started choosing, and every run it leaves alone."""
+    run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert wired["quality"] is None
+    assert imagegen.resolve_quality(None) == "low"
+
+
+def test_a_requested_quality_reaches_the_model(wired):
+    run(generate.GenerateJob(prompt="p", calls=1, rows=1, quality="high"))
+    assert wired["quality"] == "high"
+
+
+def test_an_unknown_quality_falls_back_instead_of_failing_the_run():
+    for bad in ("ultra", "HIGH", "", None, 1):
+        assert imagegen.resolve_quality(bad) == imagegen.QUALITY
+
+
+def test_the_quality_is_reported_back_so_the_log_can_tell_two_runs_apart(wired):
+    out = run(generate.GenerateJob(prompt="p", calls=1, rows=1, quality="high"))
+    assert out["quality"] == "high"
+    assert run(generate.GenerateJob(prompt="p", calls=1, rows=1))["quality"] == "low"
+
+
+def test_the_endpoint_refuses_a_quality_it_would_pass_to_openai_unchecked(client):
+    """Same reason as the model and the canvas: the value reaches OpenAI on our
+    key, and 'whatever the caller sent' is how a typo becomes a bill."""
+    resp = client.post("/api/generate", json={"prompt": "p", "quality": "ultra"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error_code"] == "INVALID_DIMENSIONS"
 
 
 # --- the held generation: the same id never renders twice --------------------
