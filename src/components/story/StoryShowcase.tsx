@@ -1,6 +1,6 @@
 "use client";
 
-// story mode — הוויטרינה בדף הבית: סיפור → האפשרויות שחזרו → ההדמיה.
+// story mode — הוויטרינה בדף הבית: סיפור → הדמיה → האפשרויות שחזרו.
 //
 // **מה החליף מה.** קודם ישבה כאן דוגמה בשני שדות: משפט, חץ, ואיור דקורטיבי
 // (`PatternMark`). האיור הזה מעולם לא היה מוצר — הוא היה דוגמת ניקוב קבועה
@@ -35,6 +35,9 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
   const [i, setI] = useState(0);
   /** האפשרות שההדמיה מציגה. `null` = זו שנבחרה בסיפור הזה. */
   const [pick, setPick] = useState<number | null>(null);
+  /** הסיפור פרוש במלואו. נסגר בכל החלפת סיפור, אחרת הכרטיס היה מתחיל פתוח
+   *  על משפט אחר — וגובהו היה משתנה בלי שנגעו בו. */
+  const [open, setOpen] = useState(false);
   /** עצירה יזומה: מי שנגעה, בחרה — לא מושכים לה את המסך מתחת לאצבע. */
   const [held, setHeld] = useState(false);
   const touchX = useRef<number | null>(null);
@@ -42,6 +45,7 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
   const go = useCallback((next: number) => {
     setI(((next % SHOWCASE.length) + SHOWCASE.length) % SHOWCASE.length);
     setPick(null);
+    setOpen(false);
   }, []);
 
   useEffect(() => {
@@ -52,6 +56,7 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
     const t = setInterval(() => {
       setI((cur) => (cur + 1) % SHOWCASE.length);
       setPick(null);
+      setOpen(false);
     }, ROTATE_MS);
     return () => clearInterval(t);
   }, [held]);
@@ -75,7 +80,7 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
           נושאת ארבעה בלוקים (סיפור, חץ, שלוש אפשרויות, הדמיה), וכל 4px של
           מרווח מוכפלים פי חמישה. בערכים הקודמים העמודה יצאה 994px — כלומר
           ההדמיה, שהיא כל העניין, נחתכה בקו הקיפול בלפטופ נמוך. */}
-      <div className="flex flex-col gap-4 p-5 sm:p-6">
+      <div className="flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6">
         {/* ===== מה שסופר ===== */}
         {/* ההחלקה יושבת על הבלוק הזה בלבד ולא על הכרטיס: על הקנבס של ההדמיה
             גרירה אופקית היא סיבוב, ומאזין החלקה מעליה היה הופך כל סיבוב
@@ -102,18 +107,41 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
               {s.product[ex.product]}
             </div>
           </div>
-          {/* גובה קבוע לשדה הטקסט: בלי זה כל החלפה מזיזה את כל מה שמתחתיו,
-              כולל ההדמיה. */}
-          <p
-            className="mt-2 min-h-[3.4em] text-[17px] leading-relaxed text-graphite sm:min-h-[2.6em] sm:text-[19px]"
-            style={{ textWrap: "pretty" }}
+          {/* **שורה אחת, ופתיחה בלחיצה.**
+              קודם היה כאן גובה קבוע של שתיים-שלוש שורות, שנקבע לפי הסיפורים
+              שיושבים כאן היום. זה לא יחזיק: פרומפט אמיתי יכול להיות פסקה, וכל
+              שורה נוספת דוחפת את ההדמיה אל מתחת לקו הקיפול — הדבר היחיד שאסור
+              שיקרה במסך הראשון. לכן השדה הוא שורה אחת תמיד, והעודף נחתך
+              בשלוש נקודות.
+
+              הטקסט **אינו מוסתר** — `text-overflow` הוא חיתוך ויזואלי בלבד,
+              וקורא מסך מקריא את המשפט המלא בכל מצב. הכפתור נותן את אותה גישה
+              בעין, ו-`aria-expanded` מדווח על המצב. גם כשהמשפט קצר ונכנס
+              במלואו הכפתור קיים — כדי שלא יופיע וייעלם לפי אורך הסיפור. */}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="mt-2 block w-full cursor-pointer text-start text-[17px] leading-relaxed text-graphite sm:text-[19px]"
           >
-            {`”${ex.story}“`}
-          </p>
+            {/* `textWrap: "pretty"` רק במצב הפתוח, ובכוונה: `text-wrap` הוא
+                קיצור שכולל את `text-wrap-mode`, ולכן `pretty` מאפס אותו
+                ל-`wrap` וגובר על ה-`nowrap` של `truncate`. עם שניהם יחד
+                השורה פשוט נשברה, והחיתוך לא קרה מעולם. */}
+            <span
+              className={open ? "block" : "block truncate"}
+              style={open ? { textWrap: "pretty" } : undefined}
+            >
+              {`”${ex.story}“`}
+            </span>
+          </button>
         </div>
 
-        {/* החץ — כלפי מטה, כי זה מה שקורה: הסיפור יורד לכדי צורה */}
-        <div aria-hidden="true" className="flex items-center gap-3">
+        {/* החץ — כלפי מטה, כי זה מה שקורה: הסיפור יורד לכדי צורה.
+            בטלפון הוא לא מוצג: 28px (הוא ושני חצאי המרווח שלו) הם ההפרש בין
+            תכשיט שנכנס למסך הראשון לתכשיט שנחתך, והוא דקורטיבי — התוויות
+            "סיפור" ו"ההדמיה" אומרות את אותו הדבר במילים. */}
+        <div aria-hidden="true" className="hidden items-center gap-3 sm:flex">
           <span className="h-px flex-1 bg-graphite/12" />
           <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-lapis" fill="none" stroke="currentColor" strokeWidth="1.4">
             <path d="M8 2v12M3.5 9.5 8 14l4.5-4.5" />
