@@ -4,7 +4,7 @@
 import { useId } from "react";
 import { he } from "@/i18n/he";
 import { useDialog } from "@/lib/client/useDialog";
-import { RAIL, type Screen } from "./model";
+import { RAIL, type Rail, type Screen } from "./model";
 
 const d = he.design;
 
@@ -269,9 +269,12 @@ export function CheckBox({
 /* ===== סרגל שלבים (handoff §1) ===== */
 
 export function StepRail({
-  screen, maxReached, locked = false, onGo,
+  screen, maxReached, locked = false, rail = RAIL, onGo,
 }: {
   screen: Screen; maxReached: number;
+  /** story mode — למסלול הפשוט סדר שלבים משלו (`STORY_RAIL`). ברירת המחדל
+   *  היא הסרגל הקיים, כלומר כל מי שלא מוסר כלום מקבל בדיוק מה שהיה. */
+  rail?: Rail;
   /**
    * הרצת מנוע באוויר — כל השלבים נעולים, גם אלה שכבר נפתחו.
    *
@@ -281,7 +284,7 @@ export function StepRail({
   locked?: boolean;
   onGo: (i: number) => void;
 }) {
-  const cur = RAIL.findIndex((r) => r.screens.includes(screen));
+  const cur = rail.findIndex((r) => r.screens.includes(screen));
   return (
     <nav
       aria-label={d.stepAria}
@@ -294,7 +297,7 @@ export function StepRail({
       style={{ top: "var(--ap-header-h, 0px)", opacity: locked ? 0.5 : 1 }}
       className="sticky z-10 flex items-center gap-2 overflow-x-auto border-b border-graphite/[0.08] bg-porcelain/92 px-5 py-4 backdrop-blur transition-opacity sm:px-10"
     >
-      {RAIL.map((r, i) => {
+      {rail.map((r, i) => {
         const done = cur > i;
         const active = cur === i;
         // שני מקורות לנעילה, ואחד לעמעום: שלב שטרם נפתח מעומעם כי הוא לא
@@ -334,7 +337,7 @@ export function StepRail({
                 {d.steps[r.key]}
               </span>
             </button>
-            {i < RAIL.length - 1 && <span className="h-px w-[22px] bg-graphite/20" />}
+            {i < rail.length - 1 && <span className="h-px w-[22px] bg-graphite/20" />}
           </div>
         );
       })}

@@ -18,21 +18,23 @@ const KEY = "aperta.story.handoff";
 
 export interface StoryHandoff {
   product: Product;
-  /** ההיקף כפי שהוקלד. מחרוזת ולא מספר — זה מה ש-`CreateState` מחזיק, ומה
-   *  ש-`sizeIssue` הקיים יודע לבדוק. */
-  size: string;
   story: string;
 }
+
+/*
+ * **המידה אינה נוסעת כאן.** היא נשאלת בדרך להזמנה, אחרי שיש תרגום שנבחר —
+ * ראה STORY_RAIL ו-`applyStorySize`. עד אז המסע עובד עם ברירת המחדל של
+ * המערכת, והעיצוב ממוסגר מחדש לאורך שנמדד ברגע שהיא נבחרת.
+ */
 
 /** תקינות מינימלית — מה שנקרא מהדיסק אינו בהכרח מה שנכתב אליו. */
 function clean(raw: unknown): StoryHandoff | null {
   if (!raw || typeof raw !== "object") return null;
   const src = raw as Record<string, unknown>;
   const product = src.product === "ring" || src.product === "bracelet" ? src.product : null;
-  const size = typeof src.size === "string" ? src.size.slice(0, 12) : "";
   const story = typeof src.story === "string" ? src.story.slice(0, 4000).trim() : "";
-  if (!product || !size || !story) return null;
-  return { product, size, story };
+  if (!product || !story) return null;
+  return { product, story };
 }
 
 export function saveStoryHandoff(value: StoryHandoff): void {

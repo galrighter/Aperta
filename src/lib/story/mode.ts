@@ -32,12 +32,19 @@ export const isStory = (mode: string | null | undefined): boolean => mode === ST
 /**
  * המידות שמועמד ימוסגר אליהן במסלול Story.
  *
- * האורך הוא מה שהוזמן — הוא נגזר מההיקף שנמדד ואינו נתון למשא ומתן. הרוחב נגזר
- * מהיחס שהמודל **באמת** צייר, ונצבט לטווח הייצור של המוצר
- * (`FAB.products[t].widthRangeMm`) — לא לערך חדש שהומצא כאן.
+ * האורך הוא מה שהוזמן — הוא נגזר מההיקף שנמדד ואינו נתון למשא ומתן. הרוחב
+ * **נגזר** מהיחס שהמודל באמת צייר, וזהו: קנה המידה הוא של המודל, ואנחנו רק
+ * מותחים או מכווצים אותו לאורך הנכון.
  *
- * הצביטה היא מקרה הקצה ולא הכלל: היא נכנסת לפעולה רק כשהמודל צייר פריט שאי
- * אפשר לייצר ברוחב שלו, ואז המתיחה שנשארת מדודה ומדווחת ב-`stretch` כרגיל.
+ * **הצביטה לטווח הייצור הוסרה** (החלטת גל). קודם הרוחב שנגזר נצבט ל-
+ * `FAB.products[t].widthRangeMm` — צמיד 5–80, טבעת 4–18 — ומחוץ לטווח הצביטה
+ * הייתה מחזירה את המתיחה האופקית שכל המסלול הזה בא למנוע. נמדד: בטבעת כל יחס
+ * מתחת ל-3.3 נצבט, כלומר מתיחה של עד ×1.33 על צורה שהמודל צייר נכון. בצמיד זה
+ * כמעט לא נגע.
+ *
+ * מה שנשאר להגן על הייצור הוא מה שתמיד הגן עליו: הוולידציה. היא רצה על
+ * הגאומטריה שאחרי המסגור ופוסלת מה שאי אפשר לחתוך — ופסילה של מועמד היא תשובה
+ * טובה יותר מפריט מעוות שעובר בשקט.
  *
  * `svgFrame` שאינו נקרא (SVG בלי viewBox תקין) מחזיר את המידות שהוזמנו כמות
  * שהן — כלומר בדיוק ההתנהגות הקיימת. אין מסלול שבו הפונקציה הזו מחזירה משהו
@@ -49,19 +56,28 @@ export function storyFrameDims(ordered: DesignDims, cutoutsSvg: string): DesignD
   if (!(ordered.lengthMm > 0)) return ordered;
 
   const uniform = (drawn.widthMm * ordered.lengthMm) / drawn.lengthMm;
-  return { ...ordered, widthMm: clampWidth(uniform, ordered.productType) };
+  // שתי ספרות, כמו המסגור עצמו. זה עיגול ולא צביטה: הפער נשאר הרבה מתחת
+  // ל-`WIDTH_TOLERANCE`, ולכן המסגור בוחר את הרוחב האחיד ו-`stretch` הוא 1.000.
+  return { ...ordered, widthMm: Math.round(uniform * 100) / 100 };
 }
 
-/** רוחב בתוך טווח הייצור של המוצר, מעוגל לשתי ספרות (כמו המסגור עצמו). */
-export function clampWidth(widthMm: number, productType: DesignDims["productType"]): number {
+/**
+ * טווח הרוחב שהפרומפט מוסר למודל — **בעריכה ובכיתוב בלבד**. ביצירה מאפס
+ * הפרומפט של המסלול (lib/story/prompt.ts) אינו מוסר מידות כלל.
+ *
+ * `actualWidthMm` הוא הרוחב של הפריט שנערך. מאז שהצביטה הוסרה
+ * (`storyFrameDims`) הוא יכול לשבת מחוץ לטווח הייצור, ואז המשפט סתר את עצמו:
+ * "ברוחב 4 עד 18 מ"מ, כשבערך 24 מ"מ הוא הרגיל". הטווח נפתח כדי להכיל אותו —
+ * מה שנערך הוא הפריט שקיים, לא פריט שהיה מותר להיווצר.
+ */
+export function widthRangeOf(
+  productType: DesignDims["productType"],
+  actualWidthMm?: number,
+): [number, number] {
   const [lo, hi] = FAB.products[productType].widthRangeMm;
-  const bounded = Math.min(hi, Math.max(lo, widthMm));
-  return Math.round(bounded * 100) / 100;
+  if (!actualWidthMm || !(actualWidthMm > 0)) return [lo, hi];
+  return [Math.min(lo, actualWidthMm), Math.max(hi, actualWidthMm)];
 }
-
-/** טווח הרוחב שהפרומפט מוסר למודל — אותו טווח, מאותו מקור. */
-export const widthRangeOf = (productType: DesignDims["productType"]): [number, number] =>
-  FAB.products[productType].widthRangeMm;
 
 /* ===== סדר ההצעות: מגוון צורני ===== */
 

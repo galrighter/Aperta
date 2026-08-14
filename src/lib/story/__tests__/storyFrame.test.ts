@@ -6,7 +6,7 @@ import {
   INITIAL, frameWidthMm, priceOf, type CreateState, type EditEntry,
 } from "@/components/create/model";
 import type { DesignDims } from "@/lib/geometry/validate";
-import { clampWidth, isStory, orderByVariety, storyFrameDims } from "../mode";
+import { isStory, orderByVariety, storyFrameDims, widthRangeOf } from "../mode";
 
 /**
  * story mode — הטענה שכל המסלול נשען עליה: **האורך נקבע לפי המידה של האדם,
@@ -53,22 +53,58 @@ describe("storyFrameDims", () => {
     expect(framed.lengthMm / 200).toBeCloseTo(framed.widthMm / 40, 6);
   });
 
-  it("רוחב שנגזר מחוץ לטווח הייצור נצבט אליו ולא מעבר", () => {
-    // ציור כמעט ריבועי: הרוחב האחיד היה 128 מ"מ, מעל המקסימום (80).
+  /* **הצביטה לטווח הייצור הוסרה** (החלטת גל): קנה המידה הוא של המודל, ואנחנו
+     רק מותחים או מכווצים לאורך הנכון. הצביטה הייתה הדבר היחיד שהחזיר מתיחה
+     אופקית למסלול שכל קיומו הוא למנוע אותה — ובטבעת היא נגעה בכל יחס מתחת
+     ל-3.3, כלומר בתחום שהמודל באמת מצייר. מה ששומר על הייצור הוא הוולידציה,
+     שרצה על הגאומטריה שאחרי המסגור. */
+  it("רוחב שנגזר מעל טווח הייצור נשאר מה שנגזר — אין צביטה", () => {
+    // ציור כמעט ריבועי: הרוחב האחיד הוא 128 מ"מ, הרבה מעל המקסימום (80).
     const dims = storyFrameDims(ORDERED, svgOf(100, 80));
-    expect(dims.widthMm).toBe(FAB.products.bracelet.widthRangeMm[1]);
+    expect(dims.widthMm).toBeCloseTo(128, 5);
+    expect(dims.widthMm).toBeGreaterThan(FAB.products.bracelet.widthRangeMm[1]);
   });
 
-  it("טבעת נצבטת לטווח שלה ולא לזה של הצמיד", () => {
+  it("גם בטבעת, ובשני הכיוונים", () => {
     const ringOrdered: DesignDims = { ...ORDERED, productType: "ring", lengthMm: 55, widthMm: 6 };
-    expect(storyFrameDims(ringOrdered, svgOf(100, 80)).widthMm).toBe(
-      FAB.products.ring.widthRangeMm[1],
-    );
-    expect(clampWidth(0.2, "ring")).toBe(FAB.products.ring.widthRangeMm[0]);
+    // מעל המקסימום (18)
+    expect(storyFrameDims(ringOrdered, svgOf(100, 80)).widthMm).toBeCloseTo(44, 5);
+    // ומתחת למינימום (4)
+    expect(storyFrameDims(ringOrdered, svgOf(1000, 20)).widthMm).toBeCloseTo(1.1, 5);
+  });
+
+  it("ומה שיוצא מהטווח ממשיך להתמסגר בלי מתיחה", () => {
+    const drawn = svgOf(100, 80);
+    const framed = frameCutoutsDims(storyFrameDims(ORDERED, drawn), drawn);
+    // אותו קנה מידה בשני הצירים, גם ברוחב שאין לו מקום בטווח הייצור.
+    expect(framed.lengthMm / 100).toBeCloseTo(framed.widthMm / 80, 6);
   });
 
   it("SVG בלי viewBox תקין מחזיר את המידות שהוזמנו כמות שהן", () => {
     expect(storyFrameDims(ORDERED, "<svg></svg>")).toEqual(ORDERED);
+  });
+});
+
+/* טווח הרוחב נמסר למודל **בעריכה ובכיתוב בלבד** — ביצירה מאפס הפרומפט של
+   המסלול אינו מוסר מידות. מאז שהצביטה הוסרה הרוחב של הפריט שנערך יכול לשבת
+   מחוץ לטווח הייצור, והמשפט היה סותר את עצמו: "ברוחב 4 עד 18, כשבערך 44
+   הוא הרגיל". */
+describe("widthRangeOf", () => {
+  it("בלי רוחב בפועל — טווח הייצור, כמו קודם", () => {
+    expect(widthRangeOf("ring")).toEqual(FAB.products.ring.widthRangeMm);
+    expect(widthRangeOf("bracelet")).toEqual(FAB.products.bracelet.widthRangeMm);
+  });
+
+  it("רוחב שבתוך הטווח אינו מזיז אותו", () => {
+    expect(widthRangeOf("ring", 9)).toEqual(FAB.products.ring.widthRangeMm);
+  });
+
+  it("רוחב שמעל הטווח פותח את הגבול העליון", () => {
+    expect(widthRangeOf("ring", 44)).toEqual([FAB.products.ring.widthRangeMm[0], 44]);
+  });
+
+  it("ורוחב שמתחתיו פותח את התחתון", () => {
+    expect(widthRangeOf("ring", 1.1)).toEqual([1.1, FAB.products.ring.widthRangeMm[1]]);
   });
 });
 
