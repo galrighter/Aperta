@@ -8,19 +8,22 @@ import { he } from "@/i18n/he";
 import { story } from "@/i18n/story";
 import { saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { saveStoryHandoff } from "@/lib/client/storyHandoff";
-import { Eyebrow, ScreenTitle, FieldLabel, OptionBtn, PrimaryBtn, Modal } from "@/components/create/ui";
-import { INITIAL, sizeIssue, type CreateState, type Product } from "@/components/create/model";
+import { Eyebrow, ScreenTitle, OptionBtn, PrimaryBtn } from "@/components/create/ui";
+import { INITIAL, type Product } from "@/components/create/model";
 
 // story mode — מסך היצירה הפשוט.
 //
-// שלוש פעולות, וזהו: לבחור תכשיט, להזין מידה, לספר. מה שאין כאן בכוונה — בורר
-// רוחב, מאפייני עיצוב, מחוונים, presets ושפה של prompt — קיים כולו בעורך
-// הקיים, והקישור אליו יושב למטה כפעולה משנית.
+// שתי פעולות, וזהו: לבחור תכשיט, ולספר. מה שאין כאן בכוונה — בורר רוחב,
+// מאפייני עיצוב, מחוונים, presets ושפה של prompt — קיים כולו בעורך הקיים,
+// והקישור אליו יושב למטה כפעולה משנית.
 //
-// **מה נלקח מהמסע הקיים ולא נכתב מחדש:** פרימיטיבי ה-UI (`create/ui`),
-// הוולידציה של המידה (`sizeIssue` — אותו טווח, אותן הודעות), מדריך המדידה
-// (`he.design.guideSteps*`) ותמונות המוצר. הניסוי אינו ממציא מידות, יחידות או
-// שפה גרפית משלו.
+// **והמידה יצאה מכאן** (ראה STORY_RAIL): היא נשאלת בדרך להזמנה, אחרי שהלקוחה
+// ראתה תרגומים ובחרה אחד. מדידה של פרק יד לפני שראית צורה אחת היא שאלה שאין
+// לה עדיין הקשר, והיא הייתה הדבר היחיד שעמד בין הסיפור לתשובה. מסך המידות
+// עצמו הוא זה של המסלול הרגיל, על הפריסטים ומדריך המדידה שבו.
+//
+// **מה נלקח מהמסע הקיים ולא נכתב מחדש:** פרימיטיבי ה-UI (`create/ui`) ותמונות
+// המוצר. הניסוי אינו ממציא שפה גרפית משלו.
 const d = he.design;
 const c = story.create;
 
@@ -29,13 +32,10 @@ const PLACEHOLDER_MS = 6000;
 
 export function StoryCreate() {
   const router = useRouter();
-  const sizeId = useId();
   const storyId = useId();
 
   const [product, setProduct] = useState<Product | null>(null);
-  const [size, setSize] = useState("");
   const [text, setText] = useState("");
-  const [guideOpen, setGuideOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   /** הצגת השגיאות מתחילה רק אחרי ניסיון שליחה — לא צובעים טופס שטרם מולא. */
   const [tried, setTried] = useState(false);
@@ -48,42 +48,21 @@ export function StoryCreate() {
     return () => clearInterval(t);
   }, [text]);
 
-  const ring = product === "ring";
-  /** המידה נבדקת דרך המודל הקיים: אותם טווחים, אותן הודעות, אותה המרה.
-   *  בטבעת השדה מקבל שתי צורות (מידה אמריקאית עד 30, היקף במ"מ מעליה) —
-   *  התנהגות קיימת, והיא נכונה גם כאן: מי שמכירה את מידתה תקליד אותה. */
-  const asState: CreateState = {
-    ...INITIAL,
-    product: product ?? "bracelet",
-    ...(ring ? { ringSize: size } : { circ: size }),
-  };
-  const issue = size.trim() ? sizeIssue(asState) : null;
-  const cmHint =
-    issue?.kind === "circumference" && issue.value * 10 >= issue.lo && issue.value * 10 <= issue.hi
-      ? issue.value
-      : null;
-
-  const missingSize = tried && !size.trim();
   const missingStory = tried && !text.trim();
 
   /** מה שנמסר לעורך המתקדם, כדי שלא יתחילו מחדש. הטיוטה היא המנגנון הקיים
    *  שהמסע ממילא קורא בכניסה (`loadFunnelDraft`) — בלי שום קוד חדש שם. */
   const handOff = (): void => {
     if (!product) return;
-    saveFunnelDraft({
-      ...INITIAL,
-      product,
-      ...(product === "ring" ? { ringSize: size.trim() } : { circ: size.trim() }),
-      brief: text.trim(),
-    });
+    saveFunnelDraft({ ...INITIAL, product, brief: text.trim() });
   };
 
   const submit = (): void => {
     setTried(true);
-    if (!product || !size.trim() || !text.trim() || issue) return;
+    if (!product || !text.trim()) return;
     setBusy(true);
     handOff();
-    saveStoryHandoff({ product, size: size.trim(), story: text.trim() });
+    saveStoryHandoff({ product, story: text.trim() });
     // המסע הקיים, במצב story: הוא קולט את המסירה וקופץ ישר ליצירה.
     router.push("/design?story=1");
   };
@@ -101,12 +80,7 @@ export function StoryCreate() {
             <OptionBtn
               key={p}
               on={product === p}
-              onClick={() => {
-                setProduct(p);
-                // המידה נמדדת על איבר אחר — ערך שנשאר משם היה מידה שגויה
-                // שנראית תקינה.
-                setSize("");
-              }}
+              onClick={() => setProduct(p)}
             >
               <span className="flex items-center gap-4">
                 {/* אותן תמונות מוצר של המסע הקיים. החיתוך נמוך יותר מזה של
@@ -136,52 +110,7 @@ export function StoryCreate() {
           ))}
         </div>
 
-        {/* 2 · מידה. רק השדה הרלוונטי, ורק אחרי שנבחר מוצר. */}
-        {product && (
-          <div className="mt-10">
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
-              <FieldLabel htmlFor={sizeId}>
-                {ring ? c.sizeTitleRing : c.sizeTitleBracelet}
-              </FieldLabel>
-              <button
-                type="button"
-                onClick={() => setGuideOpen(true)}
-                className="text-sm text-lapis underline-offset-4 hover:underline"
-              >
-                {c.sizeGuide}
-              </button>
-            </div>
-            <input
-              id={sizeId}
-              inputMode="decimal"
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              placeholder={ring ? "54" : "168"}
-              aria-invalid={issue || missingSize ? true : undefined}
-              className={`w-full rounded-[2px] border bg-chalk px-4 py-3.5 text-base transition-colors focus:outline-none ${
-                issue || missingSize ? "border-failred" : "border-graphite/20 focus:border-lapis"
-              }`}
-            />
-            {issue ? (
-              <p role="alert" className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--color-failred)" }}>
-                {issue.kind === "usSize"
-                  ? d.sizeUsOutOfRange(issue.value, issue.lo, issue.hi)
-                  : d.sizeOutOfRange(issue.value, issue.lo, issue.hi)}
-                {cmHint !== null && <span className="block">{d.sizeCmHint(cmHint)}</span>}
-              </p>
-            ) : missingSize ? (
-              <p role="alert" className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>
-                {c.sizeMissing}
-              </p>
-            ) : (
-              <p className="mt-2 text-[13px] text-ink60">
-                {ring ? c.sizeHintRing : c.sizeHintBracelet}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* 3 · הסיפור — החלק המרכזי במסך */}
+        {/* 2 · הסיפור — החלק המרכזי במסך */}
         <div className="mt-11">
           <h2 className="text-[26px] font-semibold leading-tight text-graphite sm:text-[30px]">
             {c.storyTitle}
@@ -245,30 +174,6 @@ export function StoryCreate() {
         </div>
       </div>
 
-      <Modal
-        open={guideOpen}
-        onClose={() => setGuideOpen(false)}
-        title={ring ? d.guideTitleRing : d.guideTitleBracelet}
-      >
-        <ol className="flex flex-col gap-4">
-          {(ring ? d.guideStepsRing : d.guideStepsBracelet).map((t, i) => (
-            <li key={i} className="flex gap-3.5">
-              <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full border border-graphite/25 font-display text-xs font-semibold text-graphite">
-                {i + 1}
-              </span>
-              <span className="text-[15px] leading-relaxed text-ink80">{t}</span>
-            </li>
-          ))}
-        </ol>
-        <p className="mt-5 border-t border-graphite/10 pt-4 text-sm text-ink60">
-          {ring ? d.guideNoteRing : d.guideNoteBracelet}
-        </p>
-        <div className="mt-6">
-          <PrimaryBtn onClick={() => setGuideOpen(false)} full>
-            {d.guideClose}
-          </PrimaryBtn>
-        </div>
-      </Modal>
     </section>
   );
 }

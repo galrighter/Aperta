@@ -31,6 +31,7 @@ import { OpeningScreen } from "@/components/create/OpeningScreen";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
 import { popStoryHandoff } from "@/lib/client/storyHandoff";
+import { story } from "@/i18n/story";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { shrinkReferenceImage } from "@/lib/client/referenceImage";
@@ -39,17 +40,19 @@ import {
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
 import {
-  INITIAL, RAIL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
+  INITIAL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circumferenceMm, entryDesignId, entryFromGeneration,
   canGenerate, countCuts, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
-  newOrderKey, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
+  newOrderKey, railFor, railIndex, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
 } from "@/components/create/model";
 
 const d = he.design;
 
-/** המסך הראשון של כל שלב בסרגל — לניווט מהסרגל. */
-const RAIL_TARGET: Screen[] = RAIL.map((r) => r.screens[0]);
+/** המסך הראשון של כל שלב בסרגל — לניווט מהסרגל. תלוי במסלול: ל-story סדר
+ *  שלבים משלו (`STORY_RAIL`), ולכן גם יעדי ניווט משלו. */
+const railTarget = (storyMode: boolean): Screen[] =>
+  railFor(storyMode).map((r) => r.screens[0]);
 
 /** ערך מהאחסון המקומי חוזר כמחרוזת — מאמתים אותו מול הקבוצה המותרת. */
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -189,7 +192,11 @@ export default function DesignPage() {
    * לתוצאה ישנה שתוזמן במידה החדשה. שאר ה-set (למשל פתיחת מדריך המדידה) נשאר רגיל.
    */
   const setSizes = useCallback((patch: Partial<CreateState>) => {
-    const invalidates = s.designId !== null && sizeReallyChanged(s, patch);
+    // story mode — כאן המידה נבחרת **אחרי** שיש תוצאה, ולכן היא אינה מבטלת
+    // אותה: אין רוחב שנבחר ואין מאפיינים, ולכן שינוי מידה הוא קנה מידה אחיד
+    // על אותה צורה בדיוק — מה שקורה במסגור מחדש (`applyStorySize`). ביטול
+    // כאן היה מוחק את התרגום שהלקוחה כבר בחרה, בדיוק כשהיא מזמינה אותו.
+    const invalidates = !s.story && s.designId !== null && sizeReallyChanged(s, patch);
     setState((prev) => (invalidates ? { ...prev, ...patch, ...invalidateDesign() } : { ...prev, ...patch }));
     // חוזרים לנעילת השלב אחרי המידה: משם ה"המשך" מייצר מחדש למידה החדשה.
     if (invalidates) setMaxReached(1);
@@ -400,7 +407,7 @@ export default function DesignPage() {
       if (prev.screen !== screen) pushHist(screen);
       return { ...prev, screen };
     });
-    const i = RAIL.findIndex((r) => r.screens.includes(screen));
+    const i = railIndex(stateRef.current.story, screen);
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
     scrollToTop();
   }, []);
@@ -418,7 +425,7 @@ export default function DesignPage() {
       if (prev.screen !== screen) markScreen(screen);
       return { ...prev, screen };
     });
-    const i = RAIL.findIndex((r) => r.screens.includes(screen));
+    const i = railIndex(stateRef.current.story, screen);
     if (i >= 0) setMaxReached((m) => Math.max(m, i));
     scrollToTop();
   }, []);
@@ -445,7 +452,9 @@ export default function DesignPage() {
    * תיאור בדיוק: מספר עיצוב שני, ועוד יחידה מהמכסה היומית. הראשונה בינתיים
    * הסתיימה בשרת בלי שאיש רואה אותה.
    */
-  const running = (s.screen === "processing" && !s.procError) || s.applying;
+  // story mode — `resizing` הוא בקשה שרצה בשרת ומסתיימת במעבר מסך; יציאה
+  // באמצעה הייתה מקפיצה את הלקוחה לסיכום מתוך מסך אחר לגמרי.
+  const running = (s.screen === "processing" && !s.procError) || s.applying || s.resizing;
   /**
    * אותו דבר עבור המאזין — ובכוונה לא נגזר מהמצב.
    *
@@ -637,7 +646,7 @@ export default function DesignPage() {
       resumeIncomplete: false,
     };
     setState(st);
-    setMaxReached((m) => Math.max(m, 2));
+    setMaxReached((m) => Math.max(m, railIndex(st.story, "processing")));
     scrollToTop();
 
     /** העיצוב שההרצה הזו רצה עליו. נקרא גם מה-catch — ראו שם. */
@@ -703,7 +712,13 @@ export default function DesignPage() {
           : await api.generate(
               {
                 designId: design.id,
-                userPrompt: buildPrompt(st),
+                // story mode — הסיפור נוסע **כמו שנכתב**. `buildPrompt` עוטף
+                // אותו בשורת מוצר ובמאפייני העיצוב של המסלול הרגיל (סימטריה,
+                // צפיפות, תחושה) — שלושה שהלקוחה כאן לא בחרה, ושסותרים סיפור
+                // שמבקש משהו אחר. המסגור כולו יושב בפרומפט של המסלול
+                // (lib/story/prompt.ts), ומה שהוא צריך במקום `[USER_STORY]`
+                // הוא הסיפור בלבד.
+                userPrompt: st.story ? st.brief.trim() : buildPrompt(st),
                 // הכיתוב נשלח בשדה נפרד ולא בתוך הפרומפט: השרת חותך אותו
                 // מהפונט ומוסר אותו למודל כתמונה, כדי שהאיות לא יהיה נתון
                 // לפרשנות (docs/research/HEBREW_TEXT_HANDOFF.md).
@@ -1265,6 +1280,71 @@ export default function DesignPage() {
     [s, set, pushEntry, replaceEntry],
   );
 
+  /* ===== story mode — המידה, אחרי שיש מה להזמין =====
+     במסלול הפשוט המידה אינה נשאלת בכניסה אלא בדרך להזמנה: הלקוחה מספרת,
+     מקבלת תרגומים, בוחרת — ורק אז נמדדת. הסיבה היא לא נוחות אלא סדר נכון:
+     מדידה של פרק יד לפני שראית צורה אחת היא שאלה שאין לה עדיין הקשר, והיא
+     הדבר היחיד שעמד בין הסיפור לתשובה.
+
+     **מה זה דורש מהצינור.** האורך הוא מה שנחתך, והוא נגזר מההיקף — כלומר
+     הגרסה שנשמרה נמסגרה לאורך ברירת המחדל, ואי אפשר להזמין אותה כך. לכן
+     בסיום מסך המידות העיצוב **ממוסגר מחדש** לאורך שנמדד: אותו SVG בדיוק,
+     דרך אותו מסלול שבחירת הצעה עוברת בו (`/choose` במצב story), שגוזר את
+     הרוחב מהיחס שצויר ומחזיר קנה מידה אחיד. זו הגדלה/הקטנה של אותה צורה,
+     לא יצירה חדשה ולא מתיחה בציר אחד — ולכן `setSizes` גם אינו מבטל כאן את
+     העיצוב כפי שהוא עושה במסלול הרגיל.
+
+     כשהאורך כבר שווה למה שנמדד (הלקוחה השאירה את הפריסט הבינוני) אין מה
+     למסגר, ועוברים ישר לסיכום. */
+  const applyStorySize = useCallback(async () => {
+    const entry = activeEntry(s);
+    const designId = entryDesignId(s, entry);
+    const lengthMm = stripLengthMm(s);
+    // אין גרסה למסגר (כשל שקדם לכאן): המידה נשמרה, וההזמנה תיעצר בסיכום.
+    if (!designId || !entry?.svg || !(lengthMm > 0)) {
+      go("summary");
+      return;
+    }
+    if (Math.abs(frameLengthMm(s, entry) - lengthMm) < 0.05) {
+      go("summary");
+      return;
+    }
+
+    set({ resizing: true, chooseError: null });
+    // אותה נעילה של כל פעולה שרצה בשרת: הסרגל ו-Back אינם דרך לצאת באמצע.
+    runningRef.current = true;
+    try {
+      await api.patchDesign(designId, { lengthMm, gapMm: gapOf(s) });
+      // `mode: "story"` הוא מה שגוזר את הרוחב מהיחס שצויר במקום למתוח לרוחב
+      // שהוזמן — כלומר בדיוק ההתנהגות שהמסלול הזה בנוי עליה.
+      // `chosen ?? 0` ולא `chosen`: ההצעה שלא נגעו בה היא הראשונה (כך גם
+      // `chooseCandidate` משווה), והמספר הזה הוא מה שהופך את השורה החדשה
+      // לשורת בחירה — כלומר מידה שנייה תעדכן אותה במקום להוסיף עוד אחת.
+      const res = await api.chooseCandidate(
+        designId, entry.svg, entry.chosen ?? 0, entry.versionId, "story",
+      );
+      const next: EditEntry = {
+        ...entryFromGeneration(res, { region: null, text: "" }),
+        candidates: entry.candidates,
+        chosen: entry.chosen,
+        designId: entry.designId,
+        designCode: entry.designCode,
+      };
+      const index = s.activeEdit >= 0 ? s.activeEdit : s.edits.length - 1;
+      if (res.version.id === entry.versionId) replaceEntry(s, index, next);
+      else pushEntry(s, next);
+      runningRef.current = false;
+      set({ resizing: false });
+      go("summary");
+    } catch (e) {
+      // נשארים על מסך המידות: מידה אחרת עשויה לעבור, וזו הפעולה שיש למי
+      // שנתקלת בזה. מעבר לסיכום היה מזמין את הפריט באורך הלא נכון.
+      runningRef.current = false;
+      const apiErr = e instanceof ClientApiError ? e : null;
+      set({ resizing: false, chooseError: apiErr?.message ?? he.errGeneric });
+    }
+  }, [s, set, go, pushEntry, replaceEntry]);
+
   /* ===== כניסה עם כתובת =====
      `?resume=<id>` — פתיחת עיצוב מסוים: מהחלון "העיצוב שלך מוכן", ומקישור
      בבק־אופיס. `?designs=1` — כניסה דרך "העיצובים שלי" בכותרת.
@@ -1288,10 +1368,11 @@ export default function DesignPage() {
     if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken && !fromStory) return;
 
     /* story mode — הגעה מהמסלול הפשוט (`/story/create`).
-       המוצר, המידה והסיפור כבר נמסרו (lib/client/storyHandoff), ולכן שלושת
-       המסכים הראשונים כבר נענו ואין על מה לעצור: נכנסים ישר ליצירה. מה
-       שממשיך מכאן הוא המסע הקיים, מילה במילה — כולל שער החשבון, ההתאוששות
-       מניתוק וההזמנה. */
+       המוצר והסיפור כבר נמסרו (lib/client/storyHandoff), ואין על מה לעצור:
+       נכנסים ישר ליצירה. **המידה אינה נמסרת כאן** — היא נשאלת אחרי התוצאה,
+       בדרך להזמנה, ועד אז המסע עובד עם ברירת המחדל של המערכת (`INITIAL`,
+       הפריסט הבינוני). מה שממשיך מכאן הוא המסע הקיים, מילה במילה — כולל שער
+       החשבון, ההתאוששות מניתוק וההזמנה. */
     if (fromStory) {
       const handoff = popStoryHandoff();
       // מסירה שלא נמצאה (רענון, כניסה ישירה לכתובת) אינה שגיאה — פשוט ממשיכים
@@ -1301,11 +1382,10 @@ export default function DesignPage() {
           ...prev,
           story: true,
           product: handoff.product,
-          ...(handoff.product === "ring" ? { ringSize: handoff.size } : { circ: handoff.size }),
           brief: handoff.story,
           screen: "processing",
         }));
-        setMaxReached(2);
+        setMaxReached(railIndex(true, "processing"));
         storyStart.current = true;
         /* **שתי רשומות ולא אחת, וזה לא קוסמטי.** הנעילה בזמן הרצה עובדת מתוך
            `popstate` — היא מחזירה קדימה את מי שלחצה Back (#217). `popstate`
@@ -1564,7 +1644,7 @@ export default function DesignPage() {
       // הטיוטה המקומית מיצתה את תפקידה — העיצוב שהוזמן שמור בשרת וברשימה.
       clearFunnelDraft();
       setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
-      setMaxReached(5);
+      setMaxReached(railIndex(s.story, "done"));
       scrollToTop();
     } catch {
       // ההזמנה לא הגיעה לשרת. במקום להשאיר את הלקוחה עם "נסו שוב" בלבד —
@@ -1602,6 +1682,9 @@ export default function DesignPage() {
         <StepRail
           screen={s.screen}
           maxReached={maxReached}
+          // story mode — סדר שלבים משלו: המידה יושבת אחרי התוצאה, ואין בו
+          // שלב מוצר. ראה STORY_RAIL.
+          rail={railFor(s.story)}
           // הסרגל הוא הדרך השנייה לצאת מהמסע באמצע הרצה, ולכן הוא ננעל יחד
           // עם Back. הבדיקה חוזרת גם ב-`onGo`: כפתור מושבת אינו שולח אירוע,
           // אבל זו הרשות שמחליטה, לא התצוגה.
@@ -1611,7 +1694,7 @@ export default function DesignPage() {
               setLockNotice(true);
               return;
             }
-            go(RAIL_TARGET[i]);
+            go(railTarget(s.story)[i]);
           }}
         />
       )}
@@ -1695,19 +1778,52 @@ export default function DesignPage() {
                   </div>
                 </div>
               )}
+              {/* story mode — למה המידה נשאלת דווקא עכשיו, ומה קורה לתרגום
+                  שכבר נבחר. בלי המשפט הזה המסך נראה כמו נסיגה לתחילת מסע
+                  אחרי שכבר הייתה תוצאה. כשל במסגור מחדש מדווח כאן, במקום
+                  שבו הכפתור שנלחץ נמצא. */}
+              {s.story && (
+                <div className="mx-auto max-w-[1100px] px-5 pt-10 sm:px-10">
+                  <div className="border border-lapis/30 bg-lapis/[0.06] px-5 py-4">
+                    <div className="text-[13px] font-semibold text-graphite">
+                      {story.sizes.banner}
+                    </div>
+                    <p className="mt-1 text-[13px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
+                      {story.sizes.bannerNote}
+                    </p>
+                    {s.chooseError && (
+                      <p role="alert" className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>
+                        {s.chooseError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
               <SizesScreen
                 s={s}
                 set={setSizes}
-                // עיצוב ששותף כבר קיים: אין תיאור לכתוב ואין מה לייצר, רק
-                // להתאים אותו למידה שנבחרה כאן.
-                onNext={() => (s.fromShare ? void adoptShared() : go("brief"))}
-                busy={s.adopting}
+                // שלושה מסלולים, ולכל אחד המשך אחר: עיצוב ששותף כבר קיים
+                // וצריך רק להתאים אותו למידה; במסלול story העיצוב כבר נבחר
+                // והמידה היא הצעד האחרון לפני הסיכום; ובמסלול הרגיל המידה
+                // קודמת לתיאור.
+                onNext={() =>
+                  s.fromShare
+                    ? void adoptShared()
+                    : s.story
+                      ? void applyStorySize()
+                      : go("brief")
+                }
+                busy={s.adopting || s.resizing}
                 nextLabel={
                   s.fromShare
                     ? s.adopting
                       ? he.share.adoptWorking
                       : he.share.adoptStart
-                    : undefined
+                    : s.story
+                      ? s.resizing
+                        ? story.sizes.ctaBusy
+                        : story.sizes.cta
+                      : undefined
                 }
               />
             </>
@@ -1761,7 +1877,13 @@ export default function DesignPage() {
                 set({ activeEdit: i });
                 scrollToTop();
               }}
-              onOrder={() => go("summary")}
+              // story mode — "להזמין" פותח קודם את המידה: היא נשאלת רק
+              // עכשיו, כשיש פריט אמיתי להתאים אותו ליד. השגיאה מתאפסת בדרך:
+              // כשל בבחירת הצעה שנפתר אינו שייך למסך שנפתח עכשיו.
+              onOrder={() => {
+                if (s.story) set({ chooseError: null });
+                go(s.story ? "sizes" : "summary");
+              }}
             />
           )}
 

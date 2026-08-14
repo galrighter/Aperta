@@ -4,6 +4,7 @@ import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
 import { STORY_MODE, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -417,16 +418,31 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // ומספר השורות שחותך בפועל הוא `plan.rows` — אם הם סותרים, הקופסה תחתוך
     // לפי plan.rows. זה מכוון (אפשר לנסות ניסוח מול חיתוך אחר), והמסך מציג את
     // המספר שיחתוך ליד התיבה כדי שהסתירה תהיה גלויה.
-    // story mode — במסלול Story אין רוחב שנבחר, ולכן הפרומפט מוסר טווח במקום
-    // מידה. `undefined` בכל מסלול אחר = הפסקה נבנית בדיוק כמו קודם.
+    // story mode — יצירה מאפס במסלול Story מקבלת פרומפט משלה (lib/story/prompt.ts):
+    // סיפור → צורה, בלי מידות במ"מ, כי המידה נבחרת אחרי התוצאה ונכנסת במסגור.
+    //
+    // **בקשת שינוי אינה עוברת שם.** אז התמונה המצורפת היא העיצוב הקיים, והפרומפט
+    // חייב לדבר עליה ("שנה רק את X") — וזה מה ש-`buildRenderPrompt` עושה במצב
+    // `editing`. אותו נימוק חל על כיתוב: הבלוק ששומר על האותיות יושב שם. בשני
+    // המקרים המסלול ממשיך לקבל את הטווח במקום מידה אחת, כמו קודם.
     const story = isStory(body.mode);
+    const storyCreate = story && !editSvg && !lettering;
     const prompt =
       body.promptOverride?.trim() ||
-      buildRenderPrompt(
-        body.userPrompt, design.product_type, dims, plan.rows,
-        Boolean(editSvg), Boolean(lettering), plan.cols,
-        story ? { widthRange: widthRangeOf(design.product_type) } : undefined,
-      );
+      (storyCreate
+        ? buildStoryRenderPrompt({
+            story: body.userPrompt,
+            productType: design.product_type,
+            rows: plan.rows,
+            cols: plan.cols,
+            canvas,
+            thicknessMm: dims.thicknessMm,
+          })
+        : buildRenderPrompt(
+            body.userPrompt, design.product_type, dims, plan.rows,
+            Boolean(editSvg), Boolean(lettering), plan.cols,
+            story ? { widthRange: widthRangeOf(design.product_type) } : undefined,
+          ));
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
     // שבנו אותו. הוא נבנה כאן ולא בתוך persistRun כדי ששתי הקריאות — ההצלחה

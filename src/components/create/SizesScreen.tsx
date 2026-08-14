@@ -40,7 +40,11 @@ export function SizesScreen({
 
   return (
     <section className="mx-auto max-w-[1100px] px-5 py-14 sm:px-10">
-      <div className="grid items-start gap-10 md:grid-cols-[1.3fr_1fr] md:gap-14">
+      <div
+        className={`grid items-start gap-10 md:gap-14 ${
+          s.story ? "max-w-[680px]" : "md:grid-cols-[1.3fr_1fr]"
+        }`}
+      >
         <div>
           <Eyebrow>{d.sizesEyebrow}</Eyebrow>
           <div className="mb-8 flex flex-wrap items-baseline justify-between gap-3">
@@ -121,16 +125,21 @@ export function SizesScreen({
             </div>
           )}
 
-          {/* רוחב */}
-          <div className="mt-8">
-            <Slider
-              label={ring ? d.ringWidthLabel : d.braceletWidthLabel}
-              min={w.min}
-              max={w.max}
-              value={ring ? s.ringWidth : s.braceletWidth}
-              onChange={(v) => set(ring ? { ringWidth: v } : { braceletWidth: v })}
-            />
-          </div>
+          {/* רוחב. **לא במסלול story**: שם הרוחב אינו נבחר אלא נגזר מהעיצוב
+              שחזר (lib/story/mode.ts), ומחוון שמזיז אותו היה מבטיח שליטה
+              שאינה קיימת — ובעיקר, המסך הזה מוצג שם אחרי שהעיצוב כבר נבחר,
+              כלומר הרוחב שלו כבר נקבע. */}
+          {!s.story && (
+            <div className="mt-8">
+              <Slider
+                label={ring ? d.ringWidthLabel : d.braceletWidthLabel}
+                min={w.min}
+                max={w.max}
+                value={ring ? s.ringWidth : s.braceletWidth}
+                onChange={(v) => set(ring ? { ringWidth: v } : { braceletWidth: v })}
+              />
+            </div>
+          )}
 
           {/* דיסקליימר טבעת — מוצג תמיד */}
           {ring && (
@@ -149,7 +158,9 @@ export function SizesScreen({
           </div>
         </div>
 
-        {/* תצוגת רוחב — פאנל דביק */}
+        {/* תצוגת רוחב — פאנל דביק. יורד יחד עם המחוון במסלול story: אין מה
+            להציג בתצוגה מקדימה של ערך שאינו נבחר. */}
+        {!s.story && (
         <div className="md:sticky md:top-[104px]">
           <div className="border border-graphite/10 bg-chalk p-6">
             <div className="mb-4 font-display text-xs tracking-[0.15em] text-mist">
@@ -161,6 +172,7 @@ export function SizesScreen({
             />
           </div>
         </div>
+        )}
       </div>
 
       <MeasureGuide open={s.guideOpen} ring={ring} onClose={() => set({ guideOpen: false })} />

@@ -23,8 +23,10 @@ export type Screen =
   | "product" | "sizes" | "brief" | "processing"
   | "result" | "summary" | "checkout" | "done";
 
+export type Rail = Array<{ key: keyof typeof d.steps; screens: Screen[] }>;
+
 /** ששת השלבים בסרגל. "processing" אינו שלב עצמאי — הוא מוצג תחת "עיצוב". */
-export const RAIL: Array<{ key: keyof typeof d.steps; screens: Screen[] }> = [
+export const RAIL: Rail = [
   { key: "product", screens: ["product"] },
   { key: "sizes", screens: ["sizes"] },
   { key: "brief", screens: ["brief", "processing"] },
@@ -32,6 +34,31 @@ export const RAIL: Array<{ key: keyof typeof d.steps; screens: Screen[] }> = [
   { key: "summary", screens: ["summary"] },
   { key: "checkout", screens: ["checkout", "done"] },
 ];
+
+/**
+ * story mode — אותם מסכים, סדר אחר.
+ *
+ * במסלול הפשוט המוצר והסיפור נמסרו כבר ב-`/story/create`, ולכן שני השלבים
+ * הראשונים של הסרגל הרגיל אינם קיימים כאן: המסע נכנס ישר ליצירה. **והמידה
+ * זזה**: היא נשאלת אחרי שיש מה להזמין, כי במסלול הזה אין סיבה לבקש מדידה
+ * ממישהי שעוד לא ראתה תרגום אחד לסיפור שלה. הפרשנות קודמת למספר.
+ *
+ * הסרגל חייב להכיר את הסדר הזה ולא רק להציג אותו: הוא גם ניווט, ולחיצה על
+ * "מוצר" במסלול שאין בו מסך מוצר הייתה מוציאה מהמסלול בלי דרך חזרה.
+ */
+export const STORY_RAIL: Rail = [
+  { key: "brief", screens: ["brief", "processing"] },
+  { key: "result", screens: ["result"] },
+  { key: "sizes", screens: ["sizes"] },
+  { key: "summary", screens: ["summary"] },
+  { key: "checkout", screens: ["checkout", "done"] },
+];
+
+export const railFor = (story: boolean): Rail => (story ? STORY_RAIL : RAIL);
+
+/** מיקום המסך בסרגל של המסלול. ‎-1 כשהמסך אינו חלק ממנו. */
+export const railIndex = (story: boolean, screen: Screen): number =>
+  railFor(story).findIndex((r) => r.screens.includes(screen));
 
 /** טווחי רוחב לפי ה-handoff §2 (מיושרים גם ב-fabrication.config). */
 export const WIDTH = {
@@ -204,6 +231,14 @@ export interface CreateState {
    *  שום דבר על המסך לא זז, ולא היה שום סימן שהבקשה בכלל נשלחה. */
   editError: string | null;
   applying: boolean;
+  /**
+   * story mode — העיצוב ממוסגר מחדש למידה שנבחרה בדרך להזמנה.
+   *
+   * נפרד מ-`applying`, שמסמן בקשת שינוי במסך התוצאה: זו פעולה על מסך אחר,
+   * עם כפתור אחר, וכפתור אחד שמאופר בגלל פעולה של מסך אחר הוא בדיוק סוג
+   * ה"כפתור המת" שאין לו הסבר.
+   */
+  resizing: boolean;
 
   // תוצאה
   resultMode: ResultMode;
@@ -273,6 +308,7 @@ export const INITIAL: CreateState = {
   chooseError: null,
   editError: null,
   applying: false,
+  resizing: false,
   resultMode: "render",
   region: "all",
   editReq: "",
