@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
-import { STORY_MODE, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { STORY_MODE, STORY_RENDER, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
@@ -462,6 +462,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** צורת הקנבס שנשלחה בפועל. בלי זה אי אפשר להעמיד ביומן הרצה בפס
          *  מול הרצה מחוצה לו — ושתיהן נראות זהות בכל שדה אחר. */
         canvasSize: sizeParam(canvas),
+        /** המאמץ שנשלח למודל. `render_model` כבר נשמר מתשובת הקופסה, וזה החצי
+         *  השני של אותה שאלה — ובלי שניהם אי אפשר להסביר ביומן למה שתי הרצות
+         *  של אותו פריט חזרו ברמת פירוט שונה לגמרי. */
+        renderQuality: story ? STORY_RENDER.quality : undefined,
         /**
          * מה שהוזמן מול מה שהתא שנבחר מסוגל לתת. שניהם ידועים כאן, לפני
          * שהמודל רץ, ושניהם נשמרים — הפער ביניהם הוא כל מה שהמסגור ייאלץ
@@ -575,9 +579,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         minHoleMm,
         inspiration,
         baseSvg,
-        // הרצה עם כיתוב רצה על מודל אחר — ראה LETTERING_MODEL. שאר ההרצות
-        // נשארות על ברירת המחדל הזולה.
-        model: lettering ? LETTERING_MODEL : undefined,
+        // איזה מודל, ובאיזה מאמץ. שתי חריגות מברירת המחדל הזולה של הקופסה,
+        // ולכל אחת סיבה שחיה במקום אחר:
+        //  · כיתוב — `LETTERING_MODEL`, כי `gpt-image-1-mini` משכתב את האותיות.
+        //  · מסלול Story — `STORY_RENDER`, כי שם התמונה מחולקת לשלוש שורות
+        //    והפריט מצויר בכ-8.6 px/mm; ראה את המחיר שם.
+        // הכיתוב קודם: הרצה שנושאת אותו חייבת את המודל שמעתיק נאמנה, וממילא
+        // אין כיתוב במסלול Story.
+        model: lettering ? LETTERING_MODEL : story ? STORY_RENDER.model : undefined,
+        quality: story ? STORY_RENDER.quality : undefined,
         renderPaths,
         stagePaths,
         // הרגע שבו ההרצה מפסיקה להיות תלויה בבקשה הזו: הקופסה קיבלה אותה,

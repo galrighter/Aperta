@@ -151,6 +151,15 @@ export interface RenderJobInput {
    * כאן — ראה LETTERING_MODEL ב-lib/llm/imagegen.ts.
    */
   model?: string;
+  /**
+   * כמה המודל עובד על התמונה. `undefined` = ברירת המחדל של הקופסה (`"low"`).
+   * הידית היקרה ביותר בצינור — ראה `STORY_RENDER` ב-lib/story/mode.ts — ולכן
+   * היא נמסרת במפורש ורק מהמקום שבו הסיבה חיה.
+   *
+   * קופסה שנפרסה לפני השדה הזה מתעלמת ממנו (pydantic משמיט שדות לא מוכרים)
+   * וממשיכה ב-`"low"` — כלומר בקשה ישנה בדיוק, לא כשל.
+   */
+  quality?: string;
   /** לאן ייכתבו ההדמיות ותמונות השלבים. אנחנו חותמים, השירות כותב. */
   renderPaths: string[];
   stagePaths: RunStagePaths;
@@ -204,6 +213,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
       : null,
     base_svg: input.baseSvg,
     model: input.model ?? null,
+    quality: input.quality ?? null,
   };
 
   // המזהה שתחתיו הקופסה מחזיקה את ההרצה. הוא נגזר גם מהבקשה עצמה — הכתובות

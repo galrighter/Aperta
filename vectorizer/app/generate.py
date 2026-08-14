@@ -66,6 +66,10 @@ class GenerateJob:
     # sets the aspect ratio of each cell, and the model fills the cell it is
     # given. Unknown values fall back rather than fail (imagegen.resolve_size).
     size: Optional[str] = None
+    # How hard the image model works on the picture. None = the default ("low").
+    # forme names it when a run needs the detail; see imagegen.QUALITY for what
+    # it costs and where it actually shows.
+    quality: Optional[str] = None
 
 
 @dataclass
@@ -125,7 +129,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     # same inputs is not the same claim as keeping what was sent.
     reference = _reference(job)
     renders = await imagegen.render_many(
-        openai_key, job.prompt, job.calls, reference, model, size=job.size
+        openai_key, job.prompt, job.calls, reference, model, size=job.size, quality=job.quality
     )
 
     # A render whose metal touches the canvas edge holds only part of the piece:
@@ -142,7 +146,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     if clipped:
         try:
             replacements = await imagegen.render_many(
-                openai_key, job.prompt, len(clipped), reference, model, size=job.size
+                openai_key, job.prompt, len(clipped), reference, model, size=job.size, quality=job.quality
             )
         except imagegen.ImageGenError as exc:
             replacements = []
@@ -254,6 +258,7 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
         "rows": job.rows,
         "cols": job.cols,
         "size": imagegen.resolve_size(job.size),
+        "quality": imagegen.resolve_quality(job.quality),
         "calls": job.calls,
         "panels": len(panels),
         "renders": len(renders),
