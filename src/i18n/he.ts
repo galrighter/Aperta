@@ -1650,6 +1650,15 @@ export const he = {
     savedResultNo: "תוצאה",
     savedNew: "התחלת עיצוב חדש",
 
+    /* ---- עימוד הרשימה ----
+       הרשימה נפתחת מעל בחירת המוצר ולכן אינה יכולה להיות ארוכה כרצונה. עד
+       היום היא נחתכה בשלושים, בשקט; עכשיו שמורים כולם ומדפדפים ביניהם. */
+    savedPagerLabel: "עמודי העיצובים",
+    savedPrev: "הקודמים",
+    savedNext: "הבאים",
+    savedPageOf: (n: number, total: number) => `עמוד ${n} מתוך ${total}`,
+    savedRange: (from: number, to: number, total: number) => `${from}–${to} מתוך ${total}`,
+
     // ---- זיהוי ----
     acctTitle: "רגע לפני שמתחילים",
     acctSubtitle:
