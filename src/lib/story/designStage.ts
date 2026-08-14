@@ -1,5 +1,5 @@
 import { askOpenAi } from "@/lib/llm/openai";
-import type { LlmUsage } from "@/lib/llm/core";
+import { addLlmUsage, type LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
 
 // story mode — שלב הטקסט שקודם למודל התמונה.
@@ -44,6 +44,33 @@ export const STORY_DESIGN = {
  */
 const DESIGN_TIMEOUT_MS = 90_000;
 
+/**
+ * ניסיון שני, וזהו.
+ *
+ * **למה בכלל.** רוב הכשלים כאן מקריים — 429, ניתוק, או JSON שנחתך באמצע —
+ * וניסיון שני פותר אותם. עד עכשיו כשל בודד הפיל את השלב כולו והצינור המשיך
+ * בפרומפט של שלב אחד, כלומר בדיוק המצב שהשלב הזה נבנה כדי להחליף: מודל תמונה
+ * שמתבקש גם לפרש סיפור וגם לצייר אותו.
+ *
+ * **ולמה רק אחד.** שני כשלים ברצף כבר אינם מקרה, והם הסימן שמשהו שבור —
+ * שם התפקיד עובר לתורן האוטומטי ולא לניסיון שלישי. בנוסף, כל ניסיון עולה
+ * זמן מתוך תקציב הבקשה, ולקוחה שממתינה שלוש דקות לפני שהרנדר בכלל התחיל היא
+ * כשל בפני עצמו.
+ */
+const DESIGN_ATTEMPTS = 2;
+
+/**
+ * תקרה לשלב **כולו**, על פני כל הניסיונות.
+ *
+ * הניסיון השני אינו מקבל 90 שנ׳ נוספות אוטומטית: הבקשה נהרגת ב-300 שנ׳,
+ * ואחרי השלב הזה עוד רצים הרנדר, המסגור והוולידציה. לכן כל ניסיון מקבל את
+ * מה שנשאר מהתקציב, ומי שאין לו מספיק זמן להחזיר תשובה אמיתית — לא נשלח.
+ */
+const DESIGN_BUDGET_MS = 150_000;
+
+/** פחות מזה אין טעם לנסות: התשובה לא תספיק לחזור, והקריאה רק שורפת תקציב. */
+const DESIGN_MIN_ATTEMPT_MS = 20_000;
+
 /** שלושה כיוונים, כמו שהפרומפט מבקש וכמו שהתמונה מחלקת לשורות. */
 export const DESIGN_COUNT = 3;
 
@@ -80,7 +107,29 @@ export interface DesignStageResult {
    * שלב התמונה, זה השדה היחיד שחסר כדי שסכום ההרצה יהיה מספר ולא הערכה.
    */
   usage: LlmUsage | null;
+  /** כמה ניסיונות נדרשו. 2 = הראשון נפל והשני תפס — הרצה תקינה לכל דבר,
+   *  אבל כזו שמעידה על ספק מגמגם, וזה נראה ביומן רק אם הוא נספר. */
+  attempts: number;
 }
+
+/** השלב נפל בכל הניסיונות. מה שכתוב כאן הוא מה שנמסר לתורן ולטלגרם. */
+export interface DesignStageFailure {
+  attempts: number;
+  /** נוסח הכשל האחרון, לבן־אדם. לא נמסר ללקוחה — היא לא אמורה להרגיש בכלל. */
+  reason: string;
+  ms: number;
+  /** מה שהניסיונות שנפלו עלו בכל זאת. קריאה שפג לה הזמן אחרי שהמודל כבר
+   *  חשב מחויבת במלואה, ולכן זה לא אפס. */
+  usage: LlmUsage | null;
+}
+
+/**
+ * מה שיצא מהשלב. `ok: false` אינו "אין מפרט" סתם — הוא אירוע שמפעיל את
+ * התורן, את ההתראה בטלגרם ואת המעבר למודל התמונה החזק, ולכן הסיבה נוסעת איתו.
+ */
+export type DesignStageOutcome =
+  | ({ ok: true } & DesignStageResult)
+  | ({ ok: false } & DesignStageFailure);
 
 /* ===== שלב 1: הפרומפט ===== */
 
@@ -649,36 +698,55 @@ export function parseDesignSpec(raw: string): { json: string; spec: DesignSpec }
 }
 
 /**
- * שלב העיצוב, מקצה לקצה. `null` = השלב לא הצליח, והקורא נופל חזרה לפרומפט
- * של שלב אחד.
+ * שלב העיצוב, מקצה לקצה — עם ניסיון שני.
  *
- * **אין כאן ניסיון חוזר.** כשל של מודל טקסט כאן עולה מיד לפרומפט הישן, שהוא
- * תשובה טובה — ניסיון שני היה מוסיף עד 90 שניות להמתנה של הלקוחה בשביל שיפור
- * שאינו מובטח.
+ * **מה נחשב כשל.** גם חריגה (429, ניתוק, פסק זמן) וגם תשובה שאי אפשר לקרוא.
+ * השנייה נראית כמו הצלחה מבחוץ אבל היא בדיוק אותו דבר מבחינת הקורא: אין מפרט.
+ * שתיהן נובעות מאותה נדנוד אקראי, ושתיהן נפתרות באותו ניסיון חוזר.
+ *
+ * **הכשל אינו נזרק.** היצירה ממשיכה — עם מודל תמונה חזק יותר, שזה מה שהקורא
+ * עושה עם `ok: false`. הלקוחה לא אמורה להרגיש בכלל.
  */
 export async function runDesignStage(input: {
   productType: RenderProductType;
   userInput: string;
   lengthMm?: number;
-}): Promise<DesignStageResult | null> {
+}): Promise<DesignStageOutcome> {
   const startedAt = Date.now();
-  try {
-    const { text: raw, usage } = await askOpenAi({
-      system: DESIGN_SYSTEM,
-      userText: buildDesignPrompt(input),
-      model: STORY_DESIGN.model,
-      reasoningEffort: STORY_DESIGN.effort,
-      timeoutMs: DESIGN_TIMEOUT_MS,
-    });
-    const parsed = parseDesignSpec(raw);
-    if (!parsed) {
-      console.error("story design stage: unusable output", raw.slice(0, 300));
-      return null;
+  const userText = buildDesignPrompt(input);
+  let usage: LlmUsage | null = null;
+  let reason = "";
+  let attempts = 0;
+
+  for (let attempt = 1; attempt <= DESIGN_ATTEMPTS; attempt++) {
+    // כל ניסיון מקבל את מה שנשאר מהתקציב ולא 90 שנ׳ קבועות. ניסיון שאין לו
+    // זמן להחזיר תשובה אמיתית לא נשלח — הוא רק היה שורף את מה שנשאר לרנדר.
+    const left = DESIGN_BUDGET_MS - (Date.now() - startedAt);
+    if (left < DESIGN_MIN_ATTEMPT_MS) {
+      if (!reason) reason = "design stage budget exhausted before the first attempt";
+      break;
     }
-    return { ...parsed, ms: Date.now() - startedAt, usage };
-  } catch (e) {
-    // הכשל נרשם ולא נזרק: היצירה ממשיכה בפרומפט של שלב אחד.
-    console.error("story design stage failed:", e instanceof Error ? e.message : e);
-    return null;
+    attempts = attempt;
+    try {
+      const answer = await askOpenAi({
+        system: DESIGN_SYSTEM,
+        userText,
+        model: STORY_DESIGN.model,
+        reasoningEffort: STORY_DESIGN.effort,
+        timeoutMs: Math.min(DESIGN_TIMEOUT_MS, left),
+      });
+      // מה שנצרך נצבר לפני הבדיקה: ניסיון שהחזיר JSON פסול שולם עליו במלואו,
+      // והוא בדיוק הניסיון שאסור שייעלם מהחשבון.
+      usage = addLlmUsage(usage, answer.usage);
+      const parsed = parseDesignSpec(answer.text);
+      if (parsed) return { ok: true, ...parsed, ms: Date.now() - startedAt, usage, attempts };
+      reason = `unusable output: ${answer.text.slice(0, 200).replace(/\s+/g, " ")}`;
+      console.error(`story design stage attempt ${attempt}: ${reason}`);
+    } catch (e) {
+      reason = e instanceof Error ? e.message : String(e);
+      console.error(`story design stage attempt ${attempt} failed:`, reason);
+    }
   }
+
+  return { ok: false, attempts, reason, ms: Date.now() - startedAt, usage };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseOpenAiUsage } from "../openai";
+import { addLlmUsage } from "../core";
 
 /**
  * מה שקריאת ה-LLM עלתה, בדרך מהתשובה ליומן.
@@ -60,5 +61,37 @@ describe("parseOpenAiUsage", () => {
     for (const bad of ["", "42", 7, true]) {
       expect(parseOpenAiUsage(bad)).toBeNull();
     }
+  });
+});
+
+/**
+ * חיבור שתי מדידות — מה שקורה כשהקורא מנסה שוב.
+ *
+ * ניסיון שנפל שולם עליו: מודל שחשב ואז החזיר JSON פסול מחויב על כל מה שהספיק.
+ * זה בדיוק המקרה שבו החשבון הכי גבוה, ולכן זה המקרה שאסור לו להיעלם.
+ */
+describe("addLlmUsage", () => {
+  const A = { inputTokens: 10, outputTokens: 100, totalTokens: 110, reasoningTokens: 60 };
+  const B = { inputTokens: 20, outputTokens: 200, totalTokens: 220, reasoningTokens: 120 };
+
+  it("הסכומים והפירוט מתחברים", () => {
+    expect(addLlmUsage(A, B)).toEqual({
+      inputTokens: 30, outputTokens: 300, totalTokens: 330, reasoningTokens: 180,
+    });
+  });
+
+  it("אין מדידה אינו אפס", () => {
+    // צד ריק מחזיר את הצד השני כמו שהוא, ושני ריקים נשארים ריקים — אחרת
+    // ספק שאינו מדווח היה מייצר אפס שנראה כמו מדידה.
+    expect(addLlmUsage(null, B)).toEqual(B);
+    expect(addLlmUsage(A, null)).toEqual(A);
+    expect(addLlmUsage(null, null)).toBeNull();
+  });
+
+  it("פירוט שדווח בצד אחד בלבד שורד", () => {
+    const plain = { inputTokens: 5, outputTokens: 5, totalTokens: 10 };
+    expect(addLlmUsage(A, plain)!.reasoningTokens).toBe(60);
+    // ומי שאף צד לא דיווח עליו נשאר חסר, ולא אפס
+    expect(addLlmUsage(plain, plain)).not.toHaveProperty("reasoningTokens");
   });
 });

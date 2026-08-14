@@ -66,6 +66,8 @@ export type RunInputs = {
   designStage?: {
     ok: boolean;
     ms?: number;
+    attempts?: number;
+    failure?: string;
     usage?: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number };
   };
   /** היחס: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח כדי להגיע
@@ -719,10 +721,17 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     const { totalTokens, outputTokens, reasoningTokens } = inputs.designStage.usage;
     const thinking = reasoningTokens ? `, ${fmt(reasoningTokens)} חשיבה` : "";
     chips.push(`טקסט ${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט${thinking})`);
-  } else if (inputs.designStage && !inputs.designStage.ok) {
-    // השלב רץ ונכשל — ההרצה נפלה חזרה לפרומפט של שלב אחד. בלי זה היא נראית
-    // ביומן כמו הרצת Story רגילה שיצאה גרוע.
-    chips.push("⚠ שלב הטקסט נכשל");
+  }
+  if (inputs.designStage && !inputs.designStage.ok) {
+    // השלב רץ ונכשל — ההרצה נפלה חזרה לפרומפט של שלב אחד, עם המודל החזק
+    // ב-high. בלי זה היא נראית ביומן כמו הרצת Story רגילה שיצאה גרוע, ובלי
+    // מספר הניסיונות אי אפשר לדעת אם זה גמגום או ספק שנפל.
+    const n = inputs.designStage.attempts;
+    chips.push(`⚠ שלב הטקסט נפל${n ? ` (${n} ניסיונות)` : ""} — רץ על מודל הגיבוי`);
+  } else if (inputs.designStage?.ok && (inputs.designStage.attempts ?? 1) > 1) {
+    // עבד, אבל לא בפעם הראשונה. זה הסימן המוקדם לספק שמתחיל להתקלקל — והוא
+    // נעלם לגמרי אם סופרים רק כשלים.
+    chips.push(`שלב הטקסט: ${inputs.designStage.attempts} ניסיונות`);
   }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
