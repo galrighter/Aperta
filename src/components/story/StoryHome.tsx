@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { story } from "@/i18n/story";
-import { StoryExamples } from "./StoryExamples";
+import { StoryShowcase } from "./StoryShowcase";
 
 // story mode — דף הבית החלופי.
 //
@@ -110,8 +110,9 @@ export function StoryHome() {
           </ol>
         </div>
 
-        {/* התרגום, כדוגמה */}
-        <div className="relative">
+        {/* התרגום, כדוגמה. `min-w-0` כי הוויטרינה נושאת פסי SVG ברוחב מלא
+            ועמודת גריד אינה מתכווצת מתחת לתוכן שלה בלי זה. */}
+        <div className="relative min-w-0">
           {/* מסגרת לאפיס מוסטת — אותה שפה דקורטיבית של דף הבית הקיים.
               היא גלויה גם בנייד מאז שהכרטיס התמלא הוסר: קודם המילוי והמסגרת שלו
               היו מה שאמר "כאן דוגמה", ועכשיו זה תפקידה. ההיסט קטן יותר בנייד כדי
@@ -120,7 +121,7 @@ export function StoryHome() {
             aria-hidden="true"
             className="pointer-events-none absolute -top-3 -left-3 h-full w-full border-[1.5px] border-lapis/40 sm:-top-4 sm:-left-4"
           />
-          <StoryExamples className="relative" />
+          <StoryShowcase className="relative" />
         </div>
       </div>
     </section>
