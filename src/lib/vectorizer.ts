@@ -14,7 +14,7 @@ import { frameFull } from "@/lib/render/frameClient";
 import type { BridgeRecord } from "@/lib/geometry/restoreBridges";
 import type { DesignDims } from "@/lib/geometry/validate";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
-import type { CheckResult, CheckStatus, ValidationReport } from "@/lib/geometry/types";
+import type { CheckResult, CheckStatus, ValidationReport, MultiPolygon } from "@/lib/geometry/types";
 
 /** דירוג החומרה, כדי שממצא שנוסף לא יוכל להוריד את סטטוס הדוח. */
 const RANK: Record<CheckStatus, number> = { pass: 0, warn: 1, fail: 2 };
@@ -154,6 +154,34 @@ export interface IngestResult {
   bridges: BridgeRecord[];
 }
 
+/**
+ * גיאומטריית התצוגה המעורגלת (`geometry.material`) — best-effort בלבד.
+ *
+ * `difference` בונה על polygon-clipping, שנשען על מבנה נתונים רקורסיבי
+ * (`isExteriorRing`/`enclosingRing`) בלי תקרת עומק. על עיצוב עם קינון עמוק —
+ * נמדד: 300 עיגולים חופפים בגדלים שונים על פס אחד — הוא זורק
+ * `RangeError: Maximum call stack size exceeded` בלי קשר לגודל הקלט הכולל,
+ * רק לעומק הקינון. זו בדיוק התקלה שהעירה את התורן ב-14.8 (canary אדום).
+ *
+ * הגרסה כבר נשמרה למעלה לפני שהפונקציה הזו רצה — קריסה כאן לא אמורה להפיל
+ * את היצירה שכבר הצליחה. הלקוחה כבר יודעת לחיות בלעדיה: גרסה בלי `geometry`
+ * מקבלת תצוגה שטוחה ומשלימה אותה ב-`/api/validate` (design/page.tsx), ומי
+ * שגם שם נכשל "נשארת עם התצוגה השטוחה — עדיף מלהפיל את המסך".
+ */
+export function previewGeometry(
+  lengthMm: number,
+  widthMm: number,
+  cutUnion: MultiPolygon,
+): IngestResult["geometry"] {
+  try {
+    return { material: difference([rectPolygon(0, 0, lengthMm, widthMm)], cutUnion), cutUnion };
+  } catch (e) {
+    console.warn(
+      `previewGeometry: skipped (geometry too complex to compute a preview) — ${e instanceof Error ? e.message : e}`,
+    );
+    return null;
+  }
+}
 
 export type { FramedCutouts, FramedPreview };
 
@@ -254,12 +282,7 @@ export async function ingestCutouts(opts: {
         ...(opts.pickedIndex !== undefined ? { picked_index: opts.pickedIndex } : {}),
       });
 
-  const geometry = normalized
-    ? {
-        material: difference([rectPolygon(0, 0, lengthMm, widthMm)], normalized.cutUnion),
-        cutUnion: normalized.cutUnion,
-      }
-    : null;
+  const geometry = normalized ? previewGeometry(lengthMm, widthMm, normalized.cutUnion) : null;
 
   return { version, report, geometry, lengthMm, widthMm, bridges: framed.bridges };
 }
