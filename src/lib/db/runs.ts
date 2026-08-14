@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./supabase";
 import type { ProductType } from "@/lib/fabrication.config";
+import type { LlmUsage } from "@/lib/llm/core";
 import type { RunCursor } from "@/lib/runs/cursor";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
@@ -103,6 +104,15 @@ export interface RunInputs {
     ms?: number;
     /** ה-JSON שנמסר למודל התמונה, חתוך. */
     spec?: string;
+    /**
+     * מה שלב הטקסט חייב. יחד עם `renderUsage` זה הופך את עלות הרצת Story
+     * למספר שלם ולא לחיבור של מדידה והערכה.
+     *
+     * `reasoningTokens` הוא החלק שאי אפשר לראות: המודל חושב בטוקנים שמחויבים
+     * כפלט ואינם מופיעים ב-JSON שחזר, ולכן אומדן שנגזר מאורך התשובה מפספס
+     * דווקא את החלק היקר. חסר = הספק לא דיווח, או הרצה שקדמה לשדה.
+     */
+    usage?: LlmUsage;
   };
   /**
    * היחס: מה שהוזמן, מה שהתכנון הבטיח, מה שהמודל צייר, ופי כמה נמתח.

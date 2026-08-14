@@ -61,6 +61,13 @@ export type RunInputs = {
     textTokens: number;
     imageTokens: number;
   };
+  /** story mode — שלב הטקסט שקדם למודל התמונה, ומה שהוא עלה. `usage` חסר
+   *  בהרצות מלפני שהוא נמדד. */
+  designStage?: {
+    ok: boolean;
+    ms?: number;
+    usage?: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number };
+  };
   /** היחס: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח כדי להגיע
    *  לאורך שהוזמן. חסרים בהרצות מלפני המדידה — ראה `lib/render/ratioGap`. */
   orderedRatio?: number;
@@ -703,7 +710,19 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     const { totalTokens, outputTokens, calls } = inputs.renderUsage;
     // טוקני הפלט הם החלק הדומיננטי בחשבון של מודל תמונה, ולכן הם נאמרים בנפרד
     // ולא רק בתוך הסכום.
-    chips.push(`${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט, ${calls} קריאות)`);
+    chips.push(`תמונה ${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט, ${calls} קריאות)`);
+  }
+  // שלב הטקסט, כתגית נפרדת ולא מחוברת לזו של התמונה: שני מודלים בשני תמחורים,
+  // וסכום טוקנים אחד עליהם הוא מספר שאי אפשר להכפיל בכלום. טוקני החשיבה
+  // נאמרים בפנים — הם מחויבים כפלט ואינם נראים בתשובה, ולכן הם החלק שמפתיע.
+  if (inputs.designStage?.usage) {
+    const { totalTokens, outputTokens, reasoningTokens } = inputs.designStage.usage;
+    const thinking = reasoningTokens ? `, ${fmt(reasoningTokens)} חשיבה` : "";
+    chips.push(`טקסט ${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט${thinking})`);
+  } else if (inputs.designStage && !inputs.designStage.ok) {
+    // השלב רץ ונכשל — ההרצה נפלה חזרה לפרומפט של שלב אחד. בלי זה היא נראית
+    // ביומן כמו הרצת Story רגילה שיצאה גרוע.
+    chips.push("⚠ שלב הטקסט נכשל");
   }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.

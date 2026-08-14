@@ -1,4 +1,5 @@
-import { callOpenAi } from "@/lib/llm/openai";
+import { askOpenAi } from "@/lib/llm/openai";
+import type { LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
 
 // story mode — שלב הטקסט שקודם למודל התמונה.
@@ -13,9 +14,15 @@ import type { RenderProductType } from "@/lib/llm/imagegen";
 // קונקרטיים (JSON), ומודל התמונה מבצע אותם. הוא כבר לא צריך לחשוב יצירתית —
 // הוא צריך לצייר.
 //
-// **העלות.** שלב הטקסט הוא בערך $0.002 להרצה (‏1,200 טוקני קלט ו-1,500 פלט
-// ב-$0.20/$1.20 למיליון), כלומר זניח מול קריאת התמונה. זה גם מה שמאפשר לחזור
-// למודל התמונה הקטן: אם ההנחיות מדויקות, אין למה לשלם על מודל גדול.
+// **העלות.** ההערכה שנשאה כאן הייתה ~$0.002 להרצה (‏1,200 טוקני קלט ו-1,500
+// פלט ב-$0.20/$1.20 למיליון), כלומר זניח מול קריאת התמונה. זה גם מה שמאפשר
+// לחזור למודל התמונה הקטן: אם ההנחיות מדויקות, אין למה לשלם על מודל גדול.
+//
+// ⚠ **ההערכה הזו נגזרה מהחלק שרואים, שהוא החלק הלא-נכון.** המודל הזה חושב,
+// וטוקני החשיבה מחויבים כפלט ואינם מופיעים ב-JSON שחוזר — כלומר "1,500 פלט"
+// הוא אורך התשובה, לא מה ששולם. שלב התמונה נמדד ב-$0.008 להרצת Story (שלושה
+// עיצובים, נמדד 14.8 מהיומן), והשלב הזה היה הנעלם היחיד שנשאר. מכאן הוא נשמר:
+// `DesignStageResult.usage` → `RunInputs.designStage.usage`.
 //
 // **כשזה נכשל, המסלול ממשיך.** מודל טקסט שנפל, פג, או החזיר JSON שאי אפשר
 // לקרוא — כל אלה מחזירים `null`, והצינור נופל חזרה לפרומפט של שלב אחד
@@ -64,6 +71,15 @@ export interface DesignStageResult {
   spec: DesignSpec;
   /** כמה זמן השלב לקח. ליומן — הוא נוסף לזמן שהלקוחה ממתינה. */
   ms: number;
+  /**
+   * מה השלב עלה. `null` = הספק לא דיווח.
+   *
+   * הוא נמדד ולא מוערך משתי סיבות. הראשונה: המודל הזה חושב, וטוקני החשיבה
+   * מחויבים כפלט ואינם נראים ב-JSON שחוזר — כלומר האומדן שבראש הקובץ נגזר
+   * ממה שרואים, שהוא בדיוק החלק הלא-נכון להסתכל עליו. השנייה: אחרי שנמדד גם
+   * שלב התמונה, זה השדה היחיד שחסר כדי שסכום ההרצה יהיה מספר ולא הערכה.
+   */
+  usage: LlmUsage | null;
 }
 
 /* ===== שלב 1: הפרומפט ===== */
@@ -647,7 +663,7 @@ export async function runDesignStage(input: {
 }): Promise<DesignStageResult | null> {
   const startedAt = Date.now();
   try {
-    const raw = await callOpenAi({
+    const { text: raw, usage } = await askOpenAi({
       system: DESIGN_SYSTEM,
       userText: buildDesignPrompt(input),
       model: STORY_DESIGN.model,
@@ -659,7 +675,7 @@ export async function runDesignStage(input: {
       console.error("story design stage: unusable output", raw.slice(0, 300));
       return null;
     }
-    return { ...parsed, ms: Date.now() - startedAt };
+    return { ...parsed, ms: Date.now() - startedAt, usage };
   } catch (e) {
     // הכשל נרשם ולא נזרק: היצירה ממשיכה בפרומפט של שלב אחד.
     console.error("story design stage failed:", e instanceof Error ? e.message : e);

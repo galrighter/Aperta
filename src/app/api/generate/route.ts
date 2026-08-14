@@ -530,6 +530,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
                *  ביומן למה תמונה יצאה כמו שיצאה — הפרומפט לבדו רק מפנה אליו.
                *  חתוך: שורת יומן אינה מקום לטקסט בלי גבול. */
               spec: designStage?.json.slice(0, 8000),
+              // מה השלב חייב. יחד עם `renderUsage` שנכתב אחרי שהקופסה עונה,
+              // זה כל מה שהרצת Story עלתה.
+              usage: designStage?.usage ?? undefined,
             }
           : undefined,
         /**
