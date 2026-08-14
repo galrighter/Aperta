@@ -410,12 +410,43 @@ const drawnArea = (minHoleMm: number): number => (minHoleMm * minHoleMm) / 2;
  * מחזיר את אותו אובייקט כשאין מה להסיר, כדי שהמסלול הנפוץ לא ישלם על בנייה
  * מחדש של ה-SVG ולא ישנה את ה-d המקורי לחינם.
  */
+/**
+ * האם הפוליגון נוגע במסגרת הפס — כלומר הוא הרקע שסביב הצללית, ולא פתח סגור.
+ *
+ * `minHole` קיים כי הלייזר אינו יכול **לפתוח חור** קטן ממנו. אזור שנוגע
+ * במסגרת אינו חור — הלייזר פשוט עוקב אחרי קו המתאר — ומדידת החלקים הדקים שלו
+ * ממלאת במתכת כל מרווח תת-מינימלי לאורך קצה רועש, כלומר מרתכת את הפרנזים של
+ * המעקב לעור מוצק על המתאר (AP-0170, 14.8: קצה מוצלל חזר כגבשושיות מלאות
+ * וקווים משיקים ישרים; נמדד ‎+5.8 ממ"ר מתכת על קצה מפורנז, 0 עם השער).
+ *
+ * הסבילות רחבה מהצורך: קואורדינטות קנוניות יושבות על המסגרת במדויק, ופתח
+ * אמיתי במרחק 0.1 מ"מ מהקצה ממילא אינו חוקי ייצורית.
+ */
+const touchesFrame = (poly: Polygon, lengthMm: number, widthMm: number, eps = 0.1): boolean => {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of poly[0]) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return minX <= eps || minY <= eps || maxX >= lengthMm - eps || maxY >= widthMm - eps;
+};
+
 export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): NormalizedDesign {
   if (minHoleMm <= 0) return n;
   let changed = false;
   const kept = n.cutouts
     .map((mp) =>
       mp.flatMap((poly) => {
+        // אזור שנוגע במסגרת מקבל את הסמנטיקה שתמיד הייתה לו: נשמר שלם, ונופל
+        // רק כשהוא כולו בלתי-ניתן-לחיתוך. המדידה חלק-אחר-חלק היא לפתחים
+        // סגורים בלבד — ראה `touchesFrame`.
+        if (touchesFrame(poly, n.lengthMm, n.widthMm)) {
+          if (isCuttableOpening(poly, minHoleMm)) return [poly];
+          changed = true;
+          return [];
+        }
         const drop = uncuttableParts(poly, minHoleMm);
         if (drop.length === 0) return [poly];
         changed = true;

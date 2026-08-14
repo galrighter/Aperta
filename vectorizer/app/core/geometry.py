@@ -45,36 +45,57 @@ def scale_to_mm(
     return affinity.scale(geom_px, xfact=sx, yfact=sy, origin=(0, 0))
 
 
-def _snap_ring(coords, width_mm: float, height_mm: float, tol: float):
+#: Every frame edge. The default for ``snap_to_bounds``, i.e. the behaviour
+#: that predates per-edge gating.
+ALL_EDGES = ("left", "right", "top", "bottom")
+
+
+def _snap_ring(coords, width_mm: float, height_mm: float, tol: float, edges):
     out = []
     for x, y in coords:
-        if abs(x) <= tol:
+        if "left" in edges and abs(x) <= tol:
             x = 0.0
-        elif abs(x - width_mm) <= tol:
+        elif "right" in edges and abs(x - width_mm) <= tol:
             x = width_mm
-        if abs(y) <= tol:
+        if "top" in edges and abs(y) <= tol:
             y = 0.0
-        elif abs(y - height_mm) <= tol:
+        elif "bottom" in edges and abs(y - height_mm) <= tol:
             y = height_mm
         out.append((x, y))
     return out
 
 
 def snap_to_bounds(
-    geom: BaseGeometry, width_mm: float, height_mm: float, tol: float
+    geom: BaseGeometry,
+    width_mm: float,
+    height_mm: float,
+    tol: float,
+    edges=ALL_EDGES,
 ) -> BaseGeometry:
     """Snap vertices within ``tol`` of a stock edge onto that edge.
 
     A raster contour of metal that runs to the image border stops one pixel
     short of the physical stock edge; without snapping, the re-rendered SVG
     loses a sliver there and max-deviation explodes even though IoU is fine.
-    The strip's extreme edge *is* the stock boundary, so snapping is correct.
+    When the strip really does run edge to edge, its extreme edge *is* the
+    stock boundary and snapping is correct.
+
+    ``edges`` is which of those borders that holds for — see
+    ``mask.stock_edges``. It matters because the crop in ``conditioning`` is
+    tight to the metal's bounding box, so the part touches **all four**
+    borders whatever its shape. On a drawn silhouette that only grazes a
+    border, snapping does not recover a lost sliver: it pulls a shallow curve
+    flat onto the frame and writes the frame itself into the cut path, which
+    is a straight tangent line on a piece the design meant to be round.
+    Measured on a lobed cuff (102.8 x 18mm, 5% border coverage): 10.8mm of
+    dead-straight outline before snapping, 20.0mm after. A full-bleed
+    rectangular strip covers 100% of every border and is unaffected.
     """
     polys = _as_polygons(geom if geom.is_valid else make_valid(geom))
     snapped = []
     for p in polys:
-        ext = _snap_ring(p.exterior.coords, width_mm, height_mm, tol)
-        holes = [_snap_ring(r.coords, width_mm, height_mm, tol) for r in p.interiors]
+        ext = _snap_ring(p.exterior.coords, width_mm, height_mm, tol, edges)
+        holes = [_snap_ring(r.coords, width_mm, height_mm, tol, edges) for r in p.interiors]
         q = Polygon(ext, holes)
         if not q.is_valid:
             q = make_valid(q)
@@ -180,7 +201,20 @@ def _drawn_area(min_hole_mm: float) -> float:
     return min_hole_mm * min_hole_mm / 2
 
 
-def drop_thin_cutouts(cutouts: BaseGeometry, min_hole_mm: float) -> BaseGeometry:
+def _touches_border(p: Polygon, width_mm: float, height_mm: float, eps: float = 0.1) -> bool:
+    """Whether a cutout polygon reaches the frame — i.e. it is outer background,
+    not an enclosed opening. Traced contours stop up to one source pixel short
+    of the border (~0.02–0.06mm), well inside ``eps``."""
+    minx, miny, maxx, maxy = p.bounds
+    return minx <= eps or miny <= eps or maxx >= width_mm - eps or maxy >= height_mm - eps
+
+
+def drop_thin_cutouts(
+    cutouts: BaseGeometry,
+    min_hole_mm: float,
+    width_mm: float | None = None,
+    height_mm: float | None = None,
+) -> BaseGeometry:
     """Remove everything the cutter cannot make, using forme's minimum.
 
     Tracing a photographed pattern leaves hairlines along an edge — a 1.5x0.17mm
@@ -213,17 +247,33 @@ def drop_thin_cutouts(cutouts: BaseGeometry, min_hole_mm: float) -> BaseGeometry
     sits an order of magnitude above one such corner and two below a hairline
     worth removing, so a design with nothing wrong with it comes back as the
     very same object — corners and all.
+
+    **Only enclosed openings are measured part by part.** ``min_hole`` exists
+    because the laser cannot OPEN a hole below it; a region that touches the
+    frame border is not a hole — it is the background around the silhouette,
+    and the laser simply follows the outline. Subtracting its thin parts fills
+    every sub-minimum gap along a noisy edge with metal, welding the trace's
+    fringe into a solid skin on the outline (AP-0170, 14.8: a shaded render's
+    edge fringe came back as solid bumps and flat tangents; measured +5.8mm² of
+    metal added on a fringed lens edge, 0 with the border gate). Border-touching
+    regions keep the predicate semantics this function always had for them:
+    kept whole, dropped only when nothing in them survives erosion. Callers that
+    do not pass the frame (``width_mm``/``height_mm``) get the ungated measure.
     """
     if min_hole_mm <= 0:
         return cutouts
     r = min_hole_mm / 2
     floor = _drawn_area(min_hole_mm)
+    gate = width_mm is not None and height_mm is not None
     kept: list = []
     for p in _as_polygons(cutouts):
         opened = p.buffer(-r).buffer(r)
         # Nothing in it survives the erosion: the whole opening is uncuttable.
         # This is the case the predicate used to handle, and it still holds.
         if opened.is_empty:
+            continue
+        if gate and _touches_border(p, width_mm, height_mm):
+            kept.append(p)
             continue
         thin = [g for g in _as_polygons(p.difference(opened.intersection(p))) if g.area >= floor]
         if not thin:

@@ -24,7 +24,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { noteRunVerdicts } from "@/lib/db/runs";
+import { noteRunVerdicts, verdictOf } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
@@ -817,14 +817,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הפסילות שקורות כאן לא הופיעו בה מעולם: `offeredRows` שנשמר על הגרסה
       // מכיל רק את מי שעבר. הרצה שבה שלושה פסים נפלו ושלושתם נעלמו נראית
       // ביומן כמו הרצה `approved` רגילה. ראה `noteRunVerdicts` ועיצוב 165.
-      await noteRunVerdicts(
-        attemptId,
-        framed.map((c) => ({
-          status: c.report.status,
-          failed: c.report.checks.filter((k) => k.status === "fail").map((k) => k.check),
-          stretch: Math.round(c.stretch * 1000) / 1000,
-        })),
-      );
+      await noteRunVerdicts(attemptId, framed.map((c) => verdictOf(c.report, c.stretch)));
       return { job, renderPngPath, framed };
     };
 

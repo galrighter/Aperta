@@ -202,6 +202,36 @@ export async function claimRecovery(id: string, runId: string, seenAt: string): 
 export const failJob = (id: string, runId: string, error: JobError) =>
   patch(id, runId, { status: "error", stage: null, error });
 
+/**
+ * האם הרצה **מאוחרת יותר** על אותו עיצוב כבר הסתיימה בהצלחה.
+ *
+ * זו השאלה שמבדילה "הרצה שנשארה תלויה כי הלקוחה סגרה את הטלפון" מ"הרצה
+ * שהלקוחה נטשה כי היא לחצה נסו־שוב וקיבלה תשובה אחרת". על השנייה, השלמה
+ * מאוחרת אינה הצלה — היא כותבת גרסה נוספת על עיצוב שכבר יש עליו בחירה. ראה
+ * `supersededByNewerJob`.
+ *
+ * ההשוואה על `created_at` של השורה עצמה ולא על שעון קריאה: `updated_at` נדחף
+ * קדימה בכל כתיבת מצב, ושורה שנוצרה מאוחר יותר היא בדיוק ההגדרה של "מאוחר
+ * יותר". שגיאה מחזירה `false` — ספק אינו עילה לזרוק רנדר ששולם.
+ */
+export async function hasNewerFinishedJob(id: string, designId: string): Promise<boolean> {
+  const sb = supabaseAdmin();
+  const mine = await getJob(id);
+  if (!mine) return false;
+  const { data, error } = await sb
+    .from("generation_jobs")
+    .select("id")
+    .eq("design_id", designId)
+    .eq("status", "done")
+    .gt("created_at", mine.created_at)
+    .limit(1);
+  if (error) {
+    console.error(`newer-job check for ${id} failed:`, error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
 /** בקשת יצירה כפי שהיומן צריך אותה — בלי `result` (שנושא את ה-SVG של כל מועמד)
  *  ובלי `context` (שנושא את התיאור והגשרים). היומן מציג שורות, לא מטענים. */
 export type JobListRow = Omit<GenerationJobRow, "result" | "context">;

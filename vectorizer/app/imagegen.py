@@ -205,17 +205,25 @@ async def _one(
         data, media_type = reference
         # The edits endpoint defaults to high quality — say it explicitly, or the
         # reference path silently costs ten times the text path for one image.
+        # background is pinned to opaque on both endpoints: the default (auto)
+        # lets the model return a TRANSPARENT PNG at its own discretion, with
+        # junk RGB under the transparent pixels — and everything downstream
+        # that reads pixels (conditioning, band splitting, the admin's
+        # difference views) then depends on who remembered to composite.
+        # Conditioning also flattens for itself (condition_png), so this is the
+        # source-level half of the same fix — old renders re-collected from
+        # storage still go through the flatten.
         resp = await client.post(
             "https://api.openai.com/v1/images/edits",
             headers=headers,
-            data={"model": model, "prompt": prompt, "size": size, "quality": quality},
+            data={"model": model, "prompt": prompt, "size": size, "quality": quality, "background": "opaque"},
             files={"image": ("reference.png", data, media_type)},
         )
     else:
         resp = await client.post(
             "https://api.openai.com/v1/images/generations",
             headers={**headers, "content-type": "application/json"},
-            json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": quality},
+            json={"model": model, "prompt": prompt, "n": 1, "size": size, "quality": quality, "background": "opaque"},
         )
     if resp.status_code >= 400:
         quota = _is_quota(resp.text)

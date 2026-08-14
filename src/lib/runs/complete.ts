@@ -1,16 +1,18 @@
 import { collectRenderJob, runRenderJob, type RenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
-import { ingestCutouts, designDims } from "@/lib/vectorizer";
+import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES } from "@/lib/render/panels";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { createSampleDesign, getDesign } from "@/lib/db/designs";
-import { claimJobDone } from "@/lib/db/jobs";
+import { createSampleDesign, getDesign, updateDesignWidth } from "@/lib/db/designs";
+import { claimJobDone, hasNewerFinishedJob } from "@/lib/db/jobs";
+import { STORY_RENDER, isStory, orderByVariety, storyFrameDims } from "@/lib/story/mode";
+import { svgFrame } from "@/lib/geometry/frame";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { signedUrl } from "@/lib/db/storage";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
-import type { RunStagePaths } from "@/lib/db/runs";
+import { noteRunVerdicts, verdictOf, type RunStagePaths } from "@/lib/db/runs";
 import type { LetterBridge } from "@/lib/geometry/restoreBridges";
 import type { CheckResult } from "@/lib/geometry/types";
 
@@ -65,7 +67,12 @@ export type CompleteOutcome =
   /** הקופסה לא מכירה את ההרצה — היא קמה מחדש או שהתוקף פג. מה ששולם אבד. */
   | { kind: "lost" }
   /** ההרצה הושלמה ואף מועמד לא עבר את הוולידציה. תוצאה, לא תקלה. */
-  | { kind: "rejected"; status: string };
+  | { kind: "rejected"; status: string }
+  /**
+   * הלקוחה כבר קיבלה תשובה מהרצה **אחרת** על אותו עיצוב, ולכן אין למי לסיים
+   * את זו. ראה `supersededByNewerJob`.
+   */
+  | { kind: "superseded" };
 
 /**
  * ההתראה על גשר צר בכיתוב.
@@ -93,6 +100,28 @@ export function letteringBridgeCheck(tightShare: number | null): CheckResult[] {
 }
 
 /**
+ * האם ההרצה הזו כבר לא שייכת לאיש.
+ *
+ * **מה זה מונע (AP-0170, 14.8).** הבקשה מתה בשלב השמירה, הלקוחה ראתה שגיאה
+ * ולחצה "נסו שוב", וההרצה השנייה — job חדש על אותו עיצוב — החזירה לה תוצאה
+ * שהיא בחרה ממנה הצעה. שמונה דקות אחר כך ההשלמה המנותקת הגיעה להרצה הראשונה,
+ * כתבה עליה גרסה **שלישית** לאותו עיצוב, וזו הפכה ל-`current_version_id`:
+ * העיצוב שהלקוחה בחרה הוחלף בשקט בעיצוב מהרצה שהיא כבר נטשה.
+ *
+ * ההשלמה המנותקת קיימת בשביל מי שסגרה את הטלפון וההרצה שלה נשארה תלויה. מי
+ * שכבר קיבלה תשובה **אחרת** על אותו עיצוב אינה המקרה הזה, וגרסה נוספת אצלה
+ * אינה הצלה אלא דריסה.
+ *
+ * הגבול צר בכוונה: רק יצירה מאפס, כי רק היא כותבת על העיצוב עצמו. בקשת שינוי
+ * נשמרת ממילא כדוגמה ממוספרת חדשה (`createSampleDesign`), ולכן היא אינה
+ * דורסת דבר — ואין סיבה לזרוק אצלה רנדר ששולם.
+ */
+async function supersededByNewerJob(jobId: string, ctx: JobContext): Promise<boolean> {
+  if (ctx.inputs?.editedFromCurrent) return false;
+  return hasNewerFinishedJob(jobId, ctx.designId);
+}
+
+/**
  * לאסוף את מה שהקופסה כבר סיימה, ולהשלים ממנו הרצה.
  *
  * **בטוח להריץ פעמיים.** שורת היומן היא upsert על מזהה הניסיון, וסגירת השורה
@@ -106,6 +135,7 @@ export async function completeFromContext(
   runId: string,
   ctx: JobContext,
 ): Promise<CompleteOutcome> {
+  if (await supersededByNewerJob(jobId, ctx)) return { kind: "superseded" };
   const box = await collectRenderJob(ctx.boxJobId, ctx.renderPaths, ctx.stagePaths);
   // `null` הוא שני מצבים שאין להבדיל ביניהם מבחוץ — עדיין רצה, או נשכחה.
   // ההבחנה נעשית על השעון של השורה, אצל הקורא: הרצה שעדיין בתוך חלון הזמן
@@ -163,12 +193,35 @@ async function finishFromRender(
 
   const bridgePlan = { letterBridges: ctx.bridges };
   const RANK = { pass: 0, warn: 1, fail: 2 } as const;
+  // story mode — הענף הזה חייב להיות זהה לזה שב-`/api/generate`, ולא "דומה
+  // לו": מה שמבדיל את המסלול הוא **המסגור**, וההשלמה המנותקת היא מסגור מלא.
+  // עד 15.8 הוא לא היה כאן כלל, וכל הרצת Story שהבקשה שלה מתה נשמרה כמו
+  // הרצה רגילה — מסוגרת לרוחב שהוזמן, כלומר עם בדיוק המתיחה האופקית שהמסלול
+  // קיים כדי למנוע (AP-0170: ×1.13 על גרסה שנכתבה שמונה דקות אחרי הבקשה).
+  const story = isStory(ctx.inputs?.mode);
   const approved = box.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
-  // כמו במסלול החי: מייצרים לפי היחס ומציגים עד `MAX_CANDIDATES`, והנבחרים
-  // הם הקרובים ביותר ליחס שהוזמן. הרצה שהתאוששה לא אמורה להציע דבר אחר.
-  const shortlist = pickClosestRatio(approved, (c) => c.cutoutsSvg, designDims(design), MAX_CANDIDATES);
-  const framed = (await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan))
-    .sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+  // כמו במסלול החי: מייצרים לפי היחס ומציגים עד התקרה, והנבחרים הם הקרובים
+  // ביותר ליחס שהוזמן. התקרה היא זו שההרצה תוכננה לה (`offeredPanels`), ורק
+  // בהיעדרה — שורה שנפתחה לפני שהשדה נשמר — נופלים ל-`MAX_CANDIDATES`.
+  const offeredCap = ctx.inputs?.offeredPanels ?? MAX_CANDIDATES;
+  const shortlist = pickClosestRatio(approved, (c) => c.cutoutsSvg, designDims(design), offeredCap);
+  const ranked = (
+    story
+      ? await shortlist.reduce<Promise<FramedPreview[]>>(async (acc, c) => {
+          const out = await acc;
+          const svg = c.cutoutsSvg!;
+          out.push(...(await frameCandidates(storyFrameDims(designDims(design), svg), [svg], bridgePlan)));
+          return out;
+        }, Promise.resolve([]))
+      : await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan)
+  ).sort((a, b) => RANK[a.report.status] - RANK[b.report.status] || Math.abs(a.stretch - 1) - Math.abs(b.stretch - 1));
+  const framed = story ? orderByVariety(ranked) : ranked;
+
+  // ומה עלה בגורל כל אחד מהם. השורה נכתבה למעלה, לפני שהמסגור רץ, ולכן
+  // הפסילות שקורות כאן לא הופיעו בה — בדיוק כמו במסלול החי, שם זו הייתה
+  // נקודה עיוורת מוכרת (`noteRunVerdicts`). כאן היא פשוט לא נסגרה מעולם:
+  // הרצה שהושלמה מנותקת הציגה ביומן `approved` בלי שום זכר למי שנפסל.
+  await noteRunVerdicts(ctx.attemptId, framed.map((c) => verdictOf(c.report, c.stretch)));
 
   if (framed.length === 0) {
     return { kind: "rejected", status: String((box.raw as { status?: string }).status ?? "no candidate") };
@@ -179,6 +232,13 @@ async function finishFromRender(
   // הקיים. נוצרת רק אחרי שידוע שיש מה לשמור — דחייה לא משאירה עיצוב ריק.
   const isEdit = Boolean(ctx.inputs?.editedFromCurrent);
   const target = isEdit ? await createSampleDesign(design) : design;
+
+  // story mode — הרוחב של הזוכה הוא הרוחב של העיצוב מכאן והלאה, בדיוק כמו
+  // במסלול החי: נקרא מה-viewBox של המועמד שנבחר, נשמר על הרשומה, ונושא את
+  // עצמו אל ה-ingest כדי שהמסגור של הזוכה יהיה זהות ולא מתיחה שנייה.
+  const storyWidthMm = story ? svgFrame(framed[0].framedSvg)?.widthMm ?? null : null;
+  const ingestTarget = storyWidthMm !== null ? { ...target, width_mm: storyWidthMm } : target;
+  if (storyWidthMm !== null) await updateDesignWidth(target.id, storyWidthMm);
 
   const offered = framed.filter((c) => c.report.status !== "fail");
   const raw = (box.raw as { metrics?: Record<string, number> }).metrics;
@@ -197,7 +257,7 @@ async function finishFromRender(
   }));
 
   const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
-    design: target,
+    design: ingestTarget,
     cutoutsSvg: framed[0].framedSvg,
     userPrompt: ctx.userPrompt,
     renderPngPath,
@@ -276,6 +336,7 @@ export async function rerunFromContext(
   runId: string,
   ctx: JobContext,
 ): Promise<CompleteOutcome> {
+  if (await supersededByNewerJob(jobId, ctx)) return { kind: "superseded" };
   const i = ctx.inputs ?? {};
   const box = await runRenderJob({
     jobId: ctx.attemptId,
@@ -289,6 +350,11 @@ export async function rerunFromContext(
     minHoleMm: i.minHoleMm ?? 0.5,
     inspiration: null,
     baseSvg: null,
+    // story mode — אותו מודל ואותו מאמץ כמו בהרצה המקורית. בלי זה הרנדר החוזר
+    // היה קונה תמונה מברירת המחדל של הקופסה, כלומר **לא** את מה שהלקוחה חיכתה
+    // לו: שני הפרומפטים של המסלול נכתבו מול `STORY_RENDER`.
+    model: isStory(i.mode) ? STORY_RENDER.model : undefined,
+    quality: isStory(i.mode) ? STORY_RENDER.quality : undefined,
     renderPaths: ctx.renderPaths,
     stagePaths: ctx.stagePaths,
   });

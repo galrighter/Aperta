@@ -67,8 +67,35 @@ export interface RunPanelVerdict {
   /** קודי הבדיקות שנפלו (`V4`), ריק כשעבר. הקוד ולא ההודעה: הוא מה שמאפשר
    *  לספור על פני הרצות "כמה נפלו על צוואר" בלי לקרוא טקסט. */
   failed?: string[];
+  /**
+   * ומה הן אמרו — `details` של אותן בדיקות בדיוק, חתוך.
+   *
+   * הקוד לבדו סופר, והוא לא מסביר. ב-AP-0170 (14.8) המודל צייר שלושה עיצובים
+   * תקינים למראה, הלקוחה ראתה שניים, והשורה אמרה `["V2"]` — כלומר "החומר
+   * התפצל" בלי לומר היכן ולכמה. `details` של V2 נושא את מרכזי האיים ואת
+   * מספרם, וזה בדיוק ההפרש בין תלונה שאפשר לאבחן לבין ניחוש.
+   */
+  failedDetails?: string[];
   /** פי כמה המסגור מתח אותו. במסלול Story הוא אמור להיות 1. */
   stretch?: number;
+}
+
+/** תמצית מדוח ולידציה לשורת היומן — הקודים שנפלו, ומה הם אמרו. */
+export function verdictOf(
+  report: { status: string; checks: Array<{ check: string; status: string; details?: string }> },
+  stretch: number,
+): RunPanelVerdict {
+  const failed = report.checks.filter((c) => c.status === "fail");
+  return {
+    status: report.status,
+    failed: failed.map((c) => c.check),
+    // שורת יומן היא דיווח ולא עותק: `details` של V2 מונה מרכז לכל אי, ופס
+    // שהתפורר לעשרים היה גורר פסקה. 400 תווים מספיקים לספר מה קרה ואיפה.
+    ...(failed.length
+      ? { failedDetails: failed.map((c) => (c.details ?? "").slice(0, 400)).filter(Boolean) }
+      : {}),
+    stretch: Math.round(stretch * 1000) / 1000,
+  };
 }
 
 export interface RunInputs {

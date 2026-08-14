@@ -102,3 +102,56 @@ def test_it_never_adds_cutout_the_tracer_did_not_find():
     original = box(0, 0, 4, 2).union(box(4, 0.9, 16, 1.1))
     kept = drop_thin_cutouts(original, 0.5)
     assert kept.difference(original).area < 1e-9
+
+
+# --- AP-0170 (14.8): the frame gate -----------------------------------------
+# The background around a drawn silhouette is a cutout polygon that touches the
+# frame, and the gaps between the teeth of a fringed edge are its "thin parts".
+# Measuring it part by part filled those gaps with metal — welding the trace's
+# fringe into a solid skin on the outline. A border-touching region is not a
+# hole; it keeps the predicate semantics it always had.
+
+
+def _fringed_background():
+    """Top background band with teeth hanging down, gaps 0.3mm — sub-minimum."""
+    from shapely.geometry import Polygon
+
+    pts = [(0.0, 0.0), (160.0, 0.0), (160.0, 2.0)]
+    x = 150.0
+    while x > 20:
+        pts += [(x, 2.0), (x, 3.2), (x - 0.3, 3.2), (x - 0.3, 2.0)]
+        x -= 3.0
+    pts.append((0.0, 2.0))
+    return Polygon(pts).buffer(0)
+
+
+def test_a_fringed_outer_edge_is_not_welded_shut():
+    from app.core.geometry import drop_thin_cutouts
+
+    bg = _fringed_background()
+    cutouts = MultiPolygon([bg, box(40, 8, 44, 10)])
+    kept = drop_thin_cutouts(cutouts, 0.5, 160.0, 15.0)
+    # The border region comes back whole — the sub-minimum gaps stay open.
+    assert abs(sum(_areas(kept)) - sum(_areas(cutouts))) < 0.01
+
+
+def test_an_enclosed_tentacle_is_still_cut_with_the_gate_on():
+    from shapely.ops import unary_union
+    from app.core.geometry import drop_thin_cutouts
+
+    leaf_with_tentacle = unary_union([box(40, 8, 44, 10), box(44, 8.9, 56, 9.1)])
+    cutouts = MultiPolygon([_fringed_background(), leaf_with_tentacle])
+    kept = drop_thin_cutouts(cutouts, 0.5, 160.0, 15.0)
+    removed = sum(_areas(cutouts)) - sum(_areas(kept))
+    # Only the 2.4mm² tentacle goes; the fringe on the frame is untouched.
+    assert 2.0 < removed < 2.6
+
+
+def test_without_the_frame_the_measure_is_ungated():
+    from app.core.geometry import drop_thin_cutouts
+
+    bg = _fringed_background()
+    kept = drop_thin_cutouts(MultiPolygon([bg]), 0.5)
+    # Callers that do not say where the frame is get the part-by-part measure
+    # everywhere — the pre-gate behaviour, pinned so the gate stays a choice.
+    assert sum(_areas(kept)) < bg.area

@@ -203,8 +203,23 @@ def condition_png(
     target_px: int = 3600,
     blur: float = 3.0,
 ) -> tuple[bytes, float, str, dict]:
-    """Condition raw image bytes → (two-tone PNG, width_mm, key used, report)."""
-    rgb = np.asarray(Image.open(io.BytesIO(data)).convert("RGB"))
+    """Condition raw image bytes → (two-tone PNG, width_mm, key used, report).
+
+    Transparency is flattened onto white first — the same contract
+    ``validation.load_and_validate`` declares, applied here too because
+    conditioning runs *before* validation and reads the raw render. PIL's
+    ``convert("RGB")`` does NOT composite: it drops the alpha channel and
+    exposes whatever RGB the encoder left underneath transparent pixels. The
+    image model ships transparent-background PNGs at its own discretion
+    (``background`` defaults to auto), and under alpha=0 it leaves junk — a
+    gray gradient with a blurred copy of the piece — which then became the
+    "background" the coverage estimate measured, while every browser showed a
+    clean piece on white (AP-0170, 14.8: 19 phantom holes, a second metal
+    component, 41 despeckled cutouts on a render that looked perfect in the
+    admin). Flattening makes the pipeline read exactly what the human saw."""
+    rgba = np.asarray(Image.open(io.BytesIO(data)).convert("RGBA"), dtype=np.uint8)
+    a = rgba[:, :, 3:4].astype(np.float32) / 255.0
+    rgb = (rgba[:, :, :3].astype(np.float32) * a + 255.0 * (1.0 - a)).astype(np.uint8)
     if key == "auto":
         key = COVERAGE_KEY
     report: dict = {}

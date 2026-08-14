@@ -17,7 +17,7 @@ import numpy as np
 from .config import SETTINGS, THRESHOLD_OFFSETS, TOLERANCE_MM
 from .core import geometry, metrics, svg_builder, tracing
 from .core.curves import CurveSettings
-from .core.mask import analyse_and_mask
+from .core.mask import analyse_and_mask, border_coverage, stock_edges
 from .core.renderer import render_svg_to_mask
 from .core.selection import Candidate, Selection, _topology_ok, select
 from .core.validation import ValidatedImage, load_and_validate
@@ -64,13 +64,22 @@ def _build_candidate(
     mask_res = analyse_and_mask(image, dark_region_role, threshold_offset, SETTINGS.turn_policy)
     mask = mask_res.clean_mask
 
+    # Which borders are the stock edge, and which are only grazed by a drawn
+    # silhouette. Snapping the second kind writes the frame into the cut path
+    # — see geometry.snap_to_bounds.
+    edges = stock_edges(mask)
+
     geom_px = tracing.trace(mask, tolerance_px, SETTINGS.tracer_backend)
     geom_mm = geometry.scale_to_mm(geom_px, image.width_px, image.height_px, width_mm, height_mm)
-    geom_mm = geometry.snap_to_bounds(geom_mm, width_mm, height_mm, tol=1.5 * mm_per_px)
+    geom_mm = geometry.snap_to_bounds(geom_mm, width_mm, height_mm, tol=1.5 * mm_per_px, edges=edges)
     metal = geometry.cleanup(geom_mm)
     if SETTINGS.smooth_iters > 0:
         metal = geometry.snap_to_bounds(
-            geometry.smooth_chaikin(metal, SETTINGS.smooth_iters), width_mm, height_mm, tol=1.5 * mm_per_px
+            geometry.smooth_chaikin(metal, SETTINGS.smooth_iters),
+            width_mm,
+            height_mm,
+            tol=1.5 * mm_per_px,
+            edges=edges,
         )
     if metal.is_empty:
         return None
@@ -79,7 +88,7 @@ def _build_candidate(
         # Uncuttable slivers become metal again, so the metal is re-derived from
         # the kept openings — the two stay exact complements, and the metrics
         # below score the geometry we will actually cut.
-        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm)
+        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm, width_mm, height_mm)
         metal = geometry.cutouts_from_metal(cutouts, width_mm, height_mm)
 
     # The curve fit *is* the smoothing, so its error budget is this candidate's
@@ -277,6 +286,14 @@ def build_debug(res: PipelineResult) -> dict:
     stages.append({"name": "conditioning", "status": "ok" if res.conditioned_png else "skip",
                    "detail": (f"colour-key={res.chosen_key} + crop + smooth{dropped_txt}"
                               if res.conditioned_png else "input already two-tone")})
+    # Which borders were treated as the stock edge. Without this the frame
+    # snapping is invisible, and "the outline went straight where it should
+    # curve" is a complaint with nothing behind it to look at.
+    cover = border_coverage(res.source_mask)
+    snapped = stock_edges(res.source_mask)
+    stages.append({"name": "frame", "status": "ok",
+                   "detail": ("snapped to " + "+".join(snapped) if snapped else "no stock edge")
+                             + " · coverage " + " ".join(f"{k} {100 * v:.0f}%" for k, v in cover.items())})
     stages.append({"name": "tracing", "status": "ok" if res.candidates else "fail",
                    "detail": f"{len(res.candidates)} candidates"})
     # A zero-width diagonal touch is a decision, and a decision that changes

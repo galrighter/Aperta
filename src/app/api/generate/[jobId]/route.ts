@@ -115,6 +115,13 @@ export async function GET(req: Request, { params }: Params) {
       }
       const outcome = await completeFromContext(jobId, job.run_id, ctx);
       if (outcome.kind === "done") return NextResponse.json({ status: "done", result: outcome.result });
+      // הלקוחה כבר קיבלה תשובה מהרצה מאוחרת יותר על אותו עיצוב. השורה נסגרת
+      // כדי שאיש לא ינסה שוב, ובלי לכתוב גרסה שתדרוס את מה שהיא בחרה.
+      if (outcome.kind === "superseded") {
+        const error = { code: "job_superseded", message: "A later generation on this design already finished" };
+        await failJob(jobId, job.run_id, error);
+        return NextResponse.json({ status: "error", error });
+      }
       if (outcome.kind === "rejected") {
         const error = { code: "vectorize_failed", message: `Vectorizer did not approve any panel: ${outcome.status}` };
         await failJob(jobId, job.run_id, error);
@@ -131,6 +138,11 @@ export async function GET(req: Request, { params }: Params) {
         if (age <= RERUN_MAX_AGE_MS && canRerun(ctx)) {
           const again = await rerunFromContext(jobId, job.run_id, ctx);
           if (again.kind === "done") return NextResponse.json({ status: "done", result: again.result });
+          if (again.kind === "superseded") {
+            const error = { code: "job_superseded", message: "A later generation on this design already finished" };
+            await failJob(jobId, job.run_id, error);
+            return NextResponse.json({ status: "error", error });
+          }
           if (again.kind === "rejected") {
             const error = { code: "vectorize_failed", message: `Vectorizer did not approve any panel: ${again.status}` };
             await failJob(jobId, job.run_id, error);
