@@ -319,12 +319,32 @@ export async function insertVersion(v: {
       withExtras = false;
       continue;
     }
+    /**
+     * קורא אחר כבר שמר את הגרסה של ההרצה הזו (0021).
+     *
+     * **זו לא שגיאה אלא תשובה.** האינדקס אוכף "הרצה אחת = שורת גרסה אחת", ומה
+     * שהוא תופס הוא בדיוק המצב שהקורא השני נמצא בו: הוא רץ על הרצה שכבר
+     * הושלמה, והדבר שהוא ביקש קיים. להחזיר אותו הוא מה שהוא היה מקבל אילו
+     * הבדיקה שקדמה לו ("יש כבר גרסה?") לא הפסידה את המרוץ.
+     *
+     * בלי הענף הזה האינדקס היה הופך כפילות שקטה ל-500 — כלומר "היצירה נכשלה"
+     * על עיצוב ששמור אצלנו, שהוא בדיוק הכשל ש-C2 נבנה כדי למנוע.
+     *
+     * `current_version_id` לא נגוע: מי שכתב את השורה הראשון כבר הצביע עליה.
+     */
+    if (RUN_ALREADY_SAVED.test(error?.message ?? "") && v.generation_id) {
+      const existing = await versionForGeneration(v.generation_id);
+      if (existing) return existing;
+    }
     if (!/duplicate|unique/i.test(error?.message ?? "")) {
       throw new Error(error?.message ?? "insert version failed");
     }
   }
   throw new Error("Failed to allocate version number");
 }
+
+/** שם האינדקס של 0021 — ההתנגשות היחידה כאן שאינה על `version_no`. */
+const RUN_ALREADY_SAVED = /design_versions_one_run_per_generation/i;
 
 /**
  * דריסת גרסה קיימת בתוכן חדש, במקום להוסיף שורה.
