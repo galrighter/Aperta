@@ -88,7 +88,7 @@ def _build_candidate(
         # Uncuttable slivers become metal again, so the metal is re-derived from
         # the kept openings — the two stay exact complements, and the metrics
         # below score the geometry we will actually cut.
-        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm)
+        cutouts = geometry.drop_thin_cutouts(cutouts, min_hole_mm, width_mm, height_mm)
         metal = geometry.cutouts_from_metal(cutouts, width_mm, height_mm)
 
     # The curve fit *is* the smoothing, so its error budget is this candidate's

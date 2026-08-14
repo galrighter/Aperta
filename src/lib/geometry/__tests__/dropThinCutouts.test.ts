@@ -86,4 +86,44 @@ describe("dropThinCutouts", () => {
     const area = (d: typeof n) => validateNormalized(d, DIMS).metrics.openAreaPct;
     expect(area(n) - area(cleaned)).toBeLessThan(0.02);
   });
+
+  /* AP-0170 (14.8): קצה משונן של צללית מצוירת. הרקע שסביב הצללית הוא cutout
+     שנוגע במסגרת, והמרווחים בין שיני הפרנז הם "חלקים דקים" שלו — המדידה
+     חלק-אחר-חלק מילאה אותם במתכת וריתכה את הפרנז לעור מוצק על המתאר. אזור
+     שנוגע במסגרת אינו חור, והלייזר פשוט עוקב אחרי קו המתאר. */
+
+  /** רקע עליון של צללית שקצהָ משונן: פס צמוד למסגרת שממנו יורדות שיניים,
+   *  והמרווחים ביניהן צרים מהמינימום (0.3 מ"מ). */
+  const FRINGED_TOP =
+    `<path d="M0 0 L160 0 L160 2 ` +
+    Array.from({ length: 40 }, (_, i) => {
+      const x = 150 - i * 3;
+      return `L${x} 2 L${x} 3.2 L${x - 0.3} 3.2 L${x - 0.3} 2`;
+    }).join(" ") +
+    ` L0 2 Z"/>`;
+
+  it("does not weld a fringed outer edge into the outline", () => {
+    const n = normalizeSvg(svg(FRINGED_TOP + LEAF), 160, 15);
+    // הרקע נוגע במסגרת → נשמר שלם, כולל המרווחים התת-מינימליים שבין השיניים.
+    const cleaned = dropThinCutouts(n, 0.5);
+    const area = (d: typeof n) => validateNormalized(d, DIMS).metrics.cutAreaMm2;
+    expect(area(n) - area(cleaned)).toBeLessThan(0.01);
+  });
+
+  it("still cuts a tentacle from an enclosed opening in the same design", () => {
+    const n = normalizeSvg(svg(FRINGED_TOP + LEAF + TENTACLE), 160, 15);
+    const cleaned = dropThinCutouts(n, 0.5);
+    const area = (d: typeof n) => validateNormalized(d, DIMS).metrics.cutAreaMm2;
+    // רק הזרוע (2.4 ממ"ר) יורדת; הפרנז שעל המסגרת אינו נגרר איתה.
+    expect(area(n) - area(cleaned)).toBeGreaterThan(2);
+    expect(area(n) - area(cleaned)).toBeLessThan(2.6);
+  });
+
+  it("a border region that is wholly uncuttable still falls as a whole", () => {
+    // כיס של 0.2 מ"מ צמוד למסגרת — הסמנטיקה הישנה של ה-predicate נשמרת.
+    const sliver = `<rect x="50" y="0" width="8" height="0.2"/>`;
+    const n = normalizeSvg(svg(sliver + LEAF), 160, 15);
+    const cleaned = dropThinCutouts(n, 0.5);
+    expect(cleaned.cutouts).toHaveLength(1);
+  });
 });
