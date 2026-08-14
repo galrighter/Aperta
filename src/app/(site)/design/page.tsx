@@ -8,7 +8,7 @@ import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError, DISCONNECTED_STAGE } from "@/lib/client/api";
 import {
-  clearMyDesigns, listMyDesigns, markMyDesignDone, mergeMyDesign, removeMyDesign, saveMyDesign,
+  clearMyDesigns, listMyDesigns, markMyDesignDone, mergeMyDesigns, removeMyDesign, saveMyDesign,
   setMyDesignPreview,
   type SavedDesign,
 } from "@/lib/client/myDesigns";
@@ -245,15 +245,31 @@ export default function DesignPage() {
      ממכשיר אחר, אחסון שנוקה, יצירה שהלקוחה יצאה ממנה באמצע) הגיע בלי ציור
      ובלי מספר חיתוכים — כלומר ריבוע ריק עם "0 חיתוכים". משלימים מהשרת, פעם
      אחת לעיצוב, ושומרים מקומית כדי שהחישוב לא יחזור בכל פתיחה. */
-  const [previewsWanted, setPreviewsWanted] = useState(false);
+  const [previewsWanted, setPreviewsWanted] = useState<string[]>([]);
+  /** הכרטיסים שנראים כרגע — הרשימה נפתחה, או שהתחלף עמוד. רק להם מושלם ציור:
+   *  רשימה של חמישים עיצובים היא חמישים בקשות מטלפון, ורובן עבור כרטיסים
+   *  שנמצאים בעמוד שאיש לא פתח. */
+  const wantPreviews = useCallback((ids: string[]) => {
+    setPreviewsWanted((prev) => {
+      const add = ids.filter((id) => !prev.includes(id));
+      return add.length ? [...prev, ...add] : prev;
+    });
+  }, []);
   const previewTried = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!previewsWanted) return;
+    if (previewsWanted.length === 0) return;
+    const wanted = new Set(previewsWanted);
     // pending = עוד אין גרסה, ולכן אין מה לצייר. רשומה שיש לה ציור אבל אין לה
     // עדיין רשימת תוצאות נמשכת גם היא: היא נשמרה לפני שהכרטיס ידע להציג את כל
-    // מה שהעיצוב הזה ייצר, ובלעדיה הוא ממשיך להראות תוצאה אחת מתוך שלוש.
+    // מה שהעיצוב הזה ייצר, ובלעדיה הוא ממשיך להראות תוצאה אחת מתוך שלוש. וכך
+    // גם רשומה בלי `frameWidthMm`: היא נשמרה לפני שהציור ידע באיזו מסגרת הוא
+    // חי, וזו בדיוק הרשומה שהכרטיס חתך לה את הפריט.
     const missing = saved.filter(
-      (x) => (!x.path || !x.results) && !x.pending && !previewTried.current.has(x.id),
+      (x) =>
+        wanted.has(x.id) &&
+        (!x.path || !x.results || !x.frameWidthMm) &&
+        !x.pending &&
+        !previewTried.current.has(x.id),
     );
     if (missing.length === 0) return;
     // מסמנים הכול מראש: הריצה מעדכנת את `saved`, ובלי זה כל תשובה הייתה
@@ -277,6 +293,10 @@ export default function DesignPage() {
               versionNo: r.versionNo,
               path: r.path,
               cuts: r.cuts,
+              // המסגרת של הגרסה עצמה. בלעדיה כל גרסה צוירה במידות של אחרת,
+              // וההפרש ביניהן נחתך מהציור.
+              lengthMm: r.lengthMm,
+              widthMm: r.widthMm,
             })),
           );
           if (!alive) return;
@@ -306,6 +326,35 @@ export default function DesignPage() {
    * מאוחרת לפרומיס הזה הייתה מחזירה תשובה שקדמה ליציאה מהחשבון או להחלפת
    * משתמש — כלומר יצירה בשם מי שכבר יצא.
    */
+  /**
+   * מה שהחשבון מכיר, אל תוך האינדקס המקומי.
+   *
+   * רץ גם בכניסה וגם בכל טעינה של העמוד כשיש חשבון. עד היום זה קרה רק ברגע
+   * הכניסה עצמה, ולכן מי שנכנסה פעם אחת ונשארה מחוברת ראתה לנצח את הרשימה
+   * שהייתה לה אז — כולל את מה שנחתך בה ולא חזר.
+   */
+  const syncFromAccount = useCallback(async () => {
+    try {
+      const { designs } = await api.myDesigns();
+      mergeMyDesigns(
+        designs.map((dz) => ({
+          id: dz.id,
+          serial: dz.serial ?? undefined,
+          name: dz.name,
+          product: dz.product_type,
+          circMm: Math.round(Number(dz.length_mm) + Number(dz.gap_mm)),
+          widthMm: Number(dz.width_mm),
+          cuts: 0,
+          updatedAt: dz.updated_at,
+          pending: dz.current_version_id ? undefined : true,
+        })),
+      );
+      setSaved(listMyDesigns());
+    } catch {
+      // הסנכרון הוא בונוס; כישלון שלו לא אמור לחסום את היצירה.
+    }
+  }, []);
+
   const accountProbe = useRef<Promise<Account | null> | null>(null);
   useEffect(() => {
     const probe = api
@@ -317,8 +366,9 @@ export default function DesignPage() {
     void probe.then((a) => {
       setAccount(a);
       accountProbe.current = null;
+      if (a) void syncFromAccount();
     });
-  }, []);
+  }, [syncFromAccount]);
 
   /**
    * פרטי החשבון יורדים לטופס הכתובת.
@@ -531,7 +581,11 @@ export default function DesignPage() {
       cuts: entry ? countCuts(entry.svg) : 0,
       updatedAt: new Date().toISOString(),
       path: path && path.length < 40_000 ? path : undefined,
-      lengthMm: entry?.lengthMm && entry.lengthMm > 0 ? entry.lengthMm : stripLengthMm(st),
+      // מסגרת הציור ולא מה שהוזמן: ה-material חי במסגרת של הגרסה, והכרטיס
+      // מצייר אותו בתוכה. `widthMm` שלמעלה נשאר מה שהלקוחה ביקשה — הוא
+      // הכיתוב, לא הגאומטריה.
+      lengthMm: entry ? frameLengthMm(st, entry) : stripLengthMm(st),
+      frameWidthMm: entry ? frameWidthMm(st, entry) : undefined,
       pending: entry ? undefined : true,
       brief: st.brief.trim() || undefined,
       lettering: st.lettering.trim() || undefined,
@@ -1058,25 +1112,7 @@ export default function DesignPage() {
         setAccount(a);
         // כניסה ממכשיר חדש: מושכים מהשרת את מה שכבר עוצב בחשבון הזה, אחרת
         // "העיצובים שלי" ריק דווקא למי שיש לו הכי הרבה מה להמשיך.
-        try {
-          const { designs } = await api.myDesigns();
-          for (const dz of designs) {
-            mergeMyDesign({
-              id: dz.id,
-              serial: dz.serial ?? undefined,
-              name: dz.name,
-              product: dz.product_type,
-              circMm: Math.round(Number(dz.length_mm) + Number(dz.gap_mm)),
-              widthMm: Number(dz.width_mm),
-              cuts: 0,
-              updatedAt: dz.updated_at,
-              pending: dz.current_version_id ? undefined : true,
-            });
-          }
-          setSaved(listMyDesigns());
-        } catch {
-          // הסנכרון הוא בונוס; כישלון שלו לא אמור לחסום את היצירה.
-        }
+        await syncFromAccount();
         setGateBusy(false);
         setGateOpen(false);
         if (opts?.resume ?? startAfterSignIn.current) {
@@ -1096,7 +1132,7 @@ export default function DesignPage() {
         setGateError(e instanceof ClientApiError ? e.message : d.acctError);
       }
     },
-    [startGeneration, adoptShared, resume],
+    [startGeneration, adoptShared, resume, syncFromAccount],
   );
 
   /* ===== חזרה מגוגל =====
@@ -1737,7 +1773,7 @@ export default function DesignPage() {
                     removeMyDesign(id);
                     setSaved(listMyDesigns());
                   }}
-                  onOpen={() => setPreviewsWanted(true)}
+                  onOpen={wantPreviews}
                   loadingId={resumingId}
                   error={resumeError}
                   defaultOpen={savedOpen}
