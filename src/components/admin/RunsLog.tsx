@@ -49,6 +49,18 @@ export type RunInputs = {
   rows?: number; cols?: number; calls?: number; minHoleMm?: number; colorKey?: string;
   /** צורת הקנבס שנשלחה למודל, `"1536x1024"`. חסר בהרצות מלפני התיעוד. */
   canvasSize?: string;
+  /** המאמץ שנשלח למודל התמונה. חסר = ברירת המחדל של הקופסה, `"low"`. */
+  renderQuality?: string;
+  /** מה שמודל התמונה חייב בהרצה — ראה `RenderUsage` ב-lib/db/runs. חסר
+   *  בהרצות מלפני המדידה, ובקופסה שקדמה לה. */
+  renderUsage?: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    textTokens: number;
+    imageTokens: number;
+  };
   /** היחס: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח כדי להגיע
    *  לאורך שהוזמן. חסרים בהרצות מלפני המדידה — ראה `lib/render/ratioGap`. */
   orderedRatio?: number;
@@ -684,6 +696,15 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     const orient = w > 0 && h > 0 ? (w < h ? "קנבס לאורך" : "קנבס לרוחב") : "קנבס";
     chips.push(`${orient} ${inputs.canvasSize.replace("x", "×")}`);
   }
+  // המאמץ ומה שהוא עלה, צמודים. הם התשובה לשתי שאלות שנשאלות יחד — "למה זה
+  // יצא גס" ו"כמה זה עולה לנו" — ועד שהמדידה נשמרה השנייה נענתה רק בהערכה.
+  if (inputs.renderQuality) chips.push(`איכות ${inputs.renderQuality}`);
+  if (inputs.renderUsage) {
+    const { totalTokens, outputTokens, calls } = inputs.renderUsage;
+    // טוקני הפלט הם החלק הדומיננטי בחשבון של מודל תמונה, ולכן הם נאמרים בנפרד
+    // ולא רק בתוך הסכום.
+    chips.push(`${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט, ${calls} קריאות)`);
+  }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
   // כשידוע *על איזו* גרסה השינוי נשלח, זה מה שנכתב: "עריכה של הקיים" לבדו לא
@@ -755,6 +776,9 @@ export function ratioChip(
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** מספרי טוקנים הם בני חמש ספרות; בלי מפריד אלפים הם לא נקראים במבט. */
+const fmt = (n: number) => n.toLocaleString("en-US");
 
 /**
  * הרצה שנראית מוצלחת ולא יצא ממנה עיצוב.

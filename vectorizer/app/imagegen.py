@@ -16,6 +16,12 @@ this module sends, priced off developers.openai.com/api/docs/pricing:
     gpt-image-1-mini - low - 1536x1024 = $0.0057 per render, ~11s
     gpt-image-2      - low - 1536x1024 = $0.0212 per render, ~20s
 
+Those two lines were measured by hand, once. Every render since then reports its
+own usage and it is now kept (`Renders.usage` -> the payload -> forme's run log),
+because a number that is only ever read off a pricing page is a number nobody
+notices going stale — and the two knobs that move it, the model and the quality,
+are both chosen per run.
+
 3.7x, and the whole gap is the input image: gpt-image-2 encodes the reference at
 4.75x the tokens. It is paying attention to it, which is also what the output
 shows. There is no *fallback* to a pricier model on purpose: a silent fallback
@@ -33,6 +39,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from dataclasses import dataclass
 
 import httpx
 
@@ -120,12 +127,68 @@ def resolve_model(name: str | None) -> str:
     return name
 
 
-def _extract(payload: dict) -> bytes:
+# What the API charges for, per call, under `usage`. Kept as flat counters and
+# not as the provider's nested shape: this is what forme writes to the run log,
+# and a shape that mirrors an external response is a shape that changes under us.
+#
+# `calls` is the count of responses that *reported* usage. It is not the number
+# of renders: a response without a usage block still cost money, and a total
+# divided by the wrong call count is worse than no per-render number at all.
+USAGE_KEYS = ("input_tokens", "output_tokens", "total_tokens")
+#: Inside `input_tokens_details`. The split is the whole story of the model
+#: choice — see the 3.7x above, which is entirely `image_tokens`.
+USAGE_DETAIL_KEYS = ("text_tokens", "image_tokens")
+
+
+def empty_usage() -> dict:
+    return {"calls": 0, **{k: 0 for k in USAGE_KEYS}, **{k: 0 for k in USAGE_DETAIL_KEYS}}
+
+
+def add_usage(into: dict, usage: dict | None) -> dict:
+    """Fold one response's `usage` into a running total.
+
+    A missing or malformed block is skipped rather than raised on: usage is
+    bookkeeping, and a run that renders fine must not fail because the provider
+    changed a field name.
+    """
+    if not isinstance(usage, dict):
+        return into
+    into["calls"] += 1
+    for key in USAGE_KEYS:
+        into[key] += int(usage.get(key) or 0)
+    details = usage.get("input_tokens_details")
+    if isinstance(details, dict):
+        for key in USAGE_DETAIL_KEYS:
+            into[key] += int(details.get(key) or 0)
+    return into
+
+
+def merge_usage(into: dict, other: dict) -> dict:
+    """Two totals into one. A run can call the model more than once — the clipped
+    render retry in generate.run() — and each of those renders was paid for
+    whether or not its picture was kept."""
+    for key, value in other.items():
+        into[key] = into.get(key, 0) + int(value or 0)
+    return into
+
+
+@dataclass(frozen=True)
+class Renders:
+    """What came back, and what it cost. The two travel together on purpose:
+    usage that has to be fetched separately is usage that gets dropped at the
+    first call site that only wanted the pictures."""
+
+    images: list[bytes]
+    usage: dict
+
+
+def _extract(payload: dict) -> tuple[bytes, dict | None]:
     items = payload.get("data") or []
     b64 = items[0].get("b64_json") if items else None
     if not b64:
         raise ImageGenError("no image in response")
-    return base64.b64decode(b64)
+    usage = payload.get("usage")
+    return base64.b64decode(b64), usage if isinstance(usage, dict) else None
 
 
 async def _one(
@@ -136,7 +199,7 @@ async def _one(
     model: str = MODEL,
     size: str = SIZE,
     quality: str = QUALITY,
-) -> bytes:
+) -> tuple[bytes, dict | None]:
     headers = {"authorization": f"Bearer {key}"}
     if reference is not None:
         data, media_type = reference
@@ -172,7 +235,7 @@ async def render_many(
     model: str | None = None,
     size: str | None = None,
     quality: str | None = None,
-) -> list[bytes]:
+) -> Renders:
     """Ask the model for `calls` renders of the same prompt, concurrently.
 
     `reference`, when given, goes to the edits endpoint as the image to work
@@ -198,7 +261,13 @@ async def render_many(
             return_exceptions=True,
         )
 
-    images = [r for r in results if isinstance(r, bytes)]
+    usage = empty_usage()
+    images: list[bytes] = []
+    for result in results:
+        if isinstance(result, tuple):
+            image, reported = result
+            images.append(image)
+            add_usage(usage, reported)
     if not images:
         failures = [r for r in results if isinstance(r, BaseException)]
         reasons = " | ".join(str(r) for r in failures)
@@ -207,4 +276,4 @@ async def render_many(
         # sees a generic failure and nobody learns that the account is empty.
         quota = any(getattr(f, "quota", False) for f in failures)
         raise ImageGenError(f"Image generation failed. {reasons}", retriable=not quota, quota=quota)
-    return images
+    return Renders(images=images, usage=usage)
