@@ -441,7 +441,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         : buildRenderPrompt(
             body.userPrompt, design.product_type, dims, plan.rows,
             Boolean(editSvg), Boolean(lettering), plan.cols,
-            story ? { widthRange: widthRangeOf(design.product_type) } : undefined,
+            // הרוחב של הפריט שנערך יכול לשבת מחוץ לטווח הייצור מאז שהצביטה
+            // הוסרה — הטווח נפתח כדי להכיל אותו. ראה widthRangeOf.
+            story ? { widthRange: widthRangeOf(design.product_type, dims.widthMm) } : undefined,
           ));
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
