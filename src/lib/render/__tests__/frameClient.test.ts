@@ -19,6 +19,7 @@ import worker from "../../../../workers/frame/index";
 import { handleFrame, type FrameRequest } from "../frameRequest";
 import type { LetterBridge } from "@/lib/geometry/restoreBridges";
 import { difference, rectPolygon } from "@/lib/geometry/poly";
+import { ApiError } from "@/lib/api";
 
 const dims: DesignDims = { productType: "bracelet", lengthMm: 40, widthMm: 8, thicknessMm: 1 };
 
@@ -40,6 +41,10 @@ const islandSvg = (() => {
 const plan = {
   letterBridges: [{ char: "e", counter: [13, 4.5, 15, 5.5], rects: [[13.6, 2.5, 14.4, 5]], widthMm: 0.8 }] as LetterBridge[],
 };
+
+// קשת — rescaleCutoutsSvg מסרב לה, והמסגור המקומי זורק עליה.
+const arc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"><g id="cutouts">` +
+  `<path d="M0 0A5 5 0 0 1 10 4Z"/></g></svg>`;
 
 afterEach(() => {
   cf.env = null;
@@ -72,11 +77,8 @@ describe("frameCandidates", () => {
     expect(got).toEqual(framePreview(dims, svg("0 0 44 8")));
   });
 
-  // קשת — rescaleCutoutsSvg מסרב לה, והמסגור המקומי זורק עליה. עד עכשיו מועמד
-  // אחד כזה הפיל את היצירה כולה ב-internal, כולל המועמדים שהיו נחתכים מצוין.
-  const arc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"><g id="cutouts">` +
-    `<path d="M0 0A5 5 0 0 1 10 4Z"/></g></svg>`;
-
+  // עד עכשיו מועמד אחד כזה הפיל את היצירה כולה ב-internal, כולל המועמדים
+  // שהיו נחתכים מצוין.
   it("drops the candidate local framing cannot handle, keeping the rest", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const out = await frameCandidates(dims, [arc, svg("0 0 44 8")]);
@@ -132,6 +134,24 @@ describe("frameFull — המסגור המלא של הזוכה", () => {
       expect.stringContaining("geometry service failed (full)"), expect.any(String),
     );
     fetchSpy.mockRestore();
+    err.mockRestore();
+  });
+
+  // AP: canary אדום ב-14.8 — כשל במסגור המקומי (המסלול האחרון, ובניגוד לקופסה
+  // ול-Worker לא רץ מאחורי handleFrame) הגיע ל-`/api/generate` כ-RangeError
+  // גולמי במקום תשובה נקייה. יתר הצינור (frameCandidates, handleFrame) כבר
+  // הופך כשל מסגור לתוצאה מדווחת; זה השלים את התמונה לזוכה.
+  it("turns a local-framing crash into a clean rejection instead of a raw throw", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(frameFull(dims, arc)).rejects.toBeInstanceOf(ApiError);
+    try {
+      await frameFull(dims, arc);
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).code).toBe("vectorize_failed");
+      expect((e as ApiError).status).toBe(422);
+    }
     err.mockRestore();
   });
 });

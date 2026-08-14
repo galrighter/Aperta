@@ -1,4 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { ApiError } from "@/lib/api";
 import { framePreview, type BridgePlan, type FramedPreview } from "@/lib/geometry/frameCutouts";
 import { frameFullLocal, type FramedFull } from "@/lib/render/frameRequest";
 import type { DesignDims } from "@/lib/geometry/validate";
@@ -132,7 +133,21 @@ export async function frameFull(
       console.error("frame worker failed (full), framing locally:", (e as Error).message);
     }
   }
-  return frameFullLocal(dims, cutoutsSvg, plan);
+  // המסלול האחרון, ובניגוד לשני הקודמים הוא לא רץ מאחורי `handleFrame` — שום
+  // דבר לא הופך כשל שלו לתשובת HTTP נקייה. כשהקופסה ו-ה-Worker גם נכשלו (או
+  // שאינם קיימים בפריסה הזו) וגם המקומי נכשל, מה שהיה מגיע לקוראת היה
+  // `RangeError` גולמי מ-polygon-clipping ("Maximum call stack size exceeded")
+  // — בדיוק התקלה שהעירה את התורן ב-14.8. הזוכה כאן הוא לא מועמד להשלכה
+  // כמו ב-`frameCandidates`, אבל הוא כן צריך להיכשל בניסוח שהלקוחה מבינה.
+  try {
+    return frameFullLocal(dims, cutoutsSvg, plan);
+  } catch (e) {
+    throw new ApiError(
+      "vectorize_failed",
+      `Design geometry could not be framed on any tier (box, worker, local): ${(e as Error).message}`,
+      422,
+    );
+  }
 }
 
 /**
