@@ -1,6 +1,9 @@
 import { XMLParser } from "fast-xml-parser";
 import { samplePathToRings, ringToPathD } from "./paths";
-import { union, difference, intersection, offset, rectPolygon, ringArea, multiPolygonArea, polygonArea } from "./poly";
+import {
+  union, difference, intersection, differenceSafe, intersectionSafe,
+  offset, rectPolygon, ringArea, multiPolygonArea, polygonArea,
+} from "./poly";
 import type { MultiPolygon, Polygon, Ring } from "./types";
 
 // נרמול SVG גולמי מה-LLM לפי החוזה (סעיף 5): פרסינג קפדני → המרת primitives
@@ -374,9 +377,15 @@ export function uncuttableParts(poly: Polygon, minHoleMm: number): MultiPolygon 
   // כדי ש-V5 והמנקה ימשיכו להסכים עליו מילה במילה.
   if (!isCuttableOpening(poly, minHoleMm)) return [poly];
   const r = minHoleMm / 2;
-  const opened = intersection(offset(offset([poly], -r), r), [poly]);
+  // **שתי הפעולות האלה הן זוג שחולק מתאר.** הפתיחה כולה `offset`, כלומר היא
+  // כבר יושבת על רשת של 0.001 מ"מ; `poly` הוא צף גולמי מדגימת הקשתות. כל אחת
+  // מהן מעמידה זה מול זה שני עותקים של אותו מתאר שנבדלים רק בשארית העיגול —
+  // ובדיוק על זה polygon-clipping זורק `Unable to complete output ring`
+  // (ובקינון עמוק, `Maximum call stack size exceeded`). נמדד: 135 כשלים מתוך
+  // 612 עיצובים של עיגולים חופפים, **כולם** בשתי השורות האלה. ראה `safely`.
+  const opened = intersectionSafe(offset(offset([poly], -r), r), [poly]);
   if (opened.length === 0) return [poly];
-  return difference([poly], opened).filter((p) => polygonArea(p) >= drawnArea(minHoleMm));
+  return differenceSafe([poly], opened).filter((p) => polygonArea(p) >= drawnArea(minHoleMm));
 }
 
 /** מתחת לזה, חלק דק הוא העיגול של הכיווץ עצמו ולא משהו שצויר. ראה
@@ -413,7 +422,11 @@ export function dropThinCutouts(n: NormalizedDesign, minHoleMm: number): Normali
         // מה שנשאר יכול להתפרק: הסרה של זרוע מותירה לפעמים גדם כפוליגון בפני
         // עצמו, וגדם עומד לבדו הוא בדיוק מה שהבדיקה הראשונה פוסלת. בלי המסננת
         // הזו המנקה היה מחליף כשל V4 בכשל V5 — נמדד על AP-0165.
-        return difference([poly], drop).filter((p) => isCuttableOpening(p, minHoleMm));
+        //
+        // גם כאן זוג שחולק מתאר: `drop` יצא מ-`uncuttableParts`, ולכן מתארו
+        // חופף את `poly` לאורך כל מה שלא הוסר. אותם אופרנדים בדיוק שהפילו את
+        // השורה שם.
+        return differenceSafe([poly], drop).filter((p) => isCuttableOpening(p, minHoleMm));
       }),
     )
     .filter((mp) => mp.length > 0);

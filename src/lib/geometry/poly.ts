@@ -27,6 +27,88 @@ export function intersection(a: MultiPolygon, b: MultiPolygon): MultiPolygon {
   return polygonClipping.intersection(a, b) as MultiPolygon;
 }
 
+/**
+ * בוליאניות על **רשת clipper** — לשימוש כששני האופרנדים אמורים לחלוק מתאר.
+ *
+ * למה זה קיים בכלל, כשיש כבר `union`/`difference`/`intersection`: polygon-clipping
+ * עובד בנקודה צפה, ונקודת החולשה שלו היא שני מתארים שכמעט-חופפים לאורך —
+ * "כמעט" ברמת הסיביות האחרונות. ה-sweep-line מייצר אז שרשרת מקטעים שאינה
+ * נסגרת לטבעת, והוא זורק `Unable to complete output ring starting at [...]`
+ * כשההפרש בין הנקודה שהוא חיפש לזו שמצא הוא 1e-15 — כלומר אותה נקודה.
+ *
+ * מאיפה מגיע "כמעט": כל מה ש-`offset` מחזיר עבר דרך `toClipper`, כלומר יושב
+ * על רשת של 0.001 מ"מ, ואילו הפוליגון המקורי הוא צף גולמי מדגימת הקשתות.
+ * פעולה בוליאנית בין השניים מציבה זה מול זה שני עותקים של אותו מתאר שנבדלים
+ * בשארית העיגול — בדיוק הקלט שמפיל אותו.
+ *
+ * כאן שני האופרנדים עוברים את **אותו** `toClipper`, ולכן המתאר המשותף הופך
+ * לאותו פוליגון שלמים בדיוק. clipper הוא שלם-מדויק ואיטרטיבי, ולכן הוא גם
+ * לא נופל על הרקורסיה של `isExteriorRing` בגיאומטריה עם קינון עמוק.
+ *
+ * **even-odd ולא nonzero:** `toClipper` משטח את הטבעות ומאבד מי חיצונית ומי
+ * חור, ולכן כיוון הליפוף הוא שהיה צריך לשחזר את זה. even-odd עונה על השאלה
+ * לפי הכלה בלבד — נכון לכל אופרנד שטבעותיו אינן חופפות זו את זו (פוליגון
+ * "חיצונית + חורים" ופלט clipper כאחד), ובלי להישען על מוסכמת ליפוף של מי
+ * שייצר אותו.
+ *
+ * זה **לא** מחליף את polygon-clipping כמנוע הבוליאני (ראה ההערה בראש הקובץ),
+ * וגם לא רץ ראשון — ראה `differenceSafe`.
+ */
+function onGrid(clipType: ClipperLib.ClipType, a: MultiPolygon, b: MultiPolygon): MultiPolygon {
+  const c = new ClipperLib.Clipper();
+  c.AddPaths(toClipper(a), ClipperLib.PolyType.ptSubject, true);
+  c.AddPaths(toClipper(b), ClipperLib.PolyType.ptClip, true);
+  const tree = new ClipperLib.PolyTree();
+  c.Execute(clipType, tree, ClipperLib.PolyFillType.pftEvenOdd, ClipperLib.PolyFillType.pftEvenOdd);
+  return fromPolyTree(tree, []);
+}
+
+/**
+ * למה `onGrid` הוא נפילה-לאחור ולא המסלול הראשי.
+ *
+ * שתי הדרכים מחשבות את אותה פעולה, אבל לא לאותה רזולוציה: polygon-clipping
+ * עובד בצף, clipper מעגל ל-0.001 מ"מ. ההפרש זעיר לכשעצמו — אלא שהתוצאה
+ * נכנסת ישר לשני שערים עם סף חד, `drawnArea` ב-`uncuttableParts` ו-V4/V5
+ * אחריו, ושם הפרש זעיר על חתיכה שיושבת בדיוק על הסף הופך תשובה.
+ *
+ * נמדד: הרצה שבה **כל** הפעולות עברו לרשת שינתה את השטח החתוך ב-201 מתוך
+ * 1448 עיצובים שעברו גם קודם, ובשניים מהם הפכה דוח `pass` ל-`fail`. עיצוב
+ * שהיה מיוצר נדחה — מחיר גבוה מדי בשביל תקלה שנוגעת ב-22% מהמקרים בלבד.
+ *
+ * לכן: polygon-clipping קודם, בדיוק כמו עד היום, ורק כשהוא **מודיע שנכשל**
+ * (טבעת שלא נסגרה, או הרקורסיה של `isExteriorRing` שגלשה) אותו חישוב חוזר
+ * על הרשת. עיצוב שעובד היום מקבל את אותה תשובה עד הביט האחרון; עיצוב שעד
+ * עכשיו חזר כ-422 מקבל תשובה במקום כלום.
+ */
+function safely(
+  op: (a: MultiPolygon, b: MultiPolygon) => MultiPolygon,
+  clipType: ClipperLib.ClipType,
+  a: MultiPolygon,
+  b: MultiPolygon,
+): MultiPolygon {
+  try {
+    return op(a, b);
+  } catch (e) {
+    // לא בשקט: זה עדיין מסלול חריג, ומי שקורא לוגים צריך לדעת שהעיצוב הזה
+    // נגע בו. הכשל עצמו כבר לא מגיע ללקוחה.
+    console.warn(`boolean op fell back to the clipper grid — ${e instanceof Error ? e.message : e}`);
+    return onGrid(clipType, a, b);
+  }
+}
+
+/** `intersection` שלא נכשל על מתאר משותף. ראה `safely`. */
+export function intersectionSafe(a: MultiPolygon, b: MultiPolygon): MultiPolygon {
+  if (a.length === 0 || b.length === 0) return [];
+  return safely(intersection, ClipperLib.ClipType.ctIntersection, a, b);
+}
+
+/** `difference` שלא נכשל על מתאר משותף. ראה `safely`. */
+export function differenceSafe(a: MultiPolygon, b: MultiPolygon): MultiPolygon {
+  if (a.length === 0) return [];
+  if (b.length === 0) return a;
+  return safely(difference, ClipperLib.ClipType.ctDifference, a, b);
+}
+
 export function ringArea(ring: Ring): number {
   let s = 0;
   for (let i = 0; i < ring.length; i++) {
