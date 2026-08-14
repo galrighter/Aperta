@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,7 @@ import { he } from "@/i18n/he";
 import { story } from "@/i18n/story";
 import { saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { saveStoryHandoff } from "@/lib/client/storyHandoff";
+import { storyCreateBlockers } from "@/lib/story/createForm";
 import { Eyebrow, ScreenTitle, OptionBtn, PrimaryBtn } from "@/components/create/ui";
 import { INITIAL, type Product } from "@/components/create/model";
 
@@ -33,6 +34,8 @@ const PLACEHOLDER_MS = 6000;
 export function StoryCreate() {
   const router = useRouter();
   const storyId = useId();
+  const productRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [product, setProduct] = useState<Product | null>(null);
   const [text, setText] = useState("");
@@ -48,7 +51,10 @@ export function StoryCreate() {
     return () => clearInterval(t);
   }, [text]);
 
-  const missingStory = tried && !text.trim();
+  /** מה שחסר עכשיו. מוצג רק אחרי ניסיון שליחה — ראה `tried`. */
+  const blockers = storyCreateBlockers({ product, story: text });
+  const missingProduct = tried && blockers.includes("product");
+  const missingStory = tried && blockers.includes("story");
 
   /** מה שנמסר לעורך המתקדם, כדי שלא יתחילו מחדש. הטיוטה היא המנגנון הקיים
    *  שהמסע ממילא קורא בכניסה (`loadFunnelDraft`) — בלי שום קוד חדש שם. */
@@ -59,7 +65,21 @@ export function StoryCreate() {
 
   const submit = (): void => {
     setTried(true);
-    if (!product || !text.trim()) return;
+    // **לחיצה תמיד עושה משהו.** קודם היה כאן `return` שקט כשהמוצר לא נבחר,
+    // ואז הכפתור הראשי במסך פשוט לא הגיב: השגיאה היחידה שהמסך ידע להציג
+    // הייתה על הסיפור, ומי שכתבה סיפור ולא בחרה תכשיט לא קיבלה שום סימן.
+    // עכשיו כל חסימה גם נראית על המסך וגם מושכת אליה את המיקוד.
+    // `!product` כאן הוא לצמצום הטיפוס בלבד — `blockers` כבר מכיל אותו.
+    if (blockers.length || !product) {
+      const first = blockers[0];
+      const el = first === "product" ? productRef.current : textRef.current;
+      el?.scrollIntoView({ block: "center", behavior: "smooth" });
+      // בקבוצת המוצר אין שדה למקד — ממקדים את האפשרות הראשונה שבה.
+      const focusable =
+        first === "product" ? productRef.current?.querySelector("button") : textRef.current;
+      focusable?.focus({ preventScroll: true });
+      return;
+    }
     setBusy(true);
     handOff();
     saveStoryHandoff({ product, story: text.trim() });
@@ -75,7 +95,7 @@ export function StoryCreate() {
 
         {/* 1 · מה ניצור */}
         <ScreenTitle>{c.productTitle}</ScreenTitle>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div ref={productRef} className="mt-5 grid gap-4 sm:grid-cols-2">
           {(["bracelet", "ring"] as const).map((p) => (
             <OptionBtn
               key={p}
@@ -109,6 +129,11 @@ export function StoryCreate() {
             </OptionBtn>
           ))}
         </div>
+        {missingProduct && (
+          <p role="alert" className="mt-2 text-[13px]" style={{ color: "var(--color-failred)" }}>
+            {c.productMissing}
+          </p>
+        )}
 
         {/* 2 · הסיפור — החלק המרכזי במסך */}
         <div className="mt-11">
@@ -126,6 +151,7 @@ export function StoryCreate() {
           </label>
           <textarea
             id={storyId}
+            ref={textRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={7}

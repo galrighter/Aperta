@@ -50,6 +50,7 @@ export const story = {
     productTitle: "מה ניצור?",
     productBracelet: "צמיד",
     productRing: "טבעת",
+    productMissing: "בחרי צמיד או טבעת כדי להמשיך.",
 
     storyTitle: "מה הסיפור שלך?",
     storyHelp:
