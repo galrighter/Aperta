@@ -3,7 +3,7 @@ import { signedUploadUrl } from "@/lib/db/storage";
 import { deriveRenderJobId } from "./attemptId";
 import { vectorizerUrl } from "@/lib/site.config";
 import type { LlmImage } from "@/lib/llm/core";
-import type { RunStagePaths } from "@/lib/db/runs";
+import type { RenderUsage, RunStagePaths } from "@/lib/db/runs";
 
 // הלקוח לשירות היצירה שרץ על הקופסה (אותו שירות שמריץ את ה-vectorizer).
 //
@@ -72,6 +72,14 @@ export interface RenderJob {
   model: string;
   panels: number;
   candidates: RenderCandidate[];
+  /**
+   * מה שמודל התמונה חייב על ההרצה, מכל הקריאות שלה יחד — כולל הדמיה חוזרת
+   * שנקנתה בגלל חיתוך בקצה ולא נשמרה בסוף.
+   *
+   * `null` = הקופסה לא דיווחה. זו גרסה שלה שקדמה לשדה, ולא הרצה שלא עלתה כלום
+   * — ולכן הוא לא נרשם ביומן כאפס.
+   */
+  usage: RenderUsage | null;
   /** נתיבי ההדמיות שבאמת הועלו — רק הם נרשמים ליומן. */
   renderPaths: string[];
   stagePaths: RunStagePaths;
@@ -88,6 +96,33 @@ export interface RenderJob {
    * `null` במסלול הישן, שבו הקופסה מריצה בתוך הבקשה ולא מחזיקה כלום.
    */
   boxJobId: string | null;
+}
+
+/**
+ * `usage` של הקופסה → `RenderUsage`.
+ *
+ * מיוצא כדי שיהיה מה לבדוק: זו התרגום היחיד בקובץ שנופל בשקט. גוף שאין בו
+ * `usage`, או שיש בו מספרים שאינם מספרים, חוזר `null` — ואפס ביומן היה נקרא
+ * כהרצה שלא עלתה כלום, שזו בדיוק המסקנה ההפוכה מהאמת.
+ */
+export function parseUsage(raw: unknown): RenderUsage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const box = raw as Record<string, unknown>;
+  const num = (key: string) => {
+    const value = Number(box[key]);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const usage: RenderUsage = {
+    calls: num("calls"),
+    inputTokens: num("input_tokens"),
+    outputTokens: num("output_tokens"),
+    totalTokens: num("total_tokens"),
+    textTokens: num("text_tokens"),
+    imageTokens: num("image_tokens"),
+  };
+  // הקופסה מחזירה את המבנה גם כשאף תשובה לא דיווחה. אין שם מדידה, ורק רעש
+  // ביומן — ולכן הוא נשמר כלא-קיים ולא כאפסים.
+  return usage.calls > 0 || usage.totalTokens > 0 ? usage : null;
 }
 
 interface RawCandidate {
@@ -408,6 +443,7 @@ function toRenderJob(
   return {
     model: body.model ?? "unknown",
     panels: body.panels ?? 0,
+    usage: parseUsage(body.usage),
     renderPaths: renderPaths.filter((_, i) => uploadedRenders.has(i)),
     stagePaths: uploaded,
     candidates: (body.candidates ?? []).map((c, i) => ({
