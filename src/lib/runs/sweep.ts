@@ -31,7 +31,9 @@ export const RERUN_MAX_AGE_MS = 60 * 60_000;
 
 export interface SweepEntry {
   jobId: string;
-  outcome: "recovered" | "completed" | "rerun" | "rejected" | "abandoned" | "skipped" | "error";
+  outcome:
+    | "recovered" | "completed" | "rerun" | "rejected" | "abandoned"
+    | "superseded" | "skipped" | "error";
   detail?: string;
 }
 
@@ -95,6 +97,7 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
 
   const outcome = await completeFromContext(jobId, job.run_id, ctx);
   if (outcome.kind === "done") return { jobId, outcome: "completed" };
+  if (outcome.kind === "superseded") return superseded(jobId, job.run_id);
   if (outcome.kind === "rejected") {
     await failJob(jobId, job.run_id, {
       code: "vectorize_failed",
@@ -113,6 +116,7 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
 
   const again = await rerunFromContext(jobId, job.run_id, ctx);
   if (again.kind === "done") return { jobId, outcome: "rerun" };
+  if (again.kind === "superseded") return superseded(jobId, job.run_id);
   if (again.kind === "rejected") {
     await failJob(jobId, job.run_id, {
       code: "vectorize_failed",
@@ -133,4 +137,17 @@ async function sweepOne(job: GenerationJobRow, now: number): Promise<SweepEntry>
 async function abandon(jobId: string, runId: string, detail: string): Promise<SweepEntry> {
   await failJob(jobId, runId, { code: "job_stalled", message: "Generation stopped responding" });
   return { jobId, outcome: "abandoned", detail };
+}
+
+/**
+ * הרצה שהלקוחה כבר לא מחכה לה — היא קיבלה תשובה מהרצה מאוחרת יותר על אותו
+ * עיצוב. נסגרת בלי גרסה, כדי שהסבב הבא לא ינסה שוב ושלא תיכתב גרסה שתדרוס
+ * את מה שנבחר. ראה `supersededByNewerJob`.
+ */
+async function superseded(jobId: string, runId: string): Promise<SweepEntry> {
+  await failJob(jobId, runId, {
+    code: "job_superseded",
+    message: "A later generation on this design already finished",
+  });
+  return { jobId, outcome: "superseded" };
 }

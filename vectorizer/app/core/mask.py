@@ -173,6 +173,35 @@ def resolve_diagonal_pinches(mask: np.ndarray, policy: str) -> tuple[np.ndarray,
     return out, report
 
 
+#: How much of a border the metal has to occupy before that border counts as
+#: the stock edge. Half is a wide separator, not a tuned number: a strip drawn
+#: edge to edge covers 100% of every border, while a drawn silhouette that
+#: merely grazes one covers a few per cent (measured: 3–30% on a lobed cuff,
+#: 14–18% on AP-0170's own top and bottom). Nothing real sits in between.
+STOCK_EDGE_COVERAGE = 0.5
+
+
+def border_coverage(mask: np.ndarray) -> dict[str, float]:
+    """Share of each image border that is metal, in 0..1.
+
+    The crop in ``conditioning`` is tight to the metal's bounding box, so
+    *every* border is touched somewhere whatever the shape. What tells a stock
+    edge from a graze is how much of the border the metal runs along.
+    """
+    m = mask > 0
+    return {
+        "top": float(m[0].mean()),
+        "bottom": float(m[-1].mean()),
+        "left": float(m[:, 0].mean()),
+        "right": float(m[:, -1].mean()),
+    }
+
+
+def stock_edges(mask: np.ndarray, min_coverage: float = STOCK_EDGE_COVERAGE) -> tuple[str, ...]:
+    """Which borders the piece really runs along — see ``geometry.snap_to_bounds``."""
+    return tuple(k for k, v in border_coverage(mask).items() if v >= min_coverage)
+
+
 def analyse_and_mask(
     image: ValidatedImage,
     dark_region_role: str,

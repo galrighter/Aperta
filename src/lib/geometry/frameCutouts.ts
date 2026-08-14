@@ -222,7 +222,18 @@ export function frameCutoutsDims(
     lengthMm,
     widthMm,
     drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
-    stretch: correction / (widthMm / orderedWidth),
+    // פי כמה נמתחה הדוגמה אופקית **מעבר** למה שהאנכי קיבל — כלומר היחס בין שני
+    // המקדמים שהמסגור באמת הפעיל. 1 = קנה מידה אחיד, בלי עיוות.
+    //
+    // עד 15.8 המכנה היה `widthMm / orderedWidth`, כלומר הרוחב שנמסר מול הרוחב
+    // ש**הוזמן**. במסלול הרגיל אלה אותם מספרים: ה-vectorizer מקבל את הרוחב
+    // שהוזמן כ-`height_mm` ומחזיר אותו ב-viewBox, ולכן `drawn.widthMm ===
+    // orderedWidth` תמיד ושתי הנוסחאות זהות. במסלול Story לא: שם המסגור מקבל
+    // בכוונה רוחב מוזמן ששווה לרוחב האחיד (`storyFrameDims`), והנוסחה הישנה
+    // החזירה את מקדם ההגדלה עצמו במקום 1 — AP-0170 דיווח "מתיחה ×1.57" על
+    // מסגור אחיד לגמרי. זה לא רק שדה ביומן: `|stretch − 1|` הוא מפתח הדירוג
+    // בין המועמדים, ולכן במסלול Story הוא דירג לפי כמה קצר המודל צייר.
+    stretch: drawn.widthMm > 0 ? correction / (widthMm / drawn.widthMm) : correction,
     report,
     normalized,
   };

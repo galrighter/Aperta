@@ -68,6 +68,9 @@ function messageFor(code: string): string {
   // התארכה עד ההכרעה, הלקוחה כמעט לא הגיעה לכאן: החלון הקצר החזיר לה שגיאת
   // רשת הרבה קודם. עכשיו זה המסלול, ומגיע לו נוסח שאומר מה קרה.
   if (code === "job_stalled") return he.errJobStalled;
+  // הרצה נטושה שנסגרה בלי גרסה, כי הרצה מאוחרת יותר על אותו עיצוב כבר
+  // הסתיימה. הלקוחה מגיעה לכאן רק כשהיא פותחת מחדש הרצה ישנה שנשמרה בדפדפן.
+  if (code === "job_superseded") return he.errJobSuperseded;
   return he.errGeneric;
 }
 

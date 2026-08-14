@@ -45,36 +45,57 @@ def scale_to_mm(
     return affinity.scale(geom_px, xfact=sx, yfact=sy, origin=(0, 0))
 
 
-def _snap_ring(coords, width_mm: float, height_mm: float, tol: float):
+#: Every frame edge. The default for ``snap_to_bounds``, i.e. the behaviour
+#: that predates per-edge gating.
+ALL_EDGES = ("left", "right", "top", "bottom")
+
+
+def _snap_ring(coords, width_mm: float, height_mm: float, tol: float, edges):
     out = []
     for x, y in coords:
-        if abs(x) <= tol:
+        if "left" in edges and abs(x) <= tol:
             x = 0.0
-        elif abs(x - width_mm) <= tol:
+        elif "right" in edges and abs(x - width_mm) <= tol:
             x = width_mm
-        if abs(y) <= tol:
+        if "top" in edges and abs(y) <= tol:
             y = 0.0
-        elif abs(y - height_mm) <= tol:
+        elif "bottom" in edges and abs(y - height_mm) <= tol:
             y = height_mm
         out.append((x, y))
     return out
 
 
 def snap_to_bounds(
-    geom: BaseGeometry, width_mm: float, height_mm: float, tol: float
+    geom: BaseGeometry,
+    width_mm: float,
+    height_mm: float,
+    tol: float,
+    edges=ALL_EDGES,
 ) -> BaseGeometry:
     """Snap vertices within ``tol`` of a stock edge onto that edge.
 
     A raster contour of metal that runs to the image border stops one pixel
     short of the physical stock edge; without snapping, the re-rendered SVG
     loses a sliver there and max-deviation explodes even though IoU is fine.
-    The strip's extreme edge *is* the stock boundary, so snapping is correct.
+    When the strip really does run edge to edge, its extreme edge *is* the
+    stock boundary and snapping is correct.
+
+    ``edges`` is which of those borders that holds for — see
+    ``mask.stock_edges``. It matters because the crop in ``conditioning`` is
+    tight to the metal's bounding box, so the part touches **all four**
+    borders whatever its shape. On a drawn silhouette that only grazes a
+    border, snapping does not recover a lost sliver: it pulls a shallow curve
+    flat onto the frame and writes the frame itself into the cut path, which
+    is a straight tangent line on a piece the design meant to be round.
+    Measured on a lobed cuff (102.8 x 18mm, 5% border coverage): 10.8mm of
+    dead-straight outline before snapping, 20.0mm after. A full-bleed
+    rectangular strip covers 100% of every border and is unaffected.
     """
     polys = _as_polygons(geom if geom.is_valid else make_valid(geom))
     snapped = []
     for p in polys:
-        ext = _snap_ring(p.exterior.coords, width_mm, height_mm, tol)
-        holes = [_snap_ring(r.coords, width_mm, height_mm, tol) for r in p.interiors]
+        ext = _snap_ring(p.exterior.coords, width_mm, height_mm, tol, edges)
+        holes = [_snap_ring(r.coords, width_mm, height_mm, tol, edges) for r in p.interiors]
         q = Polygon(ext, holes)
         if not q.is_valid:
             q = make_valid(q)
