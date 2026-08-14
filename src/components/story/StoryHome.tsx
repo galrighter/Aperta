@@ -24,10 +24,10 @@ export function StoryHome() {
     // הטשטוש, ובנייד זה עובר את קצה המסך. `clip` ולא `hidden` — האחרון יוצר מכל
     // גלילה, וזה היה שובר את ה-`sticky` של הכותרת.
     <section
-      className="mx-auto flex max-w-[1240px] flex-col justify-center overflow-x-clip px-5 py-8 sm:px-10 sm:py-10"
+      className="mx-auto flex max-w-[1240px] flex-col justify-center overflow-x-clip px-5 py-5 sm:px-10 sm:py-10"
       style={{ minHeight: "calc(100svh - var(--ap-header-h, 68px))" }}
     >
-      <div className="grid items-center gap-8 md:grid-cols-[1.05fr_0.95fr] md:gap-16">
+      <div className="grid items-center gap-5 md:grid-cols-[1.05fr_0.95fr] md:gap-16">
         {/* ההבטחה — בלי משטח כלל, כמו ההירו של דף הבית (`(site)/page.tsx`).
             שם הטקסט יושב ישירות על `ArchBackground`, וזה כל ההבדל הוויזואלי בין
             שני העמודים: `/` תוקן ב-§B1 על ידי הכהיית טוקני הטקסט ולא על ידי
@@ -60,11 +60,11 @@ export function StoryHome() {
             הוא לא מקצר את השורה בפועל — בעברית הקצה השמאלי משונן ממילא, וכל
             מה שהוא משנה הוא היכן המילה גולשת. */}
         <div className="max-md:pe-5">
-          <div className="mb-4 font-display text-[11px] tracking-[0.42em] text-lapis-ink sm:mb-6 sm:text-xs">
+          <div className="mb-3 font-display text-[11px] tracking-[0.42em] text-lapis-ink sm:mb-5 sm:text-xs">
             {s.eyebrow}
           </div>
           <h1
-            className="mb-4 text-[clamp(34px,8.5vw,64px)] font-semibold leading-[1.05] sm:mb-6"
+            className="mb-3 text-[clamp(34px,8.5vw,64px)] font-semibold leading-[1.05] sm:mb-5"
             style={{ letterSpacing: "-1.5px", textWrap: "balance" }}
           >
             {s.titleLine1}
@@ -72,38 +72,39 @@ export function StoryHome() {
             {s.titleLine2}
           </h1>
           <p
-            className="mb-7 max-w-[460px] text-[16px] leading-relaxed text-ink80 sm:mb-9 sm:text-[19px]"
+            className="mb-5 max-w-[460px] text-[16px] leading-relaxed text-ink80 sm:mb-8 sm:text-[19px]"
             style={{ textWrap: "pretty" }}
           >
             {s.lede}
           </p>
 
-          {/* הפעולה הראשית. אחת, ובמשקל של אחת. */}
+          {/* הפעולה הראשית. אחת, ובמשקל של אחת.
+              הריפוד הודק והטקסט לא: מה שהיה גדול מדי בטלפון הוא המלבן, לא
+              המילה שבתוכו — וכיווץ הטקסט היה מחליש את הפעולה היחידה בעמוד. */}
           <Link
             href="/story/create"
-            className="inline-block rounded-[2px] bg-graphite px-9 py-4 text-[16px] font-semibold tracking-wide text-porcelain transition-colors hover:bg-graphite/90 sm:px-[42px] sm:py-[18px] sm:text-[17px]"
+            className="inline-block rounded-[2px] bg-graphite px-7 py-3 text-[16px] font-semibold tracking-wide text-porcelain transition-colors hover:bg-graphite/90 sm:px-9 sm:py-3.5 sm:text-[17px]"
           >
             {s.cta}
           </Link>
 
           {/* ארבעת השלבים — מה יקרה אחרי הלחיצה, בלי פסקה.
               רשימה סדורה ולא ארבע תיבות: זה רצף, וקורא מסך צריך לשמוע אותו
-              כרצף. המספרים דקורטיביים (הסדר כבר במבנה) ולכן מוסתרים ממנו. */}
-          <ol className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 sm:mt-10 sm:gap-x-4">
-            {s.steps.map((step, i) => (
-              <li key={step.n} className="flex items-center gap-3 sm:gap-4">
-                {i > 0 && (
-                  <span aria-hidden="true" className="font-display text-[12px] text-ink80">
-                    ←
-                  </span>
-                )}
-                <span className="flex items-baseline gap-1.5">
-                  <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis-ink">
-                    {step.n}
-                  </span>
-                  <span className="text-[14px] font-medium text-graphite sm:text-[15px]">
-                    {step.label}
-                  </span>
+              כרצף. המספרים דקורטיביים (הסדר כבר במבנה) ולכן מוסתרים ממנו.
+
+              **שורה אחת, ובלי חצים.** הרצועה נשברה לשתי שורות בטלפון, ושורה
+              שנייה כאן היא 25px שנלקחים מההדמיה שמתחת לקו הקיפול. החצים היו
+              הדבר הראשון שירד: הם צוירו את הרצף שהמספרים העולים כבר אומרים,
+              ותפסו את הרוחב שחסר לשלב הרביעי. `flex-wrap` נשאר כרשת ביטחון
+              למי שהגדילה את הגופן — שם שבירה עדיפה על גלישה. */}
+          <ol className="mt-6 flex flex-wrap items-baseline gap-x-4 gap-y-2 sm:mt-8 sm:gap-x-6">
+            {s.steps.map((step) => (
+              <li key={step.n} className="flex items-baseline gap-1.5 whitespace-nowrap">
+                <span aria-hidden="true" className="font-display text-[10px] tracking-[0.18em] text-lapis-ink">
+                  {step.n}
+                </span>
+                <span className="text-[14px] font-medium text-graphite sm:text-[15px]">
+                  {step.label}
                 </span>
               </li>
             ))}
