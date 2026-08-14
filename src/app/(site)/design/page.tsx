@@ -27,6 +27,7 @@ import { SummaryScreen } from "@/components/create/SummaryScreen";
 import { CheckoutScreen } from "@/components/create/CheckoutScreen";
 import { DoneScreen } from "@/components/create/DoneScreen";
 import { SavedDesigns } from "@/components/create/SavedDesigns";
+import { savedNotice } from "@/components/create/savedNotice";
 import { OpeningScreen } from "@/components/create/OpeningScreen";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
@@ -156,6 +157,8 @@ export default function DesignPage() {
   const [openingCode, setOpeningCode] = useState<string | null>(null);
   /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
   const [savedOpen, setSavedOpen] = useState(false);
+  /** מצב המשיכה מהחשבון. ריק+שקט אינו מצב: ראו `savedNotice`. */
+  const [savedSync, setSavedSync] = useState<"idle" | "loading" | "failed">("idle");
   /**
    * מזהה ההרצה שרצה עכשיו. נשמר גם ב-localStorage (`pendingJob`) כדי שמי
    * שיצאה מהמסך תקבל חיווי כשהעיצוב מוכן; כאן הוא נדרש לפעימת הלב שאומרת
@@ -334,6 +337,7 @@ export default function DesignPage() {
    * שהייתה לה אז — כולל את מה שנחתך בה ולא חזר.
    */
   const syncFromAccount = useCallback(async () => {
+    setSavedSync("loading");
     try {
       const { designs } = await api.myDesigns();
       mergeMyDesigns(
@@ -350,8 +354,12 @@ export default function DesignPage() {
         })),
       );
       setSaved(listMyDesigns());
+      setSavedSync("idle");
     } catch {
-      // הסנכרון הוא בונוס; כישלון שלו לא אמור לחסום את היצירה.
+      // הסנכרון הוא בונוס; כישלון שלו לא אמור לחסום את היצירה — אבל הוא כן
+      // חייב להיאמר. במכשיר שאין בו אינדקס מקומי הוא **המקור היחיד** לרשימה,
+      // וכישלון שקט שלו הוא מסך ריק שנראה כמו "אין לך עיצובים".
+      setSavedSync("failed");
     }
   }, []);
 
@@ -1710,6 +1718,19 @@ export default function DesignPage() {
   // שנשלף עיצוב גמור — כלומר אומר במפורש שאנחנו בתחילת המסע.
   const showRail = s.screen !== "done" && !opening;
 
+  /* מה שנאמר במקום רשימה ריקה. במכשיר שאין בו אינדקס מקומי הרשימה מגיעה
+     מהחשבון, וגם המשיכה הזו לוקחת זמן ולפעמים נכשלת — שני מצבים שנראו עד היום
+     כמו מסך ריק בלי מילה. */
+  const noticeKind = savedNotice({
+    items: saved.length,
+    account: !!account,
+    syncing: savedSync === "loading",
+    failed: savedSync === "failed",
+    requested: savedOpen,
+  });
+  const savedNoticeText =
+    noticeKind === "failed" ? d.savedSyncFailed : noticeKind === "syncing" ? d.savedSyncing : null;
+
   return (
     // בלי ap-scope: העמוד יושב כבר בתוך SiteLayout שמחיל אותו. הכפילות ציירה
     // את הגריד ואת הזוהר הלאפיסי פעמיים זה על זה במסך המרכזי של המשפך.
@@ -1776,6 +1797,7 @@ export default function DesignPage() {
                   onOpen={wantPreviews}
                   loadingId={resumingId}
                   error={resumeError}
+                  notice={savedNoticeText}
                   defaultOpen={savedOpen}
                 />
               </div>

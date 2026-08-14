@@ -20,7 +20,7 @@ const BOX_MIN_PX = 64;
 const BOX_MAX_PX = 148;
 
 export function SavedDesigns({
-  items, onResume, onRemove, onOpen, loadingId, error, defaultOpen = false,
+  items, onResume, onRemove, onOpen, loadingId, error, notice = null, defaultOpen = false,
 }: {
   items: SavedDesign[];
   onResume: (item: SavedDesign) => void;
@@ -31,10 +31,24 @@ export function SavedDesigns({
   onOpen?: (visibleIds: string[]) => void;
   loadingId: string | null;
   error: string | null;
+  /** מה נאמר כשהרשימה ריקה ויש סיבה לומר משהו — נטענת, או שנכשלה. ראו
+   *  `savedNotice`. */
+  notice?: string | null;
   /** נכנסו דרך "העיצובים שלי" בכותרת — הרשימה נפתחת מעצמה. */
   defaultOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  /* מה שנלחץ כאן, ואם לא נלחץ — מה שהכתובת ביקשה.
+     `useState(defaultOpen)` נקרא **פעם אחת**, ברינדור הראשון, והדגל שמגיע לכאן
+     נדלק באפקט שקורא את הכתובת (`?designs=1`) — כלומר אחרי אותו רינדור. לכן
+     הרשימה נשארה סגורה דווקא במסלול היחיד שביקש אותה פתוחה: מי שלחץ
+     "העיצובים שלי" בכותרת נחת על מסך בחירת המוצר עם שורה מקופלת, וזה נראה
+     בדיוק כמו לחיצה שלא עשתה כלום.
+
+     נגזר ולא מסונכרן: `toggled` הוא מה שהלקוחה עשתה בשורה הזו, ו-`null` פירושו
+     שלא נגעה בה. כך פתיחה מהכתובת מגיעה גם באיחור, וסגירה ידנית אחריה נשארת
+     סגורה. */
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? defaultOpen;
   const [page, setPage] = useState(0);
   const listId = useId();
   const listRef = useRef<HTMLUListElement>(null);
@@ -63,10 +77,20 @@ export function SavedDesigns({
   // מקומית (מייל, מכשיר אחר, חשבון אחר): הפתיחה נכשלת, המשפך נשאר במסך הראשון,
   // וההודעה היחידה שמסבירה למה נעלמה יחד עם הרשימה — כלומר לחיצה שנחתה בשקט על
   // "מה בונים" בזמן שהעיצוב שנלחץ קיים ומוכן.
+  //
+  // ומאותה סיבה בדיוק גם `notice`: רשימה שעדיין נמשכת מהחשבון, או משיכה
+  // שנכשלה, נראות שתיהן כמו "אין לך עיצובים" — במסך ריק לגמרי.
   if (items.length === 0) {
-    return error ? (
-      <div className="border border-graphite/10 border-s-2 border-s-lapis bg-chalk px-5 py-3.5 text-[13px] text-failred">
-        {error}
+    const line = error ?? notice;
+    return line ? (
+      <div
+        className={`border border-graphite/10 border-s-2 border-s-lapis bg-chalk px-5 py-3.5 text-[13px] ${
+          error ? "text-failred" : "text-ink60"
+        }`}
+        // "נטענת" מתחלף ברשימה עצמה, ולכן הוא חייב להיאמר גם למי שמקשיב.
+        role={error ? undefined : "status"}
+      >
+        {line}
       </div>
     ) : null;
   }
@@ -76,7 +100,7 @@ export function SavedDesigns({
       <button
         type="button"
         onClick={() => {
-          setOpen((v) => !v);
+          setToggled(!open);
           setPage(0);
         }}
         aria-expanded={open}
