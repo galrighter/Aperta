@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useAdminPages } from "@/lib/client/useAdminData";
 import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
+// ההיקף שהלקוחה מדדה, לא `length + gap` — ראו `sizeOfDesign`.
+import { circMmOfDesign } from "@/components/create/model";
 import type { AdminDesignRow } from "@/lib/db/accounts";
 import ExportFiles from "./ExportFiles";
 import { svgThumbnailSrc } from "./svgThumbnail";
@@ -80,7 +82,7 @@ export default function AdminDesigns({
 
               <div className="text-sm text-graphite">
                 {r.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
-                {Math.round(r.length_mm + r.gap_mm)} × {r.width_mm} {he.design.mm}
+                {Math.round(circMmOfDesign(r))} × {r.width_mm} {he.design.mm}
               </div>
 
               {r.owner ? (

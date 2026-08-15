@@ -1,0 +1,126 @@
+name: Backup database
+
+# גיבוי יומי של מסד הנתונים.
+#
+# **למה זה הקובץ החשוב ביותר בתיקייה הזאת.** עד 15.8 לא היה שום גיבוי: Supabase
+# על התוכנית החינמית לא שומר גיבויים ואין בה PITR, ו-`deploy.yml` מריץ את **כל**
+# קובצי המיגרציה מחדש בכל פריסה בהסתמך על אידמפוטנטיות. כתיבה לא-אידמפוטנטית
+# אחת, מחיקה בטעות ב-SQL Editor, או פרויקט שנמחק — וכל העיצובים, הגרסאות
+# (כולל ה-SVG שנחתך), ההזמנות והמשתמשים נעלמים בלי דרך חזרה. זו הייתה נקודת
+# האל-חזור היחידה בעסק (docs/FULL_AUDIT_2026-08.md, פרק 7, ממצא 1).
+#
+# **מה מגובה ומה לא.** ה-dump מכסה את כל הסכימה `public`, כלומר גם את
+# `design_versions.svg` — קובץ החיתוך עצמו יושב במסד ולא ב-storage. מה שלא
+# מכוסה: קבצי Storage (‏PNG של סימונים ותמונות שיתוף), שהם משניים וניתנים
+# ליצירה מחדש, ו-`auth.users` של Supabase שאינה בסכימה הזאת — כניסה מחדש
+# במייל תיצור אותה שוב, והקישור לפרופיל נשמר לפי מייל.
+#
+# **מה שנדרש להגדיר:** `SUPABASE_DB_URL` — אותו secret שהמיגרציות כבר משתמשות
+# בו (חובה מחרוזת ה-Session pooler; ראו migrate.yml). מומלץ מאוד גם
+# `BACKUP_PASSPHRASE`: ה-dump מכיל שמות, מיילים, טלפונים וכתובות של לקוחות,
+# והוא נשמר כ-artifact של הריצה. עם הסיסמה הוא נשמר מוצפן (gpg AES256), בלעדיה
+# הוא נשמר כמות שהוא והריצה מסמנת אזהרה.
+#
+# **השחזור** — docs/RUNBOOK_RESTORE.md. runbook נכתב ביום רגוע, לא בזמן אמת.
+
+on:
+  schedule:
+    # 02:41 UTC ≈ 05:41 בישראל. `schedule` ב-Actions מאחר בעשרות דקות
+    # (נמדד: 40–95), וזה לא משנה לגיבוי — מה שנמדד בימים לא נמדד בדקות.
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backup-db
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install a matching pg_dump
+        run: |
+          set -euo pipefail
+          # לקוח 17 ולא זה שמגיע עם ה-runner: ‏pg_dump מסרב לגבות שרת בגרסה
+          # גבוהה משלו, וזו תקלה שמתגלה רק ביום שבו Supabase משדרג.
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq curl ca-certificates gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Dump the public schema
+        id: dump
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            # נכשל ולא "מזהיר ויוצא 0". check ירוק על גיבוי שלא קרה הוא
+            # בדיוק האשליה שהגיבוי נועד למנוע.
+            echo "::error::SUPABASE_DB_URL secret is not set — nothing was backed up."
+            exit 1
+          fi
+          stamp=$(date -u +%Y-%m-%d)
+          file="aperta-db-$stamp.sql.gz"
+          # ‏--no-owner/--no-privileges: השחזור נעשה לפרויקט אחר, עם תפקידים
+          # אחרים. ‏--schema=public: ‏auth/storage מנוהלות ע"י Supabase ואי
+          # אפשר לשחזר אותן ככה ממילא.
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema=public --no-owner --no-privileges --clean --if-exists \
+            | gzip -9 > "$file"
+
+          # שפיות: dump ריק הוא הכישלון השקט הקלאסי — הקובץ קיים, הריצה ירוקה,
+          # ואין בו כלום. שלוש הטבלאות שבלעדיהן אין עסק חייבות להופיע.
+          for t in designs design_versions orders; do
+            zgrep -q "CREATE TABLE public.$t" "$file" \
+              || { echo "::error::dump is missing table $t"; exit 1; }
+          done
+          bytes=$(stat -c%s "$file")
+          echo "dump size: $bytes bytes"
+          [ "$bytes" -gt 4096 ] || { echo "::error::dump is suspiciously small"; exit 1; }
+
+          if [ -n "$PASSPHRASE" ]; then
+            gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$PASSPHRASE" -o "$file.gpg" "$file"
+            rm -f "$file"
+            echo "artifact=$file.gpg" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::BACKUP_PASSPHRASE is not set — the dump contains customer names, emails, phones and addresses and is stored unencrypted in the run artifact. Add the secret."
+            echo "artifact=$file" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Keep it
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: ${{ steps.dump.outputs.artifact }}
+          # 30 יום. גיבוי שנשמר לנצח אינו מה שחסר כאן — מה שחסר הוא היכולת
+          # לחזור ליום שלפני התקלה, וחודש מכסה כל תקלה שמתגלה בזמן סביר.
+          retention-days: 30
+          if-no-files-found: error
+
+      # ההתראה היא חצי מהעניין: גיבוי שנשבר בשקט הוא בדיוק היעדר גיבוי, רק עם
+      # תחושת ביטחון. מייל הכישלון של GitHub מגיע לתיבה שמתמלאת; טלגרם לא.
+      - name: Alert on failure
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_ALERT_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID || vars.TELEGRAM_ALERT_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BOT_TOKEN:-}" ] || [ -z "${CHAT_ID:-}" ]; then
+            echo "telegram not configured — skipping alert"
+            exit 0
+          fi
+          curl -sS --max-time 30 -X POST \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$CHAT_ID" \
+            --data-urlencode "text=⚠️ גיבוי המסד נכשל. אין גיבוי להיום. $RUN_URL" \
+            --data-urlencode "disable_web_page_preview=true" > /dev/null

@@ -59,11 +59,25 @@ export function isStuck(o: OrderRow, now = Date.now()): boolean {
   return daysInStatus(o, now) > STUCK_AFTER_DAYS[o.status];
 }
 
+/**
+ * הזמנה שהתקדמה בלי שהתשלום סומן (0022).
+ *
+ * `sent` אינה כזאת — הזמנה שהתקבלה ועוד לא אושרה אמורה להיות בלי תשלום.
+ * הרגע שבו זה הופך לשאלה הוא האישור: משם והלאה נחתך פליז. `cancelled` יוצאת
+ * מהצינור ואינה מעניינת.
+ */
+export function isUnpaid(o: OrderRow): boolean {
+  if (o.paid_at) return false;
+  return o.status === "approved" || o.status === "in_production" || o.status === "shipped";
+}
+
 export interface QueueBucket {
   status: Exclude<OrderStatus, "cancelled">;
   orders: OrderRow[];
   /** כמה מהן תקועות — המספר שקובע אם צריך להסתכל על הקבוצה הזאת עכשיו. */
   stuck: number;
+  /** כמה מהן התקדמו בלי סימון תשלום. */
+  unpaid: number;
 }
 
 /**
@@ -84,6 +98,7 @@ export function buildQueue(orders: OrderRow[], now = Date.now()): QueueBucket[] 
       status,
       orders: sorted,
       stuck: sorted.filter((o) => isStuck(o, now)).length,
+      unpaid: sorted.filter(isUnpaid).length,
     });
   }
   return buckets;

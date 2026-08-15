@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { quotaAlertMail } from "@/lib/mailTemplates";
 import { countQuotaFailuresSince } from "@/lib/db/runs";
+import { sendTelegram, telegramConfigured } from "./telegram";
 
 // התראה על תקציב שנגמר אצל ספק התמונות.
 //
@@ -50,7 +51,11 @@ export interface QuotaAlertContext {
  */
 export async function alertQuotaExhausted(err: unknown, ctx: QuotaAlertContext): Promise<void> {
   try {
-    if (!mailConfigured()) return;
+    // **שני ערוצים, לא אחד.** ‏7.8 הוכיח את הצורה הגרועה של זה: מפתח Resend
+    // פג, ואז גם המיילים ללקוחות וגם ההתראות על עצמם נשתקו יחד — במשך ימים.
+    // ערוץ שמתריע על עצמו דרך עצמו אינו ערוץ התראה. טלגרם יושב על תשתית
+    // אחרת לגמרי (docs/FULL_AUDIT_2026-08.md, פרק 7, ממצא 2).
+    if (!mailConfigured() && !telegramConfigured()) return;
 
     // ההרצה שנכשלה כבר נכתבה ליומן, ולכן החלון נמדד עד *תחילתה*: כשל תקציב
     // קודם בשעה האחרונה פירושו שהמייל כבר יצא, ואין מה לחזור עליו.
@@ -66,13 +71,24 @@ export async function alertQuotaExhausted(err: unknown, ctx: QuotaAlertContext):
     );
     if (earlier > 0) return;
 
-    const mail = quotaAlertMail({
-      reason: err instanceof Error ? err.message : String(err ?? ""),
-      runId: ctx.runId,
-      designRef: ctx.designRef ?? null,
-    });
-    const res = await sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text });
-    if (!res.ok) console.error("quota alert mail failed:", res.error);
+    const reason = err instanceof Error ? err.message : String(err ?? "");
+    const mail = quotaAlertMail({ reason, runId: ctx.runId, designRef: ctx.designRef ?? null });
+
+    // במקביל ולא בטור: זה יושב בתוך בקשה שהלקוחה ממתינה לה.
+    await Promise.allSettled([
+      mailConfigured()
+        ? sendMail({ to: alertAddress(), subject: mail.subject, text: mail.text }).then((res) => {
+            if (!res.ok) console.error("quota alert mail failed:", res.error);
+          })
+        : Promise.resolve(),
+      sendTelegram(
+        [
+          "🔴 Aperta — התקציב אצל ספק התמונות נגמר. אף יצירה לא עוברת.",
+          `הרצה: ${ctx.runId}${ctx.designRef ? ` (עיצוב ${ctx.designRef})` : ""}.`,
+          `נוסח הכשל: ${reason.slice(0, 300)}`,
+        ].join("\n"),
+      ),
+    ]);
   } catch (e) {
     console.error("quota alert failed:", (e as Error).message);
   }

@@ -40,9 +40,11 @@ import {
   beatPendingJob, clearPendingJob, setPendingJob,
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
+import { track } from "@/lib/client/track";
 import {
   INITIAL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
-  candidatesOf, circumferenceMm, entryDesignId, entryFromGeneration,
+  candidatesOf, circMmOfDesign, circumferenceMm, entryDesignId, entryFromGeneration,
+  sizeFieldsOfDesign,
   canGenerate, countCuts, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
   newOrderKey, railFor, railIndex, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
   type CreateState, type EditEntry, type Product, type Screen,
@@ -346,7 +348,8 @@ export default function DesignPage() {
           serial: dz.serial ?? undefined,
           name: dz.name,
           product: dz.product_type,
-          circMm: Math.round(Number(dz.length_mm) + Number(dz.gap_mm)),
+          // דרך מודל המידות, לא `length_mm + gap_mm` — ראו `sizeOfDesign`.
+          circMm: Math.round(circMmOfDesign(dz)),
           widthMm: Number(dz.width_mm),
           cuts: 0,
           updatedAt: dz.updated_at,
@@ -697,6 +700,10 @@ export default function DesignPage() {
     if (cur.screen !== "processing") pushHist("processing");
     runningRef.current = true;
 
+    // **הכניסה האמיתית למשפך.** לא בחירת המוצר ולא מילוי הטופס — הרגע שבו
+    // רצה הרצה שעולה כסף ונוצרת רשומה. עד כאן הכול היה עיון.
+    track("design_start", { designId: cur.designId });
+
     const st = {
       ...cur,
       screen: "processing" as Screen,
@@ -813,6 +820,10 @@ export default function DesignPage() {
       // הצלחה מאפסת גם את רצף הכשלים — הכשל הבא, אם יהיה, הוא סיפור חדש.
       setState((prev) => ({ ...prev, procStage: null, procFailCount: 0 }));
       pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
+      // הגרסה הראשונה על המסך — השלב שבו "ניסתה" הופך ל"ראתה משהו".
+      // ההפרש בינו לבין `design_start` הוא שיעור הכשל של המנוע כפי שהלקוחה
+      // חווה אותו, ואין לו מקור אחר.
+      track("first_version", { designId: design.id });
       goReplacing("result");
     } catch (e) {
       // ההרצה נגמרה — גם אם רע. מסך השגיאה הוא מסך שאפשר לצאת ממנו.
@@ -983,11 +994,11 @@ export default function DesignPage() {
       try {
         const { design, versions } = await api.getDesign(id);
         const last = versions[versions.length - 1];
-        const ringP = design.product_type === "ring";
-        const circP = Number(design.length_mm) + Number(design.gap_mm);
-        const sizes = ringP
-          ? { ringSize: String(Math.round(circP)), ringWidth: Number(design.width_mm) }
-          : { circ: String(Math.round(circP)), braceletWidth: Number(design.width_mm) };
+        // אורך הפריסה חזרה למידה — דרך `sizeOfDesign` ולא `length + gap`.
+        // הסכום הזה ניפח צמיד ב-~2 ס"מ וטבעת ב-~1.5 מידות, והיצירה החוזרת
+        // כתבה את המספר המנופח לעיצוב. הפירוט: `sizeOfDesign` ב-model.ts.
+        const fit = pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit);
+        const sizes = sizeFieldsOfDesign(design, fit);
 
         // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
         // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס. עם הסבר: בלעדיו
@@ -1006,7 +1017,7 @@ export default function DesignPage() {
             symmetry: pick(item.symmetry, ["symmetric", "asymmetric"], INITIAL.symmetry),
             density: pick(item.density, ["low", "medium", "high"], INITIAL.density),
             feel: pick(item.feel, ["delicate", "balanced", "massive"], INITIAL.feel),
-            fit: pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit),
+            fit,
             attrsAuto: item.attrsAuto ?? INITIAL.attrsAuto,
           });
           setMaxReached(2);
@@ -1043,6 +1054,9 @@ export default function DesignPage() {
           designId: design.id,
           designSerial: design.serial ?? null,
           ...sizes,
+          // אותו fit ששימש להפיכת האורך חזרה למידה — אחרת המסך יציג מידה
+          // שנגזרה ברמת חופש אחת ויחשב את האורך מחדש לפי אחרת.
+          fit,
           brief: item.brief ?? "",
           // ההצעות שמורות פעם אחת, על הגרסה שההרצה יצרה. גרסה שנוצרה מבחירה
           // נושאת רק את מזהה ההרצה, ומאתרת דרכו את אותן הצעות.
@@ -1687,6 +1701,8 @@ export default function DesignPage() {
       // המפתח מתאפס: ההזמנה הזאת נקלטה, והבאה היא הזמנה חדשה ולא ניסיון חוזר.
       // הטיוטה המקומית מיצתה את תפקידה — העיצוב שהוזמן שמור בשרת וברשימה.
       clearFunnelDraft();
+      // סוף המשפך. ‏`sendBeacon` שורד את המעבר למסך "תודה" שקורה מיד אחריו.
+      track("order_placed", { designId: orderedDesignId });
       setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
       setMaxReached(railIndex(s.story, "done"));
       scrollToTop();

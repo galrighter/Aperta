@@ -50,10 +50,30 @@ export const viewport: Viewport = {
   // דווקא במי שצריך להגדיל כדי לקרוא.
 };
 
+/** הטוקן של Cloudflare Web Analytics. ריק = הביקון לא נטען כלל. */
+const beaconToken = process.env.NEXT_PUBLIC_CF_BEACON_TOKEN || "";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="he" dir="rtl" className={`${archivo.variable} ${assistant.variable}`}>
-      <body className="bg-porcelain text-graphite antialiased">{children}</body>
+      <body className="bg-porcelain text-graphite antialiased">
+        {children}
+        {/* ‏Cloudflare Web Analytics — ביקורים, מקורות ו-Core Web Vitals, חינם
+            ובלי עוגיות (ולכן בלי באנר). משלים ולא מחליף את `funnel_events`:
+            שם יושבים חמשת שלבי המשפך, כאן יושב מה שדורש דגימה בקצה — LCP/INP
+            אמיתיים ומקורות שהשרת שלנו לא רואה.
+
+            נדלק רק כשמוגדר טוקן, ולכן פיתוח ותצוגה מקדימה אינם מזהמים את
+            הנתונים. הסקריפט הוא היוצא מן הכלל היחיד ל"הכול מתארח עצמית" —
+            אין דרך לארח ביקון של ספק. */}
+        {beaconToken && (
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={`{"token":"${beaconToken}"}`}
+          />
+        )}
+      </body>
     </html>
   );
 }

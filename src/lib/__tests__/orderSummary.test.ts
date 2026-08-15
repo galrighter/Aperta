@@ -22,6 +22,9 @@ const ORDER: OrderRow = {
   fit: "regular",
   cuts: 34,
   brief: "עלים מחוברים",
+  length_mm: 165.7,
+  gap_mm: 25.4,
+  thickness_mm: 1.5,
   price: {
     base: 399,
     widthAdd: 0,
@@ -36,6 +39,7 @@ const ORDER: OrderRow = {
   idempotency_key: null,
   terms_accepted_at: "2026-07-28T00:00:00.000Z",
   marketing_opt_in: false,
+  paid_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
   updated_at: "2026-07-28T00:00:00.000Z",
 };

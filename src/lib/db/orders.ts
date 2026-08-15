@@ -33,6 +33,14 @@ export interface OrderRow {
   fit: Fit | null;
   cuts: number | null;
   brief: string | null;
+  /**
+   * 0022 — צילום המידות לייצור **ברגע ההזמנה**. עד כה הן נקראו מהשורה החיה של
+   * העיצוב, שיכולה להשתנות אחרי ההזמנה. NULL בהזמנות שקדמו למיגרציה, ואז
+   * `orderedDesignInfo` נופל לעיצוב כמו קודם.
+   */
+  length_mm: number | null;
+  gap_mm: number | null;
+  thickness_mm: number | null;
   price: Price | null;
   status: OrderStatus;
   status_history: Array<{ status: OrderStatus; at: string }>;
@@ -43,13 +51,15 @@ export interface OrderRow {
   terms_accepted_at: string | null;
   /** 0020 — הסכמה לדיוור, בנפרד מההזמנה עצמה. */
   marketing_opt_in: boolean;
+  /** 0022 — מתי התקבל התשלום. חותמת ולא boolean, ואינו חלק מצינור הסטטוסים. */
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type NewOrder = Omit<
   OrderRow,
-  "id" | "status" | "status_history" | "note" | "created_at" | "updated_at"
+  "id" | "status" | "status_history" | "note" | "paid_at" | "created_at" | "updated_at"
 >;
 
 /**
@@ -185,10 +195,61 @@ export async function updateOrderStatus(
     .from("orders")
     .update({ status, status_history: history, updated_at: now })
     .eq("id", id)
+    // ההיסטוריה נבנתה מ-`before`, ולכן העדכון תקף רק כל עוד היא עדיין נכונה.
+    // בלי התנאי הזה שני טאבים פתוחים על אותה הזמנה כותבים זה על זה: השני
+    // שומר היסטוריה שנבנתה לפני המעבר הראשון, כלומר **מוחק רשומת מעבר** —
+    // ושניהם שולחים מייל. עכשיו השני לא מוצא שורה, ומקבל תשובה שאומרת זאת.
+    .eq("status", before.status)
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) fail(error);
+  if (!data) {
+    throw new ApiError(
+      "status_conflict",
+      "Order status changed elsewhere; reload and try again",
+      409,
+    );
+  }
   return { order: data as OrderRow, changed: true };
+}
+
+/**
+ * סימון תשלום (0022). לא מעבר סטטוס — הזמנה משולמת יכולה להיות בכל שלב
+ * בצינור, ומה שמסומן כאן הוא עובדה חשבונאית ולא התקדמות בייצור.
+ *
+ * `at` נכתב בשרת. `null` מבטל סימון שנעשה בטעות — בלי זה הדרך היחידה לתקן
+ * הייתה SQL ידני, וזו בדיוק הסיבה שאנשים לא מסמנים.
+ */
+export async function markOrderPaid(id: string, paid: boolean): Promise<OrderRow> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin()
+    .from("orders")
+    .update({ paid_at: paid ? now : null, updated_at: now })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) fail(error);
+  if (!data) throw new ApiError("not_found", "Order not found", 404);
+  return data as OrderRow;
+}
+
+/**
+ * האם לעיצוב יש הזמנה שאינה מבוטלת.
+ *
+ * השאלה היחידה שעמדה בין לקוחה שמנקה את החשבון שלה לבין הזמנה משולמת בלי
+ * קובץ חיתוך: ‏`design_versions` נמחק בקסקדה, ההזמנה עצמה שורדת עם
+ * `design_id = null`, ומה שנשאר הוא רישום בלי SVG ובלי דרך לייצא אותו.
+ *
+ * `cancelled` אינה חוסמת — הזמנה שבוטלה אינה עומדת לייצור.
+ */
+export async function hasActiveOrderForDesign(designId: string): Promise<boolean> {
+  const { count, error } = await supabaseAdmin()
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("design_id", designId)
+    .neq("status", "cancelled");
+  if (error) fail(error);
+  return (count ?? 0) > 0;
 }
 
 /** הערה פנימית. לא נשלחת ללקוחה ואינה משנה סטטוס. */

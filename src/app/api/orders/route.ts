@@ -17,6 +17,8 @@ import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { designSampleCode } from "@/lib/designCode";
 import { priceFor } from "@/lib/pricing";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
+import { sendTelegram } from "@/lib/alerts/telegram";
+import { SITE } from "@/lib/site.config";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
@@ -120,6 +122,10 @@ export async function POST(req: Request) {
     let ref: string | null = null;
     let profileId: string | null = accountId;
     let versionId: string | null = null;
+    // צילום המידות לייצור (0022). נקרא מהעיצוב **כאן**, ברגע ההזמנה, ולא
+    // מהשורה החיה בזמן שהאדמין פותח את ההזמנה — עריכה של מידה אחרי ההזמנה
+    // שינתה עד כה בשקט את הוראות הערגול.
+    let snapshot: { length_mm: number; gap_mm: number; thickness_mm: number } | null = null;
     if (body.designId) {
       // `requireDesignAccess` ולא `getDesign`: כאן ישבה הדלת האחרונה שנשארה
       // פתוחה אחרי שכל שאר המסלולים נסגרו. מי שהחזיק uuid של עיצוב זר יכול היה
@@ -131,12 +137,37 @@ export async function POST(req: Request) {
       const design = await requireDesignAccess(req, body.designId, { known: accountId });
       ref = designSampleCode(design);
       profileId = design.profile_id ?? accountId;
+      snapshot = {
+        length_mm: Number(design.length_mm),
+        gap_mm: Number(design.gap_mm),
+        thickness_mm: Number(design.thickness_mm),
+      };
       // הגרסה שהוזמנה. אם לא נמסרה — הנוכחית. אם נמסרה גרסה של עיצוב אחר, היא
       // נזרקת: קובץ חיתוך של מישהו אחר הוא הטעות היקרה ביותר כאן.
       const candidate = body.versionId ?? design.current_version_id;
       if (candidate) {
-        const version = await getVersion(candidate).catch(() => null);
+        // **גרסה זרה וכשל שליפה אינם אותו דבר.** קודם שניהם נבלעו באותו
+        // `.catch(() => null)`, וכשל DB חולף הפיל את ההזמנה בשקט חזרה
+        // ל"בלי גרסה" — כלומר הייצוא נפל ל-current, גרסה שהלקוחה לא אישרה,
+        // בלי שום אינדיקציה. עכשיו כשל שליפה מפיל את הבקשה: הלקוחה תלחץ שוב,
+        // וזה עדיף פי כמה על הזמנה ששקטה נקשרה לגרסה אחרת.
+        const version = await getVersion(candidate).catch((err) => {
+          if (err instanceof ApiError && err.code === "not_found") return null;
+          throw err;
+        });
         versionId = version && version.design_id === design.id ? version.id : null;
+
+        // **גרסה שנכשלה בוולידציה אינה ניתנת להזמנה.** החסימה הייתה בדפדפן
+        // בלבד, והשרת קיבל בשמחה הזמנה על גרסה ש-`export_blocked` יעצור אחר
+        // כך — כלומר הלקוחה קיבלה אישור על משהו שאי אפשר לייצר, והכשל התגלה
+        // רק כשגל ניגש לחתוך.
+        if (version && version.validation_status === "fail") {
+          throw new ApiError(
+            "version_not_producible",
+            "The selected version failed fabrication validation",
+            409,
+          );
+        }
       }
     }
 
@@ -172,6 +203,10 @@ export async function POST(req: Request) {
       fit: body.fit ?? null,
       cuts: body.cuts ?? null,
       brief: body.brief ?? null,
+      // 0022 — המידות כפי שהיו ברגע ההזמנה. הזמנה בלי עיצוב נשארת בלי צילום.
+      length_mm: snapshot?.length_mm ?? null,
+      gap_mm: snapshot?.gap_mm ?? null,
+      thickness_mm: snapshot?.thickness_mm ?? null,
       price,
       idempotency_key: body.idempotencyKey ?? null,
       // החותמת נכתבת בשרת ולא מהדפדפן: "מתי אושרו התנאים" הוא הראיה עצמה.
@@ -202,6 +237,21 @@ export async function POST(req: Request) {
  * נמדד ש-`waitUntil` לא רץ בייצור, ואז אין מי שיכתוב אפילו את השגיאה.
  */
 async function notify(order: OrderRow): Promise<void> {
+  // **הזמנה חדשה יוצאת גם לטלגרם, ולא רק במייל.** ‏7.8 נפל מפתח Resend, ואיתו
+  // נשתקו בו-זמנית אישורי הלקוחות וההתראות עלינו — כלומר הזמנה יכלה להיכנס
+  // בלי שאיש יידע, לימים. טלגרם יושב על תשתית אחרת, והוא נשלח לפני המיילים:
+  // אם משהו כאן ייפול, מה שכבר נשלח הוא הדבר שאי אפשר לפספס.
+  await sendTelegram(
+    [
+      `🟢 Aperta — הזמנה חדשה ${order.ref ?? ""}`.trim(),
+      `${order.name} · ${order.email}${order.phone ? ` · ${order.phone}` : ""}`,
+      order.price ? `סה"כ ${order.price.total} ₪` : "",
+      `${SITE.url}/admin/orders/${order.id}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
   if (!mailConfigured()) {
     console.error("order notification skipped: no mail provider configured");
     return;

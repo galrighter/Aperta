@@ -4,6 +4,7 @@ import SiteHeader from "@/components/site/SiteHeader";
 import SiteFooter from "@/components/site/SiteFooter";
 import ArchBackground from "@/components/site/ArchBackground";
 import DesignReadyWatch from "@/components/site/DesignReadyWatch";
+import PageViewTracker from "@/components/site/PageViewTracker";
 
 const s = he.site;
 
@@ -36,6 +37,8 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <SiteFooter />
       {/* חיווי "העיצוב מוכן" למי שיצאה מהמסך בזמן היצירה — בכל עמוד באתר. */}
       <DesignReadyWatch />
+      {/* ‏page_view — ראש המשפך. ראו lib/client/track.ts. */}
+      <PageViewTracker />
     </div>
   );
 }

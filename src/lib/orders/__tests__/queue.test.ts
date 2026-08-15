@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildQueue, daysInStatus, isStuck, statusSince } from "../queue";
+import { buildQueue, daysInStatus, isStuck, isUnpaid, statusSince } from "../queue";
 import type { OrderRow, OrderStatus } from "@/lib/db/orders";
 
 // תור העבודה עונה על "מה תקוע", ולכן הגיל נמדד מהמעבר לסטטוס הנוכחי. הבאג
@@ -102,5 +102,46 @@ describe("buildQueue", () => {
   it("keeps cancelled orders out of the queue entirely", () => {
     const queue = buildQueue([mk("x", "cancelled", 1)], NOW);
     expect(queue).toEqual([]);
+  });
+
+  it("counts orders that moved forward without a payment mark", () => {
+    const queue = buildQueue(
+      [
+        { ...mk("paid", "approved", 1), paid_at: daysAgo(1) },
+        { ...mk("unpaid", "approved", 2), paid_at: null },
+        { ...mk("fresh", "sent", 1), paid_at: null },
+      ],
+      NOW,
+    );
+    const approved = queue.find((b) => b.status === "approved")!;
+    expect(approved.unpaid).toBe(1);
+    // הזמנה שרק התקבלה אינה נספרת — היא עוד לא אמורה להיות משולמת.
+    expect(queue.find((b) => b.status === "sent")!.unpaid).toBe(0);
+  });
+});
+
+// סימון התשלום (0022). אין סליקה באתר, ולכן "אושרה אבל לא סומן תשלום" היא
+// השאלה היחידה שעומדת בין חיתוך פליז לבין כסף שהתקבל.
+describe("isUnpaid", () => {
+  const at = (status: OrderStatus, paid_at: string | null = null) =>
+    isUnpaid(order({ status, paid_at }));
+
+  it("הזמנה שרק התקבלה אינה 'בלי תשלום' — היא עוד לא אמורה להיות משולמת", () => {
+    expect(at("sent")).toBe(false);
+  });
+
+  it("מהאישור והלאה — כן", () => {
+    expect(at("approved")).toBe(true);
+    expect(at("in_production")).toBe(true);
+    expect(at("shipped")).toBe(true);
+  });
+
+  it("חותמת תשלום מכבה את הסימון בכל שלב", () => {
+    expect(at("approved", daysAgo(1))).toBe(false);
+    expect(at("shipped", daysAgo(1))).toBe(false);
+  });
+
+  it("הזמנה שבוטלה יוצאת מהצינור ואינה נספרת", () => {
+    expect(at("cancelled")).toBe(false);
   });
 });

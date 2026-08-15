@@ -19,6 +19,8 @@ import Link from "next/link";
 import { useAdminData } from "@/lib/client/useAdminData";
 import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
+// ההיקף שהלקוחה מדדה, לא `length + gap` — ראו `sizeOfDesign`.
+import { circMmOfDesign } from "@/components/create/model";
 import type { AdminDesignDetail, AdminVersionRow } from "@/lib/db/accounts";
 import ExportFiles from "./ExportFiles";
 import { svgThumbnailSrc } from "./svgThumbnail";
@@ -131,7 +133,7 @@ export default function DesignDetail({
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[13px] text-ink60">
           <span>
             {design.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
-            {Math.round(design.length_mm + design.gap_mm)} × {design.width_mm} {he.design.mm}
+            {Math.round(circMmOfDesign(design))} × {design.width_mm} {he.design.mm}
           </span>
           <span>
             {s.adminDesignThickness} {design.thickness_mm} {he.design.mm}

@@ -5,7 +5,10 @@ import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
 import { svgFrame } from "@/lib/geometry/frame";
 import { FAB, type FitStyle } from "@/lib/fabrication.config";
-import { computeSizing, idMmFromUsSize, US_RING_ID_MM, US_RING_SIZES } from "@/lib/sizing";
+import {
+  computeSizing, idMmFromUsSize, sizeFromBlank, US_RING_ID_MM, US_RING_SIZES,
+  type DerivedSize,
+} from "@/lib/sizing";
 import { priceFor, type Price } from "@/lib/pricing";
 
 const d = he.design;
@@ -561,6 +564,61 @@ export function stripLengthMm(s: CreateState): number {
   // ונשמר 125.0 — תכשיט לפרק יד של 13 ס"מ, בלי הודעה ובלי דרך לדעת. מידה
   // היא מדידה של הלקוחה, לא הצעה שאנחנו מתקנים.
   return Math.round(raw * 10) / 10;
+}
+
+/** השורה של העיצוב במסד, בשדות שמודל המידות צריך כדי להפוך אורך חזרה למידה. */
+export interface DesignSizeRow {
+  product_type: Product;
+  length_mm: number | string;
+  width_mm: number | string;
+  gap_mm: number | string;
+  thickness_mm?: number | string | null;
+}
+
+/**
+ * עיצוב שמור → המידה שהוא מייצג. **הכיוון ההפוך של `stripLengthMm`**, ולכן
+ * הוא עובר באותו מודל (`sizeFromBlank`) ולא בקירוב.
+ *
+ * למה זה קיים: השחזור חישב `length_mm + gap_mm` כאילו הפריסה היא
+ * "היקף − פתח". היא לא — היא נמדדת על הציר הניטרלי (‏+2πKt), הפתח הוא מיתר
+ * שצריך להמיר לקשת, וב-`length_mm` כבר יושבות תוספת ה-Fit ותוספת הרוחב.
+ * הסכום החזיר ערך מנופח, המסך רשם אותו כ"היקף פרק היד שהלקוחה מדדה", ויצירה
+ * חוזרת הוסיפה עליו את התוספות **שוב**: צמיד לפרק 165 מ"מ חזר כ-186 ונשמר
+ * כ-‏182 (‏+21 מ"מ), וטבעת קפצה ב-‏1.7 מידות — בשקט, בדיוק המנגנון ש-AP-0065
+ * אוסר.
+ *
+ * ה-Fit אינו נשמר בשורה (אין עמודה כזו), ולכן הוא מגיע מבחוץ — ממה שהדפדפן
+ * זוכר על העיצוב, ובברירת מחדל אותו ‏`INITIAL.fit` שהיצירה חישבה לפיו.
+ */
+export function sizeOfDesign(dz: DesignSizeRow, fit: Fit = INITIAL.fit): DerivedSize {
+  return sizeFromBlank(Number(dz.length_mm), {
+    product: dz.product_type,
+    thicknessMm: Number(dz.thickness_mm ?? FAB.defaultThicknessMm),
+    widthMm: Number(dz.width_mm),
+    gapChordMm: Number(dz.gap_mm),
+    fit: FIT_TO_STYLE[fit],
+  });
+}
+
+/**
+ * ההיקף שמוצג ברשימת "העיצובים שלי" — פרק היד בצמיד, היקף האצבע בטבעת.
+ * אותה יחידה בדיוק ש-`circumferenceMm` מחזירה למצב המסך.
+ */
+export function circMmOfDesign(dz: DesignSizeRow, fit: Fit = INITIAL.fit): number {
+  const size = sizeOfDesign(dz, fit);
+  return dz.product_type === "ring" ? Math.PI * size.nominalIdMm : (size.wristMm ?? 0);
+}
+
+/** עיצוב שמור → שדות המידה במסך, מוכנים ל-`setState`. */
+export function sizeFieldsOfDesign(
+  dz: DesignSizeRow,
+  fit: Fit = INITIAL.fit,
+): Pick<CreateState, "ringSize" | "ringWidth"> | Pick<CreateState, "circ" | "braceletWidth"> {
+  const size = sizeOfDesign(dz, fit);
+  const width = Number(dz.width_mm);
+  return dz.product_type === "ring"
+    ? { ringSize: String(size.usRingSize ?? ""), ringWidth: width }
+    : { circ: String(Math.round(size.wristMm ?? 0)), braceletWidth: width };
 }
 
 /** האם הוזנה מידה מדויקת (ולכן הכפתור הסטנדרטי מבוטל). */
