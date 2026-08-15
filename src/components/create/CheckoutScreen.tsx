@@ -4,13 +4,14 @@
 // שינוי מודע מול ה-handoff: לא נאספים פרטי כרטיס אשראי. אין ספק תשלומים
 // מחובר, ואיסוף מספרי כרטיס באתר חי הוא חשיפה אמיתית ללקוחה. במקומו —
 // שליחת ההזמנה ותיאום תשלום אישי (§12 ממילא מסמן תמחור/תשלום כפער פתוח).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import { formatPhone, isValidPhone } from "@/lib/phone";
 import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { Eyebrow, ScreenTitle, CardLabel, CheckBox, PrimaryBtn, TextInput } from "./ui";
 import { whatsappUrl } from "@/lib/site.config";
+import { track } from "@/lib/client/track";
 import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
 
 const d = he.design;
@@ -77,6 +78,15 @@ export function CheckoutScreen({
   };
 
   const wa = whatsappUrl(he.site.whatsappPrefill);
+
+  // הצ'קאאוט נצפה. השלב שבין "יש לי עיצוב" ל"הזמנתי", ובלעדיו אי אפשר לדעת
+  // אם הנטישה קורית בתוצאה או מול הטופס. פעם אחת לביקור (‏`track` מדדפ).
+  useEffect(() => {
+    track("checkout_view", { designId: s.designId });
+    // פעם אחת למסך: `designId` יכול להשתנות בעריכה, ואירוע שני על אותה
+    // צפייה היה מנפח בדיוק את השלב שנמדד.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">

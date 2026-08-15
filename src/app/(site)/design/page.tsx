@@ -40,6 +40,7 @@ import {
   beatPendingJob, clearPendingJob, setPendingJob,
 } from "@/lib/client/pendingJob";
 import { authConfigured, supabaseBrowser } from "@/lib/client/supabaseBrowser";
+import { track } from "@/lib/client/track";
 import {
   INITIAL, activeEntry, buildEditPrompt, buildPrompt, candidatesByGeneration,
   candidatesOf, circMmOfDesign, circumferenceMm, entryDesignId, entryFromGeneration,
@@ -699,6 +700,10 @@ export default function DesignPage() {
     if (cur.screen !== "processing") pushHist("processing");
     runningRef.current = true;
 
+    // **הכניסה האמיתית למשפך.** לא בחירת המוצר ולא מילוי הטופס — הרגע שבו
+    // רצה הרצה שעולה כסף ונוצרת רשומה. עד כאן הכול היה עיון.
+    track("design_start", { designId: cur.designId });
+
     const st = {
       ...cur,
       screen: "processing" as Screen,
@@ -815,6 +820,10 @@ export default function DesignPage() {
       // הצלחה מאפסת גם את רצף הכשלים — הכשל הבא, אם יהיה, הוא סיפור חדש.
       setState((prev) => ({ ...prev, procStage: null, procFailCount: 0 }));
       pushEntry(withId, entryFromGeneration(res, { region: null, text: "" }));
+      // הגרסה הראשונה על המסך — השלב שבו "ניסתה" הופך ל"ראתה משהו".
+      // ההפרש בינו לבין `design_start` הוא שיעור הכשל של המנוע כפי שהלקוחה
+      // חווה אותו, ואין לו מקור אחר.
+      track("first_version", { designId: design.id });
       goReplacing("result");
     } catch (e) {
       // ההרצה נגמרה — גם אם רע. מסך השגיאה הוא מסך שאפשר לצאת ממנו.
@@ -1692,6 +1701,8 @@ export default function DesignPage() {
       // המפתח מתאפס: ההזמנה הזאת נקלטה, והבאה היא הזמנה חדשה ולא ניסיון חוזר.
       // הטיוטה המקומית מיצתה את תפקידה — העיצוב שהוזמן שמור בשרת וברשימה.
       clearFunnelDraft();
+      // סוף המשפך. ‏`sendBeacon` שורד את המעבר למסך "תודה" שקורה מיד אחריו.
+      track("order_placed", { designId: orderedDesignId });
       setState((prev) => ({ ...prev, sending: false, orderNo, orderKey: null, screen: "done" }));
       setMaxReached(railIndex(s.story, "done"));
       scrollToTop();

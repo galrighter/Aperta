@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleRouteError, ApiError } from "@/lib/api";
 import { safeEqual } from "@/lib/admin";
 import { sweepStalledJobs } from "@/lib/runs/sweep";
+import { sweepFunnelEvents } from "@/lib/db/funnel";
 
 // הדק של הסריקה שמסיימת הרצות תקועות (`lib/runs/sweep.ts`).
 //
@@ -31,9 +32,16 @@ export async function POST(req: Request) {
   try {
     requireSweepToken(req);
     const report = await sweepStalledJobs();
+    // ניקוי אירועי משפך ישנים, על אותו הדק (0023). טבלה שמקבלת כתיבה מכל
+    // ביקור ואין מי שמוחק ממנה היא חשבון שגדל בשקט. כשל כאן אינו מפיל את
+    // הסריקה — היא הדבר שהלקוחה ממתינה לו, וזה תחזוקה.
+    const purgedEvents = await sweepFunnelEvents().catch((e: Error) => {
+      console.error("funnel events sweep failed:", e.message);
+      return null;
+    });
     // תמיד 200 עם פירוט, גם כשהרצה בודדת נכשלה: המתזמן צריך להבדיל בין
     // "הסריקה לא רצה" לבין "רצה, ואחת מתוך עשר לא הסתדרה".
-    return NextResponse.json(report);
+    return NextResponse.json({ ...report, purgedEvents });
   } catch (err) {
     return handleRouteError(err);
   }

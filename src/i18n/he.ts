@@ -1122,6 +1122,23 @@ export const he = {
     /** התג בתור: אושרה או התקדמה בלי שהתשלום סומן. */
     adminOrderUnpaidFlag: "בלי תשלום",
     adminOrderUnpaidQueue: "אושרו בלי סימון תשלום",
+
+    /* משפך ההמרה (0023). חמישה שלבים ואחוזי המעבר ביניהם — התשובה ל"איפה
+       הדלי דולף", שעד עכשיו לא היה עליה שום נתון. */
+    funnelTitle: "משפך ההמרה",
+    funnelWindow: "ב-",
+    funnelPageView: "ביקורים",
+    funnelDesignStart: "התחילו לעצב",
+    funnelFirstVersion: "קיבלו עיצוב",
+    funnelCheckout: "הגיעו לצ׳קאאוט",
+    funnelOrder: "הזמינו",
+    funnelShareView: "צפיות בשיתוף",
+    funnelFromPrev: "מהשלב הקודם",
+    funnelDevices: "מובייל / דסקטופ",
+    funnelSources: "מקורות",
+    funnelEmpty: "עוד אין אירועים. המדידה מתחילה עם הביקור הבא — ודאו שמיגרציה 0023 רצה.",
+    funnelError: "טעינת נתוני המשפך נכשלה.",
+    funnelTruncated: "התצוגה מוגבלת — יש יותר אירועים מהתקרה שנשלפת.",
   },
 
   // ===== מסע היצירה (/design) — לפי handoff_design_flow =====

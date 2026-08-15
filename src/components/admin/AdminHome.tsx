@@ -13,6 +13,7 @@ import Link from "next/link";
 import { he } from "@/i18n/he";
 import type { OrderRow } from "@/lib/db/orders";
 import type { Inquiry } from "@/lib/db/inquiries";
+import FunnelSummary from "./FunnelSummary";
 
 const s = he.site;
 
@@ -82,6 +83,10 @@ export default function AdminHome() {
           href="/admin/runs?status=problem"
         />
       </div>
+
+      {/* המשפך יושב מעל הכרטיסים ומתחת למונים: המונים אומרים "מה מחכה לי",
+          והמשפך אומר "מה קורה בעסק". שניהם נקראים בבוקר, בסדר הזה. */}
+      <FunnelSummary />
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
         <Card href="/admin/orders" title={s.adminTabOrders} desc={s.adminCardOrdersDesc} />
