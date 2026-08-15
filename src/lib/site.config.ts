@@ -27,7 +27,66 @@ export const SITE = {
   },
   // רשתות חברתיות — להוסיף כשקיימות (null = לא מוצג).
   instagram: null as string | null,
+
+  /**
+   * זהות העוסק — מה שחוק הגנת הצרכן דורש לגלות בעסקת מכר מרחוק.
+   *
+   * **גל — השדות האלה ממתינים לך.** סעיף 14ג(א) לחוק הגנת הצרכן, תשמ"א-1981,
+   * מחייב את העוסק למסור לצרכן, לפני העסקה, את "שמו ומספר זהותו" ואת "כתובתו".
+   * באתר החי אין היום שם עוסק, אין ח.פ./ע.מ., אין כתובת ואין טלפון — רק
+   * `info@aperta-designs.com` (docs/FULL_AUDIT_2026-08.md, פרק 4, ממצא R1).
+   * זו גם חשיפה משפטית וגם חסם האמון הזול ביותר לתיקון: לקוחה שמוסרת כתובת
+   * וטלפון ומעבירה ₪434 לא יודעת למי.
+   *
+   * `null` בכל שדה = השורה פשוט אינה מוצגת. העמוד לא נשבר בלי הערכים, אבל
+   * הוא גם לא מקיים את החובה — ולכן `/terms` אומר במפורש שהפרטים בהשלמה
+   * במקום להעמיד פנים.
+   *
+   * `whatsapp` הוא מספר בפורמט בינלאומי בלי סימנים (`972501234567`) — הוא
+   * הופך לקישור `wa.me`, ערוץ ההמרה הזול ביותר בקהל ישראלי-מובייל וערוץ
+   * ההרגעה הטבעי בצ'קאאוט בלי סליקה (ממצא R5).
+   */
+  business: {
+    /** שם העוסק כפי שהוא רשום — "גל ריגטר" בעוסק מורשה, או שם החברה. */
+    legalName: null as string | null,
+    /** "ע.מ" לעוסק מורשה/פטור, "ח.פ" לחברה. */
+    idKind: "ע.מ" as "ע.מ" | "ח.פ",
+    /** מספר העוסק / ח.פ. */
+    idNumber: null as string | null,
+    /** כתובת למשלוח דואר ולהחזרות. */
+    address: null as string | null,
+    phone: null as string | null,
+    /** בפורמט בינלאומי, ספרות בלבד: 972501234567. */
+    whatsapp: null as string | null,
+  },
 } as const;
+
+/** האם יש מספיק פרטי עוסק כדי להציג אותם כזהות ולא כרשימה חלקית. */
+export function businessIdentified(): boolean {
+  return Boolean(SITE.business.legalName && SITE.business.idNumber);
+}
+
+/**
+ * שורות זהות העוסק, לפי הסדר שבו הן נקראות. רק מה שהוגדר — שורה ריקה גרועה
+ * משורה חסרה.
+ */
+export function businessLines(): string[] {
+  const b = SITE.business;
+  const lines: string[] = [];
+  if (b.legalName) lines.push(b.idNumber ? `${b.legalName}, ${b.idKind} ${b.idNumber}` : b.legalName);
+  if (b.address) lines.push(b.address);
+  if (b.phone) lines.push(b.phone);
+  lines.push(SITE.contactEmail);
+  return lines;
+}
+
+/** קישור וואטסאפ, או null כשלא הוגדר מספר. `text` נפתח כהודעה מוכנה. */
+export function whatsappUrl(text?: string): string | null {
+  const n = SITE.business.whatsapp;
+  if (!n) return null;
+  const base = `https://wa.me/${n}`;
+  return text ? `${base}?text=${encodeURIComponent(text)}` : base;
+}
 
 /**
  * כתובת השירות על הקופסה.

@@ -10,6 +10,7 @@ import { he } from "@/i18n/he";
 import { formatPhone, isValidPhone } from "@/lib/phone";
 import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { Eyebrow, ScreenTitle, CardLabel, CheckBox, PrimaryBtn, TextInput } from "./ui";
+import { whatsappUrl } from "@/lib/site.config";
 import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
 
 const d = he.design;
@@ -74,6 +75,8 @@ export function CheckoutScreen({
     const tidy = formatPhone(s.addr.phone);
     if (tidy !== s.addr.phone) setAddr({ phone: tidy });
   };
+
+  const wa = whatsappUrl(he.site.whatsappPrefill);
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
@@ -205,6 +208,21 @@ export function CheckoutScreen({
                 והמסך שותק. השורה הזאת אומרת מה חסר, והשגיאות למעלה מראות איפה. */}
             {!ok && !s.sending && (
               <p className="mt-2 text-center text-[12px] text-ink60">{d.checkoutIncomplete}</p>
+            )}
+            {/* אין סליקה באתר, ולכן הצ'קאאוט מסתיים ב"נתאם תשלום" — רגע של
+                אי-ודאות בדיוק לפני ההתחייבות. ערוץ חי שאפשר לשאול בו עכשיו
+                הוא הפיצוי הזול ביותר עליו (פרק 4, ממצאים R3+R5). */}
+            {wa && (
+              <p className="mt-3 text-center text-[12px] text-ink60">
+                <a
+                  href={wa}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-lapis underline underline-offset-4"
+                >
+                  {he.site.checkoutWhatsapp}
+                </a>
+              </p>
             )}
             {s.sendError && (
               <div className="mt-3 text-center text-[13px]">
