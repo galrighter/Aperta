@@ -42,16 +42,26 @@ describe("מדיניות ביטול", () => {
 });
 
 describe("זהות העוסק", () => {
-  it("‏businessIdentified דורש גם שם וגם מספר — מייל לבדו אינו זהות", () => {
-    expect(businessIdentified()).toBe(Boolean(SITE.business.legalName && SITE.business.idNumber));
+  it("הפרטים הוזנו — החובה לפי סעיף 14ג(א) מקוימת", () => {
+    // שם ומספר זהות **וכתובת** — שלושתם נדרשים, ולא רק השניים שמרכיבים את
+    // `businessIdentified`. שדה שיימחק בעריכה עתידית ייפול כאן.
+    expect(businessIdentified()).toBe(true);
+    expect(SITE.business.legalName).toBeTruthy();
+    expect(SITE.business.idNumber).toMatch(/^\d{8,9}$/);
+    expect(SITE.business.address).toBeTruthy();
   });
 
-  it("המייל תמיד בשורות, גם כשאין עוד כלום", () => {
-    expect(businessLines()).toContain(SITE.contactEmail);
+  it("שורת הזהות נושאת שם, מספר, כתובת, טלפון ומייל", () => {
+    const line = businessLines().join(" · ");
+    expect(line).toContain(SITE.business.legalName!);
+    expect(line).toContain(SITE.business.idNumber!);
+    expect(line).toContain(SITE.business.address!);
+    expect(line).toContain(SITE.business.phone!);
+    expect(line).toContain(SITE.contactEmail);
   });
 
-  it("כל עוד הפרטים חסרים — /terms אומר זאת במפורש", () => {
-    // ההיפך היה גרוע יותר: סעיף \"פרטי העסק\" עם מייל בודד נקרא כאילו זו
+  it("המנגנון של 'בהשלמה' נשאר — הוא מה שיחזיק אם פרט יוסר", () => {
+    // ההיפך היה גרוע יותר: סעיף "פרטי העסק" עם מייל בודד נקרא כאילו זו
     // הזהות המלאה, וזו בדיוק ההטעיה שהסעיף נועד למנוע.
     expect(he.site.terms.businessPending).toContain("בהשלמה");
     expect(TERMS_PAGE).toContain("businessIdentified() ? businessLines()");
@@ -59,13 +69,19 @@ describe("זהות העוסק", () => {
 });
 
 describe("וואטסאפ", () => {
-  it("אין מספר — אין קישור, ולא קישור שבור", () => {
-    if (!SITE.business.whatsapp) expect(whatsappUrl()).toBeNull();
+  it("המספר בפורמט בינלאומי, ספרות בלבד — אחרת wa.me לא פותח", () => {
+    expect(SITE.business.whatsapp).toMatch(/^972\d{8,9}$/);
+  });
+
+  it("אותו מספר כמו הטלפון המוצג", () => {
+    // שני מספרים שאומרים את אותו דבר נפרדים ביום שאחד מהם משתנה.
+    const digits = SITE.business.phone!.replace(/\D/g, "").replace(/^0/, "972");
+    expect(SITE.business.whatsapp).toBe(digits);
   });
 
   it("ההודעה המוכנה מקודדת ל-URL", () => {
-    // המספר עוד לא הוגדר, ולכן הבדיקה על הפונקציה עצמה עם קלט מפורש.
-    const url = `https://wa.me/972500000000?text=${encodeURIComponent(he.site.whatsappPrefill)}`;
+    const url = whatsappUrl(he.site.whatsappPrefill)!;
+    expect(url).toContain(`https://wa.me/${SITE.business.whatsapp}?text=`);
     expect(url).not.toContain(" ");
   });
 });
