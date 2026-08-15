@@ -150,7 +150,18 @@ export function SavedDesigns({
               const frameW = it.frameWidthMm ?? it.widthMm;
               const frame = it.path && it.lengthMm ? previewFrame(it.path, it.lengthMm, frameW) : null;
               return (
-                <li key={it.id} className="flex flex-col border border-graphite/[0.14] bg-porcelain">
+                // `min-w-0` הוא מה שמחזיק את הכרטיס בתוך העמודה. פריט ברשת
+                // מקבל ברירת מחדל `min-width: auto` — כלומר "לא קטן ממה
+                // שהתוכן דורש" — ותיבת הציור שבתוכו נושאת `aspect-ratio` יחד
+                // עם `min-height`. הדפדפן מעביר את המינימום האנכי דרך היחס
+                // ומקבל **מינימום אופקי**: רצועה ביחס 6.4 עם רצפה של 64px
+                // דורשת 410px, ובעמודה של 345px הכרטיס פשוט רחב מהחלון.
+                // הרשימה גוללת ב-`overflow-y-auto`, וגלילה אנכית הופכת גם את
+                // האופקית ל-auto — ולכן זה לא נראה כשבירה אלא כעיצוב שיוצא
+                // מהמסך וצריך לגרור אליו הצידה. נמדד בכרומיום: 411.6px לפני,
+                // 345px אחרי. רצפת הגובה על התיבה עצמה אינה מספיקה כאן — היא
+                // לא מסירה את התרומה של התוכן למינימום של הפריט.
+                <li key={it.id} className="flex min-w-0 flex-col border border-graphite/[0.14] bg-porcelain">
                   {/* תצוגה מקדימה מהגאומטריה השמורה. הציור נכנס בשלמותו: התיבה
                       מקבלת את היחס של הפריט, וה-SVG ממלא אותה ב-meet — כלומר
                       נכנס לגמרי, ממורכז, בלי חיתוך ובלי מתיחה. */}
@@ -162,6 +173,9 @@ export function SavedDesigns({
                             // רוחב מפורש, ולא רק יחס: כשגובה התיבה נתקל
                             // ב-`minHeight`, הדפדפן גוזר מהיחס את **הרוחב**
                             // והתיבה יוצאת מהכרטיס לרוחב. נמדד בכרומיום.
+                            // הרוחב המפורש מחזיק את התיבה בתוך הכרטיס, אבל
+                            // המינימום שעובר דרך היחס עדיין מרחיב את הכרטיס
+                            // עצמו — ולכן `min-w-0` על ה-`li` שמעל.
                             width: "100%",
                             aspectRatio: `${frame.ratio}`,
                             minHeight: `${BOX_MIN_PX}px`,

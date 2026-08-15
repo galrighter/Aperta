@@ -58,6 +58,20 @@ describe("מסגרת הציור של הכרטיס", () => {
     expect(CARD).toMatch(/\{it\.widthMm\} \{d\.mm\}/);
   });
 
+  it("הכרטיס נכנס ברוחב העמודה — גם ברצועה ארוכה", () => {
+    // "עדיין עיצוב לא נכנס בחלון וצריך לגלול לצדדים" — מאנדרואיד.
+    //
+    // תיבת הציור נושאת `aspect-ratio` יחד עם `minHeight`, והדפדפן מעביר את
+    // רצפת הגובה דרך היחס אל **מינימום רוחב**. פריט ברשת הוא
+    // `min-width: auto` כברירת מחדל, ולכן הכרטיס נמתח לרוחב שהתוכן "דורש":
+    // צמיד 170×25 הוא יחס 6.4, כלומר 64px × 6.4 ≈ 410px בעמודה של 345px.
+    // `overflow-y-auto` על הרשימה הופך גם את הציר האופקי לגליל, וזו בדיוק
+    // הגלילה הצידה שנראתה על המסך.
+    const ratio = previewFrame("M0,0L170,0L170,25L0,25Z", 170, 25).ratio;
+    expect(ratio).toBeGreaterThan(5);
+    expect(CARD).toMatch(/<li[^>]*className="flex min-w-0 flex-col/);
+  });
+
   it("כל תוצאה מצוירת במסגרת של עצמה", () => {
     expect(CARD).toContain("r.widthMm ?? frameW");
     expect(CARD).toContain("r.lengthMm ?? it.lengthMm!");
