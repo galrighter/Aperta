@@ -69,9 +69,11 @@ export function isSystemicFailure(err: unknown): boolean {
  */
 export async function alertUnexpectedFailure(err: unknown, ctx: FailureAlertContext): Promise<void> {
   try {
-    // שני היעדים חולקים את אותם שערים (דפוס + ויסות): מייל לגל, והערת התורן
-    // האוטומטי. כשאף אחד מהם לא מוגדר אין למי להתריע — ואין טעם לשאול את המסד.
-    if (!mailConfigured() && !dutyConfigured()) return;
+    // שלושת היעדים חולקים את אותם שערים (דפוס + ויסות): מייל לגל, טלגרם,
+    // והערת התורן האוטומטי. כשאף אחד מהם לא מוגדר אין למי להתריע — ואין טעם
+    // לשאול את המסד. טלגרם נוסף כאן כי מייל לבדו כבר נשתק פעם אחת ליומיים
+    // (‏Resend, 7.8) יחד עם כל השאר.
+    if (!mailConfigured() && !dutyConfigured() && !telegramConfigured()) return;
 
     const since = new Date(Date.now() - SPIKE_WINDOW_MINUTES * 60_000).toISOString();
     // הכשל הנוכחי כבר נרשם ליומן (persistRun/markRunError רצים לפניו), ולכן
@@ -98,15 +100,17 @@ export async function alertUnexpectedFailure(err: unknown, ctx: FailureAlertCont
       if (!res.ok) console.error("failure spike mail failed:", res.error);
     }
 
-    // תיאור עובדתי בלבד — הסשן מקבל אותו כקלט לא-אמין (routine-fire-payload)
-    // ומצליב מול Ops status לפי docs/AUTOFIX_ROUTINE.md.
-    await wakeDutyAgent(
-      [
-        `רצף כשלים לא-צפויים ביצירה: ${recent} כשלים ב-${SPIKE_WINDOW_MINUTES} הדקות האחרונות.`,
-        `הרצה אחרונה: ${ctx.runId}${ctx.designRef ? ` (עיצוב ${ctx.designRef})` : ""}.`,
-        `נוסח הכשל: ${reason.slice(0, 300)}`,
-      ].join("\n"),
-    );
+    const lines = [
+      `רצף כשלים לא-צפויים ביצירה: ${recent} כשלים ב-${SPIKE_WINDOW_MINUTES} הדקות האחרונות.`,
+      `הרצה אחרונה: ${ctx.runId}${ctx.designRef ? ` (עיצוב ${ctx.designRef})` : ""}.`,
+      `נוסח הכשל: ${reason.slice(0, 300)}`,
+    ];
+    await Promise.allSettled([
+      // תיאור עובדתי בלבד — הסשן מקבל אותו כקלט לא-אמין (routine-fire-payload)
+      // ומצליב מול Ops status לפי docs/AUTOFIX_ROUTINE.md.
+      wakeDutyAgent(lines.join("\n")),
+      sendTelegram(["🔴 Aperta — היצירה נכשלת ברצף", ...lines].join("\n")),
+    ]);
   } catch (e) {
     console.error("failure spike alert failed:", (e as Error).message);
   }
@@ -172,7 +176,7 @@ export async function alertStalledJob(input: {
   designRef?: string | null;
 }): Promise<void> {
   try {
-    if (!mailConfigured() && !dutyConfigured()) return;
+    if (!mailConfigured() && !dutyConfigured() && !telegramConfigured()) return;
     if (await tooManyAttempts(`alert:stall:${input.jobId}`, 24 * 60 * 60_000, 1)) return;
 
     if (mailConfigured()) {
@@ -181,12 +185,14 @@ export async function alertStalledJob(input: {
       if (!res.ok) console.error("stalled job mail failed:", res.error);
     }
 
-    await wakeDutyAgent(
-      [
-        `הרצת יצירה תקועה: job ${input.jobId}${input.designRef ? ` (עיצוב ${input.designRef})` : ""}.`,
-        "נצפתה running מעבר לסף וההתאוששות-בקריאה לא סגרה אותה.",
-      ].join("\n"),
-    );
+    const lines = [
+      `הרצת יצירה תקועה: job ${input.jobId}${input.designRef ? ` (עיצוב ${input.designRef})` : ""}.`,
+      "נצפתה running מעבר לסף וההתאוששות-בקריאה לא סגרה אותה.",
+    ];
+    await Promise.allSettled([
+      wakeDutyAgent(lines.join("\n")),
+      sendTelegram(["⚠️ Aperta — הרצת יצירה תקועה", ...lines].join("\n")),
+    ]);
   } catch (e) {
     console.error("stalled job alert failed:", (e as Error).message);
   }

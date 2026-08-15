@@ -17,6 +17,8 @@ import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { designSampleCode } from "@/lib/designCode";
 import { priceFor } from "@/lib/pricing";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
+import { sendTelegram } from "@/lib/alerts/telegram";
+import { SITE } from "@/lib/site.config";
 import { orderNotifyMail, orderCustomerAckMail } from "@/lib/mailTemplates";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
@@ -235,6 +237,21 @@ export async function POST(req: Request) {
  * נמדד ש-`waitUntil` לא רץ בייצור, ואז אין מי שיכתוב אפילו את השגיאה.
  */
 async function notify(order: OrderRow): Promise<void> {
+  // **הזמנה חדשה יוצאת גם לטלגרם, ולא רק במייל.** ‏7.8 נפל מפתח Resend, ואיתו
+  // נשתקו בו-זמנית אישורי הלקוחות וההתראות עלינו — כלומר הזמנה יכלה להיכנס
+  // בלי שאיש יידע, לימים. טלגרם יושב על תשתית אחרת, והוא נשלח לפני המיילים:
+  // אם משהו כאן ייפול, מה שכבר נשלח הוא הדבר שאי אפשר לפספס.
+  await sendTelegram(
+    [
+      `🟢 Aperta — הזמנה חדשה ${order.ref ?? ""}`.trim(),
+      `${order.name} · ${order.email}${order.phone ? ` · ${order.phone}` : ""}`,
+      order.price ? `סה"כ ${order.price.total} ₪` : "",
+      `${SITE.url}/admin/orders/${order.id}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
   if (!mailConfigured()) {
     console.error("order notification skipped: no mail provider configured");
     return;
