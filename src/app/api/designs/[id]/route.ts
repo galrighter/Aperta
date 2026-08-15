@@ -3,7 +3,9 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
 import { listVersions } from "@/lib/db/designs";
+import { hasActiveOrderForDesign } from "@/lib/db/orders";
 import { requireDesignAccess } from "@/lib/designAccess";
+import { FAB } from "@/lib/fabrication.config";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -19,12 +21,26 @@ export async function GET(req: Request, { params }: Params) {
   }
 }
 
+/**
+ * הגבולות אינם קוסמטיקה: `positive()` בלבד קיבל עובי 0.001, ‏`resolveFab` לא
+ * מצא לו שורה בטבלה, ו-`GET /api/orders/[id]` נפל ב-500 על ההזמנה שהצביעה
+ * לעיצוב. הטווחים רחבים בכוונה — זה השרת, לא הטופס: התפקיד שלהם לתפוס מספר
+ * שאינו מידה בכלל, לא לחזור על הוולידציה של המסך.
+ *
+ * העובי נצבט לרשימת העוביים הנתמכים, כי אין ביניהם רצף: ‏`byThickness` היא
+ * טבלה, וכל ערך שאינו בה הוא ערך שאין לו קבועי ייצור.
+ */
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
-  lengthMm: z.number().positive().optional(),
-  widthMm: z.number().positive().optional(),
-  gapMm: z.number().positive().optional(),
-  thicknessMm: z.number().positive().optional(),
+  lengthMm: z.number().min(20).max(600).optional(),
+  widthMm: z.number().min(1).max(100).optional(),
+  gapMm: z.number().min(0.5).max(120).optional(),
+  thicknessMm: z
+    .number()
+    .refine((t) => (FAB.supportedThicknessesMm as readonly number[]).includes(t), {
+      message: "unsupported thickness",
+    })
+    .optional(),
   currentVersionId: z.string().uuid().optional(),
 });
 
@@ -69,6 +85,22 @@ export async function DELETE(req: Request, { params }: Params) {
   try {
     const { id } = await params;
     await requireDesignAccess(req, id);
+
+    // עיצוב שהוזמן אינו נמחק. ‏`design_versions` תלוי ב-`on delete cascade`,
+    // וההזמנה ב-`on delete set null` — כלומר המחיקה משאירה את הרישום המסחרי
+    // ומשמידה את מה שהוא מצביע עליו: הגרסה שהוזמנה, ה-SVG שלה, וכל דרך לייצא
+    // קובץ חיתוך. הזמנה משולמת בלי מה לחתוך.
+    //
+    // הבדיקה כאן ולא ב-DB: מחיקה שנחסמת ב-FK הייתה 500 סתמי, וכאן יש סיבה
+    // שאפשר להציג. ‏`cancelled` אינה חוסמת.
+    if (await hasActiveOrderForDesign(id)) {
+      throw new ApiError(
+        "design_has_order",
+        "Design has an active order and cannot be deleted",
+        409,
+      );
+    }
+
     const sb = supabaseAdmin();
     // exports מפנה גם ל-designs וגם ל-versions בלי cascade — מוחקים קודם
     const { error: exErr } = await sb.from("exports").delete().eq("design_id", id);

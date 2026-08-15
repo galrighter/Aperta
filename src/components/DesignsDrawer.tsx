@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { he } from "@/i18n/he";
+import { ClientApiError } from "@/lib/client/api";
 import { useStudio } from "@/lib/client/store";
 import { ConfirmModal } from "./Modal";
 
 export function DesignsDrawer() {
   const { drawerOpen, setDrawerOpen, designs, openDesign, deleteDesign, duplicateDesign } = useStudio();
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  // מחיקה יכולה להיחסם בשרת (עיצוב שיש עליו הזמנה). עד כה הדחייה נבלעה
+  // כ-rejection לא-מטופל, והכפתור פשוט לא עשה כלום.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (!drawerOpen) return null;
   return (
@@ -23,6 +27,11 @@ export function DesignsDrawer() {
           </button>
         </div>
         {designs.length === 0 && <p className="text-sm text-ink60">{he.noDesignsYet}</p>}
+        {deleteError && (
+          <p role="alert" className="mb-3 border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+            {deleteError}
+          </p>
+        )}
         <ul className="space-y-2">
           {designs.map((d) => (
             <li key={d.id} className="rounded-[2px] border border-graphite/10 p-3">
@@ -52,8 +61,14 @@ export function DesignsDrawer() {
         title={he.delete}
         body={he.confirmDelete}
         onConfirm={() => {
-          if (pendingDelete) void deleteDesign(pendingDelete);
+          const id = pendingDelete;
           setPendingDelete(null);
+          setDeleteError(null);
+          if (!id) return;
+          void deleteDesign(id).catch((e: unknown) => {
+            const code = e instanceof ClientApiError ? e.code : null;
+            setDeleteError(code === "design_has_order" ? he.deleteBlockedOrder : he.deleteFailed);
+          });
         }}
         onCancel={() => setPendingDelete(null)}
       />

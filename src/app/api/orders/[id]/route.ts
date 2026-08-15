@@ -4,6 +4,7 @@ import { parseBody, handleRouteError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
 import {
   getOrder,
+  markOrderPaid,
   updateOrderNote,
   updateOrderStatus,
   ORDER_STATUSES,
@@ -32,6 +33,12 @@ const patchSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
   /** לשלוח ללקוחה הודעה על המעבר. ברירת המחדל: לא. */
   notify: z.boolean().optional(),
+  /**
+   * סימון תשלום (0022). **אינו סטטוס** ולכן אינו עובר ב-`status`: הזמנה
+   * משולמת יכולה להיות בכל שלב בצינור, ומעבר סטטוס אינו ראיה לתשלום.
+   * ההודעה ללקוחה לא נשלחת עליו — זו רשומה פנימית.
+   */
+  paid: z.boolean().optional(),
 });
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -60,6 +67,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       changed = res.changed;
     }
     if (body.note !== undefined) order = await updateOrderNote(id, body.note);
+    if (body.paid !== undefined) order = await markOrderPaid(id, body.paid);
 
     // הסדר חשוב: קודם נשמר, ואז מודיעים. מייל על סטטוס שלא נשמר הוא הבטחה
     // שאין לה כיסוי במסד.

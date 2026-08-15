@@ -15,7 +15,7 @@ import { useAdminData } from "@/lib/client/useAdminData";
 import Link from "next/link";
 import { he } from "@/i18n/he";
 import { ORDER_STATUSES, type OrderRow, type OrderStatus } from "@/lib/db/orders";
-import { buildQueue } from "@/lib/orders/queue";
+import { buildQueue, isUnpaid } from "@/lib/orders/queue";
 import StatusMoveDialog from "./StatusMoveDialog";
 import { AgeChip, StatusPill, itemName, mm, money, statusLabel } from "./orderView";
 
@@ -189,6 +189,14 @@ export default function AdminOrders({
                         : `${bucket.stuck} ${s.adminQueueStuck}`}
                     </span>
                   )}
+                  {/* "אושרה אבל לא סומן תשלום" — עד 0022 לא הייתה שום שאלה
+                      במסך שאפשר לשאול אותה, וחיתוך בלי כסף היה עניין של
+                      זיכרון. */}
+                  {bucket.unpaid > 0 && (
+                    <span className="text-[12px] font-medium text-amber-700">
+                      · {bucket.unpaid} {s.adminOrderUnpaidQueue}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() =>
@@ -338,6 +346,13 @@ function OrderLine({
       {!order.design_id && (
         <span className="rounded-[2px] bg-porcelain px-1.5 py-0.5 text-[11px] text-ink60">
           {s.adminOrderNoDesign}
+        </span>
+      )}
+      {/* התקדמה בלי סימון תשלום (0022). על השורה עצמה ולא רק בכותרת הקבוצה:
+          התור נקרא שורה-שורה. */}
+      {isUnpaid(order) && (
+        <span className="rounded-[2px] bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">
+          {s.adminOrderUnpaidFlag}
         </span>
       )}
       {order.note && (

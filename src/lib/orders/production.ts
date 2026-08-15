@@ -36,6 +36,14 @@ export interface OrderProductionInfo {
   /** משקל משוער בגרמים, מדוח הוולידציה של הגרסה — null כשאין דוח (גרסה
    *  ישנה, או שהוולידציה לא רצה). */
   estWeightGrams: number | null;
+  /**
+   * המידות הגיעו מצילום ההזמנה (0022) ולא מהעיצוב החי. `false` בהזמנות
+   * שקדמו למיגרציה — ואז מה שמוצג הוא **העיצוב כפי שהוא היום**, שיכול היה
+   * להשתנות מאז. ההבדל הזה חייב להיאמר על המסך ולא להישאר בקוד.
+   */
+  dimsFromOrder: boolean;
+  /** צילום קיים, אבל העיצוב החי כבר שונה ממנו — עריכה אחרי ההזמנה. */
+  designChangedSince: boolean;
 }
 
 export async function orderedDesignInfo(order: OrderRow): Promise<OrderProductionInfo | null> {
@@ -44,10 +52,15 @@ export async function orderedDesignInfo(order: OrderRow): Promise<OrderProductio
   const versionId = order.version_id ?? design.current_version_id;
   const version = versionId ? await getVersion(versionId).catch(() => null) : null;
 
-  const lengthMm = Number(design.length_mm);
-  const widthMm = Number(design.width_mm);
-  const gapMm = Number(design.gap_mm);
-  const thicknessMm = Number(design.thickness_mm);
+  // **המידות של ההזמנה, לא של העיצוב.** הצילום (0022) נכתב ברגע ההזמנה;
+  // העיצוב עצמו ניתן לעריכה אחריה — ובמסלול Story המידה בכלל נשאלת אחרי
+  // שיש עיצוב. מה שנחתך חייב להיות מה שהלקוחה אישרה, וההערה מעל הפונקציה
+  // הבטיחה זאת מזמן בלי שהקוד יקיים.
+  const dimsFromOrder = order.length_mm != null && order.thickness_mm != null;
+  const lengthMm = dimsFromOrder ? Number(order.length_mm) : Number(design.length_mm);
+  const widthMm = order.width_mm != null ? Number(order.width_mm) : Number(design.width_mm);
+  const gapMm = order.gap_mm != null ? Number(order.gap_mm) : Number(design.gap_mm);
+  const thicknessMm = dimsFromOrder ? Number(order.thickness_mm) : Number(design.thickness_mm);
   const metrics = productionMetrics({
     product: design.product_type,
     thicknessMm,
@@ -73,5 +86,13 @@ export async function orderedDesignInfo(order: OrderRow): Promise<OrderProductio
     thicknessMm,
     material: FAB.material,
     estWeightGrams: report?.metrics?.estWeightGrams ?? null,
+    dimsFromOrder,
+    // חצי מ"מ הוא רעש עיגול; מה שמעליו הוא עריכה. משווים את שלוש המידות
+    // שנחתכות בפועל, לא את הרוחב בלבד.
+    designChangedSince:
+      dimsFromOrder &&
+      (Math.abs(lengthMm - Number(design.length_mm)) > 0.5 ||
+        Math.abs(gapMm - Number(design.gap_mm)) > 0.5 ||
+        Math.abs(thicknessMm - Number(design.thickness_mm)) > 0.01),
   };
 }

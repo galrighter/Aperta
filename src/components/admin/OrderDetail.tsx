@@ -198,6 +198,13 @@ export default function OrderDetail({
         <div className="mt-1">
           {order.design_id ? (
             <>
+              {/* גרסה שנפלה בשקט (‏`version_id` null על הזמנה שיש לה עיצוב):
+                  הייצוא ייקח את הנוכחית, וזה בדיוק המקרה שאסור שיישאר שקט. */}
+              {!order.version_id && (
+                <p className="mb-3 border border-amber-200 bg-amber-50 p-2 text-[12px] text-amber-900">
+                  {s.adminOrderNoVersionWarn}
+                </p>
+              )}
               {/* אישור ויזואלי לעיצוב שהוזמן, ישירות כאן — בלי קישור לעמוד
                   העיצוב, שמצפה לחשבון הלקוחה ולא לאדמין. */}
               <DesignPreview production={production} />
@@ -208,6 +215,15 @@ export default function OrderDetail({
           )}
         </div>
       </section>
+
+      <PaymentSection
+        order={order}
+        onSaved={(next) => {
+          void refresh((cur) => (cur ? { ...cur, order: next } : cur), { revalidate: false });
+          void invalidate("/api/orders");
+        }}
+        onAuthLost={onAuthLost}
+      />
 
       {order.design_id && <ProductionSection production={production} />}
 
@@ -274,6 +290,66 @@ function DesignPreview({ production }: { production: OrderProductionInfo | null 
   );
 }
 
+/**
+ * סימון התשלום (0022).
+ *
+ * אין סליקה באתר, ולכן התשלום מגיע בהעברה/ביט ומסומן ביד. עד כה לא היה לו
+ * מקום במסד בכלל — כלומר "נחתך פליז בלי שהתקבל כסף" היה עניין של זיכרון
+ * אנושי. הכפתור כאן אינו מעבר סטטוס: הזמנה משולמת יכולה להיות בכל שלב.
+ */
+function PaymentSection({
+  order,
+  onSaved,
+  onAuthLost,
+}: {
+  order: OrderRow;
+  onSaved: (o: OrderRow) => void;
+  onAuthLost: (state: "out" | "disabled") => void;
+}) {
+  const [state, setState] = useState<"idle" | "busy" | "saved" | "error">("idle");
+  const paid = order.paid_at != null;
+
+  async function toggle() {
+    setState("busy");
+    const res = await fetch(`/api/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paid: !paid }),
+    });
+    if (res.status === 401) return onAuthLost("out");
+    if (!res.ok) return setState("error");
+    const body = (await res.json()) as { order: OrderRow };
+    onSaved(body.order);
+    setState("saved");
+  }
+
+  return (
+    <section className="mt-6 border-t border-graphite/10 pt-4">
+      <h2 className="text-[12px] text-mist">{s.adminOrderPayment}</h2>
+      <div className="mt-1 flex flex-wrap items-center gap-3">
+        <span className={`text-sm font-medium ${paid ? "text-graphite" : "text-[#c0413b]"}`}>
+          {paid
+            ? `${s.adminOrderPaidAt} · ${new Date(order.paid_at!).toLocaleString("he-IL")}`
+            : s.adminOrderUnpaid}
+        </span>
+        <button
+          type="button"
+          onClick={() => void toggle()}
+          disabled={state === "busy"}
+          className="rounded-[2px] border border-graphite/20 px-3 py-1.5 text-[13px] hover:bg-porcelain disabled:opacity-40"
+        >
+          {paid ? s.adminOrderUnmarkPaid : s.adminOrderMarkPaid}
+        </button>
+        {state === "saved" && <span className="text-[12px] text-ink60">{s.adminOrderPaidSaved}</span>}
+        {state === "error" && (
+          <span className="text-[12px] text-[#c0413b]">{s.adminOrderPaidError}</span>
+        )}
+      </div>
+      <p className="mt-1 text-[12px] text-mist">{s.adminOrderPaidHint}</p>
+    </section>
+  );
+}
+
 /** גרם, מעוגל לעשירית — כמו mm(), כי משקל משוער מתחת לזה הוא רעש. */
 const grams = (n: number) => `${Math.round(n * 10) / 10} ג׳`;
 
@@ -288,6 +364,19 @@ function ProductionSection({ production }: { production: OrderProductionInfo | n
       {!production ? (
         <p className="mt-1 text-[13px] text-mist">{s.adminOrderProductionNone}</p>
       ) : (
+        <>
+          {/* מאיפה הגיעו המספרים. אזהרה ולא הערת שוליים: מי שקורא מידה כדי
+              לערגל לפיה צריך לדעת אם היא נעולה על ההזמנה או משתנה עם העיצוב. */}
+          {!production.dimsFromOrder && (
+            <p className="mt-2 border border-amber-200 bg-amber-50 p-2 text-[12px] text-amber-900">
+              {s.adminOrderDimsLegacy}
+            </p>
+          )}
+          {production.designChangedSince && (
+            <p className="mt-2 border border-amber-200 bg-amber-50 p-2 text-[12px] text-amber-900">
+              {s.adminOrderDimsChanged}
+            </p>
+          )}
         <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
           <Field label={s.adminOrderProductionLength} value={`${mm(production.lengthMm)} ${d.mm}`} />
           <Field label={s.adminOrderProductionWidth} value={`${mm(production.widthMm)} ${d.mm}`} />
@@ -307,6 +396,7 @@ function ProductionSection({ production }: { production: OrderProductionInfo | n
             <Field label={s.adminOrderProductionWeight} value={grams(production.estWeightGrams)} />
           )}
         </dl>
+        </>
       )}
     </section>
   );
