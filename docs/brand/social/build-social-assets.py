@@ -257,6 +257,55 @@ html,body{{width:1080px;height:1920px;background:var(--graphite);position:relati
 </body></html>'''
 write("story-cta.html", story, size=(1080, 1920))
 
+# ---------------------------------------------------------------- 8. Post: friends & family launch (WhatsApp)
+# קארד השקה לוואטסאפ — נשלח ידנית לאנשים קרובים, ולכן הוא נושא את מחירי
+# העלות של סבב ההשקה (צמיד ₪95, טבעת ₪60) ולא את מחיר המחירון שבאתר.
+# ההודעה המילולית שמלווה אותו: docs/brand/social/whatsapp-launch.md.
+# הפונטים לכותרות: 'Archivo' לא מכיל עברית, ולכן 'Assistant' חייב להופיע
+# אחריו בשרשרת — אחרת עברית נופלת ל-sans-serif של המערכת.
+launch_prices = [
+    ("צמיד פתוח", "₪95"),
+    ("טבעת פתוחה", "₪60"),
+]
+launch_price_cols = '<div class="divider"></div>'.join(
+    f'''<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+<div style="font-size:30px;font-weight:600;color:var(--graphite);">{name}</div>
+<div style="font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:56px;color:var(--lapis-ink);" dir="ltr">{price}</div>
+</div>'''
+    for name, price in launch_prices
+)
+
+post_launch = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
+html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
+.photo{{position:absolute;inset:0;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:50% 62%;}}
+.top{{position:absolute;top:64px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:26px;text-align:center;}}
+.badge{{font-size:26px;font-weight:700;color:var(--lapis-ink);background:rgba(244,241,235,0.9);border:2px solid var(--lapis-ink);border-radius:100px;padding:10px 34px;letter-spacing:0.02em;}}
+.headline{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:62px;color:var(--graphite);letter-spacing:-0.01em;}}
+.headline .accent{{color:var(--lapis-ink);}}
+.sub{{font-size:27px;color:var(--graphite);opacity:0.75;max-width:840px;font-weight:400;line-height:1.5;}}
+.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.93);backdrop-filter:blur(6px);border-radius:28px;padding:36px 52px 32px;display:flex;flex-direction:column;align-items:center;gap:18px;}}
+.prices{{display:flex;align-items:center;gap:70px;}}
+.divider{{width:1px;height:76px;background:rgba(32,35,38,0.18);}}
+.costnote{{font-size:24px;font-weight:600;color:var(--graphite);opacity:0.8;}}
+.url{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:26px;color:var(--lapis-ink);letter-spacing:0.03em;}}
+</style></head><body>
+<div class="photo"></div>
+<div class="top">
+{lockup(52)}
+<div class="badge">השקה · לחברים ולמשפחה</div>
+<div class="headline">אינסוף צורות<span class="accent">.</span> אחת שלך<span class="accent">.</span></div>
+<div class="sub">מתארים במילים — מנוע העיצוב מצייר, ואנחנו חותכים בלייזר ומלטשים ביד.</div>
+</div>
+<div class="card">
+<div class="prices">
+{launch_price_cols}
+</div>
+<div class="costnote">מחיר עלות לסבב ההשקה — רק החומר והייצור, בלי רווח</div>
+<div class="url" dir="ltr">aperta-designs.com</div>
+</div>
+</body></html>'''
+write("post-launch.html", post_launch, size=(1080, 1080))
+
 # ---------------------------------------------------------------- render + export
 # (name without extension, output format: "png" for flat graphics, "jpg" for photos)
 EXPORT_AS = {
@@ -267,6 +316,7 @@ EXPORT_AS = {
     "post-product": ("post-product-bracelet", "jpg"),
     "post-howitworks": ("post-how-it-works", "png"),
     "story-cta": ("story-cta", "jpg"),
+    "post-launch": ("post-launch-whatsapp", "jpg"),
 }
 
 def find_chrome(explicit):
