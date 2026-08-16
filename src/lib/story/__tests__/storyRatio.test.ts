@@ -98,8 +98,8 @@ describe("היחסים מגיעים לשני הפרומפטים", () => {
     expect(p).toContain("1:2.9");
     expect(p).toContain("1:12.25");
     expect(p).toContain("length_to_width_ratio");
-    expect(p).toContain("at least one design must be clearly NARROW");
-    expect(p).toContain("differ by at least a factor of two");
+    expect(p).toContain("at least one clearly narrow");
+    expect(p).toContain("differing by at least a factor of two");
     // ושום placeholder לא נשאר בטקסט שיוצא.
     expect(p).not.toMatch(/\{[A-Z_]+\}/);
   });
