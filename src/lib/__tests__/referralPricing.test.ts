@@ -71,6 +71,34 @@ describe("מחיר לפי קוד הפניה", () => {
   });
 });
 
+describe("FAMILY25 — הקוד של ההשקה", () => {
+  // המחירים עצמם נשתלים ב-0027, אבל המספר שהלקוחה משלמת נגזר מהם **כאן**:
+  // שינוי ב-SHIPPING או ב-TAX_RATE מזיז אותו בלי שאיש נגע בקוד ההפניה.
+  // הבדיקה הזאת היא מה שיגיד שזה קרה.
+  const FAMILY: ReferralRule = { kind: "fixed_price", basePrices: { bracelet: 100, ring: 80 } };
+
+  it("צמיד — ₪135 לתשלום", () => {
+    const p = priceFor({ productType: "bracelet", referral: { code: "FAMILY25", rule: FAMILY } });
+    expect(p.base).toBe(100);
+    expect(p.total).toBe(135);
+    expect(p.vat).toBe(21);
+  });
+
+  it("טבעת — ₪115 לתשלום", () => {
+    const p = priceFor({ productType: "ring", referral: { code: "FAMILY25", rule: FAMILY } });
+    expect(p.base).toBe(80);
+    expect(p.total).toBe(115);
+    expect(p.vat).toBe(18);
+  });
+
+  it("הקוד מנורמל לצורה שנשמרה במסד", () => {
+    // ‏0027 שומר 'FAMILY25'. כל צורה שנמסרת בעל־פה או בהקלדה חייבת להגיע אליה.
+    for (const typed of ["Family25", "family25", " FAMILY25 ", "FAMILY25"]) {
+      expect(normalizeCode(typed)).toBe("FAMILY25");
+    }
+  });
+});
+
 describe("נרמול הקוד", () => {
   it("רישיות ורווחים אינם משנים קוד", () => {
     expect(normalizeCode("  ff-25 ")).toBe("FF-25");
