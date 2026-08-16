@@ -2,17 +2,17 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// ה-FK מ-`profiles.auth_user_id` ל-`auth.users` הוסר ב-0024, כי `auth.users`
+// ה-FK מ-`profiles.auth_user_id` ל-`auth.users` הוסר ב-0025, כי `auth.users`
 // אינה בגיבוי ולכן השחזור לפרויקט חדש נכשל עליה. מה שנשאר מגן על אותו דבר
 // עצמו — והבדיקות כאן שומרות שהוא לא ייעלם בשקט בעריכה עתידית.
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
-const MIGRATION = read("supabase/migrations/0024_drop_auth_users_fk.sql");
+const MIGRATION = read("supabase/migrations/0025_drop_auth_users_fk.sql");
 const ACCOUNTS = read("src/lib/db/accounts.ts");
 const OPS = read("src/lib/opsStatus.ts");
 
-describe("מיגרציה 0024", () => {
+describe("מיגרציה 0025", () => {
   it("מסירה את ה-FK, ואינה נוגעת באינדקס הייחודי", () => {
     // האינדקס הוא מה שמונע שני פרופילים לאותו חשבון — כלומר ההגנה שבאמת
     // חשובה. ה-FK מעולם לא עשה את זה.
