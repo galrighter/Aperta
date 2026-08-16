@@ -1,6 +1,7 @@
 import { askOpenAi } from "@/lib/llm/openai";
 import { addLlmUsage, type LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
+import type { Canvas } from "@/lib/render/canvas";
 
 // story mode — שלב הטקסט שקודם למודל התמונה.
 //
@@ -96,6 +97,9 @@ export interface DesignStageResult {
    *  לפרומפט של מודל התמונה, וזה מה שנשמר ביומן. */
   json: string;
   spec: DesignSpec;
+  /** מה שנשלח למודל הטקסט בפועל — ההודעה המערכתית והפרומפט המלא, אחרי
+   *  שהתבניות הוחלפו. ראה `DesignStageOutcome`. */
+  sent: DesignStageSent;
   /** כמה זמן השלב לקח. ליומן — הוא נוסף לזמן שהלקוחה ממתינה. */
   ms: number;
   /**
@@ -112,9 +116,28 @@ export interface DesignStageResult {
   attempts: number;
 }
 
+/**
+ * מה שיצא מכאן אל מודל הטקסט, מילה במילה.
+ *
+ * **למה זה נשמר ולא נבנה מחדש בקריאה.** הפרומפט הוא תבנית שהסיפור נכנס לתוכה
+ * (`buildDesignPrompt`), והתבנית משתנה — היא הידית הראשונה שמושכים כשהתוצאה לא
+ * טובה. בנייה מחדש בזמן הצפייה הייתה מציגה את **הנוסח של היום** על הרצה של
+ * שבוע שעבר, כלומר בדיוק את הטקסט שהמודל ההוא לא ראה. זו אותה הנמקה שבגללה
+ * `render_prompt` נשמר כמו שהוא ולא נגזר מהמאפיינים.
+ *
+ * ההודעה המערכתית נשמרת לצידו אף שהיא קבועה היום: היא חלק ממה שנשלח, ומחר
+ * היא יכולה להשתנות בלי שאיש יזכור שהיא לא הייתה תמיד כזו.
+ */
+export interface DesignStageSent {
+  system: string;
+  prompt: string;
+}
+
 /** השלב נפל בכל הניסיונות. מה שכתוב כאן הוא מה שנמסר לתורן ולטלגרם. */
 export interface DesignStageFailure {
   attempts: number;
+  /** מה שנשלח — גם כשלא חזרה תשובה. דווקא כאן זה מה שמסבירים מולו. */
+  sent: DesignStageSent;
   /** נוסח הכשל האחרון, לבן־אדם. לא נמסר ללקוחה — היא לא אמורה להרגיש בכלל. */
   reason: string;
   ms: number;
@@ -571,7 +594,7 @@ The three options must differ structurally, not merely by having different inter
 
 IMAGE COMPOSITION
 
-Create ONE landscape / wide image.
+Create ONE {CANVAS_SHAPE} image.
 
 Arrange exactly THREE separate flat jewelry blanks:
 
@@ -656,9 +679,20 @@ Verify visually that:
 8. BLACK represents remaining metal and WHITE represents laser-cut removal.
 9. No extra visual elements appear.`;
 
-/** הפרומפט למודל התמונה, עם מפרט העיצוב בתוכו. */
-export const buildStagedRenderPrompt = (designJson: string): string =>
-  fill(RENDER_PROMPT, { STAGE_1_JSON_OUTPUT: designJson.trim() });
+/**
+ * הפרומפט למודל התמונה, עם מפרט העיצוב בתוכו.
+ *
+ * `canvas` נמסר ולא מונח: הצורה שהטקסט מבקש חייבת להיות זו שנשלחת ב-`size`,
+ * ועד כאן היא הייתה כתובה בתבנית ("ONE landscape / wide image") בזמן שהצד
+ * השני שלה נקבע בקוד. שני מקומות לאותה החלטה הם שני מקומות שיכולים להיפרד —
+ * וכשהם נפרדים, המודל מצייר לרוחב על תמונה לאורך והפריט יוצא חתוך בקצוות.
+ * במסלול Story הערך הוא תמיד `STORY_CANVAS`.
+ */
+export const buildStagedRenderPrompt = (designJson: string, canvas: Canvas): string =>
+  fill(RENDER_PROMPT, {
+    STAGE_1_JSON_OUTPUT: designJson.trim(),
+    CANVAS_SHAPE: canvas.widthPx < canvas.heightPx ? "portrait / tall" : "landscape / wide",
+  });
 
 /* ===== ההרצה ===== */
 
@@ -714,6 +748,7 @@ export async function runDesignStage(input: {
 }): Promise<DesignStageOutcome> {
   const startedAt = Date.now();
   const userText = buildDesignPrompt(input);
+  const sent: DesignStageSent = { system: DESIGN_SYSTEM, prompt: userText };
   let usage: LlmUsage | null = null;
   let reason = "";
   let attempts = 0;
@@ -739,7 +774,7 @@ export async function runDesignStage(input: {
       // והוא בדיוק הניסיון שאסור שייעלם מהחשבון.
       usage = addLlmUsage(usage, answer.usage);
       const parsed = parseDesignSpec(answer.text);
-      if (parsed) return { ok: true, ...parsed, ms: Date.now() - startedAt, usage, attempts };
+      if (parsed) return { ok: true, ...parsed, sent, ms: Date.now() - startedAt, usage, attempts };
       reason = `unusable output: ${answer.text.slice(0, 200).replace(/\s+/g, " ")}`;
       console.error(`story design stage attempt ${attempt}: ${reason}`);
     } catch (e) {
@@ -748,5 +783,5 @@ export async function runDesignStage(input: {
     }
   }
 
-  return { ok: false, attempts, reason, ms: Date.now() - startedAt, usage };
+  return { ok: false, attempts, reason, sent, ms: Date.now() - startedAt, usage };
 }

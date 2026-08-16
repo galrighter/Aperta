@@ -58,6 +58,27 @@ function slimDebug(debug: unknown): unknown {
   return { ...d, candidates };
 }
 
+/**
+ * אותו קיצוץ, על `inputs`: הטקסטים הארוכים של שלב הטקסט יורדים מהרשימה.
+ *
+ * `spec` נחתך ב-8,000 תווים ו-`prompt` ב-12,000 — כלומר עד 20KB לכל שורת Story,
+ * על שדות שאף אחד מהם אינו מוצג ברשימה: התגיות קוראות את המספרים בלבד, וחלון
+ * הפרומפט ממילא טוען את הפירוט המלא (`/api/debug/log/<id>`) ומעדיף אותו. זו
+ * בדיוק ההנמקה של `slimDebug` — ועד כאן היא לא חלה על `inputs`, שגדל בשקט.
+ */
+function slimInputs(inputs: unknown): unknown {
+  if (!inputs || typeof inputs !== "object") return inputs;
+  const i = inputs as Record<string, unknown>;
+  const stage = i.designStage;
+  if (!stage || typeof stage !== "object") return i;
+  const { prompt, system, spec, ...rest } = stage as Record<string, unknown>;
+  // הנוכחות נשמרת גם כשהתוכן יורד: בלעדיה הרשימה לא יכולה לומר שיש מה לפתוח.
+  return {
+    ...i,
+    designStage: { ...rest, hasPrompt: Boolean(prompt || system), hasSpec: Boolean(spec) },
+  };
+}
+
 export async function GET(req: Request) {
   try {
     // היומן נושא טקסט חופשי שלקוחות כתבו, את הפרומפט המלא ואת ההדמיות. עד
@@ -136,8 +157,9 @@ export async function GET(req: Request) {
         renderUrl: r.render_path ? image("render") : null,
         /** מה שהמשתמש צירף בעצמו — נפרד מההדמיה שנוצרה ממנו. */
         inputImageUrl: r.input_image_path ? image("input") : null,
-        /** המאפיינים שקבעו את ההרצה. הפרומפט המלא כבד ונטען רק בפתיחה. */
-        inputs: r.inputs ?? null,
+        /** המאפיינים שקבעו את ההרצה. הפרומפטים המלאים כבדים ונטענים רק
+         *  בפתיחה — ראה `slimInputs`. */
+        inputs: slimInputs(r.inputs ?? null),
         owner: (r.design_id && owners.get(r.design_id)) || null,
         designId: r.design_id,
         /** `AP-0047` — הרפרנס שתלונה מגיעה איתו. ה-uuid אינו רפרנס אנושי. */

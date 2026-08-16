@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
-import { STORY_MODE, STORY_RENDER, STORY_RENDER_FALLBACK, isStory, orderByVariety, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
+import { STORY_MODE, STORY_RENDER, STORY_RENDER_FALLBACK, isStory, orderByVariety, storyCanvas, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import {
   DESIGN_COUNT, STORY_DESIGN, buildDesignPrompt, buildStagedRenderPrompt, runDesignStage,
@@ -16,7 +16,7 @@ import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
-import { LANDSCAPE, canvasFor, sizeParam } from "@/lib/render/canvas";
+import { canvasFor, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
@@ -386,11 +386,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // יצירה מאפס במסלול Story רצה דו-שלבית: מודל טקסט מתרגם את הסיפור לשלושה
     // כיווני עיצוב, ומודל התמונה מבצע אותם. בקשת שינוי וכיתוב אינן עוברות שם.
     const storyCreate = story && !body.currentSvg && !body.text?.trim();
-    // הקנבס נגזר מהאורך — חוץ מהמסלול הדו-שלבי, שבו הפרומפט של שלב 2 מבקש
-    // במפורש "ONE landscape / wide image" עם שלוש שורות. קנבס לאורך היה סותר
-    // את הטקסט שנשלח. בפועל שני המוצרים נופלים ממילא על לרוחב במידות ברירת
-    // המחדל; הקיבוע כאן הוא כדי שזה יישאר נכון גם אם הן ישתנו.
-    const canvas = storyCreate ? LANDSCAPE : canvasFor(dims.lengthMm);
+    // הקנבס נגזר מהאורך — חוץ ממסלול Story, שבו הוא קבוע (`storyCanvas`).
+    // שם האורך אינו ידוע בזמן היצירה אלא נמדד אחריה, ולכן אין ממה לגזור:
+    // `canvasFor` היה בוחר לפי אורך ברירת המחדל שברשומה, שהוא עוגן תכנוני
+    // ולא מידה. הקיבוע חל על **כל** המסלול ולא רק על היצירה — אחרת עיצוב
+    // נוצר על צורה אחת ונערך על שנייה. ראה `storyCanvas`.
+    const canvas = story ? storyCanvas() : canvasFor(dims.lengthMm);
     const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
@@ -413,9 +414,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         }
       : storyCreate
         // שני הפרומפטים של המסלול הדו-שלבי אומרים "exactly THREE", ומספר
-        // אחר בתכנון היה חותך שורה שלא צוירה או זורק אחת שכן. `planRender`
-        // מחזיר ממילא 3×1 לשני המוצרים במידות ברירת המחדל (יחס 8.9 מול יחס
-        // טבעי 9.05 בשלוש שורות) — הקיבוע רק מונע פער אם משהו מהם יזוז.
+        // אחר בתכנון היה חותך שורה שלא צוירה או זורק אחת שכן. לכן זה קיבוע
+        // ולא תכנון: `planRender` נגזר מהיחס שהוזמן, ובמסלול הזה אין כזה —
+        // הרוחב שברשומה הוא עוגן והאורך נמדד רק אחרי הבחירה. שלוש שורות על
+        // `storyCanvas` מושכות את המודל ליחס טבעי של ~6.97 (`NATURAL_RATIO`),
+        // וזה מה שהיומן מודד מול `drawnRatio`.
         ? { rows: DESIGN_COUNT, cols: 1, calls: 1 as const, candidates: DESIGN_COUNT, offered: DESIGN_COUNT, canvas }
         : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
@@ -486,7 +489,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const prompt =
       body.promptOverride?.trim() ||
       (designStage
-        ? buildStagedRenderPrompt(designStage.json)
+        ? buildStagedRenderPrompt(designStage.json, canvas)
         : storyCreate
           ? buildStoryRenderPrompt({
               story: body.userPrompt,
@@ -544,6 +547,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               /** נוסח הכשל האחרון, כשנפל. זה מה שנשלח לתורן ולטלגרם, וכאן
                *  הוא נשאר גם אחרי שההודעות נמחקו. */
               failure: stageDown?.reason.slice(0, 500),
+              /** הפרומפט שהשלב הזה קיבל — הצד השני של `spec`. הוא נשמר גם
+               *  כשהשלב נפל, וזה בדיוק המצב שבו הוא נחוץ: כשל שחוזר על אותו
+               *  ניסוח הוא הניסוח, ולא הספק. ראה `DesignStageSent`. */
+              prompt: stage?.sent.prompt.slice(0, 12000),
+              system: stage?.sent.system,
               /** המפרט עצמו. זה מה שמודל התמונה קרא, ובלעדיו אי אפשר להסביר
                *  ביומן למה תמונה יצאה כמו שיצאה — הפרומפט לבדו רק מפנה אליו.
                *  חתוך: שורת יומן אינה מקום לטקסט בלי גבול. */
