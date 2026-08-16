@@ -283,7 +283,7 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 .headline{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:62px;color:var(--graphite);letter-spacing:-0.01em;}}
 .headline .accent{{color:var(--lapis-ink);}}
 .sub{{font-size:27px;color:var(--graphite);opacity:0.75;max-width:840px;font-weight:400;line-height:1.5;}}
-.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.93);backdrop-filter:blur(6px);border-radius:28px;padding:36px 52px 32px;display:flex;flex-direction:column;align-items:center;gap:18px;}}
+.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.58);backdrop-filter:blur(16px);border-radius:28px;padding:36px 52px 32px;display:flex;flex-direction:column;align-items:center;gap:18px;}}
 .prices{{display:flex;align-items:center;gap:70px;}}
 .divider{{width:1px;height:76px;background:rgba(32,35,38,0.18);}}
 .costnote{{font-size:24px;font-weight:600;color:var(--graphite);opacity:0.8;}}
