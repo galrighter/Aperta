@@ -300,7 +300,7 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 <div class="prices">
 {launch_price_cols}
 </div>
-<div class="costnote">מחיר עלות לסבב ההשקה — רק החומר והייצור, בלי רווח</div>
+<div class="costnote">25 ההזמנות הראשונות — ניסוי כלים בייצור, ולכן מחיר עלות בלבד</div>
 <div class="url" dir="ltr">aperta-designs.com</div>
 </div>
 </body></html>'''
