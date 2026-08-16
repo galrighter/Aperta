@@ -24,9 +24,20 @@ function dutyFireUrl(): string {
   );
 }
 
-/** הטוקן שגל יצר ברוטין. בלעדיו — התורן מושבת בשקט, וההתראות במייל ממשיכות. */
+/**
+ * הטוקן שגל יצר ברוטין. בלעדיו — התורן מושבת בשקט, וההתראות במייל ממשיכות.
+ *
+ * **שני שמות, ובכוונה.** השם המקורי נכתב `DUTI` בשגיאת כתיב (‏`DUTY_API_URL`
+ * לצידו נכתב נכון), והוא שמו של ה-secret בפועל — ‏docs/FULL_AUDIT_2026-08.md
+ * פרק 1, ממצא 10. שינוי חד-צדדי בקוד היה משתיק את התורן בשקט עד שמישהו
+ * ישים לב, וזו התוצאה הגרועה ביותר האפשרית לתיקון קוסמטי.
+ *
+ * לכן: הכתיב הנכון גובר, והישן ממשיך לעבוד. אפשר להוסיף `DUTY_API_TOKEN`
+ * מתי שנוח ולמחוק את `DUTI_API_TOKEN` אחר כך — בלי חלון שבו אף אחד מהם לא
+ * עונה.
+ */
 function dutyToken(): string | null {
-  return process.env.DUTI_API_TOKEN || null;
+  return process.env.DUTY_API_TOKEN || process.env.DUTI_API_TOKEN || null;
 }
 
 export function dutyConfigured(): boolean {

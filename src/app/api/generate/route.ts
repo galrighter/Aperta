@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handleRouteError, parseBody, jsonError, ApiError } from "@/lib/api";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
-import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
+import { countTodayGenerationsGlobal, createSampleDesign, getDesign, getVersion, reserveGeneration, updateDesignWidth } from "@/lib/db/designs";
 import { STORY_MODE, STORY_RENDER, STORY_RENDER_FALLBACK, isStory, orderByVariety, storyCanvas, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import {
@@ -32,7 +32,7 @@ import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
 import { designSampleCode } from "@/lib/designCode";
 import { isQuotaFailure, alertQuotaExhausted } from "@/lib/alerts/quota";
-import { alertDesignStageDown, alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
+import { alertDesignStageDown, alertGlobalLimit, alertUnexpectedFailure, isSystemicFailure } from "@/lib/alerts/failures";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import type { DesignRow } from "@/lib/db/designs";
 
@@ -169,6 +169,34 @@ export async function POST(req: Request) {
     }
     if (verdict === "failed_limit") {
       throw new ApiError("rate_limited", `Daily failed-generation limit reached (${FAB.DAILY_FAILED_GENERATION_LIMIT}/day)`, 429);
+    }
+
+    // **ותקרה גלובלית מעל שתיהן.** המכסות למעלה מגנות על משתמש בודד מפני
+    // עצמו; הן אינן מגנות על החשבון. חמש מאות נרשמים עם 50 ליום כל אחד הם
+    // עד 25,000 יצירות מותרות, וההגנה היחידה שעמדה מול זה הייתה hard limit
+    // ידני ב-OpenAI — מקום שאיש לא רואה עד שהוא נחצה.
+    //
+    // **אחרי השריון ולא לפניו**, בכוונה: כך גם הבקשה הנוכחית נספרת, ואין
+    // חלון שבו עשר בקשות מקבילות עוברות את אותה בדיקה. המחיר הוא שריון
+    // שנשאר לבקשה שנדחתה — יחידה אחת בחשבון של מי שממילא חצה תקרה גלובלית.
+    const globalToday = await countTodayGenerationsGlobal().catch((e: Error) => {
+      // fail-open, כמו שאר שערי המכסה: כשל בספירה אינו ראיה לחריגה, ואתר
+      // שאינו מייצר כלום גרוע מיום אחד בלי תקרה. הכשל כן נרשם.
+      console.error("global generation count failed (allowing):", e.message);
+      return 0;
+    });
+    if (globalToday >= FAB.GLOBAL_DAILY_GENERATION_LIMIT) {
+      await alertGlobalLimit(globalToday, "reached");
+      throw new ApiError(
+        "rate_limited",
+        `Site-wide daily generation limit reached (${FAB.GLOBAL_DAILY_GENERATION_LIMIT}/day)`,
+        429,
+      );
+    }
+    if (globalToday >= (FAB.GLOBAL_DAILY_GENERATION_LIMIT * FAB.GLOBAL_LIMIT_WARN_PCT) / 100) {
+      // התראה בלבד — היצירה ממשיכה. הסף קיים כדי שגל יידע לפני שלקוחה
+      // תיתקל בקיר, ולא אחרי.
+      await alertGlobalLimit(globalToday, "approaching");
     }
 
     // שורת ה-job היא רישום, לא תנאי להרצה: אם הטבלה חסרה (חלון בין פריסה

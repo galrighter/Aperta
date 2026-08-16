@@ -141,6 +141,7 @@ jobs:
             "VECTORIZER_URL": "${{ vars.VECTORIZER_URL }}",
             "VECTORIZER_TOKEN": "${{ secrets.VECTORIZER_TOKEN }}",
             "DUTY_API_URL": "${{ secrets.DUTY_API_URL }}",
+            "DUTY_API_TOKEN": "${{ secrets.DUTY_API_TOKEN || secrets.DUTI_API_TOKEN }}",
             "DUTI_API_TOKEN": "${{ secrets.DUTI_API_TOKEN }}",
             "TELEGRAM_ALERT_BOT_TOKEN": "${{ secrets.TELEGRAM_ALERT_BOT_TOKEN }}",
             "TELEGRAM_ALERT_CHAT_ID": "${{ secrets.TELEGRAM_ALERT_CHAT_ID || vars.TELEGRAM_ALERT_CHAT_ID }}"
