@@ -1,58 +1,13 @@
 import type { NextConfig } from "next";
+import { buildCsp, supabaseOrigin } from "./src/lib/csp";
 
-/**
- * ‏CSP וכותרות האבטחה של האתר.
- *
- * **מה זה סוגר ומה לא.** ה-CSP כאן אינו נעילה מלאה על סקריפטים: ‏Next מזריק
- * סקריפטים inline (ה-bootstrap וה-hydration data), ואכיפה עליהם דורשת nonce
- * שנוצר בבקשה — כלומר middleware שמזריק אותו לכל תשובה, על runtime שרץ בקצה,
- * ובדיקה של כל מסלול. זה שינוי אמיתי ולא שורה בקונפיג, ולכן `script-src`
- * נשאר עם `'unsafe-inline'` והמסמך הזה אומר זאת במפורש במקום להיראות מוגן.
- *
- * מה שכן נסגר, וזה לא מעט:
- * - **`frame-ancestors 'none'`** — אי אפשר לעטוף את האתר ב-iframe. זו ההגנה
- *   מ-clickjacking על מסך הצ'קאאוט, ואין באתר שום iframe שנשבר מזה (נבדק).
- * - **`form-action 'self'`** — טופס לא יכול להישלח ליעד חיצוני. בלי זה, XSS
- *   שמצליח לשנות `action` שולח את הכתובת והטלפון של הלקוחה למקום אחר.
- * - **`base-uri 'self'`** — הזרקת `<base>` לא יכולה להסיט את כל הנתיבים
- *   היחסיים בעמוד לדומיין של תוקף.
- * - **`object-src 'none'`**, **`default-src 'self'`** — אין תוספים, ואין
- *   טעינה מדומיין שלא הוכרז.
- *
- * **מה מוכרז החוצה, ולמה:** ‏Supabase (אימות מהדפדפן) ו-Cloudflare Insights
- * (הביקון, אם הוגדר טוקן). שניהם נגזרים מהסביבה ולא נכתבים קשיח — דומיין
- * שמשתנה בלי שה-CSP יידע הוא אתר שמפסיק להתחבר בלי הודעה.
- */
-const supabaseOrigin = (() => {
-  try {
-    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").origin;
-  } catch {
-    return "";
-  }
-})();
-
-const CF_SCRIPT = "https://static.cloudflareinsights.com";
-const CF_CONNECT = "https://cloudflareinsights.com";
-
-const csp = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  // blob: — ההדמיה מייצרת תמונות בזיכרון (canvas → blob) לשיתוף ולתצוגה.
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  // הפונטים מתארחים עצמית, אבל Next מזריק `<style>` inline לטעינה שלהם.
-  "style-src 'self' 'unsafe-inline'",
-  // ‏'unsafe-eval' בפיתוח בלבד — ה-refresh runtime של Next משתמש בו.
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""} ${CF_SCRIPT}`,
-  `connect-src 'self' ${supabaseOrigin} ${CF_CONNECT}`.trim(),
-  "worker-src 'self' blob:",
-  "upgrade-insecure-requests",
-]
-  .filter(Boolean)
-  .join("; ");
+// כותרות האבטחה של האתר. המדיניות עצמה יושבת ב-`src/lib/csp` כדי שאפשר יהיה
+// לבדוק אותה — הקובץ הזה נטען עם `initOpenNextCloudflareForDev` ואינו נגיש
+// לבדיקות. ראו שם את הנימוק לכל הנחיה.
+const csp = buildCsp({
+  origin: supabaseOrigin(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  dev: process.env.NODE_ENV === "development",
+});
 
 const SECURITY_HEADERS = [
   { key: "content-security-policy", value: csp },
