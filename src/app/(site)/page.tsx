@@ -150,12 +150,16 @@ export default function HomePage() {
 
       {/* הוויטרינה — ההוכחה שמתחת לצומת: סיפור כלשונו וההדמיה שיצאה ממנו.
           אותה ויטרינה של `/story`, במצב מצומצם: שורת "מה שחזר" נשארת שם,
-          כי שם היא מלמדת את פעולת הבחירה; כאן התפקיד הוא הוכחה, לא לימוד. */}
+          כי שם היא מלמדת את פעולת הבחירה; כאן התפקיד הוא הוכחה, לא לימוד.
+
+          במצב הזה אין צעיף: הרקע שקוף, כדי שהוויטרינה לא תיקרא כריבוע שמנת
+          גדול באמצע העמוד — המסגרת המוסטת לבדה אומרת "כאן דוגמה". מ-sm ומעלה
+          הסיפור וההדמיה עומדים זה לצד זה, והרוחב מיושר לרוחב הצומת שמעל. */}
       <section className="mx-auto w-full max-w-[1240px] overflow-x-clip px-5 pb-16 pt-4 sm:px-10 sm:pb-20">
         <h2 className="mb-6 text-center font-display text-[11px] font-normal tracking-[0.32em] text-lapis-ink sm:mb-8">
           {s.gatesVitrineLead}
         </h2>
-        <div className="relative mx-auto max-w-[560px]">
+        <div className="relative mx-auto max-w-[560px] sm:max-w-[880px]">
           <div
             aria-hidden="true"
             className="pointer-events-none absolute -top-3 -left-3 h-full w-full border-[1.5px] border-lapis/40 sm:-top-4 sm:-left-4"

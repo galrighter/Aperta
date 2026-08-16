@@ -78,11 +78,19 @@ export function StoryShowcase({
   // מחליפה מודל בתוך אותה סצנה, ולא בונה סצנה חדשה.
   const material = useMemo(() => showcaseMaterial(ex, sel), [ex, sel]);
 
+  /* התוויות הקטנות, לפי הרקע שהן נוחתות עליו. במצב המלא הצעיף נותן רקע אחיד
+     ו-`mist` עובר; במצב compact הרקע שקוף והדקורציה של `ArchBackground` היא
+     הרקע בפועל — אותה הכרעה של StoryHome: `mist` נופל מול קו הקצה של הלוח
+     (3.85), `ink80` עובר (6.05). */
+  const lab = variant === "compact" ? "text-ink80" : "text-mist";
+
   return (
-    // אין כאן כרטיס. הצעיף (`ap-veil`) מחזיק את הניגודיות מול הדקורציה בלי
-    // לצייר קצה, והמסגרת המוסטת שב-`StoryHome` היא שאומרת "כאן דוגמה".
+    // אין כאן כרטיס. במצב המלא הצעיף (`ap-veil`) מחזיק את הניגודיות מול
+    // הדקורציה בלי לצייר קצה; במצב compact אין גם צעיף — הרקע שקוף, כדי שלא
+    // ייקרא כריבוע שמנת גדול באמצע דף הבית. את "כאן דוגמה" אומרת המסגרת
+    // המוסטת שבעמוד המארח, וחוזה הניגודיות נשמר בטוקנים של הטקסט (ראו `lab`).
     <div
-      className={`ap-veil ${className}`}
+      className={`${variant === "full" ? "ap-veil " : ""}${className}`}
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
       onFocusCapture={() => setHeld(true)}
@@ -90,13 +98,26 @@ export function StoryShowcase({
       {/* המרווחים והריפוד הודקו מעבר למידה של השאר. הסיבה מדידה: הוויטרינה
           נושאת ארבעה בלוקים (סיפור, חץ, שלוש אפשרויות, הדמיה), וכל 4px של
           מרווח מוכפלים פי חמישה. בערכים הקודמים העמודה יצאה 994px — כלומר
-          ההדמיה, שהיא כל העניין, נחתכה בקו הקיפול בלפטופ נמוך. */}
-      <div className="flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6">
+          ההדמיה, שהיא כל העניין, נחתכה בקו הקיפול בלפטופ נמוך.
+
+          במצב compact הפריסה שונה: מ-sm ומעלה הסיפור וההדמיה עומדים זה לצד
+          זה — הסיפור בעמודת הפתיחה (מימין בעברית) וההדמיה לצידו — והנקודות
+          והרמז נפרשים מתחת לשניהם (`col-span-2`). בנייד נשאר הסדר האנכי. */}
+      <div
+        className={
+          variant === "full"
+            ? "flex flex-col gap-3.5 p-4 sm:gap-4 sm:p-6"
+            : "grid gap-3.5 p-2 sm:grid-cols-[0.95fr_1.05fr] sm:items-center sm:gap-x-8 sm:gap-y-3 sm:p-5"
+        }
+      >
         {/* ===== מה שסופר ===== */}
         {/* ההחלקה יושבת על הבלוק הזה בלבד ולא על הכרטיס: על הקנבס של ההדמיה
             גרירה אופקית היא סיבוב, ומאזין החלקה מעליה היה הופך כל סיבוב
             להחלפת סיפור. */}
         <div
+          // `min-w-0`: בעמודת גריד (compact) ה-`truncate` של המשפט אינו עובד
+          // בלעדיו — העמודה מתרחבת לרוחב הטקסט במקום לחתוך אותו.
+          className="min-w-0"
           onTouchStart={(e) => {
             setHeld(true);
             touchX.current = e.touches[0]?.clientX ?? null;
@@ -111,10 +132,10 @@ export function StoryShowcase({
           }}
         >
           <div className="flex items-baseline justify-between gap-3">
-            <div className="font-display text-[10px] tracking-[0.22em] text-mist">
+            <div className={`font-display text-[10px] tracking-[0.22em] ${lab}`}>
               {s.storyLabel} · {ex.kind}
             </div>
-            <div className="font-display text-[10px] tracking-[0.18em] text-mist">
+            <div className={`font-display text-[10px] tracking-[0.18em] ${lab}`}>
               {s.product[ex.product]}
             </div>
           </div>
@@ -151,14 +172,18 @@ export function StoryShowcase({
         {/* החץ — כלפי מטה, כי זה מה שקורה: הסיפור יורד לכדי צורה.
             בטלפון הוא לא מוצג: 28px (הוא ושני חצאי המרווח שלו) הם ההפרש בין
             תכשיט שנכנס למסך הראשון לתכשיט שנחתך, והוא דקורטיבי — התוויות
-            "סיפור" ו"ההדמיה" אומרות את אותו הדבר במילים. */}
-        <div aria-hidden="true" className="hidden items-center gap-3 sm:flex">
-          <span className="h-px flex-1 bg-graphite/12" />
-          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-lapis" fill="none" stroke="currentColor" strokeWidth="1.4">
-            <path d="M8 2v12M3.5 9.5 8 14l4.5-4.5" />
-          </svg>
-          <span className="h-px flex-1 bg-graphite/12" />
-        </div>
+            "סיפור" ו"ההדמיה" אומרות את אותו הדבר במילים.
+            במצב compact הוא לא מוצג בכלל: כשהסיפור וההדמיה זה לצד זה, חץ
+            כלפי מטה מצביע לשום מקום. */}
+        {variant === "full" && (
+          <div aria-hidden="true" className="hidden items-center gap-3 sm:flex">
+            <span className="h-px flex-1 bg-graphite/12" />
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 text-lapis" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <path d="M8 2v12M3.5 9.5 8 14l4.5-4.5" />
+            </svg>
+            <span className="h-px flex-1 bg-graphite/12" />
+          </div>
+        )}
 
         {/* ===== ההדמיה ===== */}
         {/* היא יושבת מעל האפשרויות, ולא אחריהן. הסדר הקודם היה נאמן למסך
@@ -166,8 +191,8 @@ export function StoryShowcase({
             שמגיעה לדף הבית צריכה קודם לראות **מה יוצא מזה**, ורק אחר כך את
             העובדה שהיו לזה כמה פרשנויות. התכשיט הוא הטענה; האפשרויות הן
             ההסבר. */}
-        <div>
-          <div className="font-display text-[10px] tracking-[0.22em] text-mist">
+        <div className="min-w-0">
+          <div className={`font-display text-[10px] tracking-[0.22em] ${lab}`}>
             {s.renderLabel}
           </div>
           {/* בלי `key`, ובמכוון: הקרוסלה מחליפה סיפור כל תשע שניות, ומפתח
@@ -240,8 +265,9 @@ export function StoryShowcase({
         </div>
         )}
 
-        {/* ניווט. נקודות ולא חצים: ארבעה סיפורים שווי ערך, לא רצף. */}
-        <div className="flex items-center justify-center gap-2.5">
+        {/* ניווט. נקודות ולא חצים: ארבעה סיפורים שווי ערך, לא רצף.
+            ב-compact הוא נפרש מתחת לשתי העמודות — כיתוב לצמד, לא לעמודה. */}
+        <div className={`flex items-center justify-center gap-2.5 ${variant === "compact" ? "sm:col-span-2" : ""}`}>
           {SHOWCASE.map((st, n) => (
             <button
               key={st.id}
@@ -265,7 +291,11 @@ export function StoryShowcase({
           ))}
         </div>
 
-        <p className="text-center font-display text-[11px] tracking-[0.14em] text-mist">
+        <p
+          className={`text-center font-display text-[11px] tracking-[0.14em] ${lab} ${
+            variant === "compact" ? "sm:col-span-2" : ""
+          }`}
+        >
           {s.hint}
         </p>
       </div>
