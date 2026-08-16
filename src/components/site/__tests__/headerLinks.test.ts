@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // כפתור "כניסה" בכותרת הוביל ל-`/design` בלבד, בלי לבקש מהעמוד לפתוח את שער
@@ -10,29 +10,33 @@ import { join } from "node:path";
 // הטסט הזה שומר על שני החצאים גם יחד, כי תיקון של אחד בלי השני מחזיר בדיוק
 // את אותה חוויה. כל קישור בכותרת שנושא מצב פתיחה בכתובת חייב (א) להיות `a`
 // ולא `Link`, ו-(ב) שהעמוד המקבל יקרא את הפרמטר שלו.
+//
+// מאז שדף `/designs` נולד, "העיצובים שלי" הוא קישור לעמוד רגיל ואינו נושא
+// מצב — ההגנה חלה רק על מה שעדיין נושא (`SIGN_IN_HREF`), והקישור השני נבדק
+// על היעד עצמו: שהעמוד שהוא מצביע עליו באמת קיים.
 
 const SRC = join(process.cwd(), "src");
 const MENU = readFileSync(join(SRC, "components/site/AccountMenu.tsx"), "utf8");
 const DESIGN_PAGE = readFileSync(join(SRC, "app/(site)/design/page.tsx"), "utf8");
 
-/** כל `export const X_HREF = "/design?param=..."` בכותרת. */
+/** כל `export const X_HREF = "..."` בכותרת. */
 const HREFS = [...MENU.matchAll(/export const (\w+_HREF) = "([^"]+)"/g)].map(([, name, href]) => ({
   name,
   href,
   param: new URL(href, "https://x").searchParams.keys().next().value as string | undefined,
 }));
 
+/** מה שנושא מצב פתיחה בכתובת — עליו חלה ההגנה הכפולה. */
+const STATEFUL = HREFS.filter((h) => h.param);
+
 describe("header links that carry open-state", () => {
   it("finds them all", () => {
-    // אם נוסף קישור שלישי והמספר לא עודכן — סימן שצריך להסתכל עליו.
+    // אם נוסף קישור שלישי והרשימות לא עודכנו — סימן שצריך להסתכל עליו.
     expect(HREFS.map((h) => h.name).sort()).toEqual(["MY_DESIGNS_HREF", "SIGN_IN_HREF"]);
+    expect(STATEFUL.map((h) => h.name)).toEqual(["SIGN_IN_HREF"]);
   });
 
-  it.each(HREFS.map((h) => [h.name, h] as const))("%s carries a query param", (_n, h) => {
-    expect(h.param).toBeTruthy();
-  });
-
-  it.each(HREFS.map((h) => [h.name, h] as const))(
+  it.each(STATEFUL.map((h) => [h.name, h] as const))(
     "%s renders as a plain anchor, never next/link",
     (_n, h) => {
       // `Link` מנווט בצד הלקוח, ולכן מ-/design אל /design?x=1 לא קורה כלום.
@@ -45,13 +49,23 @@ describe("header links that carry open-state", () => {
     },
   );
 
-  it.each(HREFS.map((h) => [h.name, h] as const))(
+  it.each(STATEFUL.map((h) => [h.name, h] as const))(
     "%s is actually read by the design page",
     (_n, h) => {
       // קישור שנושא פרמטר שאיש אינו קורא הוא בדיוק הבאג המקורי.
       expect(DESIGN_PAGE).toContain(`params.get("${h.param}")`);
     },
   );
+});
+
+describe("the my-designs link", () => {
+  const myDesigns = HREFS.find((h) => h.name === "MY_DESIGNS_HREF")!;
+
+  it("points at the standalone designs page, and the page exists", () => {
+    // קישור לעמוד שאינו קיים הוא 404 בכותרת של כל האתר.
+    expect(myDesigns.href).toBe("/designs");
+    expect(existsSync(join(SRC, "app/(site)/designs/page.tsx"))).toBe(true);
+  });
 });
 
 describe("the sign-in link", () => {

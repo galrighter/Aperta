@@ -31,7 +31,18 @@ const ROTATE_MS = 9000;
 
 const s = story.home.showcase;
 
-export function StoryShowcase({ className = "" }: { className?: string }) {
+export function StoryShowcase({
+  className = "",
+  variant = "full",
+}: {
+  className?: string;
+  /**
+   * `compact` — הוויטרינה של דף הבית "שני שערים": סיפור ← הדמיה, בלי שורת
+   * "מה שחזר". שם התפקיד הוא הוכחה ("מהמילים למתכת") ולא לימוד פעולת
+   * הבחירה — זו נשארת ב-`/story`, המסך שמלמד אותה.
+   */
+  variant?: "full" | "compact";
+}) {
   const [i, setI] = useState(0);
   /** האפשרות שההדמיה מציגה. `null` = זו שנבחרה בסיפור הזה. */
   const [pick, setPick] = useState<number | null>(null);
@@ -177,6 +188,7 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
         </div>
 
         {/* ===== מה שחזר ===== */}
+        {variant === "full" && (
         <div>
           <div className="font-display text-[10px] tracking-[0.22em] text-mist">
             {s.optionsLabel}
@@ -226,6 +238,7 @@ export function StoryShowcase({ className = "" }: { className?: string }) {
             })}
           </div>
         </div>
+        )}
 
         {/* ניווט. נקודות ולא חצים: ארבעה סיפורים שווי ערך, לא רצף. */}
         <div className="flex items-center justify-center gap-2.5">

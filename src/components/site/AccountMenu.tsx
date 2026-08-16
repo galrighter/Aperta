@@ -15,8 +15,9 @@ import type { Account } from "@/lib/client/types";
 
 const s = he.site;
 
-/** הקישור לעיצובים שלי — פותח את המשפך עם רשימת העיצובים פרושה. */
-export const MY_DESIGNS_HREF = "/design?designs=1";
+/** הקישור לעיצובים שלי — הדף העצמאי, עם המיון והרשימה המלאה.
+ *  (`/design?designs=1` ממשיך לעבוד בתוך המשפך — קישורים ישנים לא נשברים.) */
+export const MY_DESIGNS_HREF = "/designs";
 
 /** הקישור לכניסה — פותח את המשפך עם שער הזיהוי פרוש. */
 export const SIGN_IN_HREF = "/design?signin=1";
