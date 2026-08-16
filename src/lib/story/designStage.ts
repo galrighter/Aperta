@@ -2,6 +2,8 @@ import { askOpenAi } from "@/lib/llm/openai";
 import { addLlmUsage, type LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
 import type { Canvas } from "@/lib/render/canvas";
+import { ratioBandFor } from "./ratio";
+import { numberWord } from "./prompt";
 
 // story mode — שלב הטקסט שקודם למודל התמונה.
 //
@@ -72,7 +74,20 @@ const DESIGN_BUDGET_MS = 150_000;
 /** פחות מזה אין טעם לנסות: התשובה לא תספיק לחזור, והקריאה רק שורפת תקציב. */
 const DESIGN_MIN_ATTEMPT_MS = 20_000;
 
-/** שלושה כיוונים, כמו שהפרומפט מבקש וכמו שהתמונה מחלקת לשורות. */
+/**
+ * כמה כיוונים מודל הטקסט מחזיר — **טווח, לא מספר** (החלטת גל, 16.8).
+ *
+ * המספר הזה אינו רק "כמה אפשרויות": כל כיוון הוא שורה בתמונה, ומספר השורות
+ * הוא מה שקובע את היחס שהמודל מצייר (`storyLayoutFor`). לכן ההחלטה כמה
+ * לייצר וההחלטה כמה צר לצייר הן אותה החלטה — ומי שמחזיק אותה הוא מי שקובע
+ * את היחסים, כלומר מודל הטקסט.
+ *
+ * התקרה היא `MAX_CANDIDATES` (6), כמה שהמסך מציג. מעבר לזה היינו ממסגרים
+ * ומאמתים מועמדים שאיש לא יראה.
+ */
+export const DESIGN_COUNT_RANGE: [number, number] = [3, 6];
+
+/** מה שמבקשים כשאין ממה לגזור — הנפילה־לאחור, ומה שהיה קבוע עד 16.8. */
 export const DESIGN_COUNT = 3;
 
 /** כיוון עיצוב אחד, כפי ששלב הטקסט מחזיר. */
@@ -85,11 +100,35 @@ export interface DesignDirection {
   rhythm_balance?: string;
   manufacturability?: string;
   image_instruction?: string;
+  /**
+   * היחס בין אורך לרוחב שהכיוון הזה מבקש — **הרוחב של הפריט, בפועל**.
+   *
+   * במסלול Story הרוחב נגזר מהיחס שצויר, ולכן זה אינו שדה תיאורי אלא המידה
+   * היחידה שמודל הטקסט קובע. הוא נשמר ליומן (`RunInputs.askedRatios`) ומועמד
+   * מול מה שיצא (`drawnRatio`) — זו כל המדידה.
+   */
+  length_to_width_ratio?: number;
 }
 
 export interface DesignSpec {
   product_type?: string;
   designs: DesignDirection[];
+}
+
+/**
+ * היחסים שהמפרט ביקש, לפי סדר העיצובים — או `null` כשהמפרט אינו נושא אותם.
+ *
+ * **חסר אינו כשל.** מפרט בלי יחסים הוא עדיין מפרט טוב, וההרצה כבר שילמה עליו;
+ * להפיל אותה בגלל מספר חסר היה שולח אותה למודל התמונה החזק (`STORY_RENDER_FALLBACK`,
+ * פי 20–50 בעלות) בשביל ניסוי. לכן `null` פירושו רק שהתצורה נופלת לקבועה ושלא
+ * תהיה מדידה בהרצה הזו — והיומן מראה בדיוק את זה.
+ *
+ * דורש שכל העיצובים יישאו יחס: קבוצה חלקית אינה מרכז שאפשר לתכנן לפיו, והיא
+ * גם לא הייתה ניתנת להצמדה מול מה שיצא.
+ */
+export function askedRatiosOf(spec: DesignSpec): number[] | null {
+  const out = spec.designs.map((d) => Number(d.length_to_width_ratio));
+  return out.every((n) => Number.isFinite(n) && n > 0) ? out : null;
 }
 
 export interface DesignStageResult {
@@ -162,7 +201,7 @@ const DESIGN_PROMPT = `Aperta transforms a user's personal idea, memory, feeling
 
 Your job is NOT to generate an image.
 
-Your job is to translate the user's input into THREE strong, clearly different, product-specific geometric design directions that will be passed directly to an image-generation model.
+Your job is to translate the user's input into a set of strong, clearly different, product-specific geometric design directions that will be passed directly to an image-generation model.
 
 INPUT
 
@@ -182,6 +221,40 @@ Length: {LENGTH_MM}
 Width: {WIDTH_MM}
 
 If dimensions are unavailable, use believable proportions for the selected product.
+
+---
+
+PROPORTION — THE ONE MEASUREMENT YOU DECIDE
+
+The piece is cut from a flat strip and then rolled. Its length is fixed by the
+body it has to fit, so the ONLY dimension you control is how wide it is — and
+you express that as a length-to-width ratio.
+
+A LOW ratio means a WIDE, bold piece. A HIGH ratio means a NARROW, delicate one.
+
+Allowed range for this product: {RATIO_LO} (widest) to {RATIO_HI} (narrowest).
+
+Assign every design its own "length_to_width_ratio" inside that range.
+
+These ratios must be SPREAD ACROSS THE RANGE, not clustered:
+
+- at least one design must be clearly NARROW — in the upper third of the range
+- at least one design must be clearly WIDER than the narrowest one
+- the widest and the narrowest must differ by at least a factor of two
+
+Choose the proportion because the idea calls for it, not to satisfy the rule:
+a dense, insistent idea may want mass; a quiet or fragile one may want a thin
+line. The spread exists because the same story genuinely reads differently at
+different weights, and the person should get to see that.
+
+HOW MANY DESIGNS
+
+You also choose how many designs to return, between {COUNT_LO} and {COUNT_HI}.
+
+Return more when the ideas you are proposing are narrow, and fewer when they
+are wide: narrow pieces sit next to each other comfortably, wide ones need the
+room. Return more only when you genuinely have that many distinct directions —
+{COUNT_LO} strong ones beat {COUNT_HI} where three are padding.
 
 ---
 
@@ -312,13 +385,15 @@ The ends and overall geometry must remain believable after forming into an open-
 
 DESIGN DIVERSITY
 
-Create exactly THREE design directions.
+Create between {COUNT_LO} and {COUNT_HI} design directions.
 
 They must all interpret the SAME user input and belong to a coherent Aperta design language, but they must be structurally different.
 
-Do NOT create one design and make three small variations.
+Do NOT create one design and make small variations of it.
 
-The three directions should differ meaningfully in several of these:
+The directions should differ meaningfully in several of these:
+
+- proportion — how wide or narrow the piece is (see above; this is a real difference, not a detail)
 
 - outer silhouette
 - distribution of metal
@@ -364,8 +439,10 @@ Before finalizing each design, mentally verify:
 2. Could this realistically be laser-cut from one sheet?
 3. Could the resulting blank realistically be rolled into the requested product?
 4. Are the connections robust?
-5. Is this clearly different from the other two options?
+5. Is this clearly different from the other options?
 6. Does the geometry actually express the user's input?
+7. Is its "length_to_width_ratio" inside the allowed range, and does the set as a whole spread across that range rather than cluster?
+8. Does the geometry you described actually fit that width? A narrow piece cannot carry the detail a wide one can.
 
 If not, revise it before producing the output.
 
@@ -378,13 +455,14 @@ Return ONLY valid JSON.
 No markdown.
 No explanation before or after the JSON.
 
-Use exactly this structure:
+Use exactly this structure, with one object per design:
 
 {
 "product_type": "{PRODUCT_TYPE}",
 "designs": [
 {
 "design_number": 1,
+"length_to_width_ratio": 0,
 "concept": "Short explanation of how the user's input is translated into form.",
 "outer_silhouette": "Concrete description of the complete outer contour.",
 "metal_structure": "Concrete description of the major connected areas of remaining metal.",
@@ -395,16 +473,7 @@ Use exactly this structure:
 },
 {
 "design_number": 2,
-"concept": "...",
-"outer_silhouette": "...",
-"metal_structure": "...",
-"negative_space": "...",
-"rhythm_balance": "...",
-"manufacturability": "...",
-"image_instruction": "..."
-},
-{
-"design_number": 3,
+"length_to_width_ratio": 0,
 "concept": "...",
 "outer_silhouette": "...",
 "metal_structure": "...",
@@ -417,6 +486,8 @@ Use exactly this structure:
 }
 
 IMPORTANT:
+
+"length_to_width_ratio" must be a plain number, never a string and never a range.
 
 The "image_instruction" fields are the most important output.
 
@@ -453,6 +524,9 @@ export function buildDesignPrompt(input: {
   userInput: string;
   lengthMm?: number;
 }): string {
+  // הטווח נגזר מהאורך ולא קבוע: הקצה הדק נחתך ברוחב המינימלי, וזה מה שהופך
+  // את "מינימום 3 מ"מ" מצביטה אחרי הציור לגבול על מה שמבקשים. ראה ratioBandFor.
+  const [lo, hi] = ratioBandFor(input.productType, input.lengthMm);
   return fill(DESIGN_PROMPT, {
     PRODUCT_TYPE: input.productType,
     USER_INPUT: input.userInput.trim().replace(/\s+/g, " "),
@@ -460,19 +534,23 @@ export function buildDesignPrompt(input: {
       ? `${Math.round(input.lengthMm * 10) / 10} mm`
       : "not specified",
     WIDTH_MM: WIDTH_IS_THE_DESIGNS,
+    RATIO_LO: `1:${lo}`,
+    RATIO_HI: `1:${hi}`,
+    COUNT_LO: String(DESIGN_COUNT_RANGE[0]),
+    COUNT_HI: String(DESIGN_COUNT_RANGE[1]),
   });
 }
 
 /* ===== שלב 2: הפרומפט למודל התמונה ===== */
 
-const RENDER_PROMPT = `Create ONE clean product-design image for Aperta containing exactly THREE different manufacturable jewelry flat blanks.
+const RENDER_PROMPT = `Create ONE clean product-design image for Aperta containing exactly {COUNT_WORD} different manufacturable jewelry flat blanks.
 
 The jewelry designs have already been developed by a separate jewelry-design model.
 
 DO NOT reinterpret the original user story.
-DO NOT invent three new designs.
+DO NOT invent new designs.
 
-Your task is to visually execute the three supplied design directions.
+Your task is to visually execute the supplied design directions.
 
 ---
 
@@ -484,9 +562,9 @@ DESIGN SPECIFICATION FROM THE JEWELRY DESIGNER
 
 HOW TO USE THE DESIGN SPECIFICATION
 
-There are exactly three designs in the supplied specification.
+There are exactly {COUNT_WORD} designs in the supplied specification.
 
-Render all three.
+Render all of them.
 
 For each design:
 
@@ -505,7 +583,28 @@ The "concept" field explains the reasoning but should NOT cause you to add liter
 
 Do not replace the specified geometry with a simpler generic design.
 
-The three designs must remain visibly and structurally different from one another.
+The designs must remain visibly and structurally different from one another.
+
+---
+
+PROPORTION IS PART OF THE DESIGN — DO NOT NORMALIZE IT
+
+Each design carries a "length_to_width_ratio". This is the single most
+important number in the specification: it is the actual width of the finished
+piece, not a stylistic hint.
+
+A LOW ratio is a WIDE piece. A HIGH ratio is a NARROW piece.
+
+{PROPORTIONS}
+
+Draw each design at its OWN ratio. Do NOT give them a common width, do NOT
+average them, and do NOT let the shape of the row decide the width for you.
+The difference in width between these designs must be obvious at a glance —
+someone looking at the image should immediately see that some pieces are
+broad and others are slender.
+
+Each piece may be shorter than the full width of the image if that is what its
+own ratio requires. Empty white space around a piece is correct and expected.
 
 ---
 
@@ -515,17 +614,17 @@ Read "product_type" from the supplied JSON.
 
 IF product_type = "bracelet":
 
-Show exactly THREE OPEN CUFF BRACELET FLAT BLANKS.
+Show exactly {COUNT_WORD} OPEN CUFF BRACELET FLAT BLANKS.
 
 These are NOT finished curved bracelets.
 
 They are the flat unbent pieces immediately after laser cutting and before rolling.
 
-Each blank must have believable cuff proportions:
+Each blank must have believable cuff geometry:
 
-- long horizontal geometry
-- overall length much greater than width
+- long horizontal geometry, laid out along the width of its row
 - suitable for later rolling around a wrist
+- as wide or as narrow as its own "length_to_width_ratio" says, and no other width
 
 Do not shorten them into plaques.
 
@@ -533,17 +632,17 @@ Do not show curved or perspective views.
 
 IF product_type = "ring":
 
-Show exactly THREE OPEN-ENDED RING FLAT BLANKS.
+Show exactly {COUNT_WORD} OPEN-ENDED RING FLAT BLANKS.
 
 These are NOT finished circular rings.
 
 They are the flat unbent pieces immediately after laser cutting and before rolling.
 
-Use compact believable ring-blank proportions.
+A ring blank is a short strip: it wraps a finger, not a wrist.
 
-They must be clearly smaller in length-to-width proportion than bracelet blanks.
-
-Do NOT depict bracelet-length strips.
+Its width, however, comes from its own "length_to_width_ratio" and from nothing
+else. A ring blank is NOT automatically a stubby rectangle — at a high ratio it
+is a fine band, and at a low ratio it is a broad one. Draw what the number says.
 
 Do NOT show circular finished rings.
 
@@ -586,9 +685,9 @@ Follow the specified outer silhouette.
 
 If the supplied design direction describes tapering, asymmetry, widening, narrowing, angled edges, curved edges, interruptions or other contour changes, SHOW THEM CLEARLY.
 
-Do not normalize the three designs into the same outer shape.
+Do not normalize the designs into the same outer shape, and do not normalize them into the same width.
 
-The three options must differ structurally, not merely by having different internal cutouts.
+The options must differ structurally, not merely by having different internal cutouts.
 
 ---
 
@@ -596,23 +695,23 @@ IMAGE COMPOSITION
 
 Create ONE {CANVAS_SHAPE} image.
 
-Arrange exactly THREE separate flat jewelry blanks:
+Arrange exactly {COUNT_WORD} separate flat jewelry blanks, one per horizontal row, in the order given:
 
-DESIGN 1 — top row
-DESIGN 2 — middle row
-DESIGN 3 — bottom row
+{ROW_LIST}
 
 One complete design per horizontal row.
 
 Center each design horizontally.
 
-Space the three rows evenly.
+Space the rows evenly.
 
 Do not overlap them.
 
 Show every design whole and unclipped.
 
-Each blank may span almost the full available width while preserving its correct physical length-to-width proportion.
+The rows are all the same height, but the designs inside them are NOT all the
+same width — each one keeps its own "length_to_width_ratio". A row is a place
+to put a design, not a shape to fill.
 
 Do NOT artificially increase the width of narrow jewelry merely to fill the image.
 
@@ -659,7 +758,7 @@ No borders.
 No frames.
 No decorative graphic elements.
 
-The image should look like three precise black vector-like laser-cut silhouettes on a pure white field.
+The image should look like {COUNT_WORD} precise black vector-like laser-cut silhouettes on a pure white field.
 
 It must NOT look like finished jewelry photography.
 
@@ -669,11 +768,11 @@ FINAL CHECK BEFORE GENERATING
 
 Verify visually that:
 
-1. Exactly three designs are present.
+1. Exactly {COUNT_WORD} designs are present.
 2. Each design corresponds to its supplied design direction.
 3. All black regions within each design are connected.
-4. The three designs are clearly different.
-5. The product proportions match the specified product type.
+4. The designs are clearly different.
+5. Each design is drawn at its OWN "length_to_width_ratio" — the widest and the narrowest are obviously different widths, and none of them has been quietly given the same width as the others.
 6. The pieces are completely flat and orthographic.
 7. The outer silhouettes follow the supplied designs rather than defaulting to identical rectangles.
 8. BLACK represents remaining metal and WHITE represents laser-cut removal.
@@ -688,11 +787,65 @@ Verify visually that:
  * וכשהם נפרדים, המודל מצייר לרוחב על תמונה לאורך והפריט יוצא חתוך בקצוות.
  * במסלול Story הערך הוא תמיד `STORY_CANVAS`.
  */
-export const buildStagedRenderPrompt = (designJson: string, canvas: Canvas): string =>
-  fill(RENDER_PROMPT, {
+export const buildStagedRenderPrompt = (
+  designJson: string,
+  canvas: Canvas,
+  spec?: DesignSpec | null,
+): string => {
+  const designs = spec?.designs ?? [];
+  const count = designs.length || DESIGN_COUNT;
+  const ratios = spec ? askedRatiosOf(spec) : null;
+  return fill(RENDER_PROMPT, {
     STAGE_1_JSON_OUTPUT: designJson.trim(),
     CANVAS_SHAPE: canvas.widthPx < canvas.heightPx ? "portrait / tall" : "landscape / wide",
+    COUNT_WORD: numberWord(count).toUpperCase(),
+    ROW_LIST: rowList(count),
+    PROPORTIONS: proportionLines(ratios),
   });
+};
+
+/** ‏"DESIGN 1 — top row / DESIGN 2 — second row / … / DESIGN n — bottom row". */
+function rowList(count: number): string {
+  const ordinal = ["", "", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"];
+  return Array.from({ length: count }, (_, i) => {
+    const place = i === 0 ? "top row"
+      : i === count - 1 ? "bottom row"
+        : `${ordinal[i + 1] ?? `row ${i + 1}`} row from the top`;
+    return `DESIGN ${i + 1} — ${place}`;
+  }).join("\n");
+}
+
+/**
+ * מה שנאמר למודל התמונה על היחסים — **המספר וההשוואה גם יחד**.
+ *
+ * שניהם, ולא אחד מהם, כי הם עושים שני דברים שונים. המספר הוא מה שנמדד אחר כך
+ * מול `drawnRatio`, וזו כל נקודת הניסוי. ההשוואה ("הצר ביותר הוא כשליש מרוחב
+ * הרחב ביותר") היא מה שיש סיכוי שיפעל: היא מנוסחת בתוך התמונה, ומודל תמונה
+ * יכול להעמיד שני פריטים באותו קנבס זה מול זה. מספר מוחלט הוא הפשטה שהוא
+ * מתרגם רע — נמדד על 45 הרצות (panels.ts): ביקשו 16 וחזר 8.3.
+ *
+ * ריק כשאין יחסים במפרט: אז נשאר מה שהפרומפט ממילא אומר, בלי מספרים מומצאים.
+ */
+function proportionLines(ratios: number[] | null): string {
+  if (!ratios?.length) return "";
+  const lines = ratios.map(
+    (r, i) => `- DESIGN ${i + 1}: length-to-width ratio 1:${Math.round(r * 10) / 10}`,
+  );
+  const hi = Math.max(...ratios);
+  const lo = Math.min(...ratios);
+  if (hi / lo >= 1.2) {
+    const widest = ratios.indexOf(lo) + 1;
+    const narrowest = ratios.indexOf(hi) + 1;
+    const factor = Math.round((hi / lo) * 10) / 10;
+    lines.push(
+      "",
+      `DESIGN ${narrowest} is the narrowest and DESIGN ${widest} is the widest: ` +
+        `DESIGN ${narrowest} must be drawn about ${factor} times thinner than DESIGN ${widest}. ` +
+        "Compare them against each other inside the image and make that difference plainly visible.",
+    );
+  }
+  return lines.join("\n");
+}
 
 /* ===== ההרצה ===== */
 
@@ -708,9 +861,16 @@ function unfence(text: string): string {
 /**
  * המפרט, אם הוא שמיש. `null` על כל דבר אחר.
  *
- * הבדיקה היא על מה שמודל התמונה באמת קורא: שלושה כיוונים, ולכל אחד
- * `image_instruction` שאינו ריק. מפרט עם שניים או עם שדה חסר היה מייצר תמונה
- * שבה שורה אחת מומצאת — גרוע יותר מלוותר על השלב כולו.
+ * הבדיקה היא על מה שמודל התמונה באמת קורא: מספר כיוונים בטווח המותר, ולכל
+ * אחד `image_instruction` שאינו ריק. מפרט עם שדה חסר היה מייצר תמונה שבה
+ * שורה אחת מומצאת — גרוע יותר מלוותר על השלב כולו.
+ *
+ * **המספר הוא טווח ולא קבוע** מאז שמודל הטקסט בוחר אותו (`DESIGN_COUNT_RANGE`).
+ * מה שנאכף כאן הוא הטווח בלבד; המספר עצמו נמסר הלאה, והוא זה שקובע גם את
+ * מספר השורות בתמונה וגם את היחס שהתא מושך אליו (`storyLayoutFor`).
+ *
+ * **היחס אינו תנאי קבילות.** מפרט בלי `length_to_width_ratio` הוא עדיין מפרט
+ * טוב, וההרצה כבר שילמה עליו — ראה `askedRatiosOf`.
  */
 export function parseDesignSpec(raw: string): { json: string; spec: DesignSpec } | null {
   const json = unfence(raw);
@@ -722,7 +882,8 @@ export function parseDesignSpec(raw: string): { json: string; spec: DesignSpec }
   }
   if (!parsed || typeof parsed !== "object") return null;
   const designs = (parsed as DesignSpec).designs;
-  if (!Array.isArray(designs) || designs.length !== DESIGN_COUNT) return null;
+  const [lo, hi] = DESIGN_COUNT_RANGE;
+  if (!Array.isArray(designs) || designs.length < lo || designs.length > hi) return null;
   const usable = designs.every(
     (d) => d && typeof d === "object" && typeof d.image_instruction === "string"
       && d.image_instruction.trim().length > 0,

@@ -6,8 +6,10 @@ import { createSampleDesign, getDesign, getVersion, reserveGeneration, updateDes
 import { STORY_MODE, STORY_RENDER, STORY_RENDER_FALLBACK, isStory, orderByVariety, storyCanvas, storyFrameDims, widthRangeOf } from "@/lib/story/mode";
 import { buildStoryRenderPrompt } from "@/lib/story/prompt";
 import {
-  DESIGN_COUNT, STORY_DESIGN, buildDesignPrompt, buildStagedRenderPrompt, runDesignStage,
+  DESIGN_COUNT, STORY_DESIGN, askedRatiosOf, buildDesignPrompt, buildStagedRenderPrompt,
+  runDesignStage,
 } from "@/lib/story/designStage";
+import { storyLayoutFor } from "@/lib/story/ratio";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -386,12 +388,56 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // יצירה מאפס במסלול Story רצה דו-שלבית: מודל טקסט מתרגם את הסיפור לשלושה
     // כיווני עיצוב, ומודל התמונה מבצע אותם. בקשת שינוי וכיתוב אינן עוברות שם.
     const storyCreate = story && !body.currentSvg && !body.text?.trim();
-    // הקנבס נגזר מהאורך — חוץ ממסלול Story, שבו הוא קבוע (`storyCanvas`).
-    // שם האורך אינו ידוע בזמן היצירה אלא נמדד אחריה, ולכן אין ממה לגזור:
-    // `canvasFor` היה בוחר לפי אורך ברירת המחדל שברשומה, שהוא עוגן תכנוני
-    // ולא מידה. הקיבוע חל על **כל** המסלול ולא רק על היצירה — אחרת עיצוב
-    // נוצר על צורה אחת ונערך על שנייה. ראה `storyCanvas`.
-    const canvas = story ? storyCanvas() : canvasFor(dims.lengthMm);
+
+    /* ===== שלב העיצוב — רץ כאן, לפני שנבחרת התצורה =====
+       ביצירה מאפס במסלול Story רץ מודל טקסט שמתרגם את הסיפור לכיווני עיצוב
+       גיאומטריים, ומודל התמונה מקבל אותם במקום את הסיפור. `null` = השלב לא
+       הצליח, והפרומפט חוזר להיות זה של שלב אחד — אותו טקסט שרץ עד עכשיו.
+       יצירה לא נכשלת בגלל השלב הזה. יש ניסיון חוזר אחד — ראה runDesignStage.
+
+       **הוא הוזז לכאן (16.8), ולא סתם.** עד כה הוא רץ *אחרי* התכנון, כי כל
+       מה שהוא צרך היה האורך. מעכשיו הוא מחזיר גם כמה עיצובים וגם באיזה יחס —
+       ושני אלה **הם** התכנון: מספר העיצובים הוא מספר השורות, והיחס המבוקש הוא
+       מה שקובע איזה קנבס מושך אליו. ראה `storyLayoutFor`.
+
+       שום מסלול אחר לא זז: `storyCreate` שולל במפורש עריכה וכיתוב, ולכן בין
+       הנקודה הזו לקודמת לא נמצא דבר שתלוי בקנבס. */
+    const stage = storyCreate && !body.promptOverride?.trim()
+      ? await runDesignStage({
+          productType: design.product_type,
+          userInput: body.userPrompt,
+          lengthMm: dims.lengthMm,
+        })
+      : null;
+    const designStage = stage?.ok ? stage : null;
+    /**
+     * השלב רץ ונפל בכל הניסיונות.
+     *
+     * מכאן שני דברים קורים, ושניהם **לא** נראים ללקוחה: הרנדר עובר למודל
+     * החזק ב-high (`STORY_RENDER_FALLBACK`), והתורן והטלגרם מקבלים הודעה.
+     * ההתראה נשלחת אחרי שהרנדר הצליח ולא כאן — ראה למטה.
+     */
+    const stageDown = stage && !stage.ok ? stage : null;
+    /** המודל והמאמץ שהרנדר ירוץ בהם במסלול Story — הרגיל, או הפיצוי. */
+    const storyRender = stageDown ? STORY_RENDER_FALLBACK : STORY_RENDER;
+    /**
+     * היחסים שמודל הטקסט ביקש, ומה שנגזר מהם.
+     *
+     * `null` בשני מצבים שונים לגמרי, ושניהם נופלים לתצורה הקבועה שהייתה עד
+     * היום: השלב נפל, או שהוא הצליח אך לא נשא יחסים. היומן מבחין ביניהם
+     * (`designStage.ok` מול `askedRatios` ריק).
+     */
+    const askedRatios = designStage ? askedRatiosOf(designStage.spec) : null;
+    const layout = askedRatios ? storyLayoutFor(askedRatios) : null;
+
+    // הקנבס נגזר מהאורך — חוץ ממסלול Story. שם האורך אינו ידוע בזמן היצירה
+    // אלא נמדד אחריה, ולכן אין ממה לגזור: `canvasFor` היה בוחר לפי אורך
+    // ברירת המחדל שברשומה, שהוא עוגן תכנוני ולא מידה.
+    //
+    // מה שכן יש לגזור ממנו הוא **היחס המבוקש**, וזה `layout`: הקנבס שמושך
+    // הכי קרוב למרכז מה שמודל הטקסט ביקש. בלעדיו (עריכה, כיתוב, שלב שנפל)
+    // נשאר הקיבוע — אחרת עיצוב נוצר על צורה אחת ונערך על שנייה.
+    const canvas = layout?.canvas ?? (story ? storyCanvas() : canvasFor(dims.lengthMm));
     const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
@@ -413,13 +459,21 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           canvas,
         }
       : storyCreate
-        // שני הפרומפטים של המסלול הדו-שלבי אומרים "exactly THREE", ומספר
-        // אחר בתכנון היה חותך שורה שלא צוירה או זורק אחת שכן. לכן זה קיבוע
-        // ולא תכנון: `planRender` נגזר מהיחס שהוזמן, ובמסלול הזה אין כזה —
-        // הרוחב שברשומה הוא עוגן והאורך נמדד רק אחרי הבחירה. שלוש שורות על
-        // `storyCanvas` מושכות את המודל ליחס טבעי של ~6.97 (`NATURAL_RATIO`),
-        // וזה מה שהיומן מודד מול `drawnRatio`.
-        ? { rows: DESIGN_COUNT, cols: 1, calls: 1 as const, candidates: DESIGN_COUNT, offered: DESIGN_COUNT, canvas }
+        // מספר השורות חייב להיות בדיוק מספר העיצובים שבמפרט: הפרומפט אומר
+        // "exactly N" ונוקב בשורות אחת-אחת, ומספר אחר בתכנון היה חותך שורה
+        // שלא צוירה או זורק אחת שכן. לכן זה נגזר מהמפרט ולא מ-`planRender`,
+        // שנשען על יחס שהוזמן — ובמסלול הזה אין כזה.
+        //
+        // בלי מפרט (השלב נפל, או שלא נשא יחסים) חוזרים לקיבוע שהיה עד 16.8:
+        // שלוש שורות על הקנבס הקבוע.
+        ? {
+            rows: layout?.rows ?? DESIGN_COUNT,
+            cols: 1,
+            calls: 1 as const,
+            candidates: layout?.rows ?? DESIGN_COUNT,
+            offered: Math.min(layout?.rows ?? DESIGN_COUNT, MAX_CANDIDATES),
+            canvas,
+          }
         : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
@@ -460,36 +514,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // `editing`. אותו נימוק חל על כיתוב: הבלוק ששומר על האותיות יושב שם. בשני
     // המקרים המסלול ממשיך לקבל את הטווח במקום מידה אחת, כמו קודם.
     //
-    // **שלב העיצוב.** ביצירה מאפס במסלול Story רץ כאן מודל טקסט שמתרגם את
-    // הסיפור לשלושה כיווני עיצוב גיאומטריים, ומודל התמונה מקבל אותם במקום את
-    // הסיפור. `null` = השלב לא הצליח, והפרומפט חוזר להיות זה של שלב אחד —
-    // אותו טקסט שרץ עד עכשיו. יצירה לא נכשלת בגלל השלב הזה.
-    //
-    // רץ **אחרי** שהתכנון והקנבס ידועים ולפני הרנדר, כי האורך נכנס לפרומפט
-    // שלו. יש ניסיון חוזר אחד — ראה runDesignStage.
-    const stage = storyCreate && !body.promptOverride?.trim()
-      ? await runDesignStage({
-          productType: design.product_type,
-          userInput: body.userPrompt,
-          lengthMm: dims.lengthMm,
-        })
-      : null;
-    const designStage = stage?.ok ? stage : null;
-    /**
-     * השלב רץ ונפל בכל הניסיונות.
-     *
-     * מכאן שני דברים קורים, ושניהם **לא** נראים ללקוחה: הרנדר עובר למודל
-     * החזק ב-high (`STORY_RENDER_FALLBACK`), והתורן והטלגרם מקבלים הודעה.
-     * ההתראה נשלחת אחרי שהרנדר הצליח ולא כאן — ראה למטה.
-     */
-    const stageDown = stage && !stage.ok ? stage : null;
-    /** המודל והמאמץ שהרנדר ירוץ בהם במסלול Story — הרגיל, או הפיצוי. */
-    const storyRender = stageDown ? STORY_RENDER_FALLBACK : STORY_RENDER;
-
+    // **שלב העיצוב** רץ למעלה, לפני התכנון — הוא זה שקובע אותו. כאן נשאר רק
+    // מה שנבנה ממנו.
     const prompt =
       body.promptOverride?.trim() ||
       (designStage
-        ? buildStagedRenderPrompt(designStage.json, canvas)
+        ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec)
         : storyCreate
           ? buildStoryRenderPrompt({
               story: body.userPrompt,
@@ -562,6 +592,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               usage: stage?.usage ?? undefined,
             }
           : undefined,
+        /**
+         * היחסים שמודל הטקסט **ביקש**, לפי סדר העיצובים במפרט.
+         *
+         * זה הצד החסר של המדידה. ‏`drawnRatio` נשמר על כל מועמד מזמן, אבל עד
+         * שביקשנו יחס לא היה מולו כלום — ולכן "העיצובים יוצאים רחבים" נשאר
+         * תיאור ולא מספר. השדה הזה הופך את הפער לשאילתה.
+         *
+         * **ההצמדה היא לפי סדר גודל, לא לפי שורה** (החלטת גל): המועמדים עוברים
+         * `pickClosestRatio` ואז `orderByVariety`, ומיקום השורה אינו שורד את
+         * שניהם. מיון שתי הרשימות ממפה את הצר למבוקש-הצר בלי להישען על כך
+         * שהמודל כיבד את סדר השורות — ולכן גם הפרומפט מבקש יחסים מרוחקים.
+         *
+         * ריק = השלב נפל, או שהחזיר מפרט בלי יחסים. בשני המקרים ההרצה רצה על
+         * התצורה הקבועה ואין לה מה למדוד.
+         */
+        askedRatios: askedRatios?.map((r: number) => Math.round(r * 100) / 100),
+        /** מה שהתצורה שנבחרה מבטיחה לפי הכיול הדו-שלבי — הציפייה, מול
+         *  `drawnRatio` שהוא התוצאה. ראה `storyNaturalRatio`. */
+        storyNaturalRatio: layout ? Math.round(layout.naturalRatio * 100) / 100 : undefined,
         /**
          * מה שהוזמן מול מה שהתא שנבחר מסוגל לתת. שניהם ידועים כאן, לפני
          * שהמודל רץ, ושניהם נשמרים — הפער ביניהם הוא כל מה שהמסגור ייאלץ
