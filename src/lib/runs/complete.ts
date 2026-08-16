@@ -9,7 +9,7 @@ import { claimJobDone, hasNewerFinishedJob } from "@/lib/db/jobs";
 import { STORY_RENDER, isStory, orderByVariety, storyFrameDims } from "@/lib/story/mode";
 import { svgFrame } from "@/lib/geometry/frame";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
-import { signedUrl } from "@/lib/db/storage";
+import { runImageUrl } from "@/lib/runs/imageUrl";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { noteRunVerdicts, verdictOf, type RunStagePaths } from "@/lib/db/runs";
@@ -270,7 +270,10 @@ async function finishFromRender(
     pickedIndex: offeredRows.length > 0 && offered[0] === framed[0] ? 0 : null,
   });
 
-  const renderUrl = renderPngPath ? await signedUrl(renderPngPath, 3600).catch(() => null) : null;
+  // מסלול מגודר ולא כתובת חתומה: התשובה הזו נשמרת בשורת ה-job (`claimJobDone`
+  // למטה), וכתובת חתומה שנשמרת בטבלה היא סוד שאפשר לקרוא ממנה — ושפג ממילא
+  // אחרי שעה. ראה `lib/runs/imageUrl`.
+  const renderUrl = renderPngPath ? runImageUrl(ctx.attemptId, "render") : null;
   const result = {
     runId: ctx.attemptId,
     version,
