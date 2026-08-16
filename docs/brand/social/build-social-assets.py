@@ -259,56 +259,63 @@ write("story-cta.html", story, size=(1080, 1920))
 
 # ---------------------------------------------------------------- 8. Post: friends & family launch (WhatsApp)
 # קארד השקה לוואטסאפ — נשלח ידנית לאנשים קרובים. המחירים וסיפור 25
-# ההזמנות חיים בהודעה המילולית בלבד (docs/brand/social/whatsapp-launch.md);
-# הקארד עצמו מציג את שני המוצרים — הצמיד כתצלום הרקע, הטבעת כהדמיה
-# בקארד התחתון — עם שורות ההסבר.
+# ההזמנות חיים בהודעה המילולית בלבד (docs/brand/social/whatsapp-launch.md).
+# השפה הוויזואלית של הסטורי (רקע כהה מטושטש, porcelain, מסגרות תצלום) —
+# בפיד וואטסאפ שרובו תמונות בהירות, קארד כהה בולט; שני המוצרים מוצגים
+# כחפצי גלריה ממוסגרים, לא כתבנית פלייר.
 # הפונטים לכותרות: 'Archivo' לא מכיל עברית, ולכן 'Assistant' חייב להופיע
 # אחריו בשרשרת — אחרת עברית נופלת ל-sans-serif של המערכת.
-launch_points = [
-    "עיצוב אישי בשיחה — בלי תוכנות גרפיקה",
-    "כל עיצוב נבדק אוטומטית לפני הייצור",
-    "פליז C260 אמיתי · חיתוך לייזר · ליטוש יד",
+LAPIS_LIGHT = "#8fb0dd"  # הגוון של הסטורי — lapis קריא על graphite
+
+launch_steps = [
+    ("01", "מתארים במילים"),
+    ("02", "מנוע העיצוב מצייר"),
+    ("03", "נחתך בלייזר מפליז ומלוטש ביד"),
 ]
-launch_point_rows = "".join(
-    f'''<div style="display:flex;align-items:center;gap:16px;">
-<div style="width:10px;height:10px;border-radius:50%;background:var(--lapis-ink);flex:none;"></div>
-<div style="font-size:26px;color:var(--graphite);font-weight:400;">{point}</div>
+launch_steps_row = f'<div style="width:1px;height:34px;background:rgba(244,241,235,0.25);"></div>'.join(
+    f'''<div style="display:flex;align-items:center;gap:12px;">
+<div style="font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:24px;color:{LAPIS_LIGHT};">{num}</div>
+<div style="font-size:25px;font-weight:400;color:rgba(244,241,235,0.88);">{title}</div>
 </div>'''
-    for point in launch_points
+    for num, title in launch_steps
+)
+
+launch_frames = "".join(
+    f'''<div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+<div style="width:{w}px;height:370px;border-radius:26px;background-image:url('{photo_url(img)}');background-size:{zoom};background-position:{pos};box-shadow:0 30px 70px rgba(0,0,0,0.45);"></div>
+<div style="font-size:25px;font-weight:600;color:rgba(244,241,235,0.85);letter-spacing:0.01em;">{label}</div>
+</div>'''
+    for img, w, zoom, pos, label in [
+        ("bracelet-hero.webp", 480, "cover", "50% 62%", "צמיד פתוח"),
+        ("ring-hero.webp", 380, "175%", "48% 60%", "טבעת פתוחה"),
+    ]
 )
 
 post_launch = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
-html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
-.photo{{position:absolute;inset:0;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:50% 62%;}}
-.top{{position:absolute;top:64px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:26px;text-align:center;}}
-.badge{{font-size:26px;font-weight:700;color:var(--lapis-ink);background:rgba(244,241,235,0.9);border:2px solid var(--lapis-ink);border-radius:100px;padding:10px 34px;letter-spacing:0.02em;}}
-.headline{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:62px;color:var(--graphite);letter-spacing:-0.01em;}}
-.headline .accent{{color:var(--lapis-ink);}}
-.sub{{font-size:27px;color:var(--graphite);opacity:0.75;max-width:840px;font-weight:400;line-height:1.5;}}
-.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.58);backdrop-filter:blur(16px);border-radius:28px;padding:34px 44px;display:flex;align-items:center;gap:44px;}}
-.info{{flex:1;display:flex;flex-direction:column;gap:20px;}}
-.card-title{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:34px;color:var(--graphite);}}
-.url{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:26px;color:var(--lapis-ink);letter-spacing:0.03em;margin-top:4px;}}
-.thumb{{flex:none;width:250px;display:flex;flex-direction:column;align-items:center;gap:12px;}}
-.thumb-img{{width:250px;height:230px;border-radius:20px;background-image:url('{photo_url("ring-hero.webp")}');background-size:190%;background-position:50% 58%;box-shadow:0 18px 40px rgba(32,35,38,0.22);}}
-.thumb-label{{font-size:24px;font-weight:600;color:var(--graphite);opacity:0.8;}}
+html,body{{width:1080px;height:1080px;background:var(--graphite);position:relative;overflow:hidden;font-family:'Assistant',sans-serif;}}
+.bg{{position:absolute;inset:-40px;background-image:url('{photo_url("bracelet-hero.webp")}');background-size:cover;background-position:50% 55%;filter:blur(46px) brightness(0.38) saturate(1.05);transform:scale(1.15);}}
+.scrim{{position:absolute;inset:0;background:linear-gradient(to bottom, rgba(32,35,38,0.55) 0%, rgba(32,35,38,0.1) 30%, rgba(32,35,38,0.1) 70%, rgba(32,35,38,0.5) 100%);}}
+.wrap{{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;text-align:center;padding:52px 70px 46px;}}
+.badge{{margin-top:22px;font-size:24px;font-weight:700;color:var(--porcelain);border:2px solid rgba(244,241,235,0.55);border-radius:100px;padding:9px 32px;letter-spacing:0.04em;}}
+.headline{{margin-top:22px;font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:66px;color:var(--porcelain);letter-spacing:-0.01em;}}
+.headline .accent{{color:{LAPIS_LIGHT};}}
+.frames{{margin-top:36px;display:flex;align-items:flex-start;gap:40px;}}
+.steps{{margin-top:32px;display:flex;align-items:center;gap:26px;}}
+.cta{{margin-top:28px;display:flex;flex-direction:column;align-items:center;gap:12px;}}
+.cta-pill{{font-size:29px;font-weight:700;color:var(--graphite);background:var(--porcelain);padding:20px 58px;border-radius:100px;}}
+.cta-url{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:25px;color:rgba(244,241,235,0.75);letter-spacing:0.04em;}}
 </style></head><body>
-<div class="photo"></div>
-<div class="top">
-{lockup(52)}
+<div class="bg"></div>
+<div class="scrim"></div>
+<div class="wrap">
+{lockup(50, fill=PORCELAIN, accent=LAPIS_LIGHT)}
 <div class="badge">השקה · לחברים ולמשפחה</div>
 <div class="headline">אינסוף צורות<span class="accent">.</span> אחת שלך<span class="accent">.</span></div>
-<div class="sub">מתארים במילים — מנוע העיצוב מצייר, ואנחנו חותכים בלייזר ומלטשים ביד.</div>
-</div>
-<div class="card">
-<div class="info">
-<div class="card-title">צמיד פתוח · טבעת פתוחה</div>
-{launch_point_rows}
-<div class="url" dir="ltr">aperta-designs.com</div>
-</div>
-<div class="thumb">
-<div class="thumb-img"></div>
-<div class="thumb-label">טבעת פתוחה</div>
+<div class="frames">{launch_frames}</div>
+<div class="steps">{launch_steps_row}</div>
+<div class="cta">
+<div class="cta-pill">בואו לעצב את שלכם</div>
+<div class="cta-url" dir="ltr">aperta-designs.com</div>
 </div>
 </div>
 </body></html>'''
