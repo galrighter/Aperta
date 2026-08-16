@@ -7,6 +7,7 @@ import { sendTelegram, telegramConfigured } from "./telegram";
 import { isQuotaFailure } from "./quota";
 import { ApiError } from "@/lib/api";
 import { LlmError } from "@/lib/llm/core";
+import { FAB } from "@/lib/fabrication.config";
 
 // התראות על יצירה ששבורה עכשיו — כדי שגל יידע מהמערכת, לא מלקוח מתוסכל.
 //
@@ -159,6 +160,51 @@ export async function alertDesignStageDown(input: {
     ]);
   } catch (e) {
     console.error("design stage alert failed:", (e as Error).message);
+  }
+}
+
+/**
+ * התקרה הגלובלית ליצירה — נחצתה, או מתקרבת.
+ *
+ * **למה זו התראה ולא רק 429.** ה-429 מגיע ללקוחה; מה שצריך להגיע לגל הוא
+ * שהאתר הפסיק לייצר, ולמה. בלי זה התקרה הגלובלית מחליפה חשבון גדול בשקט
+ * באתר מושבת בשקט — שיפור, אבל לא מספיק.
+ *
+ * ויסות: פעם בשעה לכל מצב. "מתקרב" ו"נחצה" הם דליים נפרדים, כי הראשון אינו
+ * אמור להשתיק את השני.
+ */
+const GLOBAL_LIMIT_THROTTLE_MS = 60 * 60_000;
+
+export async function alertGlobalLimit(
+  count: number,
+  state: "approaching" | "reached",
+): Promise<void> {
+  try {
+    if (!mailConfigured() && !telegramConfigured() && !dutyConfigured()) return;
+    if (await tooManyAttempts(`alert:globallimit:${state}`, GLOBAL_LIMIT_THROTTLE_MS, 1)) return;
+
+    const limit = FAB.GLOBAL_DAILY_GENERATION_LIMIT;
+    const lines =
+      state === "reached"
+        ? [
+            `התקרה הגלובלית ליצירה נחצתה: ${count}/${limit} להיום.`,
+            "כל בקשת יצירה מקבלת עכשיו 429 — האתר אינו מייצר עד חצות UTC.",
+            "אם זה קצב אמיתי ולא הצפה — להעלות את FAB.GLOBAL_DAILY_GENERATION_LIMIT.",
+          ]
+        : [
+            `היצירה מתקרבת לתקרה הגלובלית: ${count}/${limit} להיום.`,
+            "עדיין עובר. ההתראה כדי שתדע לפני שלקוחה תיתקל בקיר.",
+          ];
+    await Promise.allSettled([
+      sendTelegram([state === "reached" ? "🔴 Aperta — התקרה נחצתה" : "⚠️ Aperta — מתקרבים לתקרה", ...lines].join("\n")),
+      mailConfigured()
+        ? sendMail({ to: alertAddress(), subject: lines[0], text: lines.join("\n") }).then((r) => {
+            if (!r.ok) console.error("global limit mail failed:", r.error);
+          })
+        : Promise.resolve(),
+    ]);
+  } catch (e) {
+    console.error("global limit alert failed:", (e as Error).message);
   }
 }
 

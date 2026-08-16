@@ -7,6 +7,7 @@ import { canRerun, completeFromContext, rerunFromContext, type JobContext } from
 import { RERUN_MAX_AGE_MS } from "@/lib/runs/sweep";
 import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { requireDesignAccess } from "@/lib/designAccess";
+import { readAccountId } from "@/lib/account";
 import { alertStalledJob } from "@/lib/alerts/failures";
 import { designSampleCode } from "@/lib/designCode";
 import type { DesignRow } from "@/lib/db/designs";
@@ -29,8 +30,18 @@ export async function GET(req: Request, { params }: Params) {
     // התוצאה של הרצה שהסתיימה היא העיצוב עצמו, ולכן אותה בעלות בדיוק. שורה
     // בלי design_id היא הרצה שנכשלה לפני שהספיקה להיקשר לעיצוב — אין בה מה
     // לשמור עליו מלבד הודעת שגיאה.
+    //
+    // **ושורה כזאת אינה נענית לזרים.** ההשפעה נמוכה — הגישה מגודרת ב-UUID
+    // ומה שנחשף הוא מחרוזת שגיאה — אבל "נמוכה" אינה "אפס", ומסלול שמדלג על
+    // בדיקת בעלות הוא חריג שצריך הצדקה (docs/FULL_AUDIT_2026-08.md, פרק 2).
+    // ‏404 גנרי ולא 403: מי שאין לו עסק עם השורה הזאת לא אמור ללמוד ממנה
+    // אפילו שהיא קיימת.
     let design: DesignRow | null = null;
-    if (job.design_id) design = await requireDesignAccess(req, job.design_id);
+    if (job.design_id) {
+      design = await requireDesignAccess(req, job.design_id);
+    } else if (!(await readAccountId(req))) {
+      throw new ApiError("not_found", "Unknown generation job", 404);
+    }
 
     if (job.status === "done") {
       return NextResponse.json({ status: "done", result: job.result });

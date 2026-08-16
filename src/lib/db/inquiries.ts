@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabase";
+import { escapeLike } from "./orders";
 
 // שכבת הגישה לטבלת inquiries (פניות/הזמנות מאתר המותג). service role בלבד.
 
@@ -27,13 +28,18 @@ export type NewInquiry = {
   message: string;
 };
 
-/** מספר הפניות מאותו אימייל ב-24 השעות האחרונות (הגנת ספאם רכה). */
+/**
+ * מספר הפניות מאותו אימייל ב-24 השעות האחרונות (הגנת ספאם רכה).
+ *
+ * מנורמל, מאותה סיבה שב-`countRecentOrdersFromEmail`: השוואת מחרוזות גולמית
+ * הופכת כל שינוי אות לדלי חדש, כלומר למכסה שנעקפת בלי מאמץ.
+ */
 export async function countRecentFromEmail(email: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await supabaseAdmin()
     .from("inquiries")
     .select("id", { count: "exact", head: true })
-    .eq("email", email)
+    .ilike("email", escapeLike(email.trim()))
     .gte("created_at", since);
   if (error) throw new Error(error.message);
   return count ?? 0;

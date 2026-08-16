@@ -133,19 +133,38 @@ async function findOrderByKey(key: string): Promise<OrderRow | null> {
   return (data as OrderRow) ?? null;
 }
 
+/**
+ * בריחת תווי-דפוס ל-`ilike`. ‏`%` ו-`_` חוקיים בכתובת מייל, ובלי זה הם
+ * הופכים את ההשוואה לחיפוש: `a_b@x.com` היה תופס גם את `axb@x.com`.
+ */
+export function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 /** התנגשות על אינדקס ייחודי, כפי ש-PostgREST מנסח אותה. */
 function isUniqueViolation(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return /duplicate key value|23505/i.test(message);
 }
 
-/** מספר ההזמנות מאותו מייל ב-24 השעות האחרונות (הגנת ספאם רכה, כמו בפניות). */
+/**
+ * מספר ההזמנות מאותו מייל ב-24 השעות האחרונות (הגנת ספאם רכה, כמו בפניות).
+ *
+ * **ההשוואה מנורמלת.** ‏`.eq("email", email)` גולמי משווה מחרוזות, ולכן
+ * `Dana@x.com` ו-`dana@x.com` הם שני דליים נפרדים — כלומר המכסה נעקפת
+ * בשינוי אות אחת (docs/FULL_AUDIT_2026-08.md, פרק 3, ממצא 12). ‏`ilike`
+ * ולא `eq` כי השורות הקיימות נשמרו כפי שהוקלדו; נרמול בכתיבה היה משנה מייל
+ * של לקוחה, וזה שדה שמייל אישור נשלח אליו.
+ *
+ * ‏`escapeLike` — מייל יכול להכיל `%` או `_` (חוקי בהחלט), ובלי בריחה הם
+ * הופכים לתווי חיפוש: `a_b@x.com` היה סופר גם את `axb@x.com`.
+ */
 export async function countRecentOrdersFromEmail(email: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await supabaseAdmin()
     .from("orders")
     .select("id", { count: "exact", head: true })
-    .eq("email", email)
+    .ilike("email", escapeLike(email.trim()))
     .gte("created_at", since);
   if (error) fail(error);
   return count ?? 0;

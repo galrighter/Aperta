@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { countErrorRunsSince } from "@/lib/db/runs";
+import { vectorizerUrl } from "@/lib/site.config";
 
 // תמונת מצב תפעולית לקורא-מכונה — התורן האוטומטי (docs/AUTOFIX_ROUTINE.md).
 //
@@ -26,6 +27,48 @@ export interface OpsProblemRun {
   durationMs: number | null;
 }
 
+export interface OpsBoxHealth {
+  /** `ok` — ענתה 200. `unhealthy` — ענתה משהו אחר. `unreachable` — לא ענתה. */
+  status: "ok" | "unhealthy" | "unreachable";
+  /** זמן התשובה במילישניות. גם קופסה שעונה לאט היא סימן. */
+  latencyMs: number;
+  /** קוד HTTP, כשהיה כזה. */
+  httpStatus: number | null;
+  /** נוסח הכשל, מקוצץ. `null` כשהכול תקין. */
+  error: string | null;
+}
+
+/**
+ * מעבר לזה הקופסה נחשבת מתה לצורך הדיווח. הבדיקה יושבת בתוך בקשה שהתורן
+ * ממתין לה, ו-`/api/health` אינו עושה עבודה — הוא מחזיר מילון קבוע.
+ */
+const BOX_TIMEOUT_MS = 5_000;
+
+async function boxHealth(): Promise<OpsBoxHealth> {
+  const started = Date.now();
+  try {
+    const res = await fetch(`${vectorizerUrl()}/api/health`, {
+      signal: AbortSignal.timeout(BOX_TIMEOUT_MS),
+      // תמונת מצב, לא תוכן: תשובה מטמון היא בדיוק מה שלא רוצים כאן.
+      cache: "no-store",
+    });
+    const latencyMs = Date.now() - started;
+    if (!res.ok) {
+      return { status: "unhealthy", latencyMs, httpStatus: res.status, error: `HTTP ${res.status}` };
+    }
+    return { status: "ok", latencyMs, httpStatus: res.status, error: null };
+  } catch (e) {
+    // **לא זורק.** קופסה מתה היא בדיוק המצב שהשדה הזה נועד לדווח עליו, וסטטוס
+    // תפעולי שנופל בגללה הוא סטטוס שלא ניתן לקרוא כשהכי צריך אותו.
+    return {
+      status: "unreachable",
+      latencyMs: Date.now() - started,
+      httpStatus: null,
+      error: (e as Error).message.slice(0, ERROR_SNIPPET),
+    };
+  }
+}
+
 export interface OpsStatus {
   now: string;
   /** כשלי `error` (לא `rejected` — דחייה היא תוצאה לגיטימית של הצינור). */
@@ -37,6 +80,20 @@ export interface OpsStatus {
   lastApprovedAt: string | null;
   /** ההרצות הבעייתיות האחרונות, מהחדשה לישנה. */
   recentProblems: OpsProblemRun[];
+  /**
+   * הקופסה ב-Hetzner, נשאלת ישירות.
+   *
+   * **למה זה כאן ולא רק ב-canary.** כל היצירה תלויה בקופסה אחת, והמיתון היחיד
+   * עליה היה canary כל שעתיים שרץ על `schedule` של Actions — שנמדד בריפו
+   * כמאחר 40–95 דקות ולעיתים נבלע לגמרי. כלומר קופסה מתה התגלתה תוך 3–4
+   * שעות (docs/FULL_AUDIT_2026-08.md, פרק 1, ממצא 1). ‏`opsStatus` קרא עד
+   * כה **רק את ה-DB**, כלומר הוא היה יכול לדווח "הכול תקין" על מערכת שאינה
+   * מסוגלת לייצר דבר.
+   *
+   * ‏`/api/health` פתוח בלי אימות (בכוונה, ראו `api/main.py`), ולכן אין כאן
+   * סוד ואין מה להגדיר.
+   */
+  box: OpsBoxHealth;
   /**
    * פרופילים שמצביעים למשתמש אימות שאינו קיים (0025).
    *
@@ -57,7 +114,7 @@ export async function opsStatus(): Promise<OpsStatus> {
   const now = new Date();
   const iso = (msAgo: number) => new Date(now.getTime() - msAgo).toISOString();
 
-  const [errors2h, errors24h, stuck, lastApproved, problems, dangling] = await Promise.all([
+  const [errors2h, errors24h, stuck, lastApproved, problems, dangling, box] = await Promise.all([
     countErrorRunsSince(iso(2 * 60 * 60_000)),
     countErrorRunsSince(iso(24 * 60 * 60_000)),
     sb
@@ -87,6 +144,8 @@ export async function opsStatus(): Promise<OpsStatus> {
       (r) => (r.error ? null : (r.data as number)),
       () => null,
     ),
+    // הקופסה עצמה. במקביל לשאילתות ולא אחריהן: היא הדבר האיטי כאן.
+    boxHealth(),
   ]);
   if (stuck.error) throw new Error(stuck.error.message);
   if (lastApproved.error) throw new Error(lastApproved.error.message);
@@ -119,5 +178,6 @@ export async function opsStatus(): Promise<OpsStatus> {
       durationMs: r.duration_ms,
     })),
     danglingAuthLinks: dangling,
+    box,
   };
 }

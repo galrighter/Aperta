@@ -99,7 +99,8 @@ jobs:
         if: failure()
         env:
           DUTY_API_URL: ${{ secrets.DUTY_API_URL }}
-          DUTI_API_TOKEN: ${{ secrets.DUTI_API_TOKEN }}
+          # שני הכתיבים — ראו ההנמקה ב-src/lib/alerts/duty.ts.
+          DUTI_API_TOKEN: ${{ secrets.DUTY_API_TOKEN || secrets.DUTI_API_TOKEN }}
         run: |
           [ -n "$DUTY_API_URL" ] && [ -n "$DUTI_API_TOKEN" ] || { echo "duty trigger not configured; skipping"; exit 0; }
           curl -sS -X POST "$DUTY_API_URL" \

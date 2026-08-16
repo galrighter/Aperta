@@ -503,6 +503,36 @@ export async function reserveGeneration(input: {
   return "ok";
 }
 
+/**
+ * כמה הרצות רצו היום **בסך הכול**, על כל המשתמשים יחד.
+ *
+ * הספירה כוללת גם שריונים שעוד לא הפכו לשורת הרצה — ההרצות שבאוויר — מאותה
+ * סיבה שהמכסה הפר-פרופילית סופרת אותם: תקרה שנבדקת רק מול מה שכבר הסתיים
+ * נפרצת בקלות בגל בקשות מקבילות, וזה בדיוק התרחיש שהיא נועדה לו.
+ *
+ * ‏`generation_reservations` היא טבלה של 0017; מסד שעוד לא קיבל אותה סופר
+ * הרצות בלבד ולא נופל.
+ */
+export async function countTodayGenerationsGlobal(): Promise<number> {
+  const sb = supabaseAdmin();
+  const startOfDay = new Date();
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const since = startOfDay.toISOString();
+
+  const [runs, reserved] = await Promise.all([
+    sb.from("generation_runs").select("id", { count: "exact", head: true }).gte("created_at", since),
+    sb
+      .from("generation_reservations")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since)
+      .then((r) => r, () => ({ count: 0, error: null })),
+  ]);
+  if (runs.error) throw new Error(runs.error.message);
+  // שריון הופך לשורת הרצה בסוף הצינור, ולכן הסכום סופר חלק מההרצות פעמיים.
+  // זה **מכוון**: תקרה עדיפה שתהיה מחמירה מדי בשוליים על מתירנית מדי.
+  return (runs.count ?? 0) + (reserved.count ?? 0);
+}
+
 export async function countTodayRunsByOutcome(
   profileId: string,
 ): Promise<{ approved: number; failed: number }> {
