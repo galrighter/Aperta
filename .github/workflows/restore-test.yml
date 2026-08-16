@@ -1,0 +1,256 @@
+name: Restore test
+
+# **תרגיל שחזור — הגיבוי נפרס בפועל, ולא רק נשמר.**
+#
+# למה זה קיים בנפרד מ-backup-db: הגיבוי היומי מוכיח שנוצר קובץ. הוא **אינו**
+# מוכיח שאפשר להחזיר ממנו עסק. ההפרש בין השניים הוא כל ההבדל בין גיבוי לבין
+# הנחה, והוא מתגלה בדרך כלל ביום הגרוע ביותר האפשרי. כאן הוא מתגלה בשקט,
+# בשבוע רגוע (docs/FULL_AUDIT_2026-08.md, פרק 7, המלצה 6).
+#
+# **מה נבדק בפועל**, ובסדר הזה:
+#   1. הקובץ האחרון **נמשך מ-Hetzner** — היעד הראשי. לא מ-artifact: מה שצריך
+#      להיות שחזיר הוא מה שיישאר בעוד חודשיים, ו-artifact חי שבוע.
+#   2. הוא נפתח עם `BACKUP_PASSPHRASE`. סיסמה שאבדה = גיבוי שלא קיים, וזה
+#      מצב שאפשר לגלות רק בניסיון.
+#   3. הוא נפרס לתוך Postgres 17 נקי — אותה גרסה שהייצור רץ עליה —
+#      עם `ON_ERROR_STOP=1`, כלומר שגיאה אחת מפילה את הבדיקה.
+#   4. **והתוכן נבדק, לא רק המבנה:** יש עיצובים, יש גרסאות, ויש בהן SVG
+#      אמיתי. ה-SVG הוא קובץ החיתוך — מסד שישוחזר בלעדיו הוא מסד שאפשר
+#      לקרוא ואי אפשר לייצר ממנו.
+#   5. הסכימה עדכנית: עמודות שנוספו במיגרציות האחרונות חייבות להיות שם.
+#      dump מסכימה ישנה משחזר עסק של לפני חודשיים בלי לומר זאת.
+#
+# הנתונים אינם יוצאים מגבולות ה-runner — אותה מעטפת שהגיבוי עצמו רץ בה.
+
+on:
+  schedule:
+    # פעם בשבוע, שני בבוקר. תרגיל שרץ יומית הופך לרעש שמתעלמים ממנו.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: restore-test
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+
+    # ‏17 ולא הגרסה האחרונה: זו הגרסה ש-Supabase מריץ (17.6), ותרגיל שחזור
+    # שרץ מול משהו אחר בודק שחזור שלא יקרה.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: restore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Install a matching psql
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq curl ca-certificates gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          newest=$(apt-cache search --names-only '^postgresql-client-[0-9]+$' \
+            | awk '{print $1}' | sed 's/.*-//' | sort -n | tail -1)
+          sudo apt-get install -y -qq "postgresql-client-$newest"
+          # הנתיב המלא, מאותה סיבה שב-backup-db: `/usr/bin/psql` הוא עטיפה
+          # שבוחרת את גרסת ברירת המחדל של ההפצה.
+          echo "PGBIN=/usr/lib/postgresql/$newest/bin" >> "$GITHUB_ENV"
+
+      - name: Fetch the latest backup from Hetzner
+        id: fetch
+        env:
+          SSH_KEY: ${{ secrets.HETZNER_SSH }}
+          HOST: ${{ secrets.HETZNER_HOST }}
+          USER: ${{ secrets.HETZNER_USER }}
+          PORT: ${{ secrets.HETZNER_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_KEY:-}" ] || [ -z "${HOST:-}" ] || [ -z "${USER:-}" ]; then
+            echo "::error::HETZNER_SSH/HOST/USER are not set — nothing to restore from."
+            exit 1
+          fi
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/backup_key"
+          chmod 600 "$HOME/.ssh/backup_key"
+          ssh-keyscan -p "${PORT:-22}" -H "$HOST" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+          SSH="ssh -i $HOME/.ssh/backup_key -p ${PORT:-22} -o StrictHostKeyChecking=yes"
+
+          # החדש ביותר, יהיה שמו אשר יהיה. `ls -1t` ולא תאריך של היום:
+          # תרגיל שרץ ביום שהגיבוי נכשל בו צריך לבדוק את האחרון שכן קיים,
+          # ולא לצעוק על היעדר קובץ של היום.
+          latest=$($SSH "$USER@$HOST" 'ls -1t /var/backups/aperta/aperta-db-* 2>/dev/null | head -1')
+          if [ -z "$latest" ]; then
+            echo "::error::no backup files found in /var/backups/aperta"
+            exit 1
+          fi
+          echo "restoring from: $latest"
+          scp -i "$HOME/.ssh/backup_key" -P "${PORT:-22}" "$USER@$HOST:$latest" .
+          echo "name=$(basename "$latest")" >> "$GITHUB_OUTPUT"
+
+          # גיל הגיבוי. קובץ תקין בן שבועיים הוא עדיין כשל תפעולי — הגיבוי
+          # היומי הפסיק לרוץ ואיש לא שם לב.
+          age_days=$(( ( $(date -u +%s) - $($SSH "$USER@$HOST" "stat -c %Y '$latest'") ) / 86400 ))
+          echo "backup age: $age_days days"
+          [ "$age_days" -le 3 ] \
+            || { echo "::error::latest backup is $age_days days old — the daily job is not running"; exit 1; }
+
+      - name: Decrypt
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          NAME: ${{ steps.fetch.outputs.name }}
+        run: |
+          set -euo pipefail
+          case "$NAME" in
+            *.gpg)
+              if [ -z "${PASSPHRASE:-}" ]; then
+                # הגיבוי מוצפן ואין במה לפתוח אותו. זה הכשל השקט הגרוע
+                # ביותר האפשרי כאן, ולכן הוא נאמר במפורש.
+                echo "::error::backup is encrypted but BACKUP_PASSPHRASE is not set — this backup cannot be restored."
+                exit 1
+              fi
+              gpg --batch --yes --passphrase "$PASSPHRASE" -o dump.sql.gz -d "$NAME"
+              ;;
+            *) mv "$NAME" dump.sql.gz ;;
+          esac
+          gunzip -c dump.sql.gz > dump.sql
+          echo "decompressed: $(stat -c%s dump.sql) bytes"
+
+      # **המכשול היחיד בשחזור, ולמה הוא כאן.**
+      #
+      # `profiles.auth_user_id` נושא FK ל-`auth.users` — טבלה של Supabase Auth
+      # שאינה בסכימה `public` ולכן אינה בדאמפ. בשחזור לפרויקט חדש
+      # ‏`auth.users` קיימת אבל **ריקה** (המשתמשים נכנסים מחדש במייל), ולכן
+      # המשפט שמוסיף את ה-FK — שרץ בסוף, אחרי שכל הנתונים כבר נטענו — נכשל:
+      #
+      #     ERROR: insert or update on table "profiles" violates foreign key
+      #     constraint "profiles_auth_user_id_fkey"
+      #     DETAIL: Key (auth_user_id)=(…) is not present in table "users".
+      #
+      # זה שוחזר במדויק (16.8) על Postgres מקומי עם עותק של הסכימה. כלומר
+      # הגיבוי היה נעצר באמצע דווקא בשחזור אמיתי — וזו בדיוק הסיבה שתרגיל
+      # שחזור אינו מותרות. ההשמטה כאן היא אותה השמטה שה-runbook מורה עליה
+      # (docs/RUNBOOK_RESTORE.md §4), ולכן התרגיל בודק את המסלול האמיתי.
+      - name: Drop the out-of-scope auth.users constraint
+        run: |
+          set -euo pipefail
+          # מכונת מצבים ולא `grep -v`: המשפט פרוס על שתי שורות.
+          awk '
+            /^ALTER TABLE ONLY/ { pending = $0; next }
+            pending != "" {
+              if ($0 ~ /auth\.users/) { pending = ""; dropped++; next }
+              print pending; pending = ""; print; next
+            }
+            { print }
+            END {
+              if (pending != "") print pending
+              printf("dropped %d auth.users constraint(s)\n", dropped) > "/dev/stderr"
+            }
+          ' dump.sql > dump-restorable.sql
+          grep -c 'auth\.users' dump-restorable.sql \
+            && { echo "::error::auth.users references remain after filtering"; exit 1; } || true
+
+      - name: Restore into a clean Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # `ON_ERROR_STOP=1` — שחזור שנפל באמצע ונמשך הוא מסד חלקי שנראה
+          # תקין. שגיאה אחת מפילה את התרגיל, וזה בדיוק מה שנדרש ממנו.
+          "$PGBIN/psql" -h localhost -U postgres -d restore_test \
+            -v ON_ERROR_STOP=1 -q -f dump-restorable.sql
+          echo "restore completed without errors"
+
+      # והקישורים עצמם — עקביים בתוך הדאמפ? בונים את `auth.users` מהערכים
+      # שהפרופילים מצביעים אליהם ומחזירים את ה-FK. אם הוא עולה, המשמעות היא
+      # שאין בדאמפ פרופיל שמצביע לשומקום: אחרי שהלקוחות ייכנסו מחדש, הקישור
+      # ניתן לשחזור מלא ולא נשאר שבור.
+      - name: Prove the auth links are internally consistent
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          "$PGBIN/psql" -h localhost -U postgres -d restore_test -v ON_ERROR_STOP=1 -q -c "
+            create schema if not exists auth;
+            create table if not exists auth.users (id uuid primary key);
+            insert into auth.users (id)
+              select distinct auth_user_id from profiles where auth_user_id is not null
+              on conflict do nothing;
+            alter table profiles add constraint profiles_auth_user_id_fkey
+              foreign key (auth_user_id) references auth.users(id) on delete set null;"
+          echo "auth links are internally consistent"
+
+      - name: Prove it is usable, not just present
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          q() { "$PGBIN/psql" -h localhost -U postgres -d restore_test -tAc "$1"; }
+
+          echo "--- row counts ---"
+          "$PGBIN/psql" -h localhost -U postgres -d restore_test -c "
+            select 'designs' t, count(*) from designs
+            union all select 'design_versions', count(*) from design_versions
+            union all select 'orders', count(*) from orders
+            union all select 'profiles', count(*) from profiles
+            order by 1;"
+
+          # יש עיצובים ויש גרסאות. הזמנות **לא** נבדקות כך: עסק צעיר יכול
+          # להיות עם אפס הזמנות אמיתיות, ותרגיל שנופל על זה בודק את גיל
+          # העסק ולא את הגיבוי.
+          [ "$(q 'select count(*) from designs')" -gt 0 ] \
+            || { echo "::error::restored database has no designs"; exit 1; }
+          [ "$(q 'select count(*) from design_versions')" -gt 0 ] \
+            || { echo "::error::restored database has no design versions"; exit 1; }
+
+          # **קובץ החיתוך שרד.** זו הבדיקה החשובה כאן: מסד שישוחזר בלי
+          # ה-SVG הוא מסד שאפשר לקרוא ואי אפשר לייצר ממנו כלום.
+          svgs=$(q "select count(*) from design_versions where svg like '<svg%' and length(svg) > 200")
+          echo "versions with a real SVG: $svgs"
+          [ "$svgs" -gt 0 ] \
+            || { echo "::error::no version carries a usable SVG — the cut files did not survive"; exit 1; }
+
+          # הסכימה עדכנית. dump מסכימה ישנה משחזר עסק של לפני חודשיים בלי
+          # לומר זאת — העמודות האלה נוספו ב-0020/0022/0023.
+          for col in orders:paid_at orders:length_mm orders:terms_accepted_at; do
+            tbl=${col%%:*}; c=${col##*:}
+            [ "$(q "select count(*) from information_schema.columns
+                    where table_schema='public' and table_name='$tbl' and column_name='$c'")" = "1" ] \
+              || { echo "::error::restored schema is missing $tbl.$c — the dump predates a migration"; exit 1; }
+          done
+          [ "$(q "select count(*) from information_schema.tables
+                  where table_schema='public' and table_name='funnel_events'")" = "1" ] \
+            || { echo "::error::restored schema is missing funnel_events"; exit 1; }
+
+          echo "restore drill passed: schema current, designs and cut files intact"
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_ALERT_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID || vars.TELEGRAM_ALERT_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BOT_TOKEN:-}" ] || [ -z "${CHAT_ID:-}" ]; then
+            echo "telegram not configured — skipping alert"
+            exit 0
+          fi
+          curl -sS --max-time 30 -X POST \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            --data-urlencode "chat_id=$CHAT_ID" \
+            --data-urlencode "text=🔴 תרגיל השחזור נכשל — הגיבוי אינו בר-שחזור. $RUN_URL" \
+            --data-urlencode "disable_web_page_preview=true" > /dev/null

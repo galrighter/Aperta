@@ -62,16 +62,55 @@ psql "$SUPABASE_DB_URL" -c 'drop schema restore cascade;'
 
 ## 4. שחזור מלא לפרויקט חדש
 
+> **הצעד שאי אפשר לדלג עליו — קראו אותו לפני שמתחילים.**
+>
+> ‏`profiles.auth_user_id` נושא FK ל-`auth.users`, טבלה של Supabase Auth
+> שאינה בסכימה `public` ולכן **אינה בגיבוי**. בפרויקט חדש היא קיימת אבל
+> ריקה, ולכן המשפט שמוסיף את ה-FK — שרץ **בסוף**, אחרי שכל הנתונים כבר
+> נטענו — נכשל:
+>
+> ```
+> ERROR: insert or update on table "profiles" violates foreign key constraint
+>        "profiles_auth_user_id_fkey"
+> DETAIL: Key (auth_user_id)=(…) is not present in table "users".
+> ```
+>
+> כלומר שחזור "רגיל" נעצר אחרי שעה של טעינה, ומשאיר מסד בלי המפתחות
+> הזרים. ‏שלב 2 למטה מסיר את המשפט האחד הזה מראש; שלב 7 מחזיר אותו.
+
 1. פרויקט חדש ב-Supabase → להעתיק את ה-**Session pooler** URL (‏IPv4; החיבור
    הישיר הוא IPv6-only ו-runners נכשלים עליו).
-2. `gunzip -c dump.sql.gz | psql "$NEW_DB_URL" -v ON_ERROR_STOP=1`
+2. **להסיר את ה-FK ל-`auth.users`** (שתי שורות, ולכן awk ולא grep):
+
+   ```bash
+   gunzip -c dump.sql.gz | awk '
+     /^ALTER TABLE ONLY/ { p = $0; next }
+     p != "" { if ($0 ~ /auth\.users/) { p = ""; next } print p; p = ""; print; next }
+     { print }
+     END { if (p != "") print p }
+   ' > dump-restorable.sql
+   ```
+3. `psql "$NEW_DB_URL" -v ON_ERROR_STOP=1 -f dump-restorable.sql`
    (‏ה-dump נוצר עם `--clean --if-exists`, ולכן הוא מוחק ובונה מחדש.)
-3. `psql "$NEW_DB_URL" -c "notify pgrst, 'reload schema';"`
-4. ‏Secrets לעדכן: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+4. `psql "$NEW_DB_URL" -c "notify pgrst, 'reload schema';"`
+5. ‏Secrets לעדכן: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
    `SUPABASE_ANON_KEY`, `SUPABASE_DB_URL` — ב-GitHub וב-Cloudflare Workers.
-5. להריץ **Apply Supabase migrations** ידנית — מיגרציה שנוספה אחרי הגיבוי לא
+6. להריץ **Apply Supabase migrations** ידנית — מיגרציה שנוספה אחרי הגיבוי לא
    נמצאת בו.
-6. לוודא: כניסה לאתר, ‏`/admin/orders` מציג הזמנות, ייצוא קובץ חיתוך של הזמנה
+7. **הקישור לחשבונות.** ‏`auth.users` ריקה, ולכן `profiles.auth_user_id`
+   מצביע למשתמשים שעדיין לא נכנסו. זה **לא** שובר כלום: הבעלות על העיצוב
+   יושבת על `profiles`, וכניסה מחדש באותו מייל מחברת את הפרופיל חזרה.
+   את ה-FK מחזירים אחרי שהמשתמשים חזרו:
+
+   ```sql
+   -- מי שעוד לא נכנס מחדש — מנתקים, כדי שה-FK יוכל לעלות
+   update profiles set auth_user_id = null
+    where auth_user_id is not null
+      and auth_user_id not in (select id from auth.users);
+   alter table profiles add constraint profiles_auth_user_id_fkey
+     foreign key (auth_user_id) references auth.users(id) on delete set null;
+   ```
+8. לוודא: כניסה לאתר, ‏`/admin/orders` מציג הזמנות, ייצוא קובץ חיתוך של הזמנה
    אחת מסתיים.
 
 ## 5. מסד שחסרה בו מיגרציה
@@ -80,7 +119,18 @@ psql "$SUPABASE_DB_URL" -c 'drop schema restore cascade;'
 אידמפוטנטיים, והרצה חוזרת שלהם בטוחה. אם ה-workflow לא זמין — להריץ את
 `supabase/migrations/*.sql` לפי הסדר ב-SQL Editor.
 
-## 6. אחרי כל שחזור
+## 6. תרגיל השחזור השבועי
+
+‏Actions → **Restore test**, כל יום שני. הוא מושך את הגיבוי האחרון **מ-Hetzner**
+(לא מ-artifact), מפענח, פורס לתוך Postgres 17 נקי, ובודק שיש עיצובים, שיש
+גרסאות, ש-SVG אמיתי שרד, ושהסכימה עדכנית. כשל מגיע לטלגרם.
+
+הוא גם מוודא שהגיבוי האחרון אינו בן יותר מ-3 ימים — קובץ תקין בן שבועיים
+פירושו שהמשימה היומית הפסיקה לרוץ ואיש לא שם לב.
+
+**התרגיל הוא שגילה את §4 שלמעלה.** לפניו, "יש גיבוי" היה הנחה.
+
+## 7. אחרי כל שחזור
 
 - להריץ **Canary generation** ידנית — הוא בודק את הצינור המלא מקצה לקצה.
 - לבדוק שההזמנה האחרונה מציגה קובץ חיתוך (‏`/admin/orders/<id>` → קבצים).
