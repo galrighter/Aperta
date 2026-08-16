@@ -173,17 +173,22 @@ def main() -> int:
             print(f"   פס {i}: y={a}–{b}  גובה {b - a + 1}px{gap}")
         if not bs:
             continue
-        # הפתחים נבדקים על הפס הראשון בלבד — מספיק כדי לענות על שאלת הרסיס,
-        # והריצה על כל פס בתמונה של 1.5MP יקרה בלי צורך.
+        # כל פס, לא רק הראשון: הפאנל שנפל על V5 אינו בהכרח הראשון, וזו בדיוק
+        # השאלה — האם הפתח שהפיל אותו הוא רסיס מהמעקב או החלטת עיצוב.
         length_mm = float(os.environ.get("LENGTH_MM", "0") or 0)
-        a, b = bs[0]
-        if length_mm > 0:
-            mm_per_px = length_mm / (w * 0.9)
+        if length_mm <= 0:
+            continue
+        mm_per_px = length_mm / (w * 0.9)
+        for i, (a, b) in enumerate(bs, 1):
             hs = holes(img, a, b, mm_per_px)
-            print(f"   פתחים בפס 1: {len(hs)}")
-            for mm, area in hs[:6]:
-                flag = "  ← מתחת ל-0.5 מ\"מ, V5 יפסול" if mm < 0.5 else ""
-                print(f"      קוטר ~{mm:.2f} מ\"מ  ({area} פיקסלים){flag}")
+            tiny = [x for x in hs if x[0] < 0.5]
+            real = [x for x in hs if x[0] >= 0.5]
+            print(f"   פס {i}: {len(hs)} פתחים — {len(real)} מעל 0.5 מ\"מ, "
+                  f"{len(tiny)} מתחת" + ("   ← V5 יפסול את הפס הזה" if tiny else ""))
+            if real:
+                print("      אמיתיים: " + " · ".join(f"{mm:.2f}" for mm, _ in real[:8]) + " מ\"מ")
+            if tiny:
+                print("      רסיסים: " + " · ".join(f"{mm:.2f}({a}px)" for mm, a in tiny[:8]))
     return 0
 
 
