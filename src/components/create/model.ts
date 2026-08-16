@@ -3,7 +3,7 @@
 import type { MultiPolygon, ValidationReport } from "@/lib/geometry/types";
 import { he } from "@/i18n/he";
 import { designSampleCode } from "@/lib/designCode";
-import { svgFrame } from "@/lib/geometry/frame";
+import { svgFrame, type DesignFrame } from "@/lib/geometry/frame";
 import { FAB, type FitStyle } from "@/lib/fabrication.config";
 import {
   computeSizing, idMmFromUsSize, sizeFromBlank, US_RING_ID_MM, US_RING_SIZES,
@@ -790,6 +790,27 @@ export const frameLengthMm = (s: CreateState, e: EditEntry | null): number =>
 
 export const frameWidthMm = (s: CreateState, e: EditEntry | null): number =>
   svgFrame(e?.svg)?.widthMm ?? widthOf(s);
+
+/**
+ * המסגרת של **הצעה**, ולא של הגרסה שמוצגת לצידה.
+ *
+ * במסלול Story כל מועמד ממוסגר למידות של עצמו: האורך שהוזמן, והרוחב שקנה מידה
+ * אחיד מייצר עבור הציור הזה (`storyFrameDims` ב-lib/story/mode.ts). כלומר ארבע
+ * ההצעות של אותה הרצה חוזרות בארבעה viewBox שונים — נמדד על AP-0200: ‎7.94,
+ * ‎5.33, ‎13.49 ו-‎6.7 על אותו אורך.
+ *
+ * רצועת ההצעות ציירה את כולן במסגרת של הגרסה המוצגת, וזה נראה בדיוק כמו שני
+ * באגים נפרדים: הצעה **גבוהה** מהמסגרת נחתכה ב-viewBox (הקשת של חלופה 3 הוצגה
+ * כשני שלישים מעצמה), והצעה **נמוכה** ממנה השאירה את הפס הכהה חשוף מתחתיה —
+ * רצועה שחורה בתחתית הכרטיס שאין לה שום מקבילה בעיצוב.
+ *
+ * ‎`fallback` הוא המסגרת של הגרסה, למקרה שההצעה נשמרה בלי viewBox תקין —
+ * כלומר בדיוק ההתנהגות שהייתה כאן עד עכשיו.
+ */
+export const candidateFrame = (
+  svg: string | null | undefined,
+  fallback: DesignFrame,
+): DesignFrame => svgFrame(svg) ?? fallback;
 
 /** מידה לתצוגה: ספרה אחת אחרי הנקודה, בלי אפס נגרר. */
 export const mmLabel = (n: number): string => String(Math.round(n * 10) / 10);

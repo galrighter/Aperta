@@ -950,6 +950,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // היא שרדה רק אצל הזוכה (`validation_report.bridges` של הגרסה השמורה),
       // ולכן שלוש החלופות האחרות הוצגו ביומן בלי שום דרך לדעת מה תוקן בהן.
       bridges: c.bridges,
+      // ומה גולח מהמתאר. ריק בתשובה של שירות מסגור שעוד לא נפרס מחדש — ראה
+      // `FramedPreview.spurs`.
+      spurs: c.spurs ?? [],
     }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design: ingestTarget,

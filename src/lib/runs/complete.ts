@@ -254,6 +254,7 @@ async function finishFromRender(
     drawnRatio: Math.round(c.drawnRatio * 100) / 100,
     stretch: Math.round(c.stretch * 1000) / 1000,
     bridges: c.bridges,
+    spurs: c.spurs ?? [],
   }));
 
   const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({

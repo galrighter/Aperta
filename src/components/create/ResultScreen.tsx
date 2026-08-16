@@ -21,8 +21,8 @@ import { ProgressBar } from "./ProgressBar";
 import { RolledStage } from "./RolledStage";
 import { ShareButton } from "./ShareButton";
 import {
-  activeEntry, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf, versionEntryLabel,
-  type CreateState,
+  activeEntry, candidateFrame, countCuts, cutoutsInner, frameLengthMm, frameWidthMm, gapOf,
+  versionEntryLabel, type CreateState,
 } from "./model";
 
 const d = he.design;
@@ -249,6 +249,9 @@ export function ResultScreen({
                   // של השרת ולא המחרוזת שההצעה נשאה, כך שההשוואה הישנה נכשלה
                   // תמיד ואף הצעה לא סומנה כמוצגת.
                   const on = (entry?.chosen ?? 0) === i;
+                  // המסגרת של ההצעה עצמה. אסור לקחת אותה מהגרסה המוצגת —
+                  // ראו `candidateFrame`.
+                  const f = candidateFrame(c.svg, { lengthMm: L, widthMm: W });
                   return (
                     <button
                       key={i}
@@ -277,8 +280,12 @@ export function ResultScreen({
                       {/* אותה קוטביות כמו בפריסה — כהה הוא מתכת. כאן זה חשוב
                           במיוחד: תפקיד הרצועה הוא להשוות בין הצעות, וקווי מתאר
                           מחייבים לפענח כל צורה לפני שאפשר להשוות שתיים. */}
-                      <svg viewBox={`-1 -1 ${L + 2} ${W + 2}`} className="h-auto w-full" role="img">
-                        <rect x="0" y="0" width={L} height={W} fill="var(--color-graphite)" />
+                      <svg
+                        viewBox={`-1 -1 ${f.lengthMm + 2} ${f.widthMm + 2}`}
+                        className="h-auto w-full"
+                        role="img"
+                      >
+                        <rect x="0" y="0" width={f.lengthMm} height={f.widthMm} fill="var(--color-graphite)" />
                         <g className="flat-cutouts" dangerouslySetInnerHTML={{ __html: cutoutsInner(c.svg) }} />
                       </svg>
                     </button>

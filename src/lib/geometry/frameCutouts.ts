@@ -2,6 +2,7 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { rescaleCutoutsSvg, svgFrame } from "./frame";
 import { dropThinCutouts } from "./normalize";
 import { restoreBridges, type BridgeRecord, type LetterBridge } from "./restoreBridges";
+import { shaveSpurs, type ShaveResult } from "./shaveSpurs";
 import { thickenBridges } from "./thickenBridges";
 import { validateDesign, validateNormalized, type DesignDims } from "./validate";
 import type { ValidationReport } from "./types";
@@ -63,12 +64,37 @@ const MAX_BRIDGE_SPAN_MM = 2;
  */
 const MAX_THICKENED_MATERIAL = 0.02;
 
+/**
+ * מתחת לשטח הזה, בליטת מתכת שהפתיחה הסירה היא העיגול של הפתיחה עצמה.
+ *
+ * אותה נוסחה שמגנה על פינה קמורה ב-`uncuttableParts` (`drawnArea`), על הרצפה
+ * של המתכת: ‎0.75²/2. נמדד על AP-0200 חלופה 4 — הקוץ ‎0.39 ממ"ר, החתיכה הבאה
+ * אחריו ‎0.07, והסף ‎0.28 נופל ביניהן.
+ */
+const MIN_SPUR_MM2 = (FAB.minLetterBridgeMm * FAB.minLetterBridgeMm) / 2;
+
+/**
+ * מעל כמה מהמתכת גילוח קוצים מפסיק להיות ניקוי. הוא אמור להסיר פרנז' של המעקב
+ * — ב-AP-0200 זה ‎0.13% מהמתכת — ולכן 1% הוא כמעט סדר גודל מעל. חצייתו אומרת
+ * שהזיהוי טעה, ואז עדיף להשאיר את מה שהמודל צייר.
+ */
+const MAX_SHAVED_MATERIAL = 0.01;
+
 /** מה שהמסך צריך ממועמד — בלי גרף הפוליגונים. זה מה שעובר על החוט. */
 export interface FramedPreview {
   /** ה-SVG אחרי מתיחה למסגרת שהוזמנה. */
   framedSvg: string;
   /** מה שנעשה לכל אי מתכת — גושר, חובר, או נמחק. ליומן. */
   bridges: BridgeRecord[];
+  /**
+   * הקוצים שגולחו מהמתאר. ליומן — ראה shaveSpurs.ts.
+   *
+   * רשות, ולא כי המסגור עשוי לא למלא אותו: שירות המסגור רץ גם על הקופסה וגם
+   * ב-Worker נפרד, ותשובה משם עוברת `as FramedPreview` בלי אימות. עד
+   * ששלושתם נפרסו מחדש השדה פשוט אינו קיים בתשובה, וטיפוס שמבטיח מערך היה
+   * מבטיח משהו שאינו שם.
+   */
+  spurs?: ShaveResult["spurs"];
   lengthMm: number;
   widthMm: number;
   /** היחס שהמודל צייר בפועל, לפני המתיחה. */
@@ -185,6 +211,7 @@ export function frameCutoutsDims(
   // **מגשרים, ולא מוחקים** — ראה restoreBridges. מחיקה נשארה רק למה שאי אפשר
   // לגשר, כי היא זו שהפכה חלל של אות לכתם.
   let bridges: BridgeRecord[] = [];
+  let spurs: ShaveResult["spurs"] = [];
   if (normalized) {
     const fab = resolveFab(framedDims.thicknessMm, framedDims.productType);
     const restored = restoreBridges(normalized, {
@@ -214,11 +241,28 @@ export function frameCutoutsDims(
       report = validateNormalized(thickened.design, framedDims);
       bridges = [...bridges, ...thickened.records];
     }
+
+    // ואחרון — הכיוון ההפוך של השניים שמעליו: מתכת דקה מהרצפה שאינה מחזיקה
+    // דבר, כלומר קוץ. שלושת המנקים שלפניו מדלגים עליה בכוונה, כל אחד מסיבה
+    // אחרת; הפירוט ב-shaveSpurs.ts. רץ אחרי העיבוי כדי שגשר שעובה זה עתה
+    // לרצפה לא ייראה לפתיחה כמתכת דקה — ראה שער הקשירות שם.
+    const shaved = shaveSpurs(normalized, {
+      minMaterialMm: FAB.minLetterBridgeMm,
+      minSpurMm2: MIN_SPUR_MM2,
+      maxShavedFraction: MAX_SHAVED_MATERIAL,
+    });
+    if (shaved.design !== normalized) {
+      normalized = shaved.design;
+      framedSvg = shaved.design.canonicalSvg;
+      report = validateNormalized(shaved.design, framedDims);
+      spurs = shaved.spurs;
+    }
   }
 
   return {
     framedSvg,
     bridges,
+    spurs,
     lengthMm,
     widthMm,
     drawnRatio: drawn.widthMm > 0 ? drawn.lengthMm / drawn.widthMm : 0,
@@ -241,7 +285,7 @@ export function frameCutoutsDims(
 
 /** אותו חישוב, בלי גרף הפוליגונים — מה שמוחזר דרך גבול תהליך. */
 export function framePreview(dims: DesignDims, cutoutsSvg: string, plan: BridgePlan = {}): FramedPreview {
-  const { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report } =
+  const { framedSvg, bridges, spurs, lengthMm, widthMm, drawnRatio, stretch, report } =
     frameCutoutsDims(dims, cutoutsSvg, plan);
-  return { framedSvg, bridges, lengthMm, widthMm, drawnRatio, stretch, report };
+  return { framedSvg, bridges, spurs, lengthMm, widthMm, drawnRatio, stretch, report };
 }
