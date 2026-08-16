@@ -71,4 +71,27 @@ describe("גיבוי המסד", () => {
     expect(BACKUP).toContain("schedule:");
     expect(BACKUP).toMatch(/cron: "\d+ \d+ \* \* \*"/);
   });
+
+  it("קורא ל-pg_dump בנתיב מלא ולא דרך העטיפה", () => {
+    // ‏`/usr/bin/pg_dump` הוא pg_wrapper, והוא בוחר את גרסת ברירת המחדל של
+    // ההפצה (16) ולא את הגבוהה שמותקנת (17) — מה שהפיל את הגיבוי הראשון
+    // ב-"server version mismatch" מול Supabase 17.6.
+    expect(BACKUP).toContain('"$PGBIN/pg_dump"');
+    expect(BACKUP).not.toMatch(/^\s*pg_dump "\$SUPABASE_DB_URL"/m);
+  });
+
+  it("גרסת הלקוח נגזרת ולא קשיחה — שדרוג של Supabase לא ישבור שוב", () => {
+    expect(BACKUP).toContain("postgresql-client-$newest");
+  });
+
+  it("היעד הראשי הוא Hetzner, והעברה נבדקת ב-checksum", () => {
+    // הריפו ציבורי; ‏artifact אינו מקום לגיבוי עם פרטי לקוחות.
+    expect(BACKUP).toContain("/var/backups/aperta");
+    expect(BACKUP).toContain("sha256sum");
+    expect(BACKUP).toContain("checksum mismatch after transfer");
+  });
+
+  it("‏artifact נשמר רק כשהקובץ מוצפן", () => {
+    expect(BACKUP).toContain("if: steps.dump.outputs.encrypted == 'yes'");
+  });
 });

@@ -17,11 +17,19 @@
 
 ## 2. איפה הגיבוי
 
-‏Actions → **Backup database** → הריצה האחרונה שהצליחה → artifact
-‏`db-backup-<run_id>`. נשמר 30 יום, יומי.
+**ראשי — השרת ב-Hetzner**, ‏`/var/backups/aperta/`, יומי, 90 יום אחורה:
 
 ```bash
-# פענוח, אם הוגדר BACKUP_PASSPHRASE
+ssh <user>@<hetzner-host> 'ls -lh /var/backups/aperta | tail'
+scp <user>@<hetzner-host>:/var/backups/aperta/aperta-db-YYYY-MM-DD.sql.gz.gpg .
+```
+
+**משני** — ‏Actions → **Backup database** → הריצה האחרונה שהצליחה → artifact
+‏`db-backup-<run_id>`. שבוע בלבד, ורק כשהקובץ מוצפן: הריפו ציבורי, ו-artifact
+בריפו ציבורי ניתן להורדה בידי כל בעל חשבון GitHub.
+
+```bash
+# פענוח
 gpg --batch --passphrase "$BACKUP_PASSPHRASE" -o dump.sql.gz -d aperta-db-YYYY-MM-DD.sql.gz.gpg
 gunzip -c dump.sql.gz | head -50      # לוודא שזה מה שנראה
 ```
