@@ -80,9 +80,20 @@ export default function AdminDesigns({
                 </span>
               </div>
 
-              <div className="text-sm text-graphite">
-                {r.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
-                {Math.round(circMmOfDesign(r))} × {r.width_mm} {he.design.mm}
+              <div className="flex flex-wrap items-center gap-2 text-sm text-graphite">
+                <span>
+                  {r.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
+                  {Math.round(circMmOfDesign(r))} × {r.width_mm} {he.design.mm}
+                </span>
+                {/* צמוד למידות ולא בראש הכרטיס, כי זה מה שהוא מסייג: במסלול
+                    הזה הרוחב נגזר ממה שהמודל צייר ולא נבחר, ורוחב חריג הוא
+                    תוצאה ולא תקלה. שקט במסלול הרגיל — תגית על כל כרטיס אינה
+                    אינדיקציה. */}
+                {r.story && (
+                  <span className="rounded-[2px] bg-lapis/10 px-1.5 py-0.5 text-[11px] text-lapis">
+                    {s.adminStoryBadge}
+                  </span>
+                )}
               </div>
 
               {r.owner ? (

@@ -231,6 +231,20 @@ export interface AdminDesignRow {
   created_at: string;
   updated_at: string;
   versions: number;
+  /**
+   * העיצוב נוצר במסלול הסיפור (`/story`) ולא במשפך הרגיל.
+   *
+   * **נגזר מהיומן ולא מעמודה.** אין ב-`designs` שדה מסלול, ו-`generation_runs`
+   * כבר נושאת אותו על כל הרצה (`inputs.mode`) מהיום שהמסלול נולד — כלומר
+   * הגזירה עונה גם על כל מה שכבר רץ, בזמן שעמודה חדשה הייתה מתחילה מ-`null`
+   * על כל ההיסטוריה ודורשת מילוי לאחור מאותו מקור בדיוק.
+   *
+   * למה בכלל: שני המסלולים מייצרים "עיצוב" שנראה זהה בכרטיס, ומספר אחד בו —
+   * הרוחב — אומר בהם דברים שונים. במסלול הרגיל הוא מידה שהלקוחה בחרה; במסלול
+   * הסיפור הוא נגזר ממה שהמודל צייר (ראו `storyFrameDims`). בלי התגית, רוחב
+   * חריג בכרטיס נקרא כתקלה במקום כתוצאה.
+   */
+  story: boolean;
   /** ה-SVG של הגרסה הנוכחית, לתצוגה מקדימה. null אם היצירה לא הושלמה. */
   svg: string | null;
   owner: {
@@ -241,6 +255,29 @@ export interface AdminDesignRow {
     email: string | null;
     phone: string | null;
   } | null;
+}
+
+/**
+ * מי מהעיצובים האלה נוצר במסלול הסיפור — לפי היומן.
+ *
+ * `inputs->>mode` הוא סינון על jsonb ב-PostgREST, ולכן הוא גם מה ששובר על מסד
+ * שעוד לא קיבל את עמודת `inputs` (מיגרציה 0009) — אותו חלון שבין `migrate.yml`
+ * ל-`deploy.yml` ש-`listRuns` ו-`insertRun` כבר נופלים בו לאחור. כאן התשובה
+ * הנכונה לכשל היא קבוצה ריקה: תגית חסרה היא פגם בתצוגה, ורשימת עיצובים שלא
+ * נטענת בכלל היא תקלה.
+ */
+async function storyDesignIds(ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin()
+    .from("generation_runs")
+    .select("design_id")
+    .in("design_id", ids)
+    .eq("inputs->>mode", "story");
+  if (error) {
+    console.error("admin: could not read run modes:", error.message);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r) => (r as { design_id: string }).design_id));
 }
 
 /**
@@ -276,11 +313,12 @@ export async function listDesignsForAdmin(
   const designIds = rows.map((r) => r.id);
   const versionIds = rows.map((r) => r.current_version_id).filter((v): v is string => !!v);
 
-  const [svgRes, countRes] = await Promise.all([
+  const [svgRes, countRes, story] = await Promise.all([
     versionIds.length
       ? sb.from("design_versions").select("id, svg").in("id", versionIds)
       : Promise.resolve({ data: [], error: null }),
     sb.from("design_versions").select("design_id").in("design_id", designIds),
+    storyDesignIds(designIds),
   ]);
   if (svgRes.error) fail(svgRes.error);
   if (countRes.error) fail(countRes.error);
@@ -307,6 +345,7 @@ export async function listDesignsForAdmin(
       created_at: r.created_at,
       updated_at: r.updated_at,
       versions: perDesign.get(r.id) ?? 0,
+      story: story.has(r.id),
       svg: r.current_version_id ? (svgById.get(r.current_version_id) ?? null) : null,
       owner: r.profiles ?? null,
     })),
@@ -373,17 +412,20 @@ export async function getDesignForAdmin(
   if (error) fail(error);
   if (!data) return null;
 
-  const row = data as unknown as Omit<AdminDesignDetailRow, "owner"> & {
+  const row = data as unknown as Omit<AdminDesignDetailRow, "owner" | "story"> & {
     profiles: AdminDesignRow["owner"];
   };
 
   // גרסה אחת מעבר לגבול — כך "יש עוד" נענה בלי שאילתת ספירה נוספת.
-  const versionsRes = await sb
-    .from("design_versions")
-    .select("id, version_no, source, user_prompt, validation_status, created_at, svg")
-    .eq("design_id", id)
-    .order("version_no", { ascending: false })
-    .limit(limit + 1);
+  const [versionsRes, story] = await Promise.all([
+    sb
+      .from("design_versions")
+      .select("id, version_no, source, user_prompt, validation_status, created_at, svg")
+      .eq("design_id", id)
+      .order("version_no", { ascending: false })
+      .limit(limit + 1),
+    storyDesignIds([id]),
+  ]);
   if (versionsRes.error) fail(versionsRes.error);
 
   const all = (versionsRes.data ?? []) as unknown as AdminVersionRow[];
@@ -403,6 +445,7 @@ export async function getDesignForAdmin(
       created_at: row.created_at,
       updated_at: row.updated_at,
       current_version_id: row.current_version_id,
+      story: story.has(id),
       owner: row.profiles ?? null,
     },
     versions: all.slice(0, limit),

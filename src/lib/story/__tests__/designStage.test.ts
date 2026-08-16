@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   DESIGN_COUNT, STORY_DESIGN, buildDesignPrompt, buildStagedRenderPrompt, parseDesignSpec,
 } from "../designStage";
+import { storyCanvas } from "../mode";
+import { LANDSCAPE } from "@/lib/render/canvas";
 
 /**
  * story mode — שלב הטקסט שקדם למודל התמונה.
@@ -81,18 +83,33 @@ describe("buildDesignPrompt", () => {
 
 describe("buildStagedRenderPrompt", () => {
   it("המפרט נכנס, והסמן לא נשאר", () => {
-    const p = buildStagedRenderPrompt(SPEC(3));
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
     expect(p).toContain('"image_instruction":"draw 1"');
     expect(p).not.toContain("{STAGE_1_JSON_OUTPUT}");
   });
 
   it("הפרומפט אומר למודל לבצע ולא לפרש מחדש", () => {
-    const p = buildStagedRenderPrompt(SPEC(3));
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
     expect(p).toContain("DO NOT reinterpret the original user story");
     expect(p).toContain("DO NOT invent three new designs");
     // ומה שהווקטורייזר צריך ממשיך להיאמר
     expect(p).toContain("BLACK = METAL THAT REMAINS");
     expect(p).toContain("Pure white background");
+  });
+
+  /**
+   * הצורה שהטקסט מבקש היא הצורה שנשלחת ב-`size`. עד שהיא הייתה פרמטר, המשפט
+   * היה כתוב בתבנית ("ONE landscape / wide image") בזמן שהצד השני שלו נקבע
+   * בקוד — שני מקומות לאותה החלטה, ומודל שמצייר לרוחב על תמונה לאורך מחזיר
+   * פריט חתוך בקצוות.
+   */
+  it("צורת הקנבס בטקסט היא זו שנשלחת — ובמסלול Story היא לאורך", () => {
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
+    expect(p).toContain("Create ONE portrait / tall image");
+    expect(p).not.toContain("{CANVAS_SHAPE}");
+
+    const wide = buildStagedRenderPrompt(SPEC(3), LANDSCAPE);
+    expect(wide).toContain("Create ONE landscape / wide image");
   });
 });
 

@@ -901,6 +901,10 @@ export const he = {
     adminDesignsSchema: "מסד הנתונים חסר את מיגרציה 0008 — הרשימה תתמלא אחרי שתרוץ.",
     adminNoOwner: "ללא שיוך",
     adminTesterBadge: "בודק",
+    /** במסלול הסיפור — הרוחב בכרטיס נגזר מהעיצוב ולא נבחר. ראו `AdminDesignRow.story`. */
+    adminStoryBadge: "סטורי",
+    /** ההיעדר נאמר במפורש רק במסך העיצוב, שבו יש מקום למשפט ולא רק לתגית. */
+    adminRegularBadge: "מסלול רגיל",
     adminVersions: "גרסאות",
     adminNoPreview: "טרם הושלם",
     adminMore: "טעינת עוד",

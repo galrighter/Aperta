@@ -61,13 +61,25 @@ export type RunInputs = {
     textTokens: number;
     imageTokens: number;
   };
+  /** story mode — ההרצה הגיעה מהמסלול הפשוט (`/story`). ריק = המסלול הרגיל. */
+  mode?: "story";
   /** story mode — שלב הטקסט שקדם למודל התמונה, ומה שהוא עלה. `usage` חסר
    *  בהרצות מלפני שהוא נמדד. */
   designStage?: {
     ok: boolean;
+    model?: string;
+    effort?: string;
     ms?: number;
     attempts?: number;
     failure?: string;
+    /** מה שנשלח למודל הטקסט, ומה שהוא החזיר. שניהם יורדים מהרשימה ומגיעים
+     *  רק בפירוט (`slimInputs`) — ולכן `hasPrompt`/`hasSpec` הם מה שהרשימה
+     *  יודעת. */
+    prompt?: string;
+    system?: string;
+    spec?: string;
+    hasPrompt?: boolean;
+    hasSpec?: boolean;
     usage?: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number };
   };
   /** היחס: מה שהוזמן, מה שהתא הבטיח, מה שהמודל צייר, ופי כמה נמתח כדי להגיע
@@ -683,6 +695,10 @@ function OwnerHeader({ owner, count }: { owner: Owner | null; count: number }) {
 /** המאפיינים שקבעו את ההרצה, כשורת תגיות. */
 export function InputChips({ inputs }: { inputs: RunInputs }) {
   const chips: string[] = [];
+  // המסלול קודם לכל המידות: הוא מה שקובע איך לקרוא אותן. במסלול Story הרוחב
+  // אינו מידה שהוזמנה אלא כזו שנגזרה מהציור, ובלי התגית הזו שורה של Story
+  // נקראת ביומן כמו הרצה רגילה שהמודל פספס בה את הרוחב.
+  if (inputs.mode === "story") chips.push("מסלול הסיפור");
   if (inputs.lengthMm != null && inputs.widthMm != null) {
     chips.push(`${round(inputs.lengthMm)}×${round(inputs.widthMm)} מ״מ`);
   }
@@ -1129,18 +1145,21 @@ export function PromptDialog({
   state: "ready" | "loading" | "error";
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  /** איזה מהפרומפטים הועתק. שני כפתורים, ודגל אחד היה מסמן ✓ על שניהם. */
+  const [copied, setCopied] = useState<"render" | "stage" | null>(null);
 
-  const copy = async () => {
-    if (!renderPrompt) return;
+  const copyText = async (text: string, which: "render" | "stage") => {
     try {
-      await navigator.clipboard.writeText(renderPrompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
-      setCopied(false);
+      setCopied(null);
     }
   };
+
+  /** שלב הטקסט של המסלול הדו-שלבי. חסר בכל מסלול אחר — ואז הסעיף לא מוצג. */
+  const stage = inputs?.designStage ?? null;
 
   return (
     <div dir="rtl" className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
@@ -1209,6 +1228,86 @@ export function PromptDialog({
             </section>
           )}
 
+          {/* שלב הטקסט, לפני מודל התמונה ולכן מעליו.
+              עד כאן החלון הראה חוליה אחת בשרשרת: הפרומפט של מודל התמונה. אבל
+              בהרצת Story דו-שלבית הפרומפט ההוא כבר **תוצר** של השלב הזה — הוא
+              נושא את המפרט ולא את הסיפור — ולכן על מפרט חלש אי אפשר היה לומר
+              אם הפרומפט ביקש את הדבר הלא נכון או שהמודל ענה רע. כאן שני
+              הצדדים, זה מעל זה. */}
+          {stage && (
+            <section>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-ink60">
+                  מה שנשלח למודל הטקסט — שלב העיצוב
+                  {stage.model && (
+                    <span className="ms-1 rounded border border-lapis/40 bg-lapis/10 px-1.5 py-px text-lapis" dir="ltr">
+                      {stage.model}
+                      {stage.effort ? ` · ${stage.effort}` : ""}
+                    </span>
+                  )}
+                </span>
+                {stage.prompt && (
+                  <button
+                    type="button"
+                    onClick={() => void copyText(stage.prompt!, "stage")}
+                    className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain"
+                  >
+                    {copied === "stage" ? "הועתק ✓" : "העתקה"}
+                  </button>
+                )}
+              </div>
+              {state === "loading" && <div className="text-xs text-ink60">טוען…</div>}
+              {state === "error" && <div className="text-xs text-red-600">טעינת הפרומפט נכשלה.</div>}
+              {state === "ready" && (
+                stage.prompt ? (
+                  <>
+                    {stage.system && (
+                      <pre className="mb-1 overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-graphite/10 bg-white p-2 text-xs text-ink60" dir="ltr">
+                        {`SYSTEM: ${stage.system}`}
+                      </pre>
+                    )}
+                    <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-graphite/10 bg-porcelain p-2 text-xs" dir="ltr">
+                      {stage.prompt}
+                    </pre>
+                  </>
+                ) : (
+                  <div className="rounded-[2px] border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                    הפרומפט של שלב הטקסט לא נשמר להרצה הזו — היא רצה לפני שהוא
+                    החל להישמר. המפרט שחזר ממנו, אם חזר, מוצג למטה.
+                  </div>
+                )
+              )}
+              {/* הפלט צמוד לקלט, כי זה מה שמעמידים זה מול זה. `ok: false` =
+                  לא חזר מפרט בכלל, וההרצה נפלה חזרה לפרומפט של שלב אחד. */}
+              <div className="mt-2 mb-1 text-xs font-medium text-ink60">
+                מה שמודל הטקסט החזיר — המפרט שנכנס לפרומפט של מודל התמונה
+              </div>
+              {stage.ok ? (
+                state === "ready" && (
+                  stage.spec ? (
+                    <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-[2px] border border-graphite/10 bg-porcelain p-2 text-xs" dir="ltr">
+                      {stage.spec}
+                    </pre>
+                  ) : (
+                    <div className="text-xs text-mist">
+                      המפרט לא נשמר להרצה הזו — היא רצה לפני שהוא החל להישמר.
+                    </div>
+                  )
+                )
+              ) : (
+                <div className="rounded-[2px] border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                  ⚠ השלב נפל{stage.attempts ? ` אחרי ${stage.attempts} ניסיונות` : ""} — לא
+                  חזר מפרט, ומודל התמונה קיבל את הפרומפט של שלב אחד.
+                  {stage.failure && (
+                    <div className="mt-1 break-words font-mono text-[11px]" dir="ltr">
+                      {stage.failure}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           <section>
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-ink60">
@@ -1220,8 +1319,8 @@ export function PromptDialog({
                 )}
               </span>
               {renderPrompt && (
-                <button type="button" onClick={() => void copy()} className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain">
-                  {copied ? "הועתק ✓" : "העתקה"}
+                <button type="button" onClick={() => void copyText(renderPrompt, "render")} className="rounded-[2px] border border-graphite/20 px-2 py-0.5 text-xs hover:bg-porcelain">
+                  {copied === "render" ? "הועתק ✓" : "העתקה"}
                 </button>
               )}
             </div>

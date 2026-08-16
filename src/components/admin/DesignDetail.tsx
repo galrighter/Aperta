@@ -135,6 +135,16 @@ export default function DesignDetail({
             {design.product_type === "ring" ? he.ring : he.bracelet} ·{" "}
             {Math.round(circMmOfDesign(design))} × {design.width_mm} {he.design.mm}
           </span>
+          {/* כאן שני המסלולים נאמרים, ולא רק אחד מהם: במסך של עיצוב יחיד
+              "אין תגית" אינו קריא כתשובה — הוא נראה כמו מידע חסר. ברשימה,
+              שבה הכרטיסים עומדים זה ליד זה, ההיעדר כן נקרא. */}
+          <span
+            className={`rounded-[2px] px-1.5 py-0.5 text-[12px] ${
+              design.story ? "bg-lapis/10 text-lapis" : "bg-stonesoft text-ink60"
+            }`}
+          >
+            {design.story ? s.adminStoryBadge : s.adminRegularBadge}
+          </span>
           <span>
             {s.adminDesignThickness} {design.thickness_mm} {he.design.mm}
           </span>
