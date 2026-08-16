@@ -11,10 +11,9 @@
 
 import json
 import os
+import subprocess
 import sys
-import urllib.error
-import urllib.request
-from http.cookiejar import CookieJar
+import tempfile
 
 SITE = os.environ.get("SITE_URL", "https://aperta-designs.com").rstrip("/")
 TOKEN = os.environ.get("ADMIN_TOKEN", "")
@@ -33,28 +32,47 @@ ANCHOR = {
 # מכסה גם ניסיון שני של שלב הטקסט, ועדיין נופל בתוך `maxDuration` של המסלול.
 TIMEOUT_S = 420
 
-opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+_JAR = tempfile.NamedTemporaryFile(prefix="story-lab-", suffix=".jar", delete=False).name
 
 
 def call(path: str, payload=None, timeout: int = 60):
-    """קריאה אחת. מחזירה (status, body) — גם על 4xx/5xx, כי הגוף הוא ההסבר."""
-    url = f"{SITE}{path}"
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(
-        url, data=data, method="POST" if data is not None else "GET",
-        headers={"content-type": "application/json"} if data is not None else {},
-    )
+    """קריאה אחת. מחזירה (status, body) — גם על 4xx/5xx, כי הגוף הוא ההסבר.
+
+    **התעבורה היא `curl` ולא `urllib`, וזה נמדד ולא הועדף.** לפני האפליקציה
+    יושב Cloudflare, והוא חוסם את ה-User-Agent של `python-urllib` לפני שהבקשה
+    מגיעה לקוד: אותה קריאה בדיוק ל-`/api/admin/session` עם טוקן שגוי מחזירה
+    401 מ-`curl` (כלומר הגיעה, ונדחתה על הטוקן) ו-403 מ-`urllib` (כלומר לא
+    הגיעה). זו גם הסיבה שהקנרית שלצידה עובדת — היא כולה `curl` מאז ומתמיד.
+
+    פייתון נשאר במקום שבו הוא נחוץ: בניית ה-JSON וקריאתו. הגוף נכנס דרך
+    stdin (`--data-binary @-`), ולכן אין שום ציטוט סביב סיפור בעברית.
+    """
+    body_file = tempfile.NamedTemporaryFile(prefix="story-lab-body-", delete=False).name
+    cmd = [
+        "curl", "-sS", "-o", body_file, "-w", "%{http_code}",
+        "-c", _JAR, "-b", _JAR, "--max-time", str(timeout),
+    ]
+    data = None
+    if payload is not None:
+        cmd += ["-X", "POST", "-H", "content-type: application/json", "--data-binary", "@-"]
+        data = json.dumps(payload)
+    cmd.append(f"{SITE}{path}")
+
     try:
-        with opener.open(req, timeout=timeout) as res:
-            return res.status, json.loads(res.read().decode() or "null")
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode(errors="replace")
-        try:
-            return e.code, json.loads(raw)
-        except ValueError:
-            return e.code, {"raw": raw[:600]}
-    except Exception as e:  # רשת, פסק זמן
-        return 0, {"raw": f"{type(e).__name__}: {e}"}
+        out = subprocess.run(cmd, input=data, capture_output=True, text=True, timeout=timeout + 30)
+    except subprocess.TimeoutExpired:
+        return 0, {"raw": "curl timed out"}
+    if out.returncode != 0:
+        return 0, {"raw": f"curl exit {out.returncode}: {out.stderr[:300]}"}
+
+    status = int(out.stdout.strip() or 0)
+    with open(body_file, encoding="utf-8", errors="replace") as fh:
+        raw = fh.read()
+    os.unlink(body_file)
+    try:
+        return status, json.loads(raw or "null")
+    except ValueError:
+        return status, {"raw": raw[:600]}
 
 
 def parse_stories(text: str):
