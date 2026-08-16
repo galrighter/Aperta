@@ -26,6 +26,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import traceback
 from collections import deque
 
 from PIL import Image
@@ -36,8 +37,9 @@ from PIL import Image
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "vectorizer"))
 try:
     from app.core.panels import find_bands as box_find_bands, split_panels as box_split
+    from app.pipeline import run_pipeline
 except Exception as exc:  # noqa: BLE001
-    box_find_bands = box_split = None
+    box_find_bands = box_split = run_pipeline = None
     print(f"::warning::לא ניתן לטעון את המפריד של הקופסה: {exc}")
 
 SITE = os.environ.get("SITE_URL", "https://aperta-designs.com").rstrip("/")
@@ -171,6 +173,7 @@ def main() -> int:
             continue
         img = Image.open(path).convert("L")
         w, h = img.size
+        length_mm = float(os.environ.get("LENGTH_MM", "0") or 0)
         bs, _ = bands(img)
         print("=" * 72)
         print(f"{run_id}   תמונה {w}x{h}   פסי שחור שנמצאו: {len(bs)}")
@@ -184,7 +187,29 @@ def main() -> int:
             boxed = box_find_bands(rgba)
             print(f"   >>> find_bands של הקופסה: {len(boxed)} פסים {boxed}")
             if box_split is not None:
-                print(f"   >>> split_panels מחזיר: {len(box_split(open(path,'rb').read(), 1))} פאנלים")
+                panels = box_split(open(path, "rb").read(), 1)
+                print(f"   >>> split_panels מחזיר: {len(panels)} פאנלים")
+                # **המעקב עצמו.** ‏`split_panels` מחזיר את המספר המלא ובכל זאת
+                # פחות מועמדים חוזרים, והדרך היחידה בקוד שפאנל נעלם בין שתי
+                # הנקודות היא ה-`except` ב-`generate.py` שמחזיר `None`. כאן
+                # רצה בדיוק אותה קריאה, בלי ה-except — כדי שהחריגה תיראה.
+                # `height_mm` בקופסה הוא **הרוחב שהוזמן** (`dims.widthMm`) ולא
+                # האורך — ממנו נגזרת הסקאלה. 18 לצמיד, 6 לטבעת.
+                height_mm = float(os.environ.get("HEIGHT_MM", "0") or 0)
+                if run_pipeline is not None and height_mm > 0:
+                    for pi, panel in enumerate(panels, 1):
+                        try:
+                            res = run_pipeline(
+                                panel, 0.0, height_mm, dark_region_role="metal",
+                                output_mode="both", condition=True,
+                                color_key="dark", min_hole_mm=0.5,
+                            )
+                            sel = res.selection.selected
+                            print(f"       פאנל {pi}: {res.status} · רוחב {res.width_mm:.2f} מ\"מ"
+                                  f" · cutouts {'יש' if sel is not None else 'אין'}")
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"       פאנל {pi}: ✗ {type(exc).__name__}: {exc}")
+                            traceback.print_exc()
         prev_end = None
         for i, (a, b) in enumerate(bs, 1):
             gap = "" if prev_end is None else f"  רווח לבן לפני: {a - prev_end - 1}px"
@@ -196,7 +221,6 @@ def main() -> int:
             continue
         # כל פס, לא רק הראשון: הפאנל שנפל על V5 אינו בהכרח הראשון, וזו בדיוק
         # השאלה — האם הפתח שהפיל אותו הוא רסיס מהמעקב או החלטת עיצוב.
-        length_mm = float(os.environ.get("LENGTH_MM", "0") or 0)
         if length_mm <= 0:
             continue
         mm_per_px = length_mm / (w * 0.9)

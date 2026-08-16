@@ -28,3 +28,7 @@ docs/brand/.cache/
 # עם `agentRules: false` ב-next.config כדי ש-Next לא ידרוס אותו.
 AGENTS.md
 CLAUDE.md
+
+# פייתון
+__pycache__/
+*.pyc
