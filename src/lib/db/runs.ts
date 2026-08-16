@@ -173,6 +173,18 @@ export interface RunInputs {
   drawnRatio?: number;
   stretch?: number;
   /**
+   * story mode — היחסים שמודל הטקסט **ביקש**, לפי סדר העיצובים במפרט.
+   *
+   * הצד החסר של המדידה: `drawnRatio` נשמר מזמן, אבל עד שביקשנו יחס לא היה
+   * מולו כלום. ההצמדה למה שיצא היא לפי **סדר גודל** ולא לפי שורה — המועמדים
+   * עוברים `pickClosestRatio` ו-`orderByVariety`, ומיקום השורה אינו שורד
+   * אותם. ריק = השלב נפל, או החזיר מפרט בלי יחסים.
+   */
+  askedRatios?: number[];
+  /** story mode — מה שהתצורה שנבחרה מבטיחה לפי הכיול הדו-שלבי
+   *  (`storyNaturalRatio`). הציפייה, מול `drawnRatio` שהוא התוצאה. */
+  storyNaturalRatio?: number;
+  /**
    * כמה חלופות התכנון ביקש (`rows × cols`), וכמה פסים הקופסה באמת החזירה.
    *
    * הם לא תמיד שווים, וזה לא היה נראה בשום מקום. `split_columns` חותך פס

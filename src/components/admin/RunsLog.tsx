@@ -88,6 +88,10 @@ export type RunInputs = {
   plannedRatio?: number;
   drawnRatio?: number;
   stretch?: number;
+  /** story mode — היחסים שמודל הטקסט ביקש, ומה שהתצורה שנבחרה מבטיחה. אלה
+   *  שני הצדדים שחסרו: `drawnRatio` נמדד מזמן ולא היה מולו כלום. */
+  askedRatios?: number[];
+  storyNaturalRatio?: number;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
   /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
   imageDropped?: "lettering" | "edit";
@@ -806,13 +810,23 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
  * `null` בהרצות שנשמרו לפני המדידה: שם אין מה להציג, ותגית ריקה גרועה מכלום.
  */
 export function ratioChip(
-  inputs: Pick<RunInputs, "orderedRatio" | "plannedRatio" | "drawnRatio" | "stretch">,
+  inputs: Pick<
+    RunInputs,
+    "orderedRatio" | "plannedRatio" | "drawnRatio" | "stretch" | "askedRatios" | "storyNaturalRatio"
+  >,
 ): { text: string; alert: boolean } | null {
-  const { orderedRatio, plannedRatio, drawnRatio, stretch } = inputs;
-  if (orderedRatio == null && drawnRatio == null) return null;
+  const { orderedRatio, plannedRatio, drawnRatio, stretch, askedRatios, storyNaturalRatio } = inputs;
+  if (orderedRatio == null && drawnRatio == null && !askedRatios?.length) return null;
+  // במסלול Story "הוזמן" ו"תוכנן" אינם אומרים דבר: היחס שברשומה נגזר מעוגן
+  // תכנוני, והתכנון הישן מכויל לפרומפט של שלב אחד. מה שיש שם הוא מה שמודל
+  // הטקסט **ביקש** — וזה מה שמוצג מולו.
+  const story = Boolean(askedRatios?.length);
   const parts = [
-    orderedRatio != null ? `הוזמן ${orderedRatio}:1` : null,
-    plannedRatio != null ? `תוכנן ${plannedRatio}` : null,
+    story ? `ביקש ${askedRatios!.join(" · ")}` : null,
+    story
+      ? (storyNaturalRatio != null ? `תצורה ${storyNaturalRatio}` : null)
+      : orderedRatio != null ? `הוזמן ${orderedRatio}:1` : null,
+    !story && plannedRatio != null ? `תוכנן ${plannedRatio}` : null,
     drawnRatio != null ? `צויר ${drawnRatio}` : null,
     stretch != null ? `מתיחה ×${stretch}` : null,
   ].filter(Boolean);

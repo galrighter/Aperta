@@ -91,7 +91,7 @@ describe("buildStagedRenderPrompt", () => {
   it("הפרומפט אומר למודל לבצע ולא לפרש מחדש", () => {
     const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
     expect(p).toContain("DO NOT reinterpret the original user story");
-    expect(p).toContain("DO NOT invent three new designs");
+    expect(p).toContain("DO NOT invent new designs");
     // ומה שהווקטורייזר צריך ממשיך להיאמר
     expect(p).toContain("BLACK = METAL THAT REMAINS");
     expect(p).toContain("Pure white background");
@@ -126,9 +126,20 @@ describe("parseDesignSpec", () => {
     expect(out?.json.startsWith("{")).toBe(true);
   });
 
-  it("מספר כיוונים אחר — נדחה", () => {
+  /**
+   * המספר הפך לטווח (16.8): מודל הטקסט בוחר כמה עיצובים להחזיר, כי כל עיצוב
+   * הוא שורה בתמונה ומספר השורות הוא מה שקובע את היחס שייצויר. מה שנאכף כאן
+   * הוא הטווח — מחוצה לו התמונה הייתה נחתכת לשורות שלא צוירו, או להפך.
+   */
+  it("מספר כיוונים בתוך הטווח — מתקבל", () => {
+    for (const n of [3, 4, 5, 6]) {
+      expect(parseDesignSpec(SPEC(n))?.spec.designs).toHaveLength(n);
+    }
+  });
+
+  it("מחוץ לטווח — נדחה", () => {
     expect(parseDesignSpec(SPEC(2))).toBeNull();
-    expect(parseDesignSpec(SPEC(4))).toBeNull();
+    expect(parseDesignSpec(SPEC(7))).toBeNull();
   });
 
   it("כיוון בלי הוראת ציור — נדחה", () => {
