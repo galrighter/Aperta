@@ -272,6 +272,10 @@ Give every design its own "length_to_width_ratio" inside that range, and spread 
 
 Choose each proportion because the idea calls for it. The same idea reads differently at different weights, and the person should get to see that. Width also decides what a design can hold: a broad piece can carry structure through its interior, a very narrow one carries it in its edges and its line.
 
+ONE TRAVELLING LINE
+
+Exactly one design is built from a single narrow band of metal that travels along the piece — how it moves is decided by the idea. In this design the delicacy comes from the thinness of the travelling band, not from the overall width: its length_to_width_ratio may sit anywhere in the range, because the line needs room to move through. The band keeps an even, cuttable thickness, and the open space its path leaves behind is part of the design.
+
 HOW MANY
 
 Return between {COUNT_LO} and {COUNT_HI} designs — as many as you have genuinely distinct directions for, and no more. They should interpret the same input in ways that are structurally different from one another, not variations of one idea.
