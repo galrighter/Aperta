@@ -519,7 +519,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const prompt =
       body.promptOverride?.trim() ||
       (designStage
-        ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec)
+        ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec, dims.thicknessMm)
         : storyCreate
           ? buildStoryRenderPrompt({
               story: body.userPrompt,

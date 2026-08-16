@@ -2,6 +2,7 @@ import { askOpenAi } from "@/lib/llm/openai";
 import { addLlmUsage, type LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
 import type { Canvas } from "@/lib/render/canvas";
+import { FAB } from "@/lib/fabrication.config";
 import { ratioBandFor } from "./ratio";
 import { numberWord } from "./prompt";
 
@@ -30,6 +31,32 @@ import { numberWord } from "./prompt";
 // **כשזה נכשל, המסלול ממשיך.** מודל טקסט שנפל, פג, או החזיר JSON שאי אפשר
 // לקרוא — כל אלה מחזירים `null`, והצינור נופל חזרה לפרומפט של שלב אחד
 // (lib/story/prompt.ts) שרץ עד עכשיו. יצירה לא נכשלת בגלל השלב הזה.
+//
+// ⚠ **שני הפרומפטים קוצצו ב-16.8 (החלטת גל), ולא כי הם היו ארוכים.**
+//
+// המדידה: חמש הרצות, חמישה סיפורים שונים, 18 מועמדים — ו-12 מהם אותה צורה
+// בדיוק, עדשה במרכז רצועה עם מותן. עוד ארבעה יצאו פס חלק בלי שום עיצוב, גם
+// בצמיד של 16–18 מ"מ שיש בו מקום למבנה. רק הסיפור שדרש במפורש זוויתיות
+// ("חד, זוויתי, מנוכר") שבר את התבנית.
+//
+// הפרומפט למודל התמונה היה 137 שורות שמתוכן **52 שורות איסור**, וזה המנגנון:
+// כל "אל תעשה X" מצמצם את מרחב הפתרונות, וכשמצמצמים מספיק נשארת צורה אחת
+// שמספקת את כולם. שני האשמים הישירים היו (א) `negative_space` כשדה חובה
+// שהוגדר כ-"Concrete description of the major laser-cut openings" — הסכמה
+// עצמה הניחה שיש פתחים, ולכן כל עיצוב הצהיר על אחד; (ב) הכלל שנועד למנוע
+// את זה, "DO NOT create a rectangular strip and place decorative holes inside
+// it", שהמודל ציית לו **מילולית**: הוא לא עשה מלבן עם חורים, הוא עשה צורה
+// מעוצבת עם חור אחד גדול. הכלל אסר על הקלישאה הקודמת ולא על הבאה אחריה.
+//
+// מכאן העיקרון: **מה שאינו חייב להיות בפרומפט — יוצא.** מה שנשאר הוא רק מה
+// שהצינור באמת דורש: החוזה של הווקטורייזר (שחור מלא על לבן, שטוח, אורתוגרפי),
+// החוזה של הפריסה (בדיוק N פריטים, אחד לשורה — כי הקופסה חותכת `plan.rows`
+// פסים), היחסים, וחיבוריות (הדבר היחיד שהוולידציה פוסלת עליו קשה). ההנחיות
+// האסתטיות — "premium", "intentional", "memorable", רשימות ה-Avoid — ירדו
+// כולן. 337 שורות הפכו ל-66.
+//
+// מה שנמדד מול זה: `askedRatios` מול `drawnRatio`, ו-`approvedPanels` —
+// אם שיעור הפסילה יעלה, זה המחיר של הקיצוץ והוא ייראה מיד.
 
 /** המודל והמאמץ של שלב העיצוב. במקום אחד, כדי שהחזרה תהיה שורה. */
 export const STORY_DESIGN = {
@@ -197,265 +224,40 @@ export type DesignStageOutcome =
 
 const DESIGN_SYSTEM = "You are the conceptual jewelry designer for Aperta.";
 
-const DESIGN_PROMPT = `Aperta transforms a user's personal idea, memory, feeling, story, or aesthetic instruction into a physically manufacturable piece of jewelry.
+const DESIGN_PROMPT = `Aperta turns a personal idea, memory, feeling or aesthetic instruction into a piece of jewellery that can actually be made.
 
-Your job is NOT to generate an image.
+Translate the input below into geometric design directions for an image-generation model. You are not drawing — you are deciding what gets drawn.
 
-Your job is to translate the user's input into a set of strong, clearly different, product-specific geometric design directions that will be passed directly to an image-generation model.
+PRODUCT: "{PRODUCT_TYPE}"   (bracelet or ring)
+LENGTH: {LENGTH_MM}
+WIDTH: {WIDTH_MM}
+INPUT: "{USER_INPUT}"
 
-INPUT
+INTERPRETATION
 
-PRODUCT TYPE:
-"{PRODUCT_TYPE}"
-
-Allowed values:
-
-- bracelet
-- ring
-
-USER INPUT:
-"{USER_INPUT}"
-
-OPTIONAL PRODUCT DIMENSIONS:
-Length: {LENGTH_MM}
-Width: {WIDTH_MM}
-
-If dimensions are unavailable, use believable proportions for the selected product.
-
----
+Translate the idea into form rather than illustration — silhouette, proportion, mass, rhythm, tension, interruption, density, asymmetry, or whatever the idea itself suggests. Unless the user explicitly asks for something literal, don't place recognisable objects, symbols, letters or pictograms on the jewellery. Someone should feel the relationship between the idea and the geometry without being shown a picture of it.
 
 PROPORTION — THE ONE MEASUREMENT YOU DECIDE
 
-The piece is cut from a flat strip and then rolled. Its length is fixed by the
-body it has to fit, so the ONLY dimension you control is how wide it is — and
-you express that as a length-to-width ratio.
+The piece is cut flat and then rolled. Its length is fixed by the body it has to fit, so the only dimension you choose is how wide it is, expressed as a length-to-width ratio. A LOW ratio is a WIDE, bold piece. A HIGH ratio is a NARROW, delicate one.
 
-A LOW ratio means a WIDE, bold piece. A HIGH ratio means a NARROW, delicate one.
+Range for this product: {RATIO_LO} (widest) to {RATIO_HI} (narrowest).
 
-Allowed range for this product: {RATIO_LO} (widest) to {RATIO_HI} (narrowest).
+Give every design its own "length_to_width_ratio" inside that range, and spread them across it: at least one clearly narrow, with the widest and the narrowest differing by at least a factor of two.
 
-Assign every design its own "length_to_width_ratio" inside that range.
+Choose each proportion because the idea calls for it. The same idea reads differently at different weights, and the person should get to see that. Width also decides what a design can hold: a broad piece can carry structure through its interior, a very narrow one carries it in its edges and its line.
 
-These ratios must be SPREAD ACROSS THE RANGE, not clustered:
+HOW MANY
 
-- at least one design must be clearly NARROW — in the upper third of the range
-- at least one design must be clearly WIDER than the narrowest one
-- the widest and the narrowest must differ by at least a factor of two
+Return between {COUNT_LO} and {COUNT_HI} designs — as many as you have genuinely distinct directions for, and no more. They should interpret the same input in ways that are structurally different from one another, not variations of one idea.
 
-Choose the proportion because the idea calls for it, not to satisfy the rule:
-a dense, insistent idea may want mass; a quiet or fragile one may want a thin
-line. The spread exists because the same story genuinely reads differently at
-different weights, and the person should get to see that.
+MAKING
 
-HOW MANY DESIGNS
-
-You also choose how many designs to return, between {COUNT_LO} and {COUNT_HI}.
-
-Return more when the ideas you are proposing are narrow, and fewer when they
-are wide: narrow pieces sit next to each other comfortably, wide ones need the
-room. Return more only when you genuinely have that many distinct directions —
-{COUNT_LO} strong ones beat {COUNT_HI} where three are padding.
-
----
-
-CORE INTERPRETATION PRINCIPLE
-
-Interpret the user's input as a creative source, not as an illustration brief.
-
-Unless the user explicitly requests literal imagery, do NOT place recognizable objects, symbols, scenery, icons, words, letters, or pictograms from the story onto the jewelry.
-
-Instead translate the idea into FORM.
-
-Possible formal variables include:
-
-- outer silhouette
-- proportion
-- mass
-- negative space
-- sharpness versus softness
-- symmetry versus asymmetry
-- repetition
-- interruption
-- rhythm
-- tension
-- movement
-- density
-- openness
-- compression
-- visual weight
-- directional flow
-
-The goal is for someone to feel a relationship between the user's idea and the geometry without the jewelry becoming a literal illustration.
-
----
-
-MANUFACTURING SYSTEM
-
-Every design must be physically manufacturable from ONE single flat sheet of 1.5 mm brass.
-
-Allowed manufacturing operations:
-
-1. laser cutting
-2. rolling / bending into the final jewelry form
-3. normal finishing
-
-Nothing else.
-
-Therefore:
-
-- the entire design must be one continuous connected piece
-- no soldering
-- no welding
-- no added parts
-- no stones
-- no chains
-- no hinges
-- no clasps
-- no layered pieces
-- no floating elements
-- no disconnected islands
-- no overlapping geometry
-
-Avoid:
-
-- hair-thin bridges
-- fragile connections
-- tiny holes
-- micro-detail
-- decorative filigree
-- random perforation patterns
-- geometry that would become weak after laser cutting
-- features that would be unrealistic in 1.5 mm brass
-
-Think about BLACK as metal that remains and WHITE as material removed by laser.
-
-The remaining metal itself must create the design.
-
-Do NOT default to a rectangular strip with decorative holes cut into it.
-
-The outer silhouette is an important design surface and should participate in the concept whenever appropriate.
-
----
-
-PRODUCT-SPECIFIC DESIGN RULES
-
-IF PRODUCT TYPE = "bracelet":
-
-Design OPEN CUFF BRACELET flat blanks before rolling.
-
-The flat geometry must be specifically designed for a cuff bracelet.
-
-It must:
-
-- have a long horizontal proportion
-- have length clearly much greater than width
-- remain suitable for rolling around a wrist
-- maintain sufficient continuous structure along its length
-- use the long format as part of the composition
-- allow substantial, elongated negative spaces where appropriate
-- use robust bridges and connections
-
-The outer edges may taper, expand, contract, step, curve, angle or become asymmetric.
-
-Do NOT simply create a rectangular band containing a central decorative motif.
-
-The design should work from end to end.
-
-IF PRODUCT TYPE = "ring":
-
-Design OPEN-ENDED RING flat blanks before rolling.
-
-The geometry must be specifically designed for a ring and NOT be a bracelet design scaled down.
-
-It must:
-
-- use compact believable ring proportions
-- remain suitable for rolling around a finger
-- remain visually readable at small scale
-- use fewer and stronger geometric gestures
-- avoid excessive internal cutting
-- maintain robust connections appropriate to the small physical size
-- use negative space selectively
-
-Concentrate the concept into one or two strong structural gestures rather than many small details.
-
-The ends and overall geometry must remain believable after forming into an open-ended wearable ring.
-
----
-
-DESIGN DIVERSITY
-
-Create between {COUNT_LO} and {COUNT_HI} design directions.
-
-They must all interpret the SAME user input and belong to a coherent Aperta design language, but they must be structurally different.
-
-Do NOT create one design and make small variations of it.
-
-The directions should differ meaningfully in several of these:
-
-- proportion — how wide or narrow the piece is (see above; this is a real difference, not a detail)
-
-- outer silhouette
-- distribution of metal
-- negative-space strategy
-- symmetry/asymmetry
-- rhythm
-- visual weight
-- directional movement
-- density
-- composition
-
-Whenever the user's input contains an internal contrast — for example strength and sensitivity, order and freedom, heaviness and lightness — do not merely divide the jewelry into two literal halves.
-
-Explore more sophisticated relationships such as tension, interruption, gradual transition, containment, contrast between outer contour and internal void, or interaction between different geometric behaviors.
-
----
-
-DESIGN QUALITY
-
-Each direction should have ONE clear visual idea.
-
-Prefer:
-
-- large intentional gestures
-- memorable silhouettes
-- controlled negative space
-- strong composition
-- restrained complexity
-
-Avoid:
-
-- generic decoration
-- arbitrary holes
-- generic waves
-- generic geometric patterns
-- repetitive ornament without conceptual purpose
-
-Every opening, edge and change of direction should contribute either to the concept, structure, or both.
-
-Before finalizing each design, mentally verify:
-
-1. Is every black region connected?
-2. Could this realistically be laser-cut from one sheet?
-3. Could the resulting blank realistically be rolled into the requested product?
-4. Are the connections robust?
-5. Is this clearly different from the other options?
-6. Does the geometry actually express the user's input?
-7. Is its "length_to_width_ratio" inside the allowed range, and does the set as a whole spread across that range rather than cluster?
-8. Does the geometry you described actually fit that width? A narrow piece cannot carry the detail a wide one can.
-
-If not, revise it before producing the output.
-
----
+Each design is laser-cut from one flat sheet of 1.5 mm brass and then rolled into shape. Whatever metal remains has to hold together as a single connected piece.
 
 OUTPUT
 
-Return ONLY valid JSON.
-
-No markdown.
-No explanation before or after the JSON.
-
-Use exactly this structure, with one object per design:
+Return ONLY valid JSON — no markdown, no explanation before or after it — with one object per design:
 
 {
 "product_type": "{PRODUCT_TYPE}",
@@ -463,13 +265,13 @@ Use exactly this structure, with one object per design:
 {
 "design_number": 1,
 "length_to_width_ratio": 0,
-"concept": "Short explanation of how the user's input is translated into form.",
-"outer_silhouette": "Concrete description of the complete outer contour.",
-"metal_structure": "Concrete description of the major connected areas of remaining metal.",
-"negative_space": "Concrete description of the major laser-cut openings.",
-"rhythm_balance": "Concrete description of movement, symmetry/asymmetry, tension and visual weight.",
-"manufacturability": "Brief explanation of why the design remains one robust manufacturable piece.",
-"image_instruction": "A concise but geometrically precise instruction describing exactly what the image model should draw."
+"concept": "How the input is translated into form.",
+"outer_silhouette": "The complete outer contour.",
+"metal_structure": "The major connected areas of remaining metal.",
+"negative_space": "The empty space this design uses — internal openings, carving of the outer contour, the space around the piece, or none of these.",
+"rhythm_balance": "Movement, symmetry or asymmetry, tension, visual weight.",
+"manufacturability": "Why this stays one robust manufacturable piece.",
+"image_instruction": "A concise, geometrically precise instruction describing exactly what to draw."
 },
 {
 "design_number": 2,
@@ -485,19 +287,9 @@ Use exactly this structure, with one object per design:
 ]
 }
 
-IMPORTANT:
-
 "length_to_width_ratio" must be a plain number, never a string and never a range.
 
-The "image_instruction" fields are the most important output.
-
-Write them as literal geometric drawing instructions.
-
-Do not use emotional or conceptual language inside "image_instruction".
-
-Do not ask the image model to interpret the user's story.
-
-Describe WHAT GEOMETRY TO DRAW.`;
+"image_instruction" is the field that matters most. Write it as a literal drawing instruction — what geometry to draw — not as emotional or conceptual language, and never as a request to interpret the story.`;
 
 /**
  * הרוחב שנמסר לשלב העיצוב.
@@ -543,240 +335,41 @@ export function buildDesignPrompt(input: {
 
 /* ===== שלב 2: הפרומפט למודל התמונה ===== */
 
-const RENDER_PROMPT = `Create ONE clean product-design image for Aperta containing exactly {COUNT_WORD} different manufacturable jewelry flat blanks.
+const RENDER_PROMPT = `Create ONE {CANVAS_SHAPE} image containing exactly {COUNT_WORD} flat jewellery blanks.
 
-The jewelry designs have already been developed by a separate jewelry-design model.
+A jewellery designer has already worked these out. Your job is to execute them — not to reinterpret the idea behind them, and not to invent your own.
 
-DO NOT reinterpret the original user story.
-DO NOT invent new designs.
-
-Your task is to visually execute the supplied design directions.
-
----
-
-DESIGN SPECIFICATION FROM THE JEWELRY DESIGNER
+DESIGN SPECIFICATION
 
 {STAGE_1_JSON_OUTPUT}
 
----
+For each design, "image_instruction" is the drawing instruction. "outer_silhouette", "metal_structure", "negative_space" and "rhythm_balance" describe the same geometry in more detail. "concept" is background — it explains the thinking and is not something to draw.
 
-HOW TO USE THE DESIGN SPECIFICATION
+Draw what each specification actually describes, including where it differs from the others.
 
-There are exactly {COUNT_WORD} designs in the supplied specification.
+PROPORTION
 
-Render all of them.
-
-For each design:
-
-The "image_instruction" field is the PRIMARY geometric drawing instruction.
-
-Use:
-
-- "outer_silhouette"
-- "metal_structure"
-- "negative_space"
-- "rhythm_balance"
-
-as supporting geometric context.
-
-The "concept" field explains the reasoning but should NOT cause you to add literal symbols or imagery.
-
-Do not replace the specified geometry with a simpler generic design.
-
-The designs must remain visibly and structurally different from one another.
-
----
-
-PROPORTION IS PART OF THE DESIGN — DO NOT NORMALIZE IT
-
-Each design carries a "length_to_width_ratio". This is the single most
-important number in the specification: it is the actual width of the finished
-piece, not a stylistic hint.
-
-A LOW ratio is a WIDE piece. A HIGH ratio is a NARROW piece.
+Every design carries its own "length_to_width_ratio". A LOW ratio is a WIDE piece; a HIGH ratio is a NARROW one. This is the finished width of the piece, so draw each design at its own ratio.
 
 {PROPORTIONS}
 
-Draw each design at its OWN ratio. Do NOT give them a common width, do NOT
-average them, and do NOT let the shape of the row decide the width for you.
-The difference in width between these designs must be obvious at a glance —
-someone looking at the image should immediately see that some pieces are
-broad and others are slender.
-
-Each piece may be shorter than the full width of the image if that is what its
-own ratio requires. Empty white space around a piece is correct and expected.
-
----
-
-PRODUCT TYPE IS CRITICAL
-
-Read "product_type" from the supplied JSON.
-
-IF product_type = "bracelet":
-
-Show exactly {COUNT_WORD} OPEN CUFF BRACELET FLAT BLANKS.
-
-These are NOT finished curved bracelets.
-
-They are the flat unbent pieces immediately after laser cutting and before rolling.
-
-Each blank must have believable cuff geometry:
-
-- long horizontal geometry, laid out along the width of its row
-- suitable for later rolling around a wrist
-- as wide or as narrow as its own "length_to_width_ratio" says, and no other width
-
-Do not shorten them into plaques.
-
-Do not show curved or perspective views.
-
-IF product_type = "ring":
-
-Show exactly {COUNT_WORD} OPEN-ENDED RING FLAT BLANKS.
-
-These are NOT finished circular rings.
-
-They are the flat unbent pieces immediately after laser cutting and before rolling.
-
-A ring blank is a short strip: it wraps a finger, not a wrist.
-
-Its width, however, comes from its own "length_to_width_ratio" and from nothing
-else. A ring blank is NOT automatically a stubby rectangle — at a high ratio it
-is a fine band, and at a low ratio it is a broad one. Draw what the number says.
-
-Do NOT show circular finished rings.
-
----
-
-MANUFACTURING CONSTRAINTS
-
-Every design represents one single piece laser-cut from 1.5 mm brass.
-
-BLACK = METAL THAT REMAINS.
-
-WHITE = MATERIAL REMOVED BY LASER.
-
-For every design:
-
-- all black metal must form one continuous connected piece
-- no disconnected black islands
-- no floating elements
-- no overlapping pieces
-- no soldered structures
-- no layered structures
-- no hair-thin bridges
-- no fragile connections
-- no tiny holes
-- no filigree
-- no micro-detail
-- no random decorative perforations
-
-The result must look physically plausible for laser cutting and later rolling / bending.
-
----
-
-CRITICAL DESIGN RULE
-
-DO NOT automatically create a rectangular strip and place decorative holes inside it.
-
-The remaining black metal IS the design.
-
-Follow the specified outer silhouette.
-
-If the supplied design direction describes tapering, asymmetry, widening, narrowing, angled edges, curved edges, interruptions or other contour changes, SHOW THEM CLEARLY.
-
-Do not normalize the designs into the same outer shape, and do not normalize them into the same width.
-
-The options must differ structurally, not merely by having different internal cutouts.
-
----
-
-IMAGE COMPOSITION
-
-Create ONE {CANVAS_SHAPE} image.
-
-Arrange exactly {COUNT_WORD} separate flat jewelry blanks, one per horizontal row, in the order given:
+LAYOUT
 
 {ROW_LIST}
 
-One complete design per horizontal row.
+One design per horizontal row, centred, evenly spaced, none of them overlapping, each shown whole and unclipped.
 
-Center each design horizontally.
+The rows are all the same height; the designs inside them are not all the same width. A row is a place to put a design, not a shape to fill — a piece may take up much less of its row than the row allows, and white space around it is correct.
 
-Space the rows evenly.
+WHAT THESE ARE
 
-Do not overlap them.
+Flat blanks as they come off the laser bed, before being rolled into the finished piece. Each one is cut from a single sheet of {THICKNESS_MM} mm brass, so the metal that remains has to hold together as one connected piece.
 
-Show every design whole and unclipped.
+HOW TO DRAW THEM
 
-The rows are all the same height, but the designs inside them are NOT all the
-same width — each one keeps its own "length_to_width_ratio". A row is a place
-to put a design, not a shape to fill.
+Solid black on a pure white background, seen straight from above, perfectly flat: no perspective, no curvature, no depth, no bevel, no texture, no reflection, no gradient, no shadow, no lighting. Openings are the same pure white as the background. Nothing else appears in the image — no text, no labels, no dimensions, no frames, no hands, no background of any kind.
 
-Do NOT artificially increase the width of narrow jewelry merely to fill the image.
-
-Generous white space is acceptable.
-
----
-
-STRICT VISUAL STYLE
-
-Pure white background.
-
-Jewelry shown as solid pure black.
-
-Laser-cut openings shown as the same pure white as the background.
-
-Perfectly flat.
-
-Straight overhead orthographic view.
-
-ZERO perspective.
-ZERO curvature.
-ZERO bending.
-ZERO bevel.
-ZERO thickness visualization.
-ZERO depth.
-ZERO texture.
-ZERO reflection.
-ZERO gradient.
-ZERO cast shadow.
-ZERO ambient shadow.
-ZERO lighting effects.
-
-No hands.
-No body.
-No tools.
-No environment.
-
-No text.
-No captions.
-No labels.
-No dimensions.
-No arrows.
-No borders.
-No frames.
-No decorative graphic elements.
-
-The image should look like {COUNT_WORD} precise black vector-like laser-cut silhouettes on a pure white field.
-
-It must NOT look like finished jewelry photography.
-
----
-
-FINAL CHECK BEFORE GENERATING
-
-Verify visually that:
-
-1. Exactly {COUNT_WORD} designs are present.
-2. Each design corresponds to its supplied design direction.
-3. All black regions within each design are connected.
-4. The designs are clearly different.
-5. Each design is drawn at its OWN "length_to_width_ratio" — the widest and the narrowest are obviously different widths, and none of them has been quietly given the same width as the others.
-6. The pieces are completely flat and orthographic.
-7. The outer silhouettes follow the supplied designs rather than defaulting to identical rectangles.
-8. BLACK represents remaining metal and WHITE represents laser-cut removal.
-9. No extra visual elements appear.`;
+BLACK IS METAL. WHITE IS NOT.`;
 
 /**
  * הפרומפט למודל התמונה, עם מפרט העיצוב בתוכו.
@@ -791,6 +384,7 @@ export const buildStagedRenderPrompt = (
   designJson: string,
   canvas: Canvas,
   spec?: DesignSpec | null,
+  thicknessMm: number = FAB.defaultThicknessMm,
 ): string => {
   const designs = spec?.designs ?? [];
   const count = designs.length || DESIGN_COUNT;
@@ -801,6 +395,7 @@ export const buildStagedRenderPrompt = (
     COUNT_WORD: numberWord(count).toUpperCase(),
     ROW_LIST: rowList(count),
     PROPORTIONS: proportionLines(ratios),
+    THICKNESS_MM: String(thicknessMm),
   });
 };
 

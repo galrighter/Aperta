@@ -42,7 +42,7 @@ describe("buildDesignPrompt", () => {
   it("המוצר, הסיפור והאורך נכנסים במקומם", () => {
     expect(prompt).toContain('"bracelet"');
     expect(prompt).toContain("הקיץ שהיינו נוסעים לים");
-    expect(prompt).toContain("Length: 160.4 mm");
+    expect(prompt).toContain("LENGTH: 160.4 mm");
   });
 
   it("שום placeholder לא שורד", () => {
@@ -58,13 +58,13 @@ describe("buildDesignPrompt", () => {
   });
 
   it("הרוחב **אינו** נמסר כמידה — הוא של העיצוב", () => {
-    expect(prompt).toContain("Width: not specified");
-    expect(prompt).not.toMatch(/Width: \d/);
+    expect(prompt).toContain("WIDTH: not specified");
+    expect(prompt).not.toMatch(/WIDTH: \d/);
   });
 
   it("בלי אורך: הפרומפט אומר זאת במפורש במקום להמציא מספר", () => {
     const p = buildDesignPrompt({ productType: "ring", userInput: "x" });
-    expect(p).toContain("Length: not specified");
+    expect(p).toContain("LENGTH: not specified");
     expect(p).toContain('"ring"');
   });
 
@@ -90,11 +90,12 @@ describe("buildStagedRenderPrompt", () => {
 
   it("הפרומפט אומר למודל לבצע ולא לפרש מחדש", () => {
     const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
-    expect(p).toContain("DO NOT reinterpret the original user story");
-    expect(p).toContain("DO NOT invent new designs");
-    // ומה שהווקטורייזר צריך ממשיך להיאמר
-    expect(p).toContain("BLACK = METAL THAT REMAINS");
-    expect(p).toContain("Pure white background");
+    expect(p).toContain("execute them");
+    expect(p).toContain("not to invent your own");
+    // ומה שהווקטורייזר צריך ממשיך להיאמר — זה מה שלא ניתן לקצץ
+    expect(p).toContain("BLACK IS METAL. WHITE IS NOT.");
+    expect(p).toContain("Solid black on a pure white background");
+    expect(p).toContain("no shadow");
   });
 
   /**
