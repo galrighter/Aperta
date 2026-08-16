@@ -30,6 +30,16 @@ from collections import deque
 
 from PIL import Image
 
+# הקופסה חיה באותו ריפו, ולכן אפשר להריץ את **המפריד האמיתי** על אותה תמונה
+# במקום לשער מה הוא עשה. זו כל הנקודה של הבדיקה הזו: הפער בין מה שהעין רואה
+# בתמונה לבין מה ש-`find_bands` מחזיר הוא התשובה, ולא הסקה ממנה.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "vectorizer"))
+try:
+    from app.core.panels import find_bands as box_find_bands, split_panels as box_split
+except Exception as exc:  # noqa: BLE001
+    box_find_bands = box_split = None
+    print(f"::warning::לא ניתן לטעון את המפריד של הקופסה: {exc}")
+
 SITE = os.environ.get("SITE_URL", "https://aperta-designs.com").rstrip("/")
 TOKEN = os.environ.get("ADMIN_TOKEN", "")
 OUT = os.environ.get("OUT_DIR", "renders")
@@ -164,6 +174,17 @@ def main() -> int:
         bs, _ = bands(img)
         print("=" * 72)
         print(f"{run_id}   תמונה {w}x{h}   פסי שחור שנמצאו: {len(bs)}")
+
+        # מה שהקופסה עצמה מחזירה על אותם בתים. אם המספרים נבדלים — הבאג שם,
+        # ואפשר לראות איזה פס נעלם ומה גובהו.
+        if box_find_bands is not None:
+            import numpy as np
+            with Image.open(path) as raw:
+                rgba = np.array(raw.convert("RGBA"))
+            boxed = box_find_bands(rgba)
+            print(f"   >>> find_bands של הקופסה: {len(boxed)} פסים {boxed}")
+            if box_split is not None:
+                print(f"   >>> split_panels מחזיר: {len(box_split(open(path,'rb').read(), 1))} פאנלים")
         prev_end = None
         for i, (a, b) in enumerate(bs, 1):
             gap = "" if prev_end is None else f"  רווח לבן לפני: {a - prev_end - 1}px"
