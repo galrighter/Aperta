@@ -20,7 +20,12 @@ export const dynamic = "force-static";
  * שאינה משנה מה שנכתב על המסך אינה עדכון תוכן, ואל תגעו בשורה שלה.
  */
 const LAST_MODIFIED: Record<string, string> = {
-  "": "2026-08-04",
+  // 16.8 — דף הבית הפך לצומת "שני שערים" (תכנון לפי דרישות / יצירה מסיפור).
+  "": "2026-08-16",
+  // דף הבית הקודם, ככתובת נחיתה ייעודית למסלול העורך — אותו דגם כמו /story:
+  // מוסתר בניווט ופתוח לאינדוקס. `/designs` (העיצובים שלי) אינו כאן — עמוד
+  // אישי, noindex.
+  "/design-yours": "2026-08-16",
   "/design": "2026-08-05",
   "/how-it-works": "2026-08-06",
   "/gallery": "2026-08-01",
@@ -42,7 +47,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // `/studio` אינו כאן: הוא הכלי הפנימי, ומאז שהוא יושב מאחורי שער האדמין
   // אינדוקס שלו הוא אינדוקס של דף כניסה. גם קודם הוא לא היה שייך למפה —
   // לקוחה שנוחתת עליו מגוגל פוגשת ממשק בודקים ולא את המשפך.
-  const paths = ["", "/design", "/story", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy", "/accessibility"];
+  const paths = ["", "/design", "/design-yours", "/story", "/how-it-works", "/gallery", "/sizing", "/design-rules", "/care", "/faq", "/contact", "/terms", "/privacy", "/accessibility"];
   return paths.map((p) => ({
     url: `${SITE.url}${p}`,
     lastModified: LAST_MODIFIED[p],

@@ -57,6 +57,10 @@ export default function SiteHeader() {
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  // בדף הבית "שני שערים" ה-CTA של הכותרת מוסתר: העמוד כולו הוא הבחירה בין
+  // שני מסלולים, וכפתור שמוביל ל-/design היה מטה אותה לפני שהיא הוצגה.
+  const hideCta = pathname === "/";
+
   const links = NAV.map((item) => {
     const active = pathname === item.href;
     return (
@@ -90,9 +94,11 @@ export default function SiteHeader() {
         {/* ניווט דסקטופ */}
         <div className="hidden items-center gap-7 text-sm md:flex">
           {links}
-          <Link href="/design" className={CTA_CLASS}>
-            {s.ctaStart}
-          </Link>
+          {!hideCta && (
+            <Link href="/design" className={CTA_CLASS}>
+              {s.ctaStart}
+            </Link>
+          )}
           {/* מי מחובר, מעבר לעיצובים שלו, ויציאה */}
           <AccountMenu />
         </div>
@@ -128,9 +134,11 @@ export default function SiteHeader() {
         <div id={menuId} className="border-t border-graphite/10 bg-porcelain md:hidden">
           <div className="flex flex-col items-start gap-4 px-5 py-4 text-base sm:px-10">
             {links}
-            <Link href="/design" onClick={() => setOpen(false)} className={CTA_CLASS}>
-              {s.ctaStart}
-            </Link>
+            {!hideCta && (
+              <Link href="/design" onClick={() => setOpen(false)} className={CTA_CLASS}>
+                {s.ctaStart}
+              </Link>
+            )}
             <AccountMenu variant="menu" onNavigate={() => setOpen(false)} />
           </div>
         </div>
