@@ -21,6 +21,14 @@ export interface DesignRow {
   gap_mm: number;
   thickness_mm: number;
   current_version_id: string | null;
+  /**
+   * 0024 — המסלול שהעיצוב נוצר בו (`story`), או null בכל השאר.
+   *
+   * נקרא דרך `isStory` (lib/story/mode.ts) ולא מושווה כאן: זו אותה מחרוזת
+   * שנוסעת בבקשות, ובודק אחד לכולן. `undefined` במסד שעוד לא קיבל את המיגרציה,
+   * בדיוק כמו `serial` ב-0008 — ושתי הצורות נופלות לאותה תשובה, "לא story".
+   */
+  mode?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -130,6 +138,11 @@ export async function createSampleDesign(base: DesignRow, name?: string): Promis
         root_design_id: rootId,
         root_serial: rootSerial,
         sample_no: sampleNo,
+        // המסלול עובר לדוגמה (0024). בקשת שינוי במסלול Story מייצרת דוגמה
+        // ממוספרת, וההזמנה, המידה וכל בקשה שאחריה מצביעות עליה ולא על האב —
+        // דוגמה בלי המסלול הייתה מחזירה בדיוק את הכשל שהעמודה באה למנוע,
+        // רק על העיצוב שנוצר מהעריכה האחרונה.
+        ...(base.mode ? { mode: base.mode } : {}),
       })
       .select("*")
       .single();

@@ -6,6 +6,7 @@ import { requireAccountId } from "@/lib/account";
 import { requireAdmin } from "@/lib/admin";
 import { getAccount } from "@/lib/db/accounts";
 import { FAB } from "@/lib/fabrication.config";
+import { STORY_MODE } from "@/lib/story/mode";
 
 /**
  * העיצובים של פרופיל אחד.
@@ -49,6 +50,13 @@ const createSchema = z.object({
   widthMm: z.number().positive().optional(),
   gapMm: z.number().positive().optional(),
   thicknessMm: z.number().positive().optional(),
+  /**
+   * 0024 — המסלול שהעיצוב נוצר בו. `story` בלבד, וריק בכל השאר.
+   *
+   * זו עובדה על העיצוב ולא בקשה: במסלול Story המידה נשאלת אחרי התוצאה, ולכן
+   * מי שחוזרת לעיצוב שמור חייבת לקבל את אותו סדר שלבים — גם ממכשיר אחר.
+   */
+  mode: z.literal(STORY_MODE).optional(),
 });
 
 export async function POST(req: Request) {
@@ -74,11 +82,16 @@ export async function POST(req: Request) {
       gap_mm: body.gapMm ?? p.defaultGapMm,
       thickness_mm: body.thicknessMm ?? FAB.defaultThicknessMm,
     };
-    const { data, error } = await supabaseAdmin()
-      .from("designs")
-      .insert(insert)
-      .select("*")
-      .single();
+    // `mode` נשלח רק כשהוא קיים, כמו שדות 0012 ב-`insertVersion`: מסד שעוד לא
+    // קיבל את 0024 דוחה עמודה שאינו מכיר, וכשל כאן הוא כשל של **יצירת העיצוב**
+    // כולה. במקרה כזה נשמר עיצוב בלי המסלול — פחות טוב, אבל לא חוסם.
+    const sb = supabaseAdmin();
+    const withMode = body.mode ? { ...insert, mode: body.mode } : insert;
+    let { data, error } = await sb.from("designs").insert(withMode).select("*").single();
+    if (error && body.mode && /column .* does not exist|schema cache/i.test(error.message)) {
+      console.error("designs.mode missing (0024 not applied yet):", error.message);
+      ({ data, error } = await sb.from("designs").insert(insert).select("*").single());
+    }
     if (error) throw new Error(error.message);
     return NextResponse.json({ design: data }, { status: 201 });
   } catch (err) {

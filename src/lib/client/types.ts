@@ -34,6 +34,9 @@ export interface Design {
   gap_mm: number;
   thickness_mm: number;
   current_version_id: string | null;
+  /** 0024 — המסלול שהעיצוב נוצר בו (`story`). ריק/חסר = המסלול הרגיל. נבדק
+   *  דרך `isStory` בלבד. */
+  mode?: string | null;
   created_at: string;
   updated_at: string;
 }

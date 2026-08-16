@@ -341,7 +341,13 @@ export const api = {
 
   // בלי profileId: הבעלות נקבעת בשרת מהעוגייה של החשבון. הסטודיו הפנימי
   // עדיין שולח profileId של בודק — ראו את ההערה בסכימה של המסלול.
-  createDesign: (input: { profileId?: string; productType: "bracelet" | "ring"; name?: string }) =>
+  createDesign: (input: {
+    profileId?: string;
+    productType: "bracelet" | "ring";
+    name?: string;
+    /** המסלול שהעיצוב נוצר בו (`"story"`). נשמר על הרשומה — ראה 0024. */
+    mode?: string;
+  }) =>
     call<{ design: Design }>("/api/designs", { method: "POST", body: JSON.stringify(input) }),
 
   getDesign: (id: string) =>
