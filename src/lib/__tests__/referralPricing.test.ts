@@ -91,6 +91,36 @@ describe("FAMILY25 — הקוד של ההשקה", () => {
     expect(p.vat).toBe(18);
   });
 
+  it("**איסוף עצמי — אין משלוח**, ולכן ₪100 ו-₪80 הם מה שמשלמים", () => {
+    // 0027 מסמן `pickup_only`. בלי זה נגבים ‎₪35 על משלוח שלא יקרה.
+    const bracelet = priceFor({
+      productType: "bracelet",
+      referral: { code: "FAMILY25", rule: FAMILY, pickupOnly: true },
+    });
+    expect(bracelet.shipping).toBe(0);
+    expect(bracelet.total).toBe(100);
+
+    const ring = priceFor({
+      productType: "ring",
+      referral: { code: "FAMILY25", rule: FAMILY, pickupOnly: true },
+    });
+    expect(ring.total).toBe(80);
+  });
+
+  it("המע״מ יורד יחד עם הסכום שנגבה", () => {
+    const p = priceFor({
+      productType: "bracelet",
+      referral: { code: "FAMILY25", rule: FAMILY, pickupOnly: true },
+    });
+    expect(p.vat).toBe(vatIn(100));
+  });
+
+  it("קוד בלי איסוף עצמי ממשיך לגבות משלוח", () => {
+    // `pickupOnly` הוא ציר נפרד מהמחיר: קוד חנות ייתן מחיר מיוחד ויישלח.
+    const p = priceFor({ productType: "bracelet", referral: { code: "SHOP-1", rule: FAMILY } });
+    expect(p.shipping).toBe(SHIPPING);
+  });
+
   it("הקוד מנורמל לצורה שנשמרה במסד", () => {
     // ‏0027 שומר 'FAMILY25'. כל צורה שנמסרת בעל־פה או בהקלדה חייבת להגיע אליה.
     for (const typed of ["Family25", "family25", " FAMILY25 ", "FAMILY25"]) {
@@ -126,6 +156,7 @@ describe("הכלל שנקרא מהשורה", () => {
     kind: "fixed_price",
     base_prices: { bracelet: 180, ring: 140 },
     percent_off: null,
+    pickup_only: false,
     max_uses: 25,
     expires_at: null,
     active: true,

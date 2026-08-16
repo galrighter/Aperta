@@ -42,11 +42,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, reason: res.reason });
     }
 
-    const price = priceFor({ productType: body.productType, referral: { code, rule: res.rule } });
+    const pickupOnly = res.row.pickup_only;
+    const price = priceFor({ productType: body.productType, referral: { code, rule: res.rule, pickupOnly } });
     return NextResponse.json({
       ok: true,
       code,
       label: res.row.public_label,
+      // הצ'קאאוט צריך לדעת: הכתובת מפסיקה להיות שדה חובה, ושורת האספקה
+      // משתנה. זה לא מידע עסקי — זה מה שהלקוחה עומדת לעשות.
+      pickup: pickupOnly,
       // הסכומים שיוצגו. `listBase` נשאר בשרת — מחיר מחוק לצד המחיר שמשלמים
       // הוא בדיוק מה שהקוד נועד למנוע (ראו 0026).
       price: { base: price.base, shipping: price.shipping, total: price.total, vat: price.vat },

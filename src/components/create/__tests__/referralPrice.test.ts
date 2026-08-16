@@ -4,10 +4,11 @@ import { priceFor } from "@/lib/pricing";
 
 // המחיר שעל המסך כשיש קוד הפניה (0026).
 
-const applied = (productType: "bracelet" | "ring"): AppliedReferral => ({
+const applied = (productType: "bracelet" | "ring", pickup = false): AppliedReferral => ({
   code: "FF-25",
   label: null,
   productType,
+  pickup,
   price: priceFor({
     productType,
     referral: { code: "FF-25", rule: { kind: "fixed_price", basePrices: { bracelet: 180, ring: 140 } } },
@@ -28,6 +29,13 @@ describe("priceOf עם קוד הפניה", () => {
     // ואז השרת היה דוחה את ההזמנה ב-`price_changed` בשליחה עצמה.
     const s = state({ product: "ring", referral: applied("bracelet") });
     expect(priceOf(s).base).toBe(299);
+  });
+
+  it("איסוף עצמי אינו נדבק לקוד של מוצר אחר", () => {
+    // אותה נפילה לאחור כמו במחיר: קוד שנבדק על צמיד לא הופך הזמנת טבעת
+    // להזמנה בלי משלוח.
+    const s = state({ product: "ring", referral: applied("bracelet", true) });
+    expect(priceOf(s).shipping).toBeGreaterThan(0);
   });
 
   it("בלי קוד — המחירון", () => {

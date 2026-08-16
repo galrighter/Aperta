@@ -53,6 +53,18 @@ create table if not exists referral_codes (
   -- חינם, ומחרוזת שמישהו יעביר הלאה בוואטסאפ הופכת אז את החנות לפתוחה.
   percent_off numeric,
 
+  -- **איסוף עצמי בלבד.** תכונה של הקמפיין ולא של המחיר, ולכן עמודה משלה ולא
+  -- עוד כלל תמחור: קוד חנות עשוי לתת מחיר מיוחד **עם** משלוח, וקוד המשפחה
+  -- נאסף ביד. מה שהיא משנה הוא שלושה דברים, ולא רק אחד:
+  --
+  --   · המשלוח אינו נגבה (‏`priceFor` מאפס אותו) — אחרת נגבים ‎₪35 על משלוח
+  --     שלא יקרה.
+  --   · הכתובת אינה שדה חובה בצ'קאאוט — כתובת שנדרשת להזמנה שנאספת ביד היא
+  --     כתובת שתומצא, וכתובת מומצאת על הזמנה היא הדבר שנשלחים לפיו בטעות.
+  --   · ההזמנה נושאת `pickup` ולכן אינה נארזת למשלוח, והמייל אומר "מוכן
+  --     לאיסוף" ולא "יצא אליך".
+  pickup_only boolean not null default false,
+
   -- כמה הזמנות הקוד מאפשר. NULL = בלי הגבלה. הספירה עצמה נגזרת מ-`orders`
   -- ואינה מונה כאן — ראו את ההערה על `referral_code_id` למטה.
   max_uses integer,
@@ -118,6 +130,12 @@ alter table referral_codes enable row level security;
 -- להצדיק היא בעיה חשבונאית, לא בעיית תצוגה.
 alter table orders add column if not exists referral_code_id uuid references referral_codes(id) on delete set null;
 alter table orders add column if not exists referral_code text;
+
+-- **צילום ולא נגזרת.** אפשר היה לקרוא `pickup_only` דרך `referral_code_id`,
+-- אבל אז שינוי בהגדרת הקוד היה משנה בדיעבד את אופן האספקה של הזמנות שכבר
+-- נשלחו — בדיוק הבאג של 0022, שם המידות נקראו מהשורה החיה של העיצוב. איך
+-- ההזמנה הזאת נמסרת נקבע ברגע שבו היא בוצעה.
+alter table orders add column if not exists pickup boolean not null default false;
 
 -- **המכסה נספרת מכאן, ואין עמודת מונה.** מונה על `referral_codes` היה מחייב
 -- להגדיל אותו ולהוסיף את ההזמנה בשתי פעולות נפרדות (אין כאן טרנזקציה מעבר

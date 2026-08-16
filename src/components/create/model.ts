@@ -141,6 +141,8 @@ export interface AppliedReferral {
   label: string | null;
   productType: Product;
   price: Price;
+  /** נמסר באיסוף עצמי: אין משלוח, והכתובת אינה שדה חובה. */
+  pickup: boolean;
 }
 
 /** דחיות הקוד, כפי שהשרת מנסח אותן, ועוד אחת לכשל הבדיקה עצמה. */

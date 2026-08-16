@@ -1832,6 +1832,11 @@ export const he = {
     checkoutSummaryTitle: "סיכום",
     checkoutKeys: { item: "פריט", size: "מידה", width: "רוחב", delivery: "אספקה" },
     deliveryVal: "10–14 ימי עבודה",
+    /** איסוף עצמי (0026) — כשקוד ההפניה מסמן זאת. */
+    pickupVal: "איסוף עצמי",
+    addrTitlePickup: "פרטים ליצירת קשר",
+    pickupNote:
+      "ההזמנה הזאת נאספת ביד, ולכן אין דמי משלוח. נתאם איתך מקום וזמן כשהתכשיט מוכן. הכתובת אינה חובה — אפשר להשאיר ריק.",
     checkoutTotal: "סכום לתשלום",
     checkoutSubmit: "שליחת ההזמנה",
     checkoutSending: "שולח...",
@@ -2103,6 +2108,9 @@ export const he = {
     orderLineWidthAdd: "תוספת רוחב",
     orderLineComplexity: "מורכבות",
     orderLineShipping: "משלוח",
+    /** במקום שורת המשלוח, כשההזמנה נאספת ביד. */
+    orderLinePickup: "אספקה",
+    orderLinePickupVal: "איסוף עצמי",
     orderLineTax: "מזה מע״מ 18%",
     orderLineTotal: "סה״כ לתשלום",
 

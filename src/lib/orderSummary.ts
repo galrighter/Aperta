@@ -68,7 +68,11 @@ function priceLineParts(o: OrderRow): Line[] {
           value: `${p.complexity > 0 ? "+" : "−"}${money(Math.abs(p.complexity))}`,
         }
       : null,
-    { label: m.orderLineShipping, value: money(p.shipping) },
+    // **איסוף עצמי במקום שורת משלוח.** ‏"משלוח: ₪0" הוא נכון חשבונאית וקורא
+    // כמו טעות — ומי שקורא את זה במייל האישור צריך לדעת שהוא בא לאסוף.
+    o.pickup
+      ? { label: m.orderLinePickup, value: m.orderLinePickupVal }
+      : { label: m.orderLineShipping, value: money(p.shipping) },
     { label: m.orderLineTotal, value: money(p.total) },
     { label: m.orderLineTax, value: money(p.vat) },
   ];

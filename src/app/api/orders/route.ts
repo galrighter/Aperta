@@ -186,7 +186,7 @@ export async function POST(req: Request) {
     // **הבדיקה חוזרת כאן גם אם `/validate` כבר אישר.** בין מסך הצ'קאאוט
     // לשליחה חולפות דקות, ובזמן הזה המכסה יכולה להיגמר, הקוד לפוג, או להיכבות
     // בבק־אופיס. השאלה "האם הקוד תקף" נשאלת ברגע שבו היא עולה כסף.
-    let referral: { code: string; rule: ReferralRule } | null = null;
+    let referral: { code: string; rule: ReferralRule; pickupOnly: boolean } | null = null;
     let referralCodeId: string | null = null;
     if (body.referralCode) {
       const resolved = await resolveReferralCode(body.referralCode);
@@ -199,7 +199,9 @@ export async function POST(req: Request) {
           409,
         );
       }
-      referral = { code: resolved.row.code, rule: resolved.rule };
+      // אופן האספקה נקבע מהקוד ולא מהדפדפן, בדיוק כמו המחיר — הוא **חלק**
+      // מהמחיר: `pickupOnly` הוא מה שמאפס את המשלוח.
+      referral = { code: resolved.row.code, rule: resolved.rule, pickupOnly: resolved.row.pickup_only };
       referralCodeId = resolved.row.id;
     }
 
@@ -247,6 +249,7 @@ export async function POST(req: Request) {
       // 0026 — הקשר החי לספירת המכסה, לצד צילום המחרוזת שיישרוד מחיקת קוד.
       referral_code_id: referralCodeId,
       referral_code: referral?.code ?? null,
+      pickup: referral?.pickupOnly ?? false,
       idempotency_key: body.idempotencyKey ?? null,
       // החותמת נכתבת בשרת ולא מהדפדפן: "מתי אושרו התנאים" הוא הראיה עצמה.
       terms_accepted_at: new Date().toISOString(),

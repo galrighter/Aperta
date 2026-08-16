@@ -21,6 +21,8 @@ export interface ReferralCodeRow {
   kind: ReferralKind;
   base_prices: Record<ProductType, number> | null;
   percent_off: number | null;
+  /** איסוף עצמי בלבד: אין משלוח לגבות, והכתובת אינה שדה חובה. */
+  pickup_only: boolean;
   max_uses: number | null;
   expires_at: string | null;
   active: boolean;

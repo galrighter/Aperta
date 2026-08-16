@@ -343,7 +343,7 @@ export const api = {
    */
   validateReferral: (input: { code: string; productType: "bracelet" | "ring" }) =>
     call<
-      | { ok: true; code: string; label: string | null; price: Price }
+      | { ok: true; code: string; label: string | null; pickup: boolean; price: Price }
       | { ok: false; reason: string }
     >("/api/referral-codes/validate", { method: "POST", body: JSON.stringify(input) }),
 

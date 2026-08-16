@@ -120,14 +120,17 @@ export interface PriceInput {
    * אבל מה שנשמר הוא מה שהשרת חישב מהקוד ששלף מהמסד בעצמו. ראו את בדיקת
    * ההתאמה ב-`/api/orders`.
    */
-  referral?: { code: string; rule: ReferralRule } | null;
+  referral?: { code: string; rule: ReferralRule; pickupOnly?: boolean } | null;
 }
 
 export function priceFor({ productType, referral }: PriceInput): Price {
   const list = BASE[productType];
   const base = referral ? referralBase(referral.rule, productType) : list;
-  const total = base + SHIPPING;
-  const price: Price = { base, shipping: SHIPPING, total, vat: vatIn(total) };
+  // **איסוף עצמי — אין משלוח לגבות.** ‏`pickupOnly` יושב לצד `rule` ולא בתוכו
+  // כי הוא ציר אחר: קוד חנות יכול לתת מחיר מיוחד ועדיין להישלח.
+  const shipping = referral?.pickupOnly ? 0 : SHIPPING;
+  const total = base + shipping;
+  const price: Price = { base, shipping, total, vat: vatIn(total) };
   // שתי השורות נכתבות רק כשהיה קוד: הזמנה רגילה נשמרת בדיוק כפי שנשמרה עד
   // היום, ו-`priceLineParts` ממשיך להדפיס אותה בלי שינוי.
   if (referral) {

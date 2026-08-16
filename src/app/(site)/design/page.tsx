@@ -1637,7 +1637,9 @@ export default function DesignPage() {
       `מזהה עיצוב: ${orderedDesignId ?? "—"}`,
       `סה"כ: ${d.ils}${p.total}`,
       "",
-      `כתובת: ${s.addr.street}, ${s.addr.city}${s.addr.zip ? ` ${s.addr.zip}` : ""}`,
+      s.referral?.pickup
+        ? "אספקה: איסוף עצמי"
+        : `כתובת: ${s.addr.street}, ${s.addr.city}${s.addr.zip ? ` ${s.addr.zip}` : ""}`,
       s.lettering.trim() ? `כיתוב על התכשיט: ${s.lettering.trim()}` : "",
       s.brief.trim() ? `תיאור הלקוחה: ${s.brief.trim()}` : "",
     ].filter(Boolean);

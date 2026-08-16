@@ -21,15 +21,22 @@ import {
 const d = he.design;
 
 const REQUIRED: Array<keyof Addr> = ["name", "street", "city", "phone", "email"];
+/** באיסוף עצמי אין לאן לשלוח — נשארת רק הדרך להשיג את מי שבא לאסוף. */
+const REQUIRED_PICKUP: Array<keyof Addr> = ["name", "phone", "email"];
 
 export const emailValid = (email: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
-export const addrValid = (a: Addr): boolean =>
-  REQUIRED.every((k) => a[k].trim().length > 0) &&
+/**
+ * ‏`pickup` — הזמנה שנאספת ביד. הכתובת מפסיקה להיות חובה, אבל מה שכן מולא
+ * עדיין נבדק: כתובת חלקית שנשמרת כמות שהיא היא בדיוק מה שנשלחים לפיו אחר כך
+ * אם ההזמנה תשנה אופן אספקה.
+ */
+export const addrValid = (a: Addr, pickup = false): boolean =>
+  (pickup ? REQUIRED_PICKUP : REQUIRED).every((k) => a[k].trim().length > 0) &&
   nameValid(a.name) &&
-  addressLineValid(a.street) &&
-  addressLineValid(a.city) &&
+  (pickup && !a.street.trim() ? true : addressLineValid(a.street)) &&
+  (pickup && !a.city.trim() ? true : addressLineValid(a.city)) &&
   zipValid(a.zip) &&
   emailValid(a.email) &&
   // הטלפון הוא הדרך לאשר שרטוט לפני ייצור. מספר שגוי אינו שדה ריק שרואים —
@@ -55,9 +62,12 @@ export function CheckoutScreen({
   // קוד היא התלונה הגרועה ביותר כאן** — הלקוחה בטוחה שהקוד נלקח בחשבון, מגלה
   // את הסכום בשיחת התשלום, ומה שנשבר הוא האמון ולא המחיר. עדיף לעצור.
   const codeBlocking = s.referralChecking || s.referralError != null;
+  // איסוף עצמי מגיע מהקוד, ולכן הוא נכון רק כשהקוד באמת חל על המוצר שבמסך —
+  // אותה בדיקה שב-`priceOf`, מאותה סיבה.
+  const pickup = s.referral?.pickup === true && s.referral.productType === (s.product ?? "bracelet");
   // התנאים נכללים בשער. הם אושרו במסך הסיכום, אבל האישור חי ב-state בזיכרון
   // ומה שנשמר בשרת חייב עדות מהרגע שבו ההזמנה נשלחה — ראו את תיבת הסימון למטה.
-  const ok = addrValid(s.addr) && s.terms && !codeBlocking;
+  const ok = addrValid(s.addr, pickup) && s.terms && !codeBlocking;
   const setAddr = (patch: Partial<Addr>) => set({ addr: { ...s.addr, ...patch } });
 
   // השגיאה נכתבת ביציאה מהשדה ולא בהקלדה: "מספר לא תקין" על התו הראשון הוא
@@ -68,7 +78,7 @@ export function CheckoutScreen({
   const errorFor = (k: keyof Addr): string | null => {
     if (!touched[k]) return null;
     const v = s.addr[k].trim();
-    if (!v) return REQUIRED.includes(k) ? d.addrErrors.required : null;
+    if (!v) return (pickup ? REQUIRED_PICKUP : REQUIRED).includes(k) ? d.addrErrors.required : null;
     if (k === "phone" && !isValidPhone(v)) return d.addrErrors.phone;
     if (k === "email" && !emailValid(v)) return d.addrErrors.email;
     if (k === "name" && !nameValid(v)) return d.addrErrors.name;
@@ -105,7 +115,14 @@ export function CheckoutScreen({
         <div>
           {/* כתובת */}
           <div className="border border-graphite/10 bg-chalk p-6">
-            <CardLabel>{d.addrTitle}</CardLabel>
+            <CardLabel>{pickup ? d.addrTitlePickup : d.addrTitle}</CardLabel>
+            {/* באיסוף עצמי הכתובת נשארת על המסך אבל מפסיקה להיות חובה: מי
+                שכבר מילא אותה לא מאבד אותה, ומי שבא לאסוף לא ממציא כתובת. */}
+            {pickup && (
+              <p className="mb-4 border-s-2 border-lapis bg-porcelain p-4 text-sm leading-relaxed text-ink80">
+                {d.pickupNote}
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <TextInput
@@ -117,14 +134,14 @@ export function CheckoutScreen({
               </div>
               <div className="sm:col-span-2">
                 <TextInput
-                  label={d.addrFields.street} required placeholder={d.addrPlaceholders.street}
+                  label={d.addrFields.street} required={!pickup} placeholder={d.addrPlaceholders.street}
                   value={s.addr.street} onChange={(v) => setAddr({ street: v })}
                   onBlur={() => touch("street")} error={errorFor("street")}
                   autoComplete="street-address"
                 />
               </div>
               <TextInput
-                label={d.addrFields.city} required placeholder={d.addrPlaceholders.city}
+                label={d.addrFields.city} required={!pickup} placeholder={d.addrPlaceholders.city}
                 value={s.addr.city} onChange={(v) => setAddr({ city: v })}
                 onBlur={() => touch("city")} error={errorFor("city")}
                 autoComplete="address-level2"
@@ -213,7 +230,7 @@ export function CheckoutScreen({
             <Row k={d.checkoutKeys.item} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.checkoutKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
             <Row k={d.checkoutKeys.width} v={`${mmLabel(width)} ${d.mm}`} />
-            <Row k={d.checkoutKeys.delivery} v={d.deliveryVal} />
+            <Row k={d.checkoutKeys.delivery} v={pickup ? d.pickupVal : d.deliveryVal} />
             {/* שורת הקוד, ולא שורת הנחה: היא אומרת **לפי מה** תומחר, בלי
                 לגלות מה היה המחיר בלעדיו. הסכום למטה נשאר מספר יחיד. */}
             {s.referral && (
@@ -327,7 +344,10 @@ function ReferralField({
           if (!alive) return;
           if (res.ok) {
             set({
-              referral: { code: res.code, label: res.label, productType: product, price: res.price },
+              referral: {
+                code: res.code, label: res.label, productType: product,
+                price: res.price, pickup: res.pickup,
+              },
               referralError: null,
               referralChecking: false,
             });

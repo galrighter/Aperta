@@ -42,6 +42,7 @@ const ORDER: OrderRow = {
   paid_at: null,
   referral_code_id: null,
   referral_code: null,
+  pickup: false,
   created_at: "2026-07-28T00:00:00.000Z",
   updated_at: "2026-07-28T00:00:00.000Z",
 };
