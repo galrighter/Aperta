@@ -258,21 +258,23 @@ html,body{{width:1080px;height:1920px;background:var(--graphite);position:relati
 write("story-cta.html", story, size=(1080, 1920))
 
 # ---------------------------------------------------------------- 8. Post: friends & family launch (WhatsApp)
-# קארד השקה לוואטסאפ — נשלח ידנית לאנשים קרובים, ולכן הוא נושא את מחירי
-# העלות של סבב ההשקה (צמיד ₪95, טבעת ₪60) ולא את מחיר המחירון שבאתר.
-# ההודעה המילולית שמלווה אותו: docs/brand/social/whatsapp-launch.md.
+# קארד השקה לוואטסאפ — נשלח ידנית לאנשים קרובים. המחירים וסיפור 25
+# ההזמנות חיים בהודעה המילולית בלבד (docs/brand/social/whatsapp-launch.md);
+# הקארד עצמו מציג את שני המוצרים — הצמיד כתצלום הרקע, הטבעת כהדמיה
+# בקארד התחתון — עם שורות ההסבר.
 # הפונטים לכותרות: 'Archivo' לא מכיל עברית, ולכן 'Assistant' חייב להופיע
 # אחריו בשרשרת — אחרת עברית נופלת ל-sans-serif של המערכת.
-launch_prices = [
-    ("צמיד פתוח", "₪95"),
-    ("טבעת פתוחה", "₪60"),
+launch_points = [
+    "עיצוב אישי בשיחה — בלי תוכנות גרפיקה",
+    "כל עיצוב נבדק אוטומטית לפני הייצור",
+    "פליז C260 אמיתי · חיתוך לייזר · ליטוש יד",
 ]
-launch_price_cols = '<div class="divider"></div>'.join(
-    f'''<div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-<div style="font-size:30px;font-weight:600;color:var(--graphite);">{name}</div>
-<div style="font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:56px;color:var(--lapis-ink);" dir="ltr">{price}</div>
+launch_point_rows = "".join(
+    f'''<div style="display:flex;align-items:center;gap:16px;">
+<div style="width:10px;height:10px;border-radius:50%;background:var(--lapis-ink);flex:none;"></div>
+<div style="font-size:26px;color:var(--graphite);font-weight:400;">{point}</div>
 </div>'''
-    for name, price in launch_prices
+    for point in launch_points
 )
 
 post_launch = f'''<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">{FONTS_LINK}<style>{BASE_CSS}
@@ -283,11 +285,13 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 .headline{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:62px;color:var(--graphite);letter-spacing:-0.01em;}}
 .headline .accent{{color:var(--lapis-ink);}}
 .sub{{font-size:27px;color:var(--graphite);opacity:0.75;max-width:840px;font-weight:400;line-height:1.5;}}
-.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.58);backdrop-filter:blur(16px);border-radius:28px;padding:36px 52px 32px;display:flex;flex-direction:column;align-items:center;gap:18px;}}
-.prices{{display:flex;align-items:center;gap:70px;}}
-.divider{{width:1px;height:76px;background:rgba(32,35,38,0.18);}}
-.costnote{{font-size:24px;font-weight:600;color:var(--graphite);opacity:0.8;}}
-.url{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:26px;color:var(--lapis-ink);letter-spacing:0.03em;}}
+.card{{position:absolute;bottom:64px;left:80px;right:80px;background:rgba(244,241,235,0.58);backdrop-filter:blur(16px);border-radius:28px;padding:34px 44px;display:flex;align-items:center;gap:44px;}}
+.info{{flex:1;display:flex;flex-direction:column;gap:20px;}}
+.card-title{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:34px;color:var(--graphite);}}
+.url{{font-family:'Archivo','Assistant',sans-serif;font-weight:700;font-size:26px;color:var(--lapis-ink);letter-spacing:0.03em;margin-top:4px;}}
+.thumb{{flex:none;width:250px;display:flex;flex-direction:column;align-items:center;gap:12px;}}
+.thumb-img{{width:250px;height:230px;border-radius:20px;background-image:url('{photo_url("ring-hero.webp")}');background-size:190%;background-position:50% 58%;box-shadow:0 18px 40px rgba(32,35,38,0.22);}}
+.thumb-label{{font-size:24px;font-weight:600;color:var(--graphite);opacity:0.8;}}
 </style></head><body>
 <div class="photo"></div>
 <div class="top">
@@ -297,11 +301,15 @@ html,body{{width:1080px;height:1080px;background:var(--porcelain);position:relat
 <div class="sub">מתארים במילים — מנוע העיצוב מצייר, ואנחנו חותכים בלייזר ומלטשים ביד.</div>
 </div>
 <div class="card">
-<div class="prices">
-{launch_price_cols}
-</div>
-<div class="costnote">25 ההזמנות הראשונות — ניסוי כלים בייצור, ולכן מחיר עלות בלבד</div>
+<div class="info">
+<div class="card-title">צמיד פתוח · טבעת פתוחה</div>
+{launch_point_rows}
 <div class="url" dir="ltr">aperta-designs.com</div>
+</div>
+<div class="thumb">
+<div class="thumb-img"></div>
+<div class="thumb-label">טבעת פתוחה</div>
+</div>
 </div>
 </body></html>'''
 write("post-launch.html", post_launch, size=(1080, 1080))
