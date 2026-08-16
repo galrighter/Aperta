@@ -32,6 +32,7 @@ import { OpeningScreen } from "@/components/create/OpeningScreen";
 import { AccountBar, AccountGate } from "@/components/create/AccountGate";
 import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client/pendingCreate";
 import { popStoryHandoff } from "@/lib/client/storyHandoff";
+import { STORY_MODE, isStory } from "@/lib/story/mode";
 import { story } from "@/i18n/story";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
@@ -749,6 +750,10 @@ export default function DesignPage() {
             await api.createDesign({
               productType: st.product ?? "bracelet",
               name: `${st.product === "ring" ? he.ring : he.bracelet} · ${Math.round(circumferenceMm(st))}${d.mm}`,
+              // המסלול נשמר על הרשומה (0024) ולא רק ב-state של העמוד: הוא מה
+              // שקובע את סדר השלבים, ולקוחה שחוזרת לעיצוב הזה — מהרשימה, מקישור
+              // במייל, או ממכשיר אחר — חייבת לקבל את אותו סדר. ראה `resume`.
+              mode: st.story ? STORY_MODE : undefined,
             })
           ).design;
       // המידות נשלחות בכל מקרה: הן יכולות להשתנות בין ניסיון לניסיון.
@@ -999,6 +1004,13 @@ export default function DesignPage() {
         // כתבה את המספר המנופח לעיצוב. הפירוט: `sizeOfDesign` ב-model.ts.
         const fit = pick(item.fit, ["tight", "regular", "loose"], INITIAL.fit);
         const sizes = sizeFieldsOfDesign(design, fit);
+        /* story mode — המסלול נקרא מהרשומה (0024), לא מהזיכרון.
+           `INITIAL.story` הוא false, וכל חזרה לעיצוב שמור נבנית עליו — כלומר עד
+           כאן עיצוב שנוצר במסלול Story חזר כעיצוב רגיל: מסך המידות ירד מהסרגל
+           (`STORY_RAIL`), "בחר עיצוב" דילג מהתוצאה ישר לסיכום, וההזמנה יצאה
+           באורך העוגן שהרשומה נפתחה בו — בלי שאיש נשאל. עיצוב שנוצר לפני
+           המיגרציה מחזיר `undefined` ונשאר במסלול הרגיל, כמו קודם. */
+        const story = isStory(design.mode);
 
         // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
         // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס. עם הסבר: בלעדיו
@@ -1006,6 +1018,7 @@ export default function DesignPage() {
         if (!last) {
           setState({
             ...INITIAL,
+            story,
             resumeIncomplete: true,
             screen: "brief",
             product: design.product_type,
@@ -1020,7 +1033,9 @@ export default function DesignPage() {
             fit,
             attrsAuto: item.attrsAuto ?? INITIAL.attrsAuto,
           });
-          setMaxReached(2);
+          // הצעד שנפתח, לפי הסרגל של **המסלול** — "תיאור" הוא השלישי ברגיל
+          // והראשון ב-Story. מספר קבוע כאן היה פותח ב-Story צעד שאין בו.
+          setMaxReached(railIndex(story, "brief"));
           setResumingId(null);
           pushScreen("brief");
           scrollToTop();
@@ -1049,6 +1064,7 @@ export default function DesignPage() {
         const byRun = candidatesByGeneration(versions);
         setState({
           ...INITIAL,
+          story,
           screen: "result",
           product: design.product_type,
           designId: design.id,
@@ -1076,7 +1092,10 @@ export default function DesignPage() {
           })),
           activeEdit: versions.length - 1,
         });
-        setMaxReached(3);
+        // "עיצוב" הוא הצעד הרביעי ברגיל והשני ב-Story. במסלול Story המידה
+        // יושבת **אחריו**, ולכן היא נפתחת בלחיצה על "בחר עיצוב" ולא מהסרגל —
+        // בדיוק כמו ביצירה הראשונה.
+        setMaxReached(railIndex(story, "result"));
         setResumingId(null);
         // הרשומה המקומית נכתבת כ-`pending` כבר עם יצירת העיצוב, ומי שמעדכן
         // אותה הוא המסך שקיבל את הגרסה. מי שאיבדה את החוט באמצע לא עברה שם,
