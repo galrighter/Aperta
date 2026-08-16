@@ -49,6 +49,10 @@ jobs:
     # תחזיק runner שעה.
     timeout-minutes: 45
     steps:
+      # הסקריפט חי בריפו, ולכן צריך למשוך אותו. הקנרית שלצידה לא עושה זאת כי
+      # היא כולה `curl` בתוך ה-YAML — וזה בדיוק ההבדל שהפיל את ההרצה הראשונה.
+      - uses: actions/checkout@v4
+
       - name: Run the story pipeline on a tester profile
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
