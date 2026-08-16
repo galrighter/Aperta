@@ -22,11 +22,17 @@ export const metadata: Metadata = {
  * מסלולי המרה מלאים שמסתיימים באותו מוצר, והיררכיה ביניהם הייתה מטה את
  * התנועה מראש. ההבדל היחיד הוא במילים.
  *
- * הגוף מגיע בשתי גרסאות: המלא לדסקטופ, והקצר לנייד — שם כל שורה נלקחת
- * מהמטרה של המסך הראשון (ראו ההערה על ה-hero למטה).
+ * **בלי רקע.** הדלת שקופה — כמו הוויטרינה שמתחתיה: כרטיס `chalk` נקרא על
+ * הדקורציה כריבוע לבן גדול. הטקסט יושב ישירות על `ArchBackground`, ולכן כל
+ * הטוקנים הקטנים כאן הם אלה שעוברים 4.5:1 גם מול קו הקצה של הלוח —
+ * `lapis-ink` ו-`ink80`, אותה הכרעה של StoryHome. הגבול היחיד הוא קו המתאר
+ * של הצומת וקו ההפרדה בין הדלתות.
+ *
+ * הגוף מגיע בשתי גרסאות: המלא לדסקטופ, והקצר לנייד — שם שתי הדלתות עומדות
+ * זו לצד זו בעמודות צרות, וכל שורה נלקחת מהמטרה של המסך הראשון.
  */
 function Gate({
-  eyebrow, title, body, bodyShort, steps, cta, href,
+  eyebrow, title, body, bodyShort, steps, cta, href, divider = false,
 }: {
   eyebrow: string;
   title: string;
@@ -35,34 +41,45 @@ function Gate({
   steps: readonly string[];
   cta: string;
   href: string;
+  /** קו הפרדה בצד הפתיחה — לדלת השנייה בצומת. */
+  divider?: boolean;
 }) {
   return (
-    <article className="flex flex-col items-start bg-chalk p-5 sm:p-8">
-      <div className="mb-1.5 font-display text-[10px] tracking-[0.26em] text-lapis-ink sm:mb-2.5 sm:text-[11px]">
+    <article
+      className={`flex min-w-0 flex-col items-start p-3.5 sm:p-8 ${
+        divider ? "border-s border-graphite/[0.14]" : ""
+      }`}
+    >
+      <div className="mb-1.5 font-display text-[9px] tracking-[0.18em] text-lapis-ink sm:mb-2.5 sm:text-[11px] sm:tracking-[0.26em]">
         {eyebrow}
       </div>
-      <h2 className="mb-1.5 text-[20px] font-semibold sm:mb-2.5 sm:text-[26px]" style={{ letterSpacing: "-0.5px" }}>
+      <h2 className="mb-1.5 text-[17px] font-semibold sm:mb-2.5 sm:text-[26px]" style={{ letterSpacing: "-0.5px" }}>
         {title}
       </h2>
       <p className="mb-3 hidden max-w-[42ch] text-[15.5px] leading-relaxed text-ink80 sm:block sm:flex-1" style={{ textWrap: "pretty" }}>
         {body}
       </p>
-      <p className="mb-2.5 text-[13px] leading-snug text-ink80 sm:hidden">{bodyShort}</p>
-      {/* ארבעת השלבים — הדפוס של StoryHome: שורה אחת, מילה לשלב, מספרים
-          דקורטיביים (הסדר כבר במבנה הרשימה, ולכן מוסתרים מקורא מסך). */}
-      <ol className="mb-3.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1 sm:mb-5 sm:gap-x-3.5">
+      <p className="mb-2.5 flex-1 text-[12px] leading-snug text-ink80 sm:hidden" style={{ textWrap: "pretty" }}>
+        {bodyShort}
+      </p>
+      {/* ארבעת השלבים — הדפוס של StoryHome: מילה לשלב, מספרים דקורטיביים
+          (הסדר כבר במבנה הרשימה, ולכן מוסתרים מקורא מסך). בעמודה הצרה של
+          הנייד הם נשברים לשתי שורות של שניים — ה-wrap הוא הפריסה, לא תקלה. */}
+      <ol className="mb-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:mb-5 sm:gap-x-3.5 sm:gap-y-1">
         {steps.map((step, i) => (
           <li key={step} className="flex items-baseline gap-1 whitespace-nowrap">
-            <span aria-hidden="true" className="font-display text-[9px] tracking-[0.16em] text-lapis-ink">
+            <span aria-hidden="true" className="font-display text-[8px] tracking-[0.16em] text-lapis-ink sm:text-[9px]">
               {String(i + 1).padStart(2, "0")}
             </span>
-            <span className="text-[12px] font-medium text-graphite sm:text-[13.5px]">{step}</span>
+            <span className="text-[10.5px] font-medium text-graphite sm:text-[13.5px]">{step}</span>
           </li>
         ))}
       </ol>
+      {/* בנייד הכפתור נשבר לשתי שורות כשצריך — עמודה של 165px אינה מכילה
+          "לתכנן לפי הדרישות שלי" בשורה, וקיצור הטקסט היה מחליש את הפעולה. */}
       <Link
         href={href}
-        className="w-full rounded-[2px] bg-graphite px-6 py-3 text-center text-[15px] font-semibold tracking-wide text-porcelain transition-colors hover:bg-graphite/90 sm:w-auto sm:px-8 sm:py-3.5 sm:text-[16px]"
+        className="mt-auto w-full rounded-[2px] bg-graphite px-2 py-2.5 text-center text-[12.5px] font-semibold text-porcelain transition-colors hover:bg-graphite/90 sm:w-auto sm:px-8 sm:py-3.5 sm:text-[16px] sm:tracking-wide"
       >
         {cta}
       </Link>
@@ -77,10 +94,11 @@ function Gate({
 // (`/design`) או יצירה מסיפור (`/story/create`). את עבודת השכנוע הממוקדת
 // עושים דפי הנחיתה שנשארו כפי שהם: `/story` והדף הישן ב-`/design-yours`.
 //
-// **המסך הראשון בנייד: hero + שתי הדלתות, בלי גלילה.** מכאן הקיצוצים:
-// תת-הכותרת מוסתרת בנייד, גוף הדלת מתקצר לשורה, והריפודים הדוקים. אותו
-// עיקרון שהוחל על הוויטרינה של `/story` — `min-h` ולא `h`, כדי שמי שהגדילה
-// גופן תקבל גלישה ולא חיתוך.
+// **המסך הראשון בנייד: hero + שתי הדלתות, בלי גלילה.** הדלתות עומדות זו
+// לצד זו גם בנייד — הבחירה היא השוואה, והשוואה עושים זה לצד זה. מכאן
+// הקיצוצים: תת-הכותרת מוסתרת, הגוף מתקצר לגרסה הקצרה, והריפודים הדוקים.
+// אותו עיקרון שהוחל על הוויטרינה של `/story` — `min-h` ולא `h`, כדי שמי
+// שהגדילה גופן תקבל גלישה ולא חיתוך.
 //
 // תמונת הצמיד של הדף הישן לא כאן: כשהעמוד הוא צומת, תמונה גדולה דוחפת את
 // ההחלטה אל מתחת לקו הקיפול. את "מה יוצא מזה" מראה הוויטרינה שמתחת לצומת.
@@ -121,7 +139,10 @@ export default function HomePage() {
             aria-hidden="true"
             className="pointer-events-none absolute -top-3 -left-3 h-full w-full border-[1.5px] border-lapis/40 sm:-top-4 sm:-left-4"
           />
-          <div className="relative grid gap-px border border-graphite/[0.14] bg-graphite/[0.14] sm:grid-cols-2">
+          {/* שתי עמודות גם בנייד: הבחירה היא ההשוואה, והשוואה עושים זה לצד
+              זה. הדלתות שקופות, ולכן הגבול הוא קו מתאר אחד + קו הפרדה —
+              לא רקע. */}
+          <div className="relative grid grid-cols-2 border border-graphite/[0.14]">
             <Gate
               eyebrow={s.gatePlanEyebrow}
               title={s.gatePlanTitle}
@@ -139,6 +160,7 @@ export default function HomePage() {
               steps={s.gateStorySteps}
               cta={s.gateStoryCta}
               href="/story/create"
+              divider
             />
           </div>
         </div>
