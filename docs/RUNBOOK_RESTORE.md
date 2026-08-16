@@ -25,8 +25,8 @@ scp <user>@<hetzner-host>:/var/backups/aperta/aperta-db-YYYY-MM-DD.sql.gz.gpg .
 ```
 
 **משני** — ‏Actions → **Backup database** → הריצה האחרונה שהצליחה → artifact
-‏`db-backup-<run_id>`. שבוע בלבד, ורק כשהקובץ מוצפן: הריפו ציבורי, ו-artifact
-בריפו ציבורי ניתן להורדה בידי כל בעל חשבון GitHub.
+‏`db-backup-<run_id>`. שבוע בלבד, ורק כשהקובץ מוצפן: ‏artifact נגיש לכל מי שיש
+לו גישת קריאה לריפו, וגיבוי הוא כל מאגר הלקוחות בקובץ אחד.
 
 ```bash
 # פענוח

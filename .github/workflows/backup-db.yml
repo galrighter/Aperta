@@ -19,11 +19,13 @@ name: Backup database
 #   1. **‏`/var/backups/aperta/` בשרת ה-Hetzner** — היעד הראשי, 90 יום.
 #   2. **‏artifact של הריצה** — עותק שני, שבוע, ורק כשהקובץ מוצפן.
 #
-# הסדר הזה אינו שרירותי: **הריפו ציבורי**, ו-artifact בריפו ציבורי ניתן
-# להורדה בידי כל בעל חשבון GitHub. ‏dump שמכיל שמות, מיילים, טלפונים וכתובות
-# של לקוחות אינו דבר שההגנה היחידה עליו היא הצפנה. השרת שלנו, לעומת זאת, הוא
-# גם פרטי, גם עם מקום בשפע, וגם בלתי תלוי ב-Supabase — כלומר הוא עומד בדיוק
-# בתרחיש שהגיבוי נועד לו.
+# הסדר הזה אינו שרירותי. הריפו ציבורי נכון לכתיבת השורות האלה (16.8), ‏artifact
+# בריפו ציבורי ניתן להורדה בידי כל בעל חשבון GitHub, וזה הפך את ההצפנה להגנה
+# **היחידה** על dump עם שמות, מיילים, טלפונים וכתובות של לקוחות. אבל ההחלטה
+# אינה תלויה בכך ולא תתיישן כשהריפו יהפוך לפרטי: גם אז ה-artifact נגיש לכל
+# שותף בריפו ולכל טוקן שדלף, בעוד ה-dump הוא **כל** מאגר הלקוחות בקובץ אחד.
+# השרת שלנו הוא פרטי, יש בו מקום בשפע, והוא בלתי תלוי ב-Supabase — כלומר הוא
+# עומד בדיוק בתרחיש שהגיבוי נועד לו.
 #
 # **מה שנדרש להגדיר:** `SUPABASE_DB_URL` (אותו secret שהמיגרציות משתמשות בו —
 # חובה מחרוזת ה-Session pooler; ראו migrate.yml), ‏`HETZNER_SSH`/`HETZNER_HOST`/
@@ -115,19 +117,17 @@ jobs:
             echo "artifact=$file.gpg" >> "$GITHUB_OUTPUT"
             echo "encrypted=yes" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::BACKUP_PASSPHRASE is not set — the dump holds customer names, emails, phones and addresses. It will be sent to Hetzner but NOT kept as a run artifact (this repository is public)."
+            echo "::warning::BACKUP_PASSPHRASE is not set — the dump holds customer names, emails, phones and addresses. It will be sent to Hetzner but NOT kept as a run artifact."
             echo "artifact=$file" >> "$GITHUB_OUTPUT"
             echo "encrypted=no" >> "$GITHUB_OUTPUT"
           fi
 
       # ===== היעד הראשי: השרת ב-Hetzner =====
       #
-      # **למה לא GitHub כיעד ראשי.** הריפו הזה **ציבורי**, ו-artifact של ריצה
-      # בריפו ציבורי ניתן להורדה בידי כל מי שמחזיק חשבון GitHub. גיבוי מסד
-      # שמכיל שמות, מיילים, טלפונים וכתובות של לקוחות אינו דבר שמניחים שם —
-      # ההצפנה היא מה שמפריד בין "artifact" לבין "דלף", והיא לא אמורה להיות
-      # ההגנה היחידה. השרת ב-Hetzner הוא שלנו, יש בו מקום בשפע, והוא בלתי
-      # תלוי ב-Supabase — כלומר הוא עומד בדיוק בתרחיש שהגיבוי נועד לו.
+      # **למה לא GitHub כיעד ראשי.** ‏artifact של ריצה נגיש לכל מי שיש לו
+      # גישת קריאה לריפו — היום, כשהוא ציבורי, זה כל בעל חשבון GitHub; גם
+      # אחרי המעבר לפרטי זה כל שותף וכל טוקן שדלף. גיבוי מסד הוא **כל** מאגר
+      # הלקוחות בקובץ אחד, וההצפנה לא אמורה להיות ההגנה היחידה עליו.
       #
       # אותם ארבעה secrets שהפריסה כבר משתמשת בהם (deploy-vectorizer.yml).
       - name: Ship it to Hetzner
@@ -169,8 +169,8 @@ jobs:
 
       # ===== היעד המשני: artifact של הריצה =====
       #
-      # שני מקומות ולא אחד — אבל רק כשהקובץ מוצפן. ראו הנימוק למעלה: הריפו
-      # ציבורי. בלי הצפנה הצעד הזה מדלג, והגיבוי חי ב-Hetzner בלבד.
+      # שני מקומות ולא אחד — אבל רק כשהקובץ מוצפן. ראו הנימוק למעלה. בלי
+      # הצפנה הצעד הזה מדלג, והגיבוי חי ב-Hetzner בלבד.
       - name: Keep a second copy as a run artifact
         if: steps.dump.outputs.encrypted == 'yes'
         uses: actions/upload-artifact@v4
