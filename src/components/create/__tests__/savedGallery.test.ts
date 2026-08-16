@@ -15,7 +15,9 @@ import { clampPage, pageCount, pageItems, SAVED_PAGE_SIZE } from "../savedPaging
 //    והשאר נחתכו בשקט — בלי שום סימן שהן קיימות.
 
 const SRC = join(process.cwd(), "src");
-const CARD = readFileSync(join(SRC, "components/create/SavedDesigns.tsx"), "utf8");
+// הכרטיס חולץ לקובץ משלו כשדף /designs נולד — הבדיקות עוקבות אחריו לשם.
+const CARD = readFileSync(join(SRC, "components/create/SavedDesignCard.tsx"), "utf8");
+const LIST = readFileSync(join(SRC, "components/create/SavedDesigns.tsx"), "utf8");
 const STORE = readFileSync(join(SRC, "lib/client/myDesigns.ts"), "utf8");
 
 describe("מסגרת הציור של הכרטיס", () => {
@@ -107,7 +109,7 @@ describe("העימוד", () => {
 
   it("רק הכרטיסים שנראים מבקשים ציור מהשרת", () => {
     // חמישים עיצובים הם חמישים בקשות מטלפון, ורובן עבור עמוד שאיש לא פתח.
-    expect(CARD).toContain("onOpen?.(visibleIds ? visibleIds.split(\",\") : [])");
+    expect(LIST).toContain("onOpen?.(visibleIds ? visibleIds.split(\",\") : [])");
   });
 });
 
