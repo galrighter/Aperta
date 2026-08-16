@@ -37,6 +37,19 @@ export interface OpsStatus {
   lastApprovedAt: string | null;
   /** ההרצות הבעייתיות האחרונות, מהחדשה לישנה. */
   recentProblems: OpsProblemRun[];
+  /**
+   * פרופילים שמצביעים למשתמש אימות שאינו קיים (0024).
+   *
+   * עד 16.8 מצב כזה נמנע ב-FK, שהוסר כדי שהגיבוי יהיה בר-שחזור בפעולה אחת.
+   * מה שהוא מנע — הקוד מונע (‏`linkAuthUser` הוא הכותב היחיד, והוא מרפא
+   * מזהה מיותם בכניסה הבאה); מה שהוא **הבטיח** — שזה לא יקרה בשקט — עבר
+   * לכאן. מספר גדול מאפס אינו תקלה בהכרח: משתמש שנמחק ידנית ועוד לא נכנס
+   * שוב ייספר כאן עד שייכנס. מספר שגדל ולא יורד הוא כן סיפור.
+   *
+   * `null` = השאילתה לא הצליחה (מסד שעוד לא קיבל את 0024). "לא נמדד" ו-0
+   * הם שתי תשובות שונות, ובסטטוס תפעולי אסור לבלבל ביניהן.
+   */
+  danglingAuthLinks: number | null;
 }
 
 export async function opsStatus(): Promise<OpsStatus> {
@@ -44,7 +57,7 @@ export async function opsStatus(): Promise<OpsStatus> {
   const now = new Date();
   const iso = (msAgo: number) => new Date(now.getTime() - msAgo).toISOString();
 
-  const [errors2h, errors24h, stuck, lastApproved, problems] = await Promise.all([
+  const [errors2h, errors24h, stuck, lastApproved, problems, dangling] = await Promise.all([
     countErrorRunsSince(iso(2 * 60 * 60_000)),
     countErrorRunsSince(iso(24 * 60 * 60_000)),
     sb
@@ -64,6 +77,16 @@ export async function opsStatus(): Promise<OpsStatus> {
       .neq("status", "approved")
       .order("created_at", { ascending: false })
       .limit(PROBLEMS_LIMIT),
+    // ‏RPC ולא שאילתה: `auth.users` אינה חשופה דרך PostgREST, ולכן ההצלבה
+    // חייבת לרוץ במסד (‏`dangling_auth_links`, ‏security definer, 0024).
+    //
+    // **לא זורק.** זה חיישן היגיינה בתוך תמונת מצב תפעולית, ומסד שעוד לא
+    // קיבל את 0024 יחזיר שגיאה — שהיא לא סיבה להשבית את כל הסטטוס, שהוא
+    // הדבר שהתורן קורא כדי לדעת אם היצירה חיה.
+    sb.rpc("dangling_auth_links").then(
+      (r) => (r.error ? null : (r.data as number)),
+      () => null,
+    ),
   ]);
   if (stuck.error) throw new Error(stuck.error.message);
   if (lastApproved.error) throw new Error(lastApproved.error.message);
@@ -95,5 +118,6 @@ export async function opsStatus(): Promise<OpsStatus> {
       source: r.source,
       durationMs: r.duration_ms,
     })),
+    danglingAuthLinks: dangling,
   };
 }

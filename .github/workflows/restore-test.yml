@@ -129,22 +129,22 @@ jobs:
           gunzip -c dump.sql.gz > dump.sql
           echo "decompressed: $(stat -c%s dump.sql) bytes"
 
-      # **המכשול היחיד בשחזור, ולמה הוא כאן.**
+      # **נשאר בשביל גיבויים ישנים בלבד.**
       #
-      # `profiles.auth_user_id` נושא FK ל-`auth.users` — טבלה של Supabase Auth
-      # שאינה בסכימה `public` ולכן אינה בדאמפ. בשחזור לפרויקט חדש
-      # ‏`auth.users` קיימת אבל **ריקה** (המשתמשים נכנסים מחדש במייל), ולכן
-      # המשפט שמוסיף את ה-FK — שרץ בסוף, אחרי שכל הנתונים כבר נטענו — נכשל:
+      # ה-FK מ-`profiles.auth_user_id` ל-`auth.users` הוסר במיגרציה 0024 —
+      # ‏`auth.users` אינה בסכימה `public` ולכן אינה בדאמפ, ובשחזור לפרויקט
+      # חדש היא ריקה, כך שהמשפט שהוסיף את ה-FK (בסוף, אחרי שכל הנתונים כבר
+      # נטענו) נכשל:
       #
       #     ERROR: insert or update on table "profiles" violates foreign key
       #     constraint "profiles_auth_user_id_fkey"
       #     DETAIL: Key (auth_user_id)=(…) is not present in table "users".
       #
-      # זה שוחזר במדויק (16.8) על Postgres מקומי עם עותק של הסכימה. כלומר
-      # הגיבוי היה נעצר באמצע דווקא בשחזור אמיתי — וזו בדיוק הסיבה שתרגיל
-      # שחזור אינו מותרות. ההשמטה כאן היא אותה השמטה שה-runbook מורה עליה
-      # (docs/RUNBOOK_RESTORE.md §4), ולכן התרגיל בודק את המסלול האמיתי.
-      - name: Drop the out-of-scope auth.users constraint
+      # זה שוחזר במדויק (16.8) על Postgres מקומי, וזו הסיבה שהמיגרציה נכתבה.
+      # דאמפ חדש כבר לא נושא את המשפט — אבל הגיבויים נשמרים 90 יום, והתרגיל
+      # אמור לעבוד גם על קובץ מלפני התיקון. הסינון אינו מזיק לדאמפ חדש: הוא
+      # פשוט לא מוצא מה להסיר, ומדפיס `dropped 0`.
+      - name: Drop the out-of-scope auth.users constraint (pre-0024 backups)
         run: |
           set -euo pipefail
           # מכונת מצבים ולא `grep -v`: המשפט פרוס על שתי שורות.
@@ -160,8 +160,14 @@ jobs:
               printf("dropped %d auth.users constraint(s)\n", dropped) > "/dev/stderr"
             }
           ' dump.sql > dump-restorable.sql
-          grep -c 'auth\.users' dump-restorable.sql \
-            && { echo "::error::auth.users references remain after filtering"; exit 1; } || true
+          # `REFERENCES auth.users` ולא כל אזכור: גוף `dangling_auth_links()`
+          # (0024) מזכיר את `auth.users` בכוונה, והוא משוחזר בלי בעיה —
+          # ה-dump נושא `SET check_function_bodies = false`. מה שאסור להישאר
+          # הוא **מפתח זר**, וזו הצורה היחידה שלו.
+          if grep -q 'REFERENCES auth\.users' dump-restorable.sql; then
+            echo "::error::a foreign key to auth.users survived the filter"
+            exit 1
+          fi
 
       - name: Restore into a clean Postgres
         env:
@@ -174,24 +180,37 @@ jobs:
             -v ON_ERROR_STOP=1 -q -f dump-restorable.sql
           echo "restore completed without errors"
 
-      # והקישורים עצמם — עקביים בתוך הדאמפ? בונים את `auth.users` מהערכים
-      # שהפרופילים מצביעים אליהם ומחזירים את ה-FK. אם הוא עולה, המשמעות היא
-      # שאין בדאמפ פרופיל שמצביע לשומקום: אחרי שהלקוחות ייכנסו מחדש, הקישור
-      # ניתן לשחזור מלא ולא נשאר שבור.
-      - name: Prove the auth links are internally consistent
+      # **הבעלות על חשבון לא התפצלה בשחזור.**
+      #
+      # מה שאפשר לבדוק כאן, ומה שלא: "האם `auth_user_id` מצביע למשתמש קיים"
+      # **אינו** ניתן לבדיקה בתרגיל — `auth.users` אינה בדאמפ, וכל ניסיון
+      # לבנות אותה מהערכים שבדאמפ הוא בדיקה מעגלית שלא יכולה להיכשל. את
+      # השאלה ההיא עונה `dangling_auth_links()` מול המסד החי (0024).
+      #
+      # מה שכן נבדק כאן הוא האינווריאנט שבאמת חשוב ושכן שרד לדאמפ: **שני
+      # פרופילים לא מצביעים לאותו חשבון.** זו ההגנה מפני "לקוחה נכנסת ומקבלת
+      # את העיצובים של מישהי אחרת", והיא נאכפת ב-`idx_profiles_auth_user` —
+      # שחייב לשרוד את השחזור, ולא רק הנתונים.
+      - name: Prove account ownership did not split
         env:
           PGPASSWORD: postgres
         run: |
           set -euo pipefail
-          "$PGBIN/psql" -h localhost -U postgres -d restore_test -v ON_ERROR_STOP=1 -q -c "
-            create schema if not exists auth;
-            create table if not exists auth.users (id uuid primary key);
-            insert into auth.users (id)
-              select distinct auth_user_id from profiles where auth_user_id is not null
-              on conflict do nothing;
-            alter table profiles add constraint profiles_auth_user_id_fkey
-              foreign key (auth_user_id) references auth.users(id) on delete set null;"
-          echo "auth links are internally consistent"
+          q() { "$PGBIN/psql" -h localhost -U postgres -d restore_test -tAc "$1"; }
+
+          dupes=$(q "select count(*) from (
+                       select auth_user_id from profiles
+                       where auth_user_id is not null
+                       group by auth_user_id having count(*) > 1) d")
+          [ "$dupes" = "0" ] \
+            || { echo "::error::$dupes auth accounts are claimed by more than one profile"; exit 1; }
+
+          # והאינדקס עצמו — הנתונים תקינים היום, והוא מה שמונע מהם להישבר מחר.
+          [ "$(q "select count(*) from pg_indexes
+                  where schemaname='public' and indexname='idx_profiles_auth_user'")" = "1" ] \
+            || { echo "::error::idx_profiles_auth_user did not survive the restore"; exit 1; }
+
+          echo "account ownership is intact and still guarded"
 
       - name: Prove it is usable, not just present
         env:

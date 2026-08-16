@@ -62,12 +62,12 @@ psql "$SUPABASE_DB_URL" -c 'drop schema restore cascade;'
 
 ## 4. שחזור מלא לפרויקט חדש
 
-> **הצעד שאי אפשר לדלג עליו — קראו אותו לפני שמתחילים.**
+> **שלב 2 נדרש רק לגיבויים שנוצרו לפני 16.8.2026.**
 >
-> ‏`profiles.auth_user_id` נושא FK ל-`auth.users`, טבלה של Supabase Auth
-> שאינה בסכימה `public` ולכן **אינה בגיבוי**. בפרויקט חדש היא קיימת אבל
-> ריקה, ולכן המשפט שמוסיף את ה-FK — שרץ **בסוף**, אחרי שכל הנתונים כבר
-> נטענו — נכשל:
+> ה-FK מ-`profiles.auth_user_id` ל-`auth.users` **הוסר** במיגרציה 0024, בדיוק
+> בגלל מה שמתואר כאן: ‏`auth.users` אינה בסכימה `public` ולכן אינה בגיבוי,
+> ובפרויקט חדש היא ריקה — כך שהמשפט שהוסיף את ה-FK, שרץ **בסוף** אחרי שכל
+> הנתונים כבר נטענו, נכשל:
 >
 > ```
 > ERROR: insert or update on table "profiles" violates foreign key constraint
@@ -75,12 +75,15 @@ psql "$SUPABASE_DB_URL" -c 'drop schema restore cascade;'
 > DETAIL: Key (auth_user_id)=(…) is not present in table "users".
 > ```
 >
-> כלומר שחזור "רגיל" נעצר אחרי שעה של טעינה, ומשאיר מסד בלי המפתחות
-> הזרים. ‏שלב 2 למטה מסיר את המשפט האחד הזה מראש; שלב 7 מחזיר אותו.
+> **בגיבוי חדש זה כבר לא קורה** — אין FK בדאמפ, והשחזור הוא פעולה אחת.
+> אבל הגיבויים נשמרים 90 יום, ולכן קובץ מלפני התאריך הזה עדיין נושא את
+> המשפט. שלב 2 מסיר אותו והוא בטוח להריץ תמיד: על דאמפ חדש הוא לא ימצא
+> מה להסיר.
 
 1. פרויקט חדש ב-Supabase → להעתיק את ה-**Session pooler** URL (‏IPv4; החיבור
    הישיר הוא IPv6-only ו-runners נכשלים עליו).
-2. **להסיר את ה-FK ל-`auth.users`** (שתי שורות, ולכן awk ולא grep):
+2. **גיבוי מלפני 16.8 בלבד** — להסיר את ה-FK ל-`auth.users` (שתי שורות,
+   ולכן awk ולא grep):
 
    ```bash
    gunzip -c dump.sql.gz | awk '
@@ -97,19 +100,14 @@ psql "$SUPABASE_DB_URL" -c 'drop schema restore cascade;'
    `SUPABASE_ANON_KEY`, `SUPABASE_DB_URL` — ב-GitHub וב-Cloudflare Workers.
 6. להריץ **Apply Supabase migrations** ידנית — מיגרציה שנוספה אחרי הגיבוי לא
    נמצאת בו.
-7. **הקישור לחשבונות.** ‏`auth.users` ריקה, ולכן `profiles.auth_user_id`
-   מצביע למשתמשים שעדיין לא נכנסו. זה **לא** שובר כלום: הבעלות על העיצוב
-   יושבת על `profiles`, וכניסה מחדש באותו מייל מחברת את הפרופיל חזרה.
-   את ה-FK מחזירים אחרי שהמשתמשים חזרו:
+7. **הקישור לחשבונות — אין מה לעשות.** ‏`auth.users` ריקה, ולכן
+   `profiles.auth_user_id` מצביע למשתמשים שעדיין לא נכנסו. זה **לא** שובר
+   כלום, ואין להחזיר את ה-FK: הבעלות על העיצוב יושבת על `profiles`, ו-
+   `linkAuthUser` מזהה לפי מייל ודורס את המזהה הישן בכניסה הראשונה. כלומר
+   כל לקוחה שנכנסת מרפאה את השורה שלה בעצמה.
 
-   ```sql
-   -- מי שעוד לא נכנס מחדש — מנתקים, כדי שה-FK יוכל לעלות
-   update profiles set auth_user_id = null
-    where auth_user_id is not null
-      and auth_user_id not in (select id from auth.users);
-   alter table profiles add constraint profiles_auth_user_id_fkey
-     foreign key (auth_user_id) references auth.users(id) on delete set null;
-   ```
+   כמה שורות עדיין מיותמות אפשר לראות בכל רגע — זה `danglingAuthLinks`
+   ב-`/api/admin/status`, והוא אמור לרדת לאפס ככל שהלקוחות חוזרות.
 8. לוודא: כניסה לאתר, ‏`/admin/orders` מציג הזמנות, ייצוא קובץ חיתוך של הזמנה
    אחת מסתיים.
 
