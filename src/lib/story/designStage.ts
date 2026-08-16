@@ -55,8 +55,31 @@ import { numberWord } from "./prompt";
 // האסתטיות — "premium", "intentional", "memorable", רשימות ה-Avoid — ירדו
 // כולן. 337 שורות הפכו ל-66.
 //
-// מה שנמדד מול זה: `askedRatios` מול `drawnRatio`, ו-`approvedPanels` —
-// אם שיעור הפסילה יעלה, זה המחיר של הקיצוץ והוא ייראה מיד.
+// ⚠ **ושתי שורות הוחזרו ב-17.8, אחרי שנמדדו — כי הקיצוץ לקח איתן יותר מדי.**
+// שני סבבים של עשר הרצות הראו שהרוחב יציב (ממוצע יחס 6.9–7.2 מול 4.19 לפני
+// שביקשנו) ושהפסילה אפסית (מועמד אחד מ-56), אבל גם שני דברים שנשברו:
+//
+//  1. **ההיקף מת.** קודם היו מותניים, טייפרים וצלליות א-סימטריות; אחרי
+//     הקיצוץ רוב הפריטים הם מלבן מעוגל עם פנים עשיר. הסיבה: הבלוקים שקוצצו
+//     (`CRITICAL DESIGN RULE`, `DESIGN QUALITY`) היו **רובם** איסורים, ואיתם
+//     ירד גם המשפט שדווקא פתח מרחב — "the outer silhouette is an important
+//     design surface". זה היתר, לא מגבלה, והוא עשה עבודה.
+//
+//     הוחזר **הוא בלבד**, ובמשפט אחד לכל מודל. שתי משפחות נשארו בחוץ בכוונה:
+//     האיסורים ("do NOT default to a rectangular strip"), שהמודל ציית להם
+//     מילולית ומצא את הפרצה — צורה מעוצבת עם חור מרכזי אחד; ו**מניין
+//     האפשרויות** ("edges may taper, expand, contract, step, curve, angle or
+//     become asymmetric"), שנראה מתיר אבל אינו (החלטת גל): רשימה מגדירה את
+//     מרחב הבחירה ומוציאה ממנו כל מה שלא נמנה בה. אם משפט אחד לא יספיק,
+//     מוסיפים עוד אחד — לא רשימה.
+//  2. **פאנלים אבדו.** לפני הקיצוץ הגיעו ללקוחה 18 מ-19 שתוכננו (95%);
+//     אחריו 19 מ-23 ו-17 מ-20 (83–85%). האובדן כמעט כולו בשלב אחד — הקופסה
+//     חותכת פחות פסים ממה שתוכנן — כלומר עיצוב שתוכנן ושולם עליו לא הגיע.
+//     המשפט שהוחזר הוא של **חוזה הפריסה** ולא של העיצוב: פס לבן רצוף בין כל
+//     שני פריטים, שהוא בדיוק מה ש-`split_rows` מחפש.
+//
+// מה שנמדד מול זה: `askedRatios` מול `drawnRatio`, ו-`deliveredPanels` מול
+// `rows` — שיעור המסירה הוא מה שאומר אם המשפט השני עבד.
 
 /** המודל והמאמץ של שלב העיצוב. במקום אחד, כדי שהחזרה תהיה שורה. */
 export const STORY_DESIGN = {
@@ -237,6 +260,8 @@ INTERPRETATION
 
 Translate the idea into form rather than illustration — silhouette, proportion, mass, rhythm, tension, interruption, density, asymmetry, or whatever the idea itself suggests. Unless the user explicitly asks for something literal, don't place recognisable objects, symbols, letters or pictograms on the jewellery. Someone should feel the relationship between the idea and the geometry without being shown a picture of it.
 
+The outer contour is an important design surface and should participate in the concept.
+
 PROPORTION — THE ONE MEASUREMENT YOU DECIDE
 
 The piece is cut flat and then rolled. Its length is fixed by the body it has to fit, so the only dimension you choose is how wide it is, expressed as a length-to-width ratio. A LOW ratio is a WIDE, bold piece. A HIGH ratio is a NARROW, delicate one.
@@ -266,7 +291,7 @@ Return ONLY valid JSON — no markdown, no explanation before or after it — wi
 "design_number": 1,
 "length_to_width_ratio": 0,
 "concept": "How the input is translated into form.",
-"outer_silhouette": "The complete outer contour.",
+"outer_silhouette": "The complete outer contour, described concretely enough to draw.",
 "metal_structure": "The major connected areas of remaining metal.",
 "negative_space": "The empty space this design uses — internal openings, carving of the outer contour, the space around the piece, or none of these.",
 "rhythm_balance": "Movement, symmetry or asymmetry, tension, visual weight.",
@@ -347,6 +372,8 @@ For each design, "image_instruction" is the drawing instruction. "outer_silhouet
 
 Draw what each specification actually describes, including where it differs from the others.
 
+Draw the outer contour each design specifies, not only what is cut out of it.
+
 PROPORTION
 
 Every design carries its own "length_to_width_ratio". A LOW ratio is a WIDE piece; a HIGH ratio is a NARROW one. This is the finished width of the piece, so draw each design at its own ratio.
@@ -360,6 +387,8 @@ LAYOUT
 One design per horizontal row, centred, evenly spaced, none of them overlapping, each shown whole and unclipped.
 
 The rows are all the same height; the designs inside them are not all the same width. A row is a place to put a design, not a shape to fill — a piece may take up much less of its row than the row allows, and white space around it is correct.
+
+Leave a clear, unbroken horizontal band of pure white between every two designs, running the full width of the image. No part of one design may reach into that band.
 
 WHAT THESE ARE
 
