@@ -12,20 +12,31 @@ import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { Eyebrow, ScreenTitle, CardLabel, CheckBox, PrimaryBtn, TextInput } from "./ui";
 import { whatsappUrl } from "@/lib/site.config";
 import { track } from "@/lib/client/track";
-import { activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf, type Addr, type CreateState } from "./model";
+import { api } from "@/lib/client/api";
+import {
+  activeEntry, circumferenceMm, frameWidthMm, mmLabel, priceOf,
+  type Addr, type CreateState, type Product, type ReferralErrorCode,
+} from "./model";
 
 const d = he.design;
 
 const REQUIRED: Array<keyof Addr> = ["name", "street", "city", "phone", "email"];
+/** באיסוף עצמי אין לאן לשלוח — נשארת רק הדרך להשיג את מי שבא לאסוף. */
+const REQUIRED_PICKUP: Array<keyof Addr> = ["name", "phone", "email"];
 
 export const emailValid = (email: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
-export const addrValid = (a: Addr): boolean =>
-  REQUIRED.every((k) => a[k].trim().length > 0) &&
+/**
+ * ‏`pickup` — הזמנה שנאספת ביד. הכתובת מפסיקה להיות חובה, אבל מה שכן מולא
+ * עדיין נבדק: כתובת חלקית שנשמרת כמות שהיא היא בדיוק מה שנשלחים לפיו אחר כך
+ * אם ההזמנה תשנה אופן אספקה.
+ */
+export const addrValid = (a: Addr, pickup = false): boolean =>
+  (pickup ? REQUIRED_PICKUP : REQUIRED).every((k) => a[k].trim().length > 0) &&
   nameValid(a.name) &&
-  addressLineValid(a.street) &&
-  addressLineValid(a.city) &&
+  (pickup && !a.street.trim() ? true : addressLineValid(a.street)) &&
+  (pickup && !a.city.trim() ? true : addressLineValid(a.city)) &&
   zipValid(a.zip) &&
   emailValid(a.email) &&
   // הטלפון הוא הדרך לאשר שרטוט לפני ייצור. מספר שגוי אינו שדה ריק שרואים —
@@ -47,9 +58,16 @@ export function CheckoutScreen({
   const p = priceOf(s);
   const ring = s.product === "ring";
   const width = frameWidthMm(s, activeEntry(s));
+  // קוד שהוקלד ולא נקלט חוסם את השליחה. **הזמנה שנשלחת במחיר מלא אחרי שהוקלד
+  // קוד היא התלונה הגרועה ביותר כאן** — הלקוחה בטוחה שהקוד נלקח בחשבון, מגלה
+  // את הסכום בשיחת התשלום, ומה שנשבר הוא האמון ולא המחיר. עדיף לעצור.
+  const codeBlocking = s.referralChecking || s.referralError != null;
+  // איסוף עצמי מגיע מהקוד, ולכן הוא נכון רק כשהקוד באמת חל על המוצר שבמסך —
+  // אותה בדיקה שב-`priceOf`, מאותה סיבה.
+  const pickup = s.referral?.pickup === true && s.referral.productType === (s.product ?? "bracelet");
   // התנאים נכללים בשער. הם אושרו במסך הסיכום, אבל האישור חי ב-state בזיכרון
   // ומה שנשמר בשרת חייב עדות מהרגע שבו ההזמנה נשלחה — ראו את תיבת הסימון למטה.
-  const ok = addrValid(s.addr) && s.terms;
+  const ok = addrValid(s.addr, pickup) && s.terms && !codeBlocking;
   const setAddr = (patch: Partial<Addr>) => set({ addr: { ...s.addr, ...patch } });
 
   // השגיאה נכתבת ביציאה מהשדה ולא בהקלדה: "מספר לא תקין" על התו הראשון הוא
@@ -60,7 +78,7 @@ export function CheckoutScreen({
   const errorFor = (k: keyof Addr): string | null => {
     if (!touched[k]) return null;
     const v = s.addr[k].trim();
-    if (!v) return REQUIRED.includes(k) ? d.addrErrors.required : null;
+    if (!v) return (pickup ? REQUIRED_PICKUP : REQUIRED).includes(k) ? d.addrErrors.required : null;
     if (k === "phone" && !isValidPhone(v)) return d.addrErrors.phone;
     if (k === "email" && !emailValid(v)) return d.addrErrors.email;
     if (k === "name" && !nameValid(v)) return d.addrErrors.name;
@@ -97,7 +115,14 @@ export function CheckoutScreen({
         <div>
           {/* כתובת */}
           <div className="border border-graphite/10 bg-chalk p-6">
-            <CardLabel>{d.addrTitle}</CardLabel>
+            <CardLabel>{pickup ? d.addrTitlePickup : d.addrTitle}</CardLabel>
+            {/* באיסוף עצמי הכתובת נשארת על המסך אבל מפסיקה להיות חובה: מי
+                שכבר מילא אותה לא מאבד אותה, ומי שבא לאסוף לא ממציא כתובת. */}
+            {pickup && (
+              <p className="mb-4 border-s-2 border-lapis bg-porcelain p-4 text-sm leading-relaxed text-ink80">
+                {d.pickupNote}
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <TextInput
@@ -109,14 +134,14 @@ export function CheckoutScreen({
               </div>
               <div className="sm:col-span-2">
                 <TextInput
-                  label={d.addrFields.street} required placeholder={d.addrPlaceholders.street}
+                  label={d.addrFields.street} required={!pickup} placeholder={d.addrPlaceholders.street}
                   value={s.addr.street} onChange={(v) => setAddr({ street: v })}
                   onBlur={() => touch("street")} error={errorFor("street")}
                   autoComplete="street-address"
                 />
               </div>
               <TextInput
-                label={d.addrFields.city} required placeholder={d.addrPlaceholders.city}
+                label={d.addrFields.city} required={!pickup} placeholder={d.addrPlaceholders.city}
                 value={s.addr.city} onChange={(v) => setAddr({ city: v })}
                 onBlur={() => touch("city")} error={errorFor("city")}
                 autoComplete="address-level2"
@@ -160,6 +185,11 @@ export function CheckoutScreen({
             </div>
           </div>
 
+          {/* קוד הפניה */}
+          <div className="mt-4 border border-graphite/10 bg-chalk p-6">
+            <ReferralField s={s} set={set} />
+          </div>
+
           {/* אישורים */}
           <div className="mt-4 space-y-4 border border-graphite/10 bg-chalk p-6">
             <CheckBox on={s.terms} onChange={(v) => set({ terms: v })}>
@@ -200,7 +230,15 @@ export function CheckoutScreen({
             <Row k={d.checkoutKeys.item} v={ring ? d.ringName : d.braceletName} />
             <Row k={d.checkoutKeys.size} v={`${Math.round(circumferenceMm(s))} ${d.mm}`} />
             <Row k={d.checkoutKeys.width} v={`${mmLabel(width)} ${d.mm}`} />
-            <Row k={d.checkoutKeys.delivery} v={d.deliveryVal} />
+            <Row k={d.checkoutKeys.delivery} v={pickup ? d.pickupVal : d.deliveryVal} />
+            {/* שורת הקוד, ולא שורת הנחה: היא אומרת **לפי מה** תומחר, בלי
+                לגלות מה היה המחיר בלעדיו. הסכום למטה נשאר מספר יחיד. */}
+            {s.referral && (
+              <Row
+                k={d.referral.priceLine}
+                v={s.referral.label ?? s.referral.code}
+              />
+            )}
 
             <div className="mt-3 flex items-baseline justify-between border-t border-graphite/15 pt-3.5">
               <span className="text-base font-semibold text-graphite">{d.checkoutTotal}</span>
@@ -217,7 +255,11 @@ export function CheckoutScreen({
             {/* כפתור אפור בלי הסבר הוא מבוי סתום: הלקוחה מילאה הכול לתחושתה,
                 והמסך שותק. השורה הזאת אומרת מה חסר, והשגיאות למעלה מראות איפה. */}
             {!ok && !s.sending && (
-              <p className="mt-2 text-center text-[12px] text-ink60">{d.checkoutIncomplete}</p>
+              <p className="mt-2 text-center text-[12px] text-ink60">
+                {/* הקוד הוא הסיבה הנפוצה שהכפתור כבוי כשהטופס נראה מלא —
+                    ו"יש להשלים את שדות החובה" שולח לחפש במקום הלא נכון. */}
+                {s.referralError ? d.referral.blocking : d.checkoutIncomplete}
+              </p>
             )}
             {/* אין סליקה באתר, ולכן הצ'קאאוט מסתיים ב"נתאם תשלום" — רגע של
                 אי-ודאות בדיוק לפני ההתחייבות. ערוץ חי שאפשר לשאול בו עכשיו
@@ -254,6 +296,117 @@ export function CheckoutScreen({
         </div>
       </div>
     </section>
+  );
+}
+
+/** אורך מינימלי לפני שנשלחת בדיקה. תואם ל-check constraint של 0026. */
+const REFERRAL_MIN = 3;
+/** השהיה לפני הבדיקה. מספיק כדי לא לשאול על כל תו, קצר מכדי להרגיש. */
+const REFERRAL_DEBOUNCE_MS = 450;
+
+/**
+ * שדה קוד ההפניה (0026).
+ *
+ * **נבדק תוך כדי הקלדה ולא בכפתור "החל".** הקוד הוא הדבר האחרון שנשאר בין
+ * הלקוחה לשליחה, וכפתור נוסף שם הוא שלב נוסף שאפשר לשכוח — ומי ששוכח לוחץ
+ * "שליחה" ומשלם מחיר מלא. כאן המחיר בסיכום מתעדכן מעצמו, וזה גם האישור
+ * היחיד שנדרש.
+ *
+ * **מה שמוצג הוא מספר אחד.** אין "לפני ואחרי", אין אחוז, ואין המילה הנחה —
+ * ראו את ההסבר ב-0026 וב-`he.design.referral`.
+ */
+function ReferralField({
+  s, set,
+}: {
+  s: CreateState;
+  set: (patch: Partial<CreateState>) => void;
+}) {
+  const r = d.referral;
+  const raw = s.referralCode.trim();
+  const product: Product = s.product ?? "bracelet";
+
+  useEffect(() => {
+    if (raw.length < REFERRAL_MIN) {
+      // כולל את המקרה שבו נמחק קוד שכבר נקלט: המחיר חייב לחזור למחירון באותו
+      // רגע, אחרת הסיכום ממשיך להראות סכום שאין לו כיסוי.
+      set({ referral: null, referralError: null, referralChecking: false });
+      return;
+    }
+
+    // `alive` ולא ביטול הבקשה: תשובה של קוד שכבר לא מוקלד אסור שתדרוס את
+    // התשובה של מה שמוקלד עכשיו. הקלדה מהירה מייצרת בדיוק את המרוץ הזה.
+    let alive = true;
+    set({ referralChecking: true, referralError: null });
+    const timer = setTimeout(() => {
+      api
+        .validateReferral({ code: raw, productType: product })
+        .then((res) => {
+          if (!alive) return;
+          if (res.ok) {
+            set({
+              referral: {
+                code: res.code, label: res.label, productType: product,
+                price: res.price, pickup: res.pickup,
+              },
+              referralError: null,
+              referralChecking: false,
+            });
+          } else {
+            set({
+              referral: null,
+              referralError: res.reason as ReferralErrorCode,
+              referralChecking: false,
+            });
+          }
+        })
+        .catch(() => {
+          // כשל רשת אינו אמירה על הקוד, ולכן הודעה משלו: "לא מצאנו את הקוד"
+          // על נפילת רשת שולח את הלקוחה לתקן מחרוזת תקינה.
+          if (alive) set({ referral: null, referralError: "failed", referralChecking: false });
+        });
+    }, REFERRAL_DEBOUNCE_MS);
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // `set` אינו בתלויות — הוא נוצר מחדש בכל רינדור של העמוד, וכל בדיקה
+    // הייתה מבטלת את עצמה. המוצר כן: הקוד מתומחר מולו.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raw, product]);
+
+  const applied = s.referral;
+  const hint = s.referralChecking
+    ? r.checking
+    : applied
+      ? (applied.label ?? r.appliedGeneric)
+      : r.hint;
+
+  return (
+    <>
+      {/* "לא חובה" יושב בתווית עצמה ולא בשורת ההסבר מתחת, כי ההסבר נבלע ברגע
+          שיש שגיאה או שהקוד נקלט — ודווקא מי שאין לו קוד צריך לראות שאפשר
+          לדלג. שדה קוד שנראה חובה עוצר את הרוב, בשלב האחרון של המשפך. */}
+      <TextInput
+        label={`${r.label} · ${r.optional}`}
+        placeholder={r.placeholder}
+        value={s.referralCode}
+        onChange={(v) => set({ referralCode: v })}
+        error={s.referralError ? r.errors[s.referralError] : null}
+        hint={hint}
+        dir="ltr"
+        autoComplete="off"
+      />
+      {applied && (
+        <button
+          type="button"
+          onClick={() => set({ referralCode: "" })}
+          className="mt-2 text-[12px] text-ink60 underline underline-offset-4 hover:text-lapis"
+        >
+          {r.clear}
+        </button>
+      )}
+    </>
   );
 }
 

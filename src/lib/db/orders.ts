@@ -53,6 +53,19 @@ export interface OrderRow {
   marketing_opt_in: boolean;
   /** 0022 — מתי התקבל התשלום. חותמת ולא boolean, ואינו חלק מצינור הסטטוסים. */
   paid_at: string | null;
+  /**
+   * 0026 — קוד ההפניה שתומחר בו, כשהיה כזה.
+   *
+   * המזהה הוא הקשר החי (ממנו נספרת המכסה), והמחרוזת היא צילום: אם הקוד יימחק,
+   * ההזמנה עדיין צריכה להסביר למה נגבו בה מה שנגבה.
+   */
+  referral_code_id: string | null;
+  referral_code: string | null;
+  /**
+   * 0026 — נמסר באיסוף עצמי. צילום ולא נגזרת מהקוד: שינוי בהגדרת הקוד אסור
+   * שישנה בדיעבד את אופן האספקה של הזמנה שכבר בוצעה.
+   */
+  pickup: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 import { he } from "@/i18n/he";
 import type { Account, Design, Geometry, Profile, Version } from "./types";
 import type { DesignPreview } from "@/lib/designPreview";
+import type { Price } from "@/lib/pricing";
 import type { ValidationReport } from "@/lib/geometry/types";
 
 // שכבת הקריאות לשרת. כל השגיאות מתורגמות ל-Error עם הודעה בעברית + code.
@@ -332,6 +333,19 @@ export const api = {
     call<{ account: Account }>("/api/account", { method: "PATCH", body: JSON.stringify(input) }),
 
   signOut: () => call<{ ok: true }>("/api/account", { method: "DELETE" }),
+
+  /**
+   * בדיקת קוד הפניה (0026) — כדי שהמחיר ייראה לפני השליחה ולא יתגלה בה.
+   *
+   * התשובה כאן היא **תצוגה בלבד**: המחיר שנשמר מחושב שוב ב-`/api/orders`
+   * מהקוד שהשרת שולף בעצמו. `ok: false` אינו שגיאת מסלול אלא תשובה — הקוד
+   * נבדק ונדחה — ולכן היא חוזרת בגוף ולא כ-throw.
+   */
+  validateReferral: (input: { code: string; productType: "bracelet" | "ring" }) =>
+    call<
+      | { ok: true; code: string; label: string | null; pickup: boolean; price: Price }
+      | { ok: false; reason: string }
+    >("/api/referral-codes/validate", { method: "POST", body: JSON.stringify(input) }),
 
   designs: (profileId: string) =>
     call<{ designs: Design[] }>(`/api/designs?profileId=${encodeURIComponent(profileId)}`),

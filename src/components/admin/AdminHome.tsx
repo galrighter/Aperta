@@ -94,6 +94,7 @@ export default function AdminHome() {
         <Card href="/admin/runs" title={s.adminNavRuns} desc={s.adminCardRunsDesc} />
         <Card href="/admin/designs" title={s.adminTabDesigns} desc={s.adminCardDesignsDesc} />
         <Card href="/admin/inquiries" title={s.adminTabInquiries} desc={s.adminCardInquiriesDesc} />
+        <Card href="/admin/referral-codes" title={s.adminTabReferrals} desc={s.adminCardReferralsDesc} />
         <Card href="/debug" title={s.adminNavLab} desc={s.adminCardLabDesc} />
       </div>
     </div>

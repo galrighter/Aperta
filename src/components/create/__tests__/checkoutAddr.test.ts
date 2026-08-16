@@ -31,6 +31,22 @@ describe("addrValid", () => {
     expect(addrValid({ ...OK, city: "" })).toBe(false);
   });
 
+  it("באיסוף עצמי הכתובת אינה חובה — אבל שאר הפרטים כן", () => {
+    // ‏FAMILY25 נאסף ביד (0027). אין לאן לשלוח, ולכן רחוב ועיר יורדים מהחובה —
+    // אבל הטלפון והמייל נשארים: בלעדיהם אי אפשר לתאם את האיסוף עצמו.
+    const noAddress: Addr = { ...OK, street: "", city: "", zip: "" };
+    expect(addrValid(noAddress, true)).toBe(true);
+    expect(addrValid(noAddress)).toBe(false);
+    expect(addrValid({ ...noAddress, phone: "" }, true)).toBe(false);
+    expect(addrValid({ ...noAddress, name: "" }, true)).toBe(false);
+  });
+
+  it("כתובת שכן מולאה נבדקת גם באיסוף עצמי", () => {
+    // "לא חובה" אינו "לא נבדק": כתובת חלקית שנשמרת כמות שהיא היא מה שנשלחים
+    // לפיו אם ההזמנה תשנה אופן אספקה.
+    expect(addrValid({ ...OK, street: "!!", city: "" }, true)).toBe(false);
+  });
+
   it("טלפון שאינו מספר טלפון נעצר, גם כשהשדה מלא", () => {
     expect(addrValid({ ...OK, phone: "0501234" })).toBe(false);
     expect(addrValid({ ...OK, phone: "תתקשרו לבעלי" })).toBe(false);
@@ -54,7 +70,9 @@ describe("שער השליחה", () => {
     // האישור ניתן במסך הסיכום, אבל הוא חי ב-state בזיכרון: לשונית שנטענה
     // מחדש מגיעה לצ'קאאוט בלי אישור ועם טופס מלא. התיבה כאן היא גם הראיה
     // שנשמרת בשרת (terms_accepted_at) וגם מה שמונע הזמנה בלעדיה.
-    expect(SCREEN).toContain("addrValid(s.addr) && s.terms");
+    // ‏regex ולא מחרוזת: ל-`addrValid` נוסף ארגומנט `pickup` (0026), והבדיקה
+    // כאן שומרת על **מה** שנבדק — שהתנאים חלק מהשער — ולא על צורת הכתיבה.
+    expect(SCREEN).toMatch(/addrValid\(s\.addr[^)]*\) && s\.terms/);
   });
 
   it("הסכמת הדיוור נפרדת, ולא מסומנת מראש", () => {
