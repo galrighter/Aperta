@@ -59,7 +59,19 @@ describe("גיבוי המסד", () => {
     for (const t of ["designs", "design_versions", "orders"]) {
       expect(BACKUP).toContain(t);
     }
-    expect(BACKUP).toContain("CREATE TABLE public.$t");
+    expect(BACKUP).toContain("CREATE TABLE public");
+  });
+
+  it("בדיקת הטבלאות קוראת את הזרם עד סופו ולא נשענת על יציאה מוקדמת", () => {
+    // ‏`zgrep -q` יוצא בהתאמה הראשונה, gzip מקבל SIGPIPE, ועל ה-runner זה
+    // חזר ככישלון — "הטבלה חסרה" על dump שהיא נמצאת בו (run 31937188202).
+    //
+    // רק הפקודות: ההערה שמסבירה **למה** לא להשתמש בו מכילה את השם עצמו.
+    const code = BACKUP.split("\n")
+      .filter((l) => !l.trimStart().startsWith("#"))
+      .join("\n");
+    expect(code).not.toContain("zgrep");
+    expect(code).toContain("tables in dump:");
   });
 
   it("מתריע בטלגרם כשהגיבוי נכשל", () => {

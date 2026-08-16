@@ -102,9 +102,26 @@ jobs:
 
           # שפיות: dump ריק הוא הכישלון השקט הקלאסי — הקובץ קיים, הריצה ירוקה,
           # ואין בו כלום. שלוש הטבלאות שבלעדיהן אין עסק חייבות להופיע.
+          #
+          # **לא `zgrep -q`.** הוא יוצא ברגע ההתאמה הראשונה, ה-gzip שמזין
+          # אותו מקבל SIGPIPE, ובגרסה שעל ה-runner זה חוזר כסטטוס כישלון של
+          # zgrep עצמו — כלומר "הטבלה חסרה" על dump שהיא **כן** נמצאת בו. זה
+          # מה שהפיל את run 31937188202: "gzip: stdout: Broken pipe" ומיד
+          # אחריו "dump is missing table designs", על הטבלה הראשונה בלולאה.
+          # (מקומית, על אותה גרסת gzip, zgrep החזיר 0 — כלומר זו התנהגות
+          # שתלויה בסביבה, וזו בדיוק הסיבה לא להישען עליה.)
+          #
+          # כאן הזרם נקרא **עד סופו** ואין מי שיסגור אותו באמצע, וההשוואה
+          # עצמה היא shell טהור בלי צינור נוסף שאפשר להיכשל בו. השורה
+          # שמודפסת היא גם הראיה: אם טבלה תיעדר אי-פעם, היומן יראה מה כן היה.
+          tables=$(gunzip -c "$file" | { grep -o 'CREATE TABLE public\.[A-Za-z0-9_]*' || true; } \
+            | sed 's/^.*\.//' | sort -u | tr '\n' ' ')
+          echo "tables in dump: $tables"
           for t in designs design_versions orders; do
-            zgrep -q "CREATE TABLE public.$t" "$file" \
-              || { echo "::error::dump is missing table $t"; exit 1; }
+            case " $tables " in
+              *" $t "*) ;;
+              *) echo "::error::dump is missing table $t"; exit 1 ;;
+            esac
           done
           bytes=$(stat -c%s "$file")
           echo "dump size: $bytes bytes"
