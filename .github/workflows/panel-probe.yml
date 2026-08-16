@@ -1,0 +1,51 @@
+name: Panel probe
+
+# מה המודל **באמת** צייר בהדמיה, מול מה שהקופסה החזירה.
+#
+# **למה זה קיים.** ביומן יש `plannedCandidates` מול `deliveredPanels`, וכשהם
+# נבדלים אי אפשר לדעת מי אשם: המודל צייר פחות פריטים, או שהקופסה לא הצליחה
+# להפריד ביניהם. שתי המסקנות מובילות לתיקונים הפוכים — אחת בפרומפט, אחת
+# ב-`split_rows` — ולכן ניחוש כאן עולה סבב שלם.
+#
+# הבדיקה קוראת את ההדמיה עצמה ומודדת: כמה פסי שחור יש, מה הרווח הלבן ביניהם,
+# ומה הפתח הקטן ביותר בפס הראשון (במ"מ). זו קריאה בלבד — היא לא מייצרת דבר,
+# לא עולה כסף למודל, ולא נוגעת במכסה.
+#
+# ההדמיות עולות גם כ-artifact, כדי שאפשר יהיה להסתכל ולא רק למדוד.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "מזהי הרצות, מופרדים בפסיק"
+        required: true
+        type: string
+      length_mm:
+        description: "אורך הפריט במ\"מ — להמרת פתחים למ\"מ (54.4 טבעת · 160.4 צמיד)"
+        required: false
+        type: string
+        default: "160.4"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: pip install --quiet pillow
+
+      - name: Probe the renders
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          RUN_IDS: ${{ inputs.run_ids }}
+          LENGTH_MM: ${{ inputs.length_mm }}
+        run: python3 .github/scripts/panel_probe.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renders
+          path: renders/
+          retention-days: 7
