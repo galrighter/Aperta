@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+import { priceFor, referralBase, SHIPPING, vatIn, type ReferralRule } from "../pricing";
+import { normalizeCode, ruleOf, type ReferralCodeRow } from "../db/referralCodes";
+
+// תמחור לפי קוד הפניה (0026). כל מה שנבדק כאן הוא הפונקציות הטהורות — הן
+// אלה שקובעות כמה כסף נגבה, והמסלול רק קורא להן.
+
+const FIXED: ReferralRule = { kind: "fixed_price", basePrices: { bracelet: 180, ring: 140 } };
+
+describe("מחיר לפי קוד הפניה", () => {
+  it("הקוד קובע את מחיר הפריט, והמשלוח נשאר", () => {
+    // המשלוח הוא עלות אמיתית שיוצאת מהכיס. קוד שמבטל אותה הופך כל הזמנה
+    // להפסד ישיר, ולכן הוא חל על הפריט בלבד.
+    const p = priceFor({ productType: "bracelet", referral: { code: "FF-25", rule: FIXED } });
+    expect(p.base).toBe(180);
+    expect(p.shipping).toBe(SHIPPING);
+    expect(p.total).toBe(180 + SHIPPING);
+  });
+
+  it("המע״מ נגזר מהסכום שנגבה בפועל, לא מהמחירון", () => {
+    const p = priceFor({ productType: "bracelet", referral: { code: "FF-25", rule: FIXED } });
+    expect(p.vat).toBe(vatIn(p.total));
+    // ‏66 הוא המע"מ של הזמנה מלאה (434). מספר שנשאר תקוע עליו פירושו חשבונית
+    // שמדווחת מע"מ על כסף שלא התקבל.
+    expect(p.vat).toBeLessThan(vatIn(399 + SHIPPING));
+  });
+
+  it("כל מוצר מקבל את המחיר שלו", () => {
+    const ring = priceFor({ productType: "ring", referral: { code: "FF-25", rule: FIXED } });
+    expect(ring.base).toBe(140);
+  });
+
+  it("בלי קוד — המחירון, ובלי השדות של ההפניה", () => {
+    const p = priceFor({ productType: "bracelet" });
+    expect(p.base).toBe(399);
+    // הזמנה רגילה נשמרת בדיוק כפי שנשמרה לפני 0026.
+    expect(p.referralCode).toBeUndefined();
+    expect(p.listBase).toBeUndefined();
+  });
+
+  it("שומר את הקוד ואת המחירון על ההזמנה", () => {
+    // ‏`listBase` הוא מה שמאפשר לענות בדיעבד "כמה ויתרנו", בלי לשחזר מחירון
+    // שהשתנה מאז. הוא לא מוצג ללקוחה בשום מסך.
+    const p = priceFor({ productType: "bracelet", referral: { code: "FF-25", rule: FIXED } });
+    expect(p.referralCode).toBe("FF-25");
+    expect(p.listBase).toBe(399);
+  });
+
+  it("אחוז מחושב מהמחירון ומעוגל", () => {
+    // הכלל הזה עוד לא בשימוש, אבל הוא במסד — ומחיר שמחושב לא נכון בפעם
+    // הראשונה שמשתמשים בו הוא כסף אמיתי.
+    const p = priceFor({
+      productType: "bracelet",
+      referral: { code: "SHOP-1", rule: { kind: "percent_off", percentOff: 20 } },
+    });
+    expect(p.base).toBe(319); // 399 × 0.8 = 319.2
+    expect(Number.isInteger(p.total)).toBe(true);
+  });
+
+  it("לא יורד מתחת לאפס", () => {
+    // מחיר שלילי היה מייצר הזמנה שגובה פחות מעלות המשלוח ששולמה כבר.
+    const base = referralBase({ kind: "fixed_price", basePrices: { bracelet: -50, ring: 0 } }, "bracelet");
+    expect(base).toBe(0);
+  });
+
+  it("מחיר חסר למוצר נופל למחירון ולא ל-NaN", () => {
+    // ה-check constraint של 0026 חוסם את זה בכתיבה; כאן נבדק שגם אם שורה
+    // פגומה הגיעה איכשהו, ההזמנה לא נשמרת עם `total: NaN`.
+    const broken = { kind: "fixed_price", basePrices: {} } as unknown as ReferralRule;
+    expect(referralBase(broken, "ring")).toBe(299);
+  });
+});
+
+describe("נרמול הקוד", () => {
+  it("רישיות ורווחים אינם משנים קוד", () => {
+    expect(normalizeCode("  ff-25 ")).toBe("FF-25");
+    expect(normalizeCode("ff 25")).toBe("FF-25");
+  });
+
+  it("מקף טיפוגרפי הוא אותו קוד", () => {
+    // קוד שעובר בוואטסאפ חוזר לפעמים עם מקף שאיש לא הקליד. בלי זה הוא נדחה
+    // כ"לא נמצא", והלקוחה לא יכולה לראות את ההבדל על המסך.
+    expect(normalizeCode("FF–25")).toBe("FF-25");
+    expect(normalizeCode("FF־25")).toBe("FF-25");
+  });
+
+  it("מקפים כפולים ומקף בקצה נבלעים", () => {
+    expect(normalizeCode("-FF--25-")).toBe("FF-25");
+  });
+});
+
+describe("הכלל שנקרא מהשורה", () => {
+  const ROW: ReferralCodeRow = {
+    id: "00000000-0000-0000-0000-000000000001",
+    code: "FF-25",
+    label: "חברים ומשפחה",
+    public_label: null,
+    kind: "fixed_price",
+    base_prices: { bracelet: 180, ring: 140 },
+    percent_off: null,
+    max_uses: 25,
+    expires_at: null,
+    active: true,
+    note: null,
+    created_at: "2026-08-16T00:00:00.000Z",
+    updated_at: "2026-08-16T00:00:00.000Z",
+  };
+
+  it("מחיר קבוע", () => {
+    expect(ruleOf(ROW)).toEqual(FIXED);
+  });
+
+  it("אחוז מומר למספר — numeric חוזר כמחרוזת מ-PostgREST", () => {
+    const row = { ...ROW, kind: "percent_off" as const, base_prices: null, percent_off: "20" as unknown as number };
+    expect(ruleOf(row)).toEqual({ kind: "percent_off", percentOff: 20 });
+  });
+
+  it("שורה בלי הגדרה מחזירה null ולא כלל שמתמחר לבד", () => {
+    expect(ruleOf({ ...ROW, base_prices: null })).toBeNull();
+    expect(ruleOf({ ...ROW, kind: "percent_off", base_prices: null })).toBeNull();
+  });
+});

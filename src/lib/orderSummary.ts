@@ -50,6 +50,11 @@ function priceLineParts(o: OrderRow): Line[] {
   const p = o.price;
   if (!p) return [];
   const parts: Array<Line | null> = [
+    // **הקוד ראשון, לפני הסכומים** (0026). מי שקורא את ההזמנה — גל בבק־אופיס,
+    // או הלקוחה במייל האישור — צריך לדעת לפי מה תומחרה לפני שהוא רואה את
+    // המספרים, אחרת ‎₪180 על צמיד נראה כמו טעות. `referral_code` ולא
+    // `price.referralCode`: הצילום על השורה הוא מה ששורד מחיקת קוד.
+    o.referral_code ? { label: m.orderLineReferral, value: o.referral_code } : null,
     { label: m.orderLineBase, value: money(p.base) },
     // שתי השורות הבאות מדפיסות **הזמנות היסטוריות בלבד**. מאז המחיר הקבוע
     // (lib/pricing.ts) אין תוספת רוחב ואין תוספת מורכבות, והן חסרות בכל הזמנה

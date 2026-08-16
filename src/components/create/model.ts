@@ -129,6 +129,29 @@ export interface Addr {
   zip: string; phone: string; email: string;
 }
 
+/**
+ * קוד הפניה שנקלט (0026) — כפי שהשרת החזיר אותו.
+ *
+ * ‏`price` מגיע מהשרת ולא מחושב כאן: הכלל שמאחורי הקוד אינו יורד לדפדפן.
+ * ‏`productType` נשמר יחד איתו כי המחיר שייך למוצר שנבדק מולו — ראו `priceOf`.
+ */
+export interface AppliedReferral {
+  code: string;
+  /** השם שהלקוחה רואה ("בהפניית תכשיטי אלמוג"). `null` — הנוסח הגנרי. */
+  label: string | null;
+  productType: Product;
+  price: Price;
+}
+
+/** דחיות הקוד, כפי שהשרת מנסח אותן, ועוד אחת לכשל הבדיקה עצמה. */
+export type ReferralErrorCode =
+  | "not_found"
+  | "inactive"
+  | "expired"
+  | "exhausted"
+  | "misconfigured"
+  | "failed";
+
 export interface CreateState {
   screen: Screen;
   product: Product | null;
@@ -260,6 +283,17 @@ export interface CreateState {
   company: string;
   addr: Addr;
   /**
+   * קוד ההפניה כפי שהוקלד (0026). נשמר גולמי — הנרמול נעשה בשרת, ושדה
+   * שמתקן את עצמו תוך כדי הקלדה הוא שדה שקשה להקליד בו.
+   */
+  referralCode: string;
+  /** הקוד שנקלט, כפי שהשרת אישר אותו. `null` — לא הוזן, או לא נקלט. */
+  referral: AppliedReferral | null;
+  /** בדיקה רצה עכשיו. חוסמת שליחה: מחיר שעדיין נבדק אינו מחיר. */
+  referralChecking: boolean;
+  /** למה הקוד נדחה. המפתח מתורגם ב-`he.design.referral.errors`. */
+  referralError: ReferralErrorCode | null;
+  /**
    * מזהה ניסיון השליחה. נוצר בלחיצה הראשונה ונשמר עד שההזמנה נקלטה, כך
    * ש"נסי שוב" אחרי רשת שנתקעה מגיע לשרת עם אותו מפתח — ומחזיר את ההזמנה
    * שכבר נשמרה במקום ליצור שנייה. מתאפס אחרי הצלחה: הזמנה הבאה היא הזמנה.
@@ -319,6 +353,10 @@ export const INITIAL: CreateState = {
   marketing: false,
   company: "",
   addr: { name: "", street: "", city: "", zip: "", phone: "", email: "" },
+  referralCode: "",
+  referral: null,
+  referralChecking: false,
+  referralError: null,
   orderKey: null,
   sending: false,
   sendError: null,
@@ -715,8 +753,23 @@ export type { Price } from "@/lib/pricing";
 // לצפיפות שום תפקיד בתמחור, והפונקציה הייתה הסבה למספר שאיש לא קורא.
 // הצפיפות עצמה נשארה בדיוק כפי שהייתה — היא מעצבת את הפריט, לא את המחיר.
 
-export const priceOf = (s: CreateState): Price =>
-  priceFor({ productType: s.product ?? "bracelet" });
+/**
+ * המחיר שעל המסך.
+ *
+ * כשקוד הפניה נקלט, המחיר מגיע **מהשרת** ולא מחישוב מקומי: הכלל שמאחורי הקוד
+ * (מחיר קבוע או אחוז) לא יורד לדפדפן כלל, וזו הנקודה — קוד שהדפדפן יודע
+ * לתמחר הוא קוד שאפשר להמציא מ-devtools. כאן רק מוצג מה שהשרת החזיר, ובשליחה
+ * הוא מחושב שם מחדש.
+ *
+ * **התאמת המוצר נבדקת בכל קריאה.** המחיר השמור שייך לסוג המוצר שנבדק מולו,
+ * ומי שחוזר אחורה ומחליף צמיד בטבעת היה רואה אחרת את המחיר של הפריט השני.
+ * חוסר התאמה נופל למחירון — ולא מציג סכום שאיש לא אישר.
+ */
+export const priceOf = (s: CreateState): Price => {
+  const product = s.product ?? "bracelet";
+  if (s.referral && s.referral.productType === product) return s.referral.price;
+  return priceFor({ productType: product });
+};
 
 /* ===== גאומטריה ===== */
 

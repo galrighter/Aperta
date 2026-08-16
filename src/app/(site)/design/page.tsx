@@ -48,7 +48,7 @@ import {
   sizeFieldsOfDesign,
   canGenerate, countCuts, frameLengthMm, frameWidthMm, gapOf, invalidateDesign, mmLabel, mpToPreviewPath, priceOf,
   newOrderKey, railFor, railIndex, sizeReallyChanged, stripLengthMm, switchProduct, widthOf,
-  type CreateState, type EditEntry, type Product, type Screen,
+  type CreateState, type EditEntry, type Product, type ReferralErrorCode, type Screen,
 } from "@/components/create/model";
 
 const d = he.design;
@@ -1657,6 +1657,11 @@ export default function DesignPage() {
           // הסכום שעל המסך, לבדיקת התאמה מול מה שהשרת מחשב. פער פירושו מסך
           // ישן, וההזמנה נעצרת במקום להישמר בסכום שהלקוחה לא ראתה.
           displayedTotal: p.total,
+          // **הקוד שנקלט, ולא מה שמוקלד בשדה.** קוד שלא עבר בדיקה חוסם את
+          // הכפתור ממילא (`CheckoutScreen`), ושליחה של מחרוזת שלא אומתה הייתה
+          // מייצרת אי-התאמה בין `displayedTotal` למה שהשרת יחשב ממנה.
+          // המחיר עצמו לא נשלח: השרת שולף את הקוד ומתמחר בעצמו.
+          referralCode: s.referral?.code,
           // מלכודת הבוטים. אצל אדם היא תמיד ריקה — השדה מוסתר מהעין ומהמקלדת.
           company: s.company,
           name: s.addr.name.trim(),
@@ -1693,6 +1698,22 @@ export default function DesignPage() {
           .catch(() => undefined);
         if (code === "price_changed") {
           set({ sending: false, sendError: d.checkoutPriceChanged, orderKey: null });
+          return;
+        }
+        // הקוד היה תקף כשנבדק ואינו תקף עכשיו — המכסה נגמרה בין השניים, או
+        // שהוא נסגר בבק־אופיס. `mailto:` כאן היה שולח הזמנה עם הסכום המוזל
+        // אחרי שהקוד כבר לא מזכה בו, ולכן זו יציאה נפרדת בדיוק כמו `price_changed`.
+        if (code?.startsWith("referral_")) {
+          const reason = code.slice("referral_".length) as ReferralErrorCode;
+          const message = d.referral.errors[reason] ?? d.referral.errors.failed;
+          set({
+            sending: false,
+            // הקוד יורד מהמצב: מה שהסיכום מציג חייב לחזור למחירון באותו רגע.
+            referral: null,
+            referralError: reason,
+            sendError: message,
+            orderKey: null,
+          });
           return;
         }
         throw new Error("failed");

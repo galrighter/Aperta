@@ -948,6 +948,46 @@ export const he = {
     adminFilterContact: "יצירת קשר",
     adminLoadError: "טעינת הפניות נכשלה.",
 
+    // ---- קודי הפניה (0026) ----
+    adminTabReferrals: "קודי הפניה",
+    adminCardReferralsDesc: "קוד לכל קמפיין — חברים ומשפחה, חנויות — עם המחיר, המכסה וכמה נוצל.",
+    adminReferralsTitle: "קודי הפניה",
+    adminReferralsIntro:
+      "כל קוד הוא קמפיין: מחיר משלו, מכסה משלה, וספירה של מה שכבר מומש. המכסה נספרת מהזמנות שלא בוטלו.",
+    adminReferralsEmpty: "אין עדיין קודים. הקוד הראשון נוצר בטופס שמעל.",
+    adminReferralsError: "טעינת הקודים נכשלה.",
+    adminReferralsSchema: "מסד הנתונים חסר את מיגרציה 0026 — הרשימה תתמלא אחרי שתרוץ.",
+    adminReferralColCode: "קוד",
+    adminReferralColLabel: "קמפיין",
+    adminReferralColPrice: "מחיר",
+    adminReferralColUsed: "מומש",
+    adminReferralColExpires: "בתוקף עד",
+    adminReferralColActive: "פעיל",
+    adminReferralUnlimited: "ללא הגבלה",
+    adminReferralNoExpiry: "ללא תפוגה",
+    adminReferralPercent: "אחוז",
+    adminReferralActivate: "הפעלה",
+    adminReferralDeactivate: "כיבוי",
+    /** טופס היצירה. */
+    adminReferralNewTitle: "קוד חדש",
+    adminReferralFieldCode: "הקוד",
+    adminReferralFieldCodeHint: "אותיות, ספרות ומקפים. נשמר באותיות גדולות.",
+    adminReferralFieldLabel: "שם פנימי",
+    adminReferralFieldLabelHint: "למי הקוד שייך. מוצג כאן בלבד.",
+    adminReferralFieldPublicLabel: "מה הלקוחה תראה",
+    adminReferralFieldPublicLabelHint: "לא חובה. למשל: בהפניית תכשיטי אלמוג.",
+    adminReferralFieldBracelet: "מחיר צמיד",
+    adminReferralFieldRing: "מחיר טבעת",
+    adminReferralFieldPriceHint: "מחיר סופי לפריט, כולל מע״מ ואריזה, לפני משלוח.",
+    adminReferralFieldMaxUses: "מכסה",
+    adminReferralFieldMaxUsesHint: "כמה הזמנות הקוד מאפשר. ריק — ללא הגבלה.",
+    adminReferralFieldNote: "הערה",
+    adminReferralCreate: "יצירת הקוד",
+    adminReferralCreating: "יוצר...",
+    adminReferralCreateError: "יצירת הקוד נכשלה.",
+    adminReferralExists: "כבר קיים קוד עם הערך הזה.",
+    adminReferralInvalid: "הגדרת הקוד אינה תקינה. יש לבדוק את הקוד ואת המחירים.",
+
     // ---- לשונית העיצובים ----
     adminTabInquiries: "פניות",
     adminTabDesigns: "עיצובים",
@@ -1141,6 +1181,9 @@ export const he = {
     adminOrderBrief: "תיאור הלקוחה",
     adminOrderVersionOrdered: "הגרסה שהוזמנה",
     adminOrderVat: "מזה מע״מ",
+    /** 0026 — הקוד שתומחר בו, ומה שהמחירון אמר באותו רגע. בק־אופיס בלבד. */
+    adminOrderReferral: "קוד הפניה",
+    adminOrderListPrice: "מחירון",
 
     // אישור ויזואלי לעיצוב שהוזמן, בעמוד ההזמנה עצמו — בלי לעבור דרך עמוד
     // העיצוב, שמצפה לחשבון הלקוחה (5.8.26).
@@ -1751,6 +1794,41 @@ export const he = {
     payPendingTitle: "התשלום מתבצע בתיאום אישי",
     payPendingBody:
       "כרגע לא נגבה תשלום באתר. נשלח את ההזמנה, נחזור אליך תוך יום עסקים לאישור השרטוט, ואז נתאם את התשלום. הייצור מתחיל רק אחרי שאישרת את השרטוט.",
+    /**
+     * קוד הפניה (0026).
+     *
+     * **הניסוח כאן הוא חצי מהמנגנון.** הקוד קיים כדי שקהל שהופנה ישלם אחרת
+     * בלי ללמד אף אחד שהמחיר האמיתי נמוך יותר — ולכן אין כאן "קופון", אין
+     * "הנחה", אין אחוזים, ואין מחיר מחוק לצד המחיר שמשלמים. מה שמוצג הוא
+     * מספר אחד סופי, ומשפט שמסביר למה הוא זה ולא אחר.
+     *
+     * "לא חובה" נאמר במפורש: שדה קוד בלי הבהרה עוצר את מי שאין לו קוד, והוא
+     * הרוב. זו נטישה בשלב האחרון של המשפך, בדיוק לפני ההתחייבות.
+     */
+    referral: {
+      label: "קוד הפניה",
+      optional: "לא חובה",
+      placeholder: "אם קיבלת קוד",
+      hint: "הופנית אלינו מחנות או מאדם שכבר הזמין? הקוד קובע את המחיר שלך.",
+      checking: "בודק...",
+      /** כשהקוד נקלט ואין לו שם ציבורי משלו. */
+      appliedGeneric: "הקוד נקלט",
+      /** שורת הסכום בסיכום, כשתומחר בקוד. */
+      priceLine: "מחיר לפי הפניה",
+      clear: "הסרת הקוד",
+      errors: {
+        not_found: "לא מצאנו את הקוד הזה. כדאי לבדוק את האותיות — או להמשיך בלעדיו.",
+        inactive: "הקוד הזה כבר לא פעיל.",
+        expired: "תוקף הקוד הזה עבר.",
+        /** לא "הקוד לא תקין": הוא תקין, פשוט נגמר. ההבדל הוא כל השיחה. */
+        exhausted: "כל המקומות בקוד הזה כבר נתפסו.",
+        misconfigured: "יש בעיה בקוד הזה. אפשר לפנות אלינו והוא יטופל.",
+        /** הבדיקה עצמה נפלה (רשת/שרת) — לא אמירה על הקוד. */
+        failed: "לא הצלחנו לבדוק את הקוד כרגע. אפשר לנסות שוב עוד רגע.",
+      },
+      /** מתחת לכפתור המושבת, כשהקוד שהוקלד לא נקלט. */
+      blocking: "כדי לשלוח, יש לתקן את קוד ההפניה או למחוק אותו.",
+    },
     checkoutSummaryTitle: "סיכום",
     checkoutKeys: { item: "פריט", size: "מידה", width: "רוחב", delivery: "אספקה" },
     deliveryVal: "10–14 ימי עבודה",
@@ -2019,6 +2097,8 @@ export const he = {
     orderLineDesign: "מספר עיצוב",
     orderLineAddress: "כתובת",
     orderLineBrief: "תיאור הלקוחה",
+    /** שורת הקוד בסיכום ההזמנה — במייל ובבק־אופיס. */
+    orderLineReferral: "קוד הפניה",
     orderLineBase: "בסיס (כולל אריזה)",
     orderLineWidthAdd: "תוספת רוחב",
     orderLineComplexity: "מורכבות",

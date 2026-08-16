@@ -83,6 +83,17 @@ export function PriceBlock({ price }: { price: OrderRow["price"] }) {
       <div className="text-[12px] text-mist">
         {s.adminOrderVat} {money(price.vat)}
       </div>
+      {/* **כאן, ורק כאן, מוצג גם מחיר המחירון** (0026). ‏"למה נגבו ‎₪215" היא
+          שאלה חשבונאית שנשאלת בבק־אופיס, ובלעדיה ההזמנה נראית כמו טעות. באתר
+          עצמו הצמד הזה לא מופיע לעולם — מחיר מחוק לצד מה שמשלמים הוא בדיוק מה
+          שקוד ההפניה נועד למנוע. */}
+      {price.referralCode && (
+        <div className="mt-1 text-[12px] text-mist">
+          {s.adminOrderReferral}:{" "}
+          <span dir="ltr" className="font-mono text-graphite">{price.referralCode}</span>
+          {price.listBase != null ? ` · ${s.adminOrderListPrice} ${money(price.listBase)}` : ""}
+        </div>
+      )}
     </>
   );
 }
