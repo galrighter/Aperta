@@ -1,0 +1,45 @@
+name: Edge A/B (wide ratio)
+
+# ניסוי ידני: האם הנוסח שהוחלף ב-PR #271 מפסיק את החיתוך בקצה הקנבס בפריט רחב.
+#
+# **למה כאן ולא ממחשב.** ההרצה צריכה את `ADMIN_TOKEN` כדי לשלוח `promptOverride`,
+# והסוד הזה חי כ-secret של הריפו — בדיוק כמו בקנרית, שרצה על אותו מסלול API.
+# מי שמריץ מקבל את התוצאה ביומן ההרצות ולא צריך להחזיק את הסוד בשום מקום.
+#
+# **זה עולה כסף.** קריאה אמיתית למודל התמונה לכל הרצה (~$0.006), כלומר ~$0.12
+# לניסוי של 5+5, וכן יחידות מכסה של פרופיל הבודק (10 מתוך 50 ליום — הקנרית
+# לוקחת 12, אז אין להריץ את זה יותר מפעמיים ביום).
+#
+# ידני בלבד. אין `schedule` — ניסוי אינו ניטור.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: "כמה זוגות (ישן+חדש). 5 = 10 הרצות"
+        required: false
+        default: "5"
+
+jobs:
+  edge-ab:
+    runs-on: ubuntu-latest
+    # 5 זוגות × עד ~2 דקות להרצה, ועוד מרווח לניסיון החוזר של הקופסה.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run the A/B
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set — the A/B cannot run."
+            exit 1
+          fi
+          node docs/research/experiments/wide-ratio/run.mjs "${{ inputs.repeats }}"
