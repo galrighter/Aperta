@@ -343,3 +343,23 @@ export async function getJob(id: string): Promise<GenerationJobRow | null> {
   if (error) throw new Error(error.message);
   return (data as GenerationJobRow | null) ?? null;
 }
+
+/**
+ * מוחק את בקשות היצירה שההרצות האלה שייכות להן.
+ *
+ * **חובה יחד עם מחיקת ההרצה, לא אופציה.** היומן מציג בקשה שאין לה שורת הרצה
+ * כ"ניסיון שלא הגיע לשורת הרצה" (`runs/orphans.ts`) — כלומר שורה שנמחקה בלי
+ * הבקשה שלה חוזרת ליומן מיד, בתור כישלון שלא קרה. ברוב הרצות הקנרית השורה
+ * הזאת כבר איננה (מחיקת העיצוב בסוף ה-workflow מפילה אותה ב-cascade), אבל
+ * המחיקה ההיא היא `|| true` — כלומר לא מובטחת.
+ */
+export async function deleteJobsForRuns(runIds: string[]): Promise<number> {
+  if (!runIds.length) return 0;
+  const { data, error } = await supabaseAdmin()
+    .from("generation_jobs")
+    .delete()
+    .in("run_id", runIds)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).length;
+}

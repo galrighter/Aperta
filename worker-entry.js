@@ -31,6 +31,20 @@ export * from "./.open-next/worker.js";
 /** הדומיין הקנוני. שווה ל-`SITE.url`, ומוגדר כאן כי הקובץ הזה מחוץ לבאנדל. */
 const SITE_URL = "https://aperta-designs.com";
 
+/**
+ * מי רץ באיזה תזמון. המפתחות הם ביטויי ה-cron **כלשונם** ב-wrangler.jsonc:
+ * זה מה ש-Cloudflare מוסר ב-`event.cron`, וכל שינוי שם חייב להשתנות גם כאן.
+ *
+ * ברירת המחדל (מפתח שלא מוכר, או הרצה מקומית שאינה מוסרת `cron` בכלל) היא
+ * הסריקה — הדבר שלקוחה ממתינה לו.
+ */
+const SWEEP = { path: "/api/jobs/sweep", name: "sweep" };
+const SCHEDULES = new Map([
+  ["*/10 * * * *", SWEEP],
+  // ניקוי יומן היצירות מהרצות הקנרית שהסתיימו בטוב. ראה src/lib/runs/canary.ts.
+  ["41 */2 * * *", { path: "/api/jobs/canary-purge", name: "canary-purge" }],
+]);
+
 const entry = {
   ...worker,
   // מועבר בקריאה מפורשת ולא בהעתקת ההפניה: כך `this` נשאר האובייקט של OpenNext,
@@ -38,17 +52,21 @@ const entry = {
   fetch: (request, env, ctx) => worker.fetch(request, env, ctx),
 
   /**
-   * הסריקה התקופתית.
+   * העבודה התקופתית — הסריקה כל עשר דקות, וניקוי הקנרית כל שעתיים.
    *
    * **לעולם לא זורק.** `scheduled` שנכשל אינו נוגע ב-`fetch`, אבל הוא כן צובע
    * את ההרצה כשגיאה ביומן — ולכן הכשל נרשם כאן במפורש, עם הסטטוס והגוף, כדי
-   * שיהיה אפשר להבדיל בין "הסריקה לא רצה" לבין "רצה ומשהו אחד בתוכה נכשל".
+   * שיהיה אפשר להבדיל בין "זה לא רץ" לבין "רץ ומשהו אחד בתוכו נכשל".
    * זו אותה הבחנה שה-workflow הקודם התעקש עליה.
+   *
+   * **והשם נכתב בכל שורת יומן**, כי מרגע ששני מתזמנים נכנסים לאותה פונקציה
+   * "רץ ולא מצא כלום" בלי שם הוא תשובה שאי אפשר לייחס לאיש.
    */
   async scheduled(event, env, ctx) {
+    const { path, name } = SCHEDULES.get(event?.cron) ?? SWEEP;
     try {
       const res = await worker.fetch(
-        new Request(`${SITE_URL}/api/jobs/sweep`, {
+        new Request(`${SITE_URL}${path}`, {
           method: "POST",
           headers: { authorization: `Bearer ${env.ADMIN_TOKEN ?? ""}` },
         }),
@@ -57,12 +75,12 @@ const entry = {
       );
       const body = await res.text();
       if (!res.ok) {
-        console.error(`sweep: HTTP ${res.status} ${body}`);
+        console.error(`${name}: HTTP ${res.status} ${body}`);
         return;
       }
-      console.log(`sweep: ${body}`);
+      console.log(`${name}: ${body}`);
     } catch (e) {
-      console.error("sweep: did not run:", e instanceof Error ? e.message : String(e));
+      console.error(`${name}: did not run:`, e instanceof Error ? e.message : String(e));
     }
   },
 };
