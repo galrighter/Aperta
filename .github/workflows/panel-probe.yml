@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: "160.4"
+      height_mm:
+        description: "הרוחב שהוזמן במ\"מ — בלעדיו הצינור האמיתי לא רץ על הפאנלים (18 צמיד · 6 טבעת)"
+        required: false
+        type: string
+        default: "18"
 
 jobs:
   probe:
@@ -33,7 +38,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: pip install --quiet pillow numpy opencv-python-headless shapely svgpathtools vtracer
+      # ‏`resvg-py` נדרש ל-`app.core.renderer`, שנטען בשרשרת של `run_pipeline`.
+      # בלעדיו כל פאנל נופל על `ModuleNotFoundError` — והבדיקה מדפיסה "✗" שנראה
+      # בדיוק כמו פאנל שנדחה, כלומר משקרת בכיוון המסוכן.
+      - run: pip install --quiet pillow numpy opencv-python-headless shapely svgpathtools vtracer resvg-py
 
       - name: Probe the renders
         env:
@@ -41,6 +49,10 @@ jobs:
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           RUN_IDS: ${{ inputs.run_ids }}
           LENGTH_MM: ${{ inputs.length_mm }}
+          # בלי זה `run_pipeline` מדולג בשקט (`height_mm > 0` בסקריפט), כלומר
+          # הבדיקה מדפיסה פסים ופתחים אבל **לא מריצה את הצינור** — וזה החלק
+          # היחיד שעונה על "האם הפאנל הזה עובר עכשיו".
+          HEIGHT_MM: ${{ inputs.height_mm }}
         run: python3 .github/scripts/panel_probe.py
 
       - uses: actions/upload-artifact@v4

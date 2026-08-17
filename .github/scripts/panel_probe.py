@@ -21,6 +21,7 @@
 בלי תלויות חיצוניות מלבד Pillow.
 """
 
+import io
 import json
 import os
 import subprocess
@@ -198,6 +199,24 @@ def main() -> int:
                 height_mm = float(os.environ.get("HEIGHT_MM", "0") or 0)
                 if run_pipeline is not None and height_mm > 0:
                     for pi, panel in enumerate(panels, 1):
+                        # מה הסף **באמת** מודד: הקונדישנינג רץ לפני הוולידציה,
+                        # חותך למתכת ומגדיל ל-3600 פיקסלים לרוחב, ולכן הצלע
+                        # הקצרה היא 3600/פרופורציה. מדפיסים אותה במפורש כדי
+                        # שהשוואה לסף תהיה מדידה ולא הסקה — וגם מול 256, הערך
+                        # שמחק כל פריט מעל פרופורציה 14.06 עד 17.8.
+                        note = ""
+                        try:
+                            from app.config import SETTINGS
+                            from app.core.conditioning import condition_png
+                            cond, _, _, _ = condition_png(panel, height_mm)
+                            with Image.open(io.BytesIO(cond)) as ci:
+                                short = min(ci.size)
+                            was = "נדחה" if short < 256 else "עבר"
+                            now = "נדחה" if short < SETTINGS.min_image_dimension else "עבר"
+                            note = (f" · צלע קצרה {short}px "
+                                    f"(ב-256 {was} · ב-{SETTINGS.min_image_dimension} {now})")
+                        except Exception as exc:  # noqa: BLE001
+                            note = f" · [מדידת הסף נכשלה: {exc}]"
                         try:
                             res = run_pipeline(
                                 panel, 0.0, height_mm, dark_region_role="metal",
@@ -206,9 +225,9 @@ def main() -> int:
                             )
                             sel = res.selection.selected
                             print(f"       פאנל {pi}: {res.status} · רוחב {res.width_mm:.2f} מ\"מ"
-                                  f" · cutouts {'יש' if sel is not None else 'אין'}")
+                                  f" · cutouts {'יש' if sel is not None else 'אין'}{note}")
                         except Exception as exc:  # noqa: BLE001
-                            print(f"       פאנל {pi}: ✗ {type(exc).__name__}: {exc}")
+                            print(f"       פאנל {pi}: ✗ {type(exc).__name__}: {exc}{note}")
                             traceback.print_exc()
         prev_end = None
         for i, (a, b) in enumerate(bs, 1):
