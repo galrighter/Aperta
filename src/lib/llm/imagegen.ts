@@ -78,6 +78,41 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  */
 const SAY_LONG_AND_NARROW_ABOVE = NATURAL_RATIO(1, 1);
 
+/**
+ * מה שנוסף לפרומפט **בניסיון החוזר בלבד**, אחרי שהרנדר הראשון נחתך בגבול.
+ *
+ * **למה בכלל.** הניסיון החוזר של הקופסה שולח היום את אותה בקשה בדיוק: אותו
+ * פרומפט, אותו מודל, אותו קנבס. זה עובד כשהכשל מקרי, ולא עובד כשהוא נובע
+ * מהבקשה — ואת ההבחנה הזו אין למי לעשות, ולכן זו הגרלה. **נמדד** (17.8, ניסוי
+ * `docs/research/experiments/wide-ratio`): מתוך 7 רנדרים שנחתכו, הסבב השני הציל
+ * 3 ונכשל ב-4. בארבעת הכישלונות הלקוחה קיבלה פריט שקצהו נחתך על ידי המסגרת.
+ *
+ * **למה דווקא המשפט הזה.** מכל 330 הרנדרים ששמורים, 27 נגעו בגבול — **כולם
+ * בשמאל**, אף אחד לא למעלה, למטה או בימין. כלומר הכשל אינו "המודל גולש" אלא
+ * "המודל מותח את הפריט על הציר האופקי עד שקצה אחד יוצא". על AP-0250 זה נמדד
+ * בפיקסלים: הפריט הנראה 1493px על קנבס 1536, וקצב ההתחדדות של הקצה השלם אומר
+ * שנקטעו עוד ~100px — 6% מהאורך.
+ *
+ * וזה גם מסביר איפה החור: הענף הרב-פריטי של הפרומפט כבר אומר `its bounding box
+ * spanning almost the full width of the image with a thin white margin at each
+ * end`, ורנדר רב-שורות כמעט לא נחתך. בענף של פריט יחיד אין שום אמירה על הציר
+ * האופקי. המשפט כאן הוא בדיוק זו שחסרה, במספר ולא ב"כמעט".
+ *
+ * **הוא נוסף ולא מחליף** — הבקשה נשארת מה שהייתה, ומה שמשתנה הוא כמה מקום
+ * הפריט תופס בתמונה. ומכוון חיובי ("צייר אותו בגודל כזה") ולא כשלילה ("אל
+ * תחרוג"), מאותו נימוק שמתועד לאורך הקובץ.
+ */
+export const RETRY_FRAMING =
+  " FRAMING: draw the piece smaller than the picture. Its full extent, end to end, takes up about 80% of the image width, centred, " +
+  "leaving a clear band of plain white between each end of the piece and the edge of the image. The whole piece is inside the picture, both of its ends included.";
+
+/**
+ * הפרומפט של הניסיון החוזר. נגזר מזה שנשלח, ולא נבנה מחדש: הרצה יכולה לרוץ עם
+ * `promptOverride` מהבק־אופיס, ובניית פרומפט "רגיל" לניסיון החוזר הייתה מחליפה
+ * בשקט את מה שנבדק.
+ */
+export const retryPromptFor = (prompt: string): string => prompt.trimEnd() + RETRY_FRAMING;
+
 /** מודל התמונה מציית למילה טוב יותר מלספרה כשמדובר בכמות. */
 const WORD: Record<number, string> = {
   2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX",

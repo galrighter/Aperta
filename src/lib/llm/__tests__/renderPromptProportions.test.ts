@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NATURAL_RATIO } from "@/lib/render/panels";
-import { buildRenderPrompt } from "../imagegen";
+import { buildRenderPrompt, retryPromptFor, RETRY_FRAMING } from "../imagegen";
 
 /**
  * בלוק PROPORTIONS — מה נאמר על הצורה של הפריט, ומה נאמר על הלבן סביבו.
@@ -58,5 +58,25 @@ describe("הלבן נדרש בארבעת הכיוונים", () => {
     );
     expect(p).toContain(ends);
     expect(p).not.toContain("plenty");
+  });
+});
+
+/**
+ * הפרומפט של הניסיון החוזר.
+ *
+ * הסבב השני נשלח היום זהה לראשון, ונמדד (17.8): מתוך 7 רנדרים שנחתכו הוא הציל
+ * 3 ונכשל ב-4. מה שנוסף לו הוא משפט המסגור — ולא ניסוח חדש של הבקשה, כי אז
+ * הסבב השני היה בודק משהו אחר ממה שהלקוחה ביקשה.
+ */
+describe("הניסיון החוזר מבקש משהו אחר", () => {
+  it("נגזר מהפרומפט שנשלח, ולא נבנה מחדש", () => {
+    const sent = buildRenderPrompt("קורי עכביש", "bracelet", { lengthMm: 160.4, widthMm: 73, thicknessMm: 1.5 });
+    const retry = retryPromptFor(sent);
+    expect(retry.startsWith(sent)).toBe(true);
+    expect(retry).toContain("takes up about 80% of the image width");
+  });
+
+  it("גם על `promptOverride` מהבק־אופיס — מה שנבדק הוא מה שיחזור", () => {
+    expect(retryPromptFor("anything at all")).toBe("anything at all" + RETRY_FRAMING);
   });
 });
