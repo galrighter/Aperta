@@ -1,4 +1,5 @@
 import { FAB, resolveFab } from "@/lib/fabrication.config";
+import { NATURAL_RATIO } from "@/lib/render/panels";
 
 // הפרומפט שנשלח למודל התמונה.
 //
@@ -57,6 +58,25 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  *  ספרות שומרות על 2.25 האמיתי ומנקות את הרעש — מספר כזה בפרומפט הוא רעש למודל
  *  ושורה שבורה ביומן. הערך עצמו, זה שהוולידציה עובדת מולו, לא נוגעים בו. */
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * מעל היחס הזה בלבד הפרומפט אומר על הפריט `long and narrow` — **6.55**.
+ *
+ * זה לא מספר שנבחר אלא `NATURAL_RATIO(1, 1)`: היחס שהמודל מצייר על קנבס לרוחב
+ * שלם, כשאין שום שורה שמצרה לו את התא (render/panels.ts, מכויל על 45 הרצות).
+ * מעליו התיאור נכון והוא גם עושה עבודה — שם מבקשים פריט **דק ממה שהמודל מצייר
+ * מעצמו**, והמילים מחזיקות אותו שם. מתחתיו הוא שקר על הפריט: פריט ביחס 2.2 אינו
+ * "long and narrow", והמשפט דוחף בדיוק לכיוון שהמדידה מראה שהוא כבר נוטה אליו.
+ *
+ * **ולמה זה חשוב עד כדי לחלק את המשפט לשניים.** בקשה ליחס נמוך מציבה שתי דרישות
+ * שאי אפשר לקיים יחד על הקנבס הזה: לתפוס את מלוא הרוחב, ולהשאיר לבן למעלה ולמטה.
+ * המודל פותר את הסתירה בכך שהוא מקטין את הגובה וממשיך למתוח את האורך — עד שקצה
+ * אחד יוצא מהמסגרת. נמדד ביומן (17.8): מתוך 121 הרצות ביחס 8 ומעלה **אף אחת** לא
+ * נחתכה בקצה, ומתוך 12 ההרצות שמתחת ל-8 נחתכו 6 — כולן ביחס מוזמן שקטן מ-6.55,
+ * ו-AP-0250 (יחס 2.2) בקצה: המתכת נגעה בגבול השמאלי גם ברנדר הראשון וגם בניסיון
+ * החוזר, והלקוחה קיבלה פריט שקצהו נחתך על ידי המסגרת.
+ */
+const SAY_LONG_AND_NARROW_ABOVE = NATURAL_RATIO(1, 1);
 
 /** מודל התמונה מציית למילה טוב יותר מלספרה כשמדובר בכמות. */
 const WORD: Record<number, string> = {
@@ -142,6 +162,11 @@ export function buildRenderPrompt(
   };
   const fab = resolveFab(d.thicknessMm, productType);
   const ratio = round1(d.lengthMm / d.widthMm);
+  // ‏`long and narrow` נאמר רק כשזה נכון על הפריט שהוזמן — ראה
+  // `SAY_LONG_AND_NARROW_ABOVE`. מתחת לסף המשפט חוזר לנוסח של מסלול Story, שבו
+  // הוא ממילא לא היה מעולם: "…taking up exactly that much room and do not
+  // thicken it…".
+  const narrow = ratio >= SAY_LONG_AND_NARROW_ABOVE ? ", long and narrow," : "";
   // מה שהשורות *הן* תלוי במסלול, ורק המשפט האחרון משתנה. ביצירה כל שורה היא
   // עיצוב אחר באותה רוח; בעריכה כולן אותו פריט, ומה שנבדל ביניהן הוא איך השינוי
   // המבוקש מיושם. בלי ההבחנה הזו הפרומפט סתר את עצמו: "כל שורה היא עיצוב אחר"
@@ -276,11 +301,20 @@ export function buildRenderPrompt(
 
     // פרופורציה: יחס הצדדים של הרנדר הוא שקובע את אורך הפס בהמשך הצינור.
     // המדידה חלה על השטח שהפריט תופס (bounding box), לא על צורת המתאר.
+    //
+    // ⚠ **הלבן נדרש בארבעת הכיוונים, ו-`plenty` ירד.** עד 17.8 המשפט ביקש
+    // `plenty of plain white above and below it` — כלומר הצהיר על ציר אחד בלבד,
+    // והשאיר את הציר שבו הפריט באמת נחתך (הקצוות) למשפט הכללי `with plain white
+    // all around it` שב-`layout`. זה לא הספיק: ב-AP-0250 שני רנדרים ברצף שמו
+    // מתכת על הגבול השמאלי של הקנבס. `plenty` ירד באותה הזדמנות — הוא כמת רק את
+    // הציר האנכי, וכימות לא סימטרי הוא בדיוק מה שהטה את הפריט להתרחב לצדדים.
     (widthRange
       ? // story mode: האורך הוא המדידה, הרוחב הוא של העיצוב. אותו מבנה משפט
         // בדיוק — מה שהוחלף הוא חצי המשפט על הרוחב.
-        `PROPORTIONS: the piece is exactly ${round1(d.lengthMm)}mm long — that length is a measurement and is fixed. How wide it is, is the design's own call: anywhere from ${round1(widthRange[0])}mm to ${round1(widthRange[1])}mm, whatever the design intent asks for, with around ${round1(d.widthMm)}mm being the usual. Lay it out horizontally taking up exactly that much room and do not thicken it to fill the picture — leave plenty of plain white above and below it. The length says how much room the piece occupies along its span; what its outline does within that room is the design's.`
-      : `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room, long and narrow, and do not thicken it to fill the picture — leave plenty of plain white above and below it. The measurement says how much room the piece occupies; what its outline does within that room is the design's.`
+        `PROPORTIONS: the piece is exactly ${round1(d.lengthMm)}mm long — that length is a measurement and is fixed. How wide it is, is the design's own call: anywhere from ${round1(widthRange[0])}mm to ${round1(widthRange[1])}mm, whatever the design intent asks for, with around ${round1(d.widthMm)}mm being the usual. Lay it out horizontally taking up exactly that much room and do not thicken it to fill the picture — leave plain white above and below it and beyond both of its ends.`
+        + ` The length says how much room the piece occupies along its span; what its outline does within that room is the design's.`
+      : `PROPORTIONS (this is a measurement, not a style): the piece is ${round1(d.lengthMm)}mm long and ${round1(d.widthMm)}mm wide — overall it is ${ratio} times longer than it is wide. Lay it out horizontally taking up exactly that much room${narrow} and do not thicken it to fill the picture — leave plain white above and below it and beyond both of its ends.`
+        + ` The measurement says how much room the piece occupies; what its outline does within that room is the design's.`
     ) + layout,
 
     closure,
