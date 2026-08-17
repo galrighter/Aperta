@@ -9,6 +9,7 @@ import { designCode } from "@/lib/designCode";
 import { jobFailuresForRuns, listRecentJobs } from "@/lib/db/jobs";
 import { orphanJobs, type OrphanItem } from "@/lib/runs/orphans";
 import { decodeRunCursor, encodeRunCursor, legacyRunCursor } from "@/lib/runs/cursor";
+import { runImageUrl, type RunImageName } from "@/lib/runs/imageUrl";
 
 // בק־אופיס: יומן כל הרצות הצינור (מכל המסלולים) — הדמיה, שלבי ביניים, סטטוס
 // ומדדים, כדי לאבחן בעיות מתלונות משתמשים ולכייל יחד את איכות ההמרה.
@@ -136,7 +137,7 @@ export async function GET(req: Request) {
 
     const items = rows.map((r) => {
       const stages = (r.stage_paths ?? {}) as RunStagePaths;
-      const image = (name: string) => `/api/debug/log/${r.id}/image/${name}`;
+      const image = (name: RunImageName) => runImageUrl(r.id, name);
       return {
         id: r.id,
         createdAt: r.created_at,

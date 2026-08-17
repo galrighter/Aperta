@@ -13,7 +13,7 @@ import { storyLayoutFor } from "@/lib/story/ratio";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
-import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
+import { dataUrlMediaType } from "@/lib/db/storage";
 import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
@@ -26,6 +26,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
+import { runImageUrl } from "@/lib/runs/imageUrl";
 import { noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
@@ -1027,11 +1028,15 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       pickedIndex: offeredRows.length > 0 && offered[0] === candidates[0] ? 0 : null,
     });
 
-    // ההדמיה חוזרת כקישור חתום ולא כ-data URL. ה-PNG שוקל ~2.3MB, כלומר ~3.1MB
+    // ההדמיה חוזרת כקישור ולא כ-data URL. ה-PNG שוקל ~2.3MB, כלומר ~3.1MB
     // בבסיס64 — פי עשרה משאר התשובה, ומסע היצירה של הלקוחה אפילו לא קורא אותו
     // (רק טאב הרנדר בסטודיו). תשובה כבדה על חיבור אטי נקטעת, וה-client מתרגם
     // גוף לא־תקין לשגיאה כללית — "היצירה נכשלה" על הרצה שהצליחה בשרת.
-    const renderUrl = renderPngPath ? await signedUrl(renderPngPath, 3600).catch(() => null) : null;
+    //
+    // הקישור הוא למסלול המגודר ולא כתובת חתומה: החתומה נוסעת ללקוח, נשמרת
+    // בשורת ה-job כחלק מהתשובה, ופגה אחרי שעה. ראה `lib/runs/imageUrl`.
+    // ‏`generationId` ולא `runId` — ההדמיה נשמרה על שורת הניסיון שהצליח.
+    const renderUrl = renderPngPath ? runImageUrl(generationId, "render") : null;
 
     return {
       runId,

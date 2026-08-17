@@ -3,6 +3,7 @@ import { handleRouteError, ApiError } from "@/lib/api";
 import { requireAdmin } from "@/lib/admin";
 import { getRun, type RunStagePaths } from "@/lib/db/runs";
 import { signedUrl } from "@/lib/db/storage";
+import { isRunImageName, type RunImageName } from "@/lib/runs/imageUrl";
 
 // תמונה אחת של הרצה אחת, כהפניה לכתובת חתומה.
 //
@@ -11,18 +12,20 @@ import { signedUrl } from "@/lib/db/storage";
 // השגיאה והחזיר null, ומהשורה העשירית ואילך היומן הופיע בלי אף תמונה: "ריק"
 // בלי הודעת שגיאה. כאן כל תמונה היא בקשה נפרדת עם התקציב שלה — שתי חתימות
 // לכל היותר — ולדפדפן ממילא נוח יותר לטעון אותן במקביל ולשמור אותן במטמון.
+//
+// מאז 16.8 זה גם המסלול של הסטודיו ומעבדת ההרצה: `/api/generate` החזיר להם
+// כתובת חתומה כמו שהיא, שנוסעת ללקוח, נשמרת בשורת ה-job ופגה אחרי שעה. שם
+// התמונות — והתנאים שלהן — יושבים ב-`lib/runs/imageUrl`, כדי שמי שבונה את
+// הכתובת ומי שמגיש אותה יסכימו עליה.
 
 export const maxDuration = 30;
-
-const NAMES = ["render", "input", "reference", "conditioned", "overlay", "difference", "rendered"] as const;
-type ImageName = (typeof NAMES)[number];
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string; name: string }> }) {
   try {
     // בלי השער הזה כתובת חתומה להדמיה של לקוחה מונפקת לכל מי שמבקש.
     requireAdmin(req);
     const { id, name } = await ctx.params;
-    if (!NAMES.includes(name as ImageName)) {
+    if (!isRunImageName(name)) {
       throw new ApiError("bad_request", `Unknown image ${name}`, 400);
     }
     const row = await getRun(id);
@@ -33,7 +36,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; nam
         ? row.render_path
         : name === "input"
           ? row.input_image_path
-          : ((row.stage_paths ?? {}) as RunStagePaths)[name as keyof RunStagePaths];
+          : ((row.stage_paths ?? {}) as RunStagePaths)[name as Exclude<RunImageName, "render" | "input">];
     if (!path) throw new ApiError("not_found", `Run ${id} has no ${name}`, 404);
 
     return NextResponse.redirect(await signedUrl(path, 3600), 302);
