@@ -22,6 +22,7 @@
 // `lib/story/showcase.ts`. ההדמיה בונה את הקשת מהגאומטריה שלו, ולא מתמונה.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { story } from "@/i18n/story";
+import { designCode } from "@/lib/designCode";
 import { SHOWCASE, showcaseCutouts, showcaseMaterial } from "@/lib/story/showcase";
 import { ShowcaseStage } from "./ShowcaseStage";
 
@@ -132,11 +133,13 @@ export function StoryShowcase({
           }}
         >
           <div className="flex items-baseline justify-between gap-3">
+            {/* התגית נוקבת בשער שדרכו העיצוב נוצר — "סיפור" או "תיאור" —
+                ומולה המספר הסידורי האמיתי: אלה עיצובים מהסטודיו, לא איורים. */}
             <div className={`font-display text-[10px] tracking-[0.22em] ${lab}`}>
-              {s.storyLabel} · {ex.kind}
+              {ex.tag}
             </div>
             <div className={`font-display text-[10px] tracking-[0.18em] ${lab}`}>
-              {s.product[ex.product]}
+              {s.product[ex.product]} · <bdi dir="ltr">{designCode(ex.serial)}</bdi>
             </div>
           </div>
           {/* **שורה אחת, ופתיחה בלחיצה.**
