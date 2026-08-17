@@ -4,11 +4,11 @@
 > rings from a plain-language description. You describe a cutout pattern in
 > words; an AI generates it and automatically checks it is manufacturable
 > (bridge widths, hole sizes, margins, roll-forming survivability). Once you
-> approve it, we laser-cut, roll-form and finish the piece by hand and ship
+> approve it, we cut the piece, roll-form it by hand, polish it and ship
 > it to you. Precision jewelry, formed around you.
 
 ## Product
-- Material: C260 brass, 1.5 mm, fiber-laser cut, roll-formed into an open arc.
+- Material: C260 brass, 1.5 mm, precision cut, roll-formed into an open arc.
 - Products: open bracelet (from ₪399), open ring (from ₪299), VAT included.
 - Made to order, 10–14 working days.
 
