@@ -49,25 +49,3 @@ jobs:
           name: renders
           path: renders/
           retention-days: 7
-
-      # זמני: הדפסת ההדמיות ללוג כ-base64, כדי שאפשר יהיה למשוך אותן החוצה
-      # בלי גישה ל-bucket. מוקטן ל-1024px ודחוס — הלוג מחזיק את זה בקלות.
-      - name: Emit renders to log as base64
-        if: always()
-        run: |
-          python3 - <<'EOF'
-          import base64, glob, io, os
-          from PIL import Image
-          for path in sorted(glob.glob("renders/*.png")):
-              img = Image.open(path).convert("L")
-              if img.width > 1024:
-                  img = img.resize((1024, round(img.height * 1024 / img.width)), Image.LANCZOS)
-              buf = io.BytesIO()
-              img.save(buf, format="PNG", optimize=True)
-              data = base64.b64encode(buf.getvalue()).decode()
-              name = os.path.basename(path)
-              print(f"BEGIN_IMG {name} {len(data)}")
-              for i in range(0, len(data), 4000):
-                  print(f"IMGDATA {data[i:i+4000]}")
-              print(f"END_IMG {name}")
-          EOF
