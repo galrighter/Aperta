@@ -116,6 +116,20 @@ for (const c of CASES) {
     console.error("::error::the deployed prompt is not the fixed one — aborting, the A/B would compare a text to itself");
     process.exit(1);
   }
+  // שער שני, ומאותה סיבה: zod **משמיט** שדה שאינו בסכמה במקום להיכשל עליו,
+  // ולכן אתר שנפרס לפני `canvasOverride` היה מריץ לרוחב ומחזיר "התצורה לא
+  // עזרה" — מדידה של משהו אחר לגמרי, שנראית תקינה לחלוטין.
+  if (CANVAS && plan.canvas !== CANVAS) {
+    console.error(
+      `::error::asked for canvas ${CANVAS} but the deployed lab reports ${plan.canvas ?? "nothing"} — ` +
+      "aborting rather than measuring a configuration nobody asked for",
+    );
+    process.exit(1);
+  }
+  if (ROWS && plan.rows !== ROWS) {
+    console.error(`::error::asked for ${ROWS} rows but the deployed lab reports ${plan.rows} — aborting`);
+    process.exit(1);
+  }
 
   // הפרומפט הוא זה שהקוד הפרוס מייצר לתצורה שנבדקת; משפט המסגור מצטרף רק
   // כשמבקשים אותו במפורש.
