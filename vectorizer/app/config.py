@@ -24,7 +24,26 @@ def _i(name: str, default: int) -> int:
 class Settings:
     # input contract
     max_upload_mb: float = _f("MAX_UPLOAD_MB", 20)
-    min_image_dimension: int = _i("MIN_IMAGE_DIMENSION", 256)
+    # This is not a file-size floor — it is a **proportion ceiling**, and it was
+    # silently deciding how thin a piece forme is allowed to make.
+    #
+    # Conditioning runs before validation and rescales the cropped metal to
+    # `target_px = 3600` across (core/conditioning.py), so by the time
+    # `load_and_validate` measures `min(w, h)` it is looking at
+    # `3600 / (length ÷ width)`. The threshold therefore rejects every piece
+    # whose proportion is thinner than `3600 / min_image_dimension`, whatever
+    # the render canvas was, and the caller only sees the panel disappear.
+    #
+    # At 256 that ceiling was **14.06**, and it was invisible: across 345
+    # candidates in the log the thinnest ever delivered is exactly 14.06 (ring)
+    # and 14.00 (bracelet), none above. What looked like the image model
+    # refusing to draw thin was this line deleting the thin ones — a bracelet
+    # under 11.4mm wide or a ring under 3.87mm could not survive.
+    #
+    # 78 is the product floor, translated: a bracelet at its minimum 3.5mm over
+    # a 160.4mm blank is proportion 45.8, which is 3600/45.8 = 78.6px. Below
+    # that the piece really is below what we are willing to make. (Gal, 17.8.)
+    min_image_dimension: int = _i("MIN_IMAGE_DIMENSION", 78)
     max_image_dimension: int = _i("MAX_IMAGE_DIMENSION", 8192)
     max_aspect_ratio_error: float = _f("MAX_ASPECT_RATIO_ERROR", 0.01)
     max_dim_mm: float = _f("MAX_DIM_MM", 1000)

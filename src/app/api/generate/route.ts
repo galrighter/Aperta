@@ -27,7 +27,7 @@ import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
 import { runImageUrl } from "@/lib/runs/imageUrl";
-import { noteRunVerdicts, verdictOf } from "@/lib/db/runs";
+import { noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
@@ -106,6 +106,19 @@ const schema = z.object({
    */
   mode: z.literal(STORY_MODE).optional(),
 
+  /**
+   * ההרצה היא הבדיקה האוטומטית ולא לקוחה (`.github/workflows/canary.yml`).
+   *
+   * משנה **דבר אחד**: את המקור שנרשם ליומן. הצינור עצמו זהה עד הבית האחרון —
+   * זו כל הנקודה של הקנרית, שהיא עוברת במסלול שהלקוחה עוברת בו ולא בצינור שני
+   * שנשאר תואם בזכות משמעת. מה שהסימון קונה הוא היכולת למחוק מהיומן את מה
+   * שהיא עשתה בלי לגעת בשורה של אף אחד אחר (`lib/runs/canary.ts`).
+   *
+   * בק־אופיס בלבד, כמו כיול הפרומפט — ראה את השער ב-POST. בלי שער, כל אחד היה
+   * יכול לסמן את ההרצה שלו כקנרית ולגרום למחיקה שלה מהיומן בניקוי הבא.
+   */
+  canary: z.boolean().optional(),
+
   // --- כיול פרומפט (בק־אופיס בלבד; ראה את השער ב-POST) ---
   /** הפרומפט המדויק שיישלח למודל, במקום זה שנבנה מהמידות. */
   promptOverride: z.string().max(8000).optional(),
@@ -122,11 +135,15 @@ export async function POST(req: Request) {
   let pipelineStarted = false;
   let designId: string | null = null;
   let userPrompt: string | null = null;
+  // ידוע רק אחרי פענוח הגוף, ובכל זאת מוחזק כאן: הכתיבה ליומן בכשל מוקדם
+  // (למטה) קורית מחוץ ל-try שבו הגוף נפענח.
+  let source: RunSource = "studio";
 
   try {
     const body = await parseBody(req, schema);
     designId = body.designId;
     userPrompt = body.userPrompt;
+    source = sourceOf(body);
     // האימותים שהלקוחה צריכה לדעת עליהם מיד — בעלות, עיצוב קיים, מכסה יומית,
     // תמונות תקינות — נשארים סינכרוניים. אין טעם להחזיר job שכבר ידוע שייכשל.
     //
@@ -136,7 +153,7 @@ export async function POST(req: Request) {
     // כיול הפרומפט רץ על **אותו מסלול** כמו הלקוחה — זו כל הנקודה: הבדל אחד
     // מכוון ולא צינור שני שנשאר תואם בזכות משמעת. אבל טקסט חופשי שנשלח ישירות
     // למודל התמונה עם המפתח שלנו הוא, בלי שער, כרטיס אשראי פתוח לכל אחד.
-    if (body.promptOverride || body.rowsOverride) requireAdmin(req);
+    if (body.promptOverride || body.rowsOverride || body.canary) requireAdmin(req);
 
     const design = await requireDesignAccess(req, body.designId);
     assertBuildableDims(design);
@@ -257,7 +274,7 @@ export async function POST(req: Request) {
     if (!pipelineStarted && !quotaRejection) {
       await persistRun({
         id: runId,
-        source: "studio",
+        source,
         designId,
         prompt: userPrompt,
         colorKey: "dark",
@@ -358,6 +375,10 @@ function toJobError(err: unknown) {
 }
 
 type GenerateBody = Awaited<ReturnType<typeof parseBody<typeof schema>>>;
+
+/** מי נרשם ביומן כמקור ההרצה. ‏`canary` מגיע מהבדיקה האוטומטית בלבד ועובר
+ *  שער אדמין ב-POST; כל השאר הוא מסלול הלקוחה. */
+const sourceOf = (body: { canary?: boolean }): RunSource => (body.canary ? "canary" : "studio");
 
 /** העבודה עצמה. זורק ApiError/LlmError; הקורא כותב את התוצאה ל-job. */
 async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
@@ -798,6 +819,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
             bridges: bridgePlan.letterBridges ?? [],
             tightShare: lettering?.tightShare ?? null,
             startedAt,
+            // כדי שהשלמה מנותקת תרשום את אותו מקור. ראה `JobContext.source`.
+            source: sourceOf(body),
           } satisfies JobContext),
       });
       const renderPngPath = job.renderPaths[0] ?? null;
@@ -805,7 +828,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // 3) שומרים את ההרצה ליומן *לפני* שמחליטים — כך גם דחיות נשמרות לאבחון.
       await persistRun({
         id: attemptId,
-        source: "studio",
+        source: sourceOf(body),
         designId: design.id,
         productType: design.product_type,
         prompt: body.userPrompt,
@@ -1039,7 +1062,7 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     if (!persisted) {
       await persistRun({
         id: runId,
-        source: "studio",
+        source: sourceOf(body),
         designId,
         prompt: userPrompt,
         colorKey: "coverage",

@@ -6,7 +6,15 @@ import type { RunCursor } from "@/lib/runs/cursor";
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
 // שנוכל לאבחן תלונות ולכייל יחד. ראה migration 0003_generation_runs.sql.
 
-export type RunSource = "studio" | "debug" | "upload";
+/**
+ * מי הריץ.
+ *
+ * `canary` הוא ה-workflow ולא אדם: יצירה סינתטית שרצה כל שעתיים על פרופיל
+ * הבודק כדי שנדע שהאתר עובד לפני שלקוחה תגלה שלא (.github/workflows/canary.yml).
+ * הפרדה שלו מ-`studio` היא מה שמאפשר למחוק אותו מהיומן בלי לגעת בשורה של
+ * לקוחה — ראה src/lib/runs/canary.ts.
+ */
+export type RunSource = "studio" | "debug" | "upload" | "canary";
 export type RunStatus = "approved" | "rejected" | "error";
 
 export interface RunStagePaths {
@@ -737,4 +745,44 @@ export async function getRun(id: string): Promise<GenerationRunRow | null> {
   const { data, error } = await sb.from("generation_runs").select("*").eq("id", id).maybeSingle();
   if (error) throw new Error(error.message);
   return (data as GenerationRunRow | null) ?? null;
+}
+
+/** מה שצריך כדי למחוק הרצה בלי להשאיר אחריה בייטים: המזהה והנתיבים. */
+export interface PurgeableRun {
+  id: string;
+  render_path: string | null;
+  stage_paths: RunStagePaths | null;
+  input_image_path: string | null;
+}
+
+/**
+ * הרצות הקנרית שהסתיימו בטוב — המועמדות למחיקה.
+ *
+ * `approved` בלבד, ובכוונה: דחייה או שגיאה של הקנרית היא **הסיבה שהיא קיימת**,
+ * והיא נשארת ביומן עד שמישהו יטפל בה. הנתיבים נשלפים ולא רק המזהים, כי מחיקת
+ * השורה בלי הקבצים משאירה תמונות שאין להן יותר דרך גישה.
+ */
+export async function listPurgeableCanaryRuns(limit: number): Promise<PurgeableRun[]> {
+  const { data, error } = await supabaseAdmin()
+    .from("generation_runs")
+    .select("id, render_path, stage_paths, input_image_path")
+    .eq("source", "canary")
+    .eq("status", "approved")
+    // מהוותיקה לחדשה: סבב שנחתך בתקרה מוחק קודם את מה שהכי מזמן ביומן.
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as PurgeableRun[];
+}
+
+/** מוחק שורות יומן לפי מזהה. מחזיר כמה נמחקו בפועל. */
+export async function deleteRuns(ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const { data, error } = await supabaseAdmin()
+    .from("generation_runs")
+    .delete()
+    .in("id", ids)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).length;
 }

@@ -15,7 +15,8 @@ import {
 import { getVersion } from "@/lib/db/designs";
 import { addressLineValid, nameValid, zipValid } from "@/lib/address";
 import { designSampleCode } from "@/lib/designCode";
-import { priceFor } from "@/lib/pricing";
+import { priceFor, type ReferralRule } from "@/lib/pricing";
+import { resolveReferralCode } from "@/lib/db/referralCodes";
 import { sendMail, mailConfigured, notifyAddress } from "@/lib/mail";
 import { sendTelegram } from "@/lib/alerts/telegram";
 import { SITE } from "@/lib/site.config";
@@ -59,6 +60,11 @@ const createSchema = z.object({
    * במקום להישמר בסכום אחר מזה שהלקוחה אישרה.
    */
   displayedTotal: z.number().nonnegative().optional(),
+  /**
+   * קוד הפניה (0026). מה שמגיע כאן הוא **מחרוזת בלבד** — המחיר שמאחוריה נשלף
+   * מהמסד כאן, ולעולם לא מגיע מהדפדפן. ראו את פתירת הקוד למטה.
+   */
+  referralCode: z.string().trim().max(64).optional(),
   name: z.string().trim().min(1).max(120).refine(nameValid, { message: "invalid name" }),
   email: z.string().trim().email().max(200),
   // הטלפון נבדק ונשמר בצורה אחת. הבדיקה בדפדפן היא שירות ללקוחה; זו כאן היא
@@ -171,13 +177,45 @@ export async function POST(req: Request) {
       }
     }
 
-    // מחיר קבוע למוצר. הרוחב והצפיפות עדיין מגיעים בגוף הבקשה — הם נרשמים על
-    // ההזמנה ומתארים את מה שנחתך — אבל אינם נכנסים לחישוב. ראו lib/pricing.ts.
-    const price = priceFor({ productType: body.productType });
+    // ===== קוד ההפניה (0026) =====
+    //
+    // **נפתר כאן, ולפני חישוב המחיר.** מה שהדפדפן שלח הוא מחרוזת; הכלל שמאחוריה
+    // — מחיר קבוע או אחוז — נקרא מהמסד ברגע הזה. זו אותה החלטה שבגללה המחיר
+    // מחושב בשרת מלכתחילה: קוד שהדפדפן "מאשר" הוא קוד שאפשר לאשר מ-devtools.
+    //
+    // **הבדיקה חוזרת כאן גם אם `/validate` כבר אישר.** בין מסך הצ'קאאוט
+    // לשליחה חולפות דקות, ובזמן הזה המכסה יכולה להיגמר, הקוד לפוג, או להיכבות
+    // בבק־אופיס. השאלה "האם הקוד תקף" נשאלת ברגע שבו היא עולה כסף.
+    let referral: { code: string; rule: ReferralRule; pickupOnly: boolean } | null = null;
+    let referralCodeId: string | null = null;
+    if (body.referralCode) {
+      const resolved = await resolveReferralCode(body.referralCode);
+      // הסיבה נוסעת **בתוך הקוד** ולא בטקסט: "פג תוקף" ו"כל המקומות נתפסו" הן
+      // שתי הודעות שונות ללקוחה, ו-`ApiError` נושא code אחד בלבד.
+      if (!resolved.ok) {
+        throw new ApiError(
+          `referral_${resolved.reason}`,
+          `Referral code rejected: ${resolved.reason}`,
+          409,
+        );
+      }
+      // אופן האספקה נקבע מהקוד ולא מהדפדפן, בדיוק כמו המחיר — הוא **חלק**
+      // מהמחיר: `pickupOnly` הוא מה שמאפס את המשלוח.
+      referral = { code: resolved.row.code, rule: resolved.rule, pickupOnly: resolved.row.pickup_only };
+      referralCodeId = resolved.row.id;
+    }
+
+    // מחיר קבוע למוצר, אלא אם קוד הפניה קבע אחרת. הרוחב והצפיפות עדיין מגיעים
+    // בגוף הבקשה — הם נרשמים על ההזמנה ומתארים את מה שנחתך — אבל אינם נכנסים
+    // לחישוב. ראו lib/pricing.ts.
+    const price = priceFor({ productType: body.productType, referral });
 
     // המחיר שהוצג מול המחיר שנשמר. שניהם מחושבים מאותה פונקציה, ולכן פער כאן
     // אינו זיוף אלא **מסך ישן**: מחירון שהתעדכן בזמן שהמשפך היה פתוח. הזמנה
     // שנשמרת בסכום אחר מזה שהלקוחה ראתה היא בדיוק השיחה שאי אפשר לנצח בה.
+    //
+    // ההשוואה נשארת נכונה מול קוד הפניה **משום** שהקוד נפתר למעלה: שני הצדדים
+    // מגיעים לכאן עם אותו קלט. מה שהיה נשבר כאן הוא החלת הקוד בדפדפן בלבד.
     if (body.displayedTotal != null && body.displayedTotal !== price.total) {
       throw new ApiError(
         "price_changed",
@@ -208,6 +246,10 @@ export async function POST(req: Request) {
       gap_mm: snapshot?.gap_mm ?? null,
       thickness_mm: snapshot?.thickness_mm ?? null,
       price,
+      // 0026 — הקשר החי לספירת המכסה, לצד צילום המחרוזת שיישרוד מחיקת קוד.
+      referral_code_id: referralCodeId,
+      referral_code: referral?.code ?? null,
+      pickup: referral?.pickupOnly ?? false,
       idempotency_key: body.idempotencyKey ?? null,
       // החותמת נכתבת בשרת ולא מהדפדפן: "מתי אושרו התנאים" הוא הראיה עצמה.
       terms_accepted_at: new Date().toISOString(),
@@ -246,6 +288,9 @@ async function notify(order: OrderRow): Promise<void> {
       `🟢 Aperta — הזמנה חדשה ${order.ref ?? ""}`.trim(),
       `${order.name} · ${order.email}${order.phone ? ` · ${order.phone}` : ""}`,
       order.price ? `סה"כ ${order.price.total} ₪` : "",
+      // הקוד עולה בהתראה עצמה: הזמנה במחיר הפניה היא הזמנה שגל צריך לזהות
+      // ככזו **לפני** שהוא מתקשר לתאם תשלום, ולא אחרי.
+      order.referral_code ? `קוד הפניה: ${order.referral_code}` : "",
       `${SITE.url}/admin/orders/${order.id}`,
     ]
       .filter(Boolean)

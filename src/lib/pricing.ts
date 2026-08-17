@@ -36,6 +36,49 @@ export interface Price {
   widthAdd?: number;
   /** @deprecated תוספת מורכבות — בהזמנות שנשלחו לפני המחיר הקבוע בלבד. */
   complexity?: number;
+
+  /* ===== קוד הפניה (0026) ===== */
+  /** הקוד שתומחר בו, כפי שנקלט. חסר בהזמנה רגילה. */
+  referralCode?: string;
+  /**
+   * מחיר המחירון לאותו פריט, כשקוד הפניה הזיז אותו.
+   *
+   * נשמר כדי שאפשר יהיה לענות בדיעבד "כמה ויתרנו על הקוד הזה" בלי לשחזר את
+   * המחירון שהיה באותו יום — `BASE` הוא קבוע בקוד, והוא ישתנה. **אינו מוצג
+   * ללקוחה בשום מסך**: מחיר מחוק לצד המחיר שמשלמים הוא בדיוק מה שהקוד נועד
+   * למנוע. שורת בק־אופיס וחשבונאות בלבד.
+   */
+  listBase?: number;
+}
+
+/**
+ * איך קוד הפניה קובע את מחיר הפריט (migration 0026).
+ *
+ * היום נדרש `fixed_price` בלבד; `percent_off` קיים כי הפניה מחנות עשויה
+ * לזכות באחוז, וההחלטה טרם התקבלה. שני הכללים חלים על **הפריט בלבד** —
+ * המשלוח הוא עלות אמיתית וממשיך להיגבות ככתבו.
+ */
+export type ReferralRule =
+  | { kind: "fixed_price"; basePrices: Record<ProductType, number> }
+  | { kind: "percent_off"; percentOff: number };
+
+/**
+ * מחיר הפריט לפי הקוד. פונקציה טהורה, ולכן היא זו שנבדקת — ולא המסלול.
+ *
+ * ‏`Math.max(0, …)` אינו הגנה תיאורטית: אחוז שנשמר שגוי, או מחיר שלילי
+ * שהוקלד בבק־אופיס, היו הופכים את `total` לסכום נמוך מהמשלוח — כלומר הזמנה
+ * שגובה פחות מעלות המשלוח שכבר שולמה.
+ */
+export function referralBase(rule: ReferralRule, productType: ProductType): number {
+  const list = BASE[productType];
+  const raw =
+    rule.kind === "fixed_price"
+      ? rule.basePrices[productType]
+      : Math.round((list * (100 - rule.percentOff)) / 100);
+  // מחיר שלא נמסר למוצר הזה נופל למחירון ולא ל-NaN. אמור להיחסם כבר
+  // ב-check constraint של 0026, וכפילות כאן זולה מהזמנה עם `total: NaN`.
+  if (!Number.isFinite(raw)) return list;
+  return Math.max(0, Math.round(raw));
 }
 
 /** מחיר פריט סטנדרטי לפני משלוח, כולל מע"מ ואריזה. */
@@ -68,10 +111,31 @@ export const vatIn = (grossTotal: number): number =>
  */
 export interface PriceInput {
   productType: ProductType;
+  /**
+   * קוד הפניה שנקלט ואומת (0026). כשהוא כאן, מחיר הפריט נקבע ממנו במקום
+   * מ-`BASE` — והפונקציה נשארת טהורה: מי שפותר את הקוד מול המסד הוא המסלול
+   * ב-`/api/orders`, וכאן מגיע כבר הכלל עצמו.
+   *
+   * **המחיר לעולם אינו נקבע בדפדפן.** הדפדפן קורא לפונקציה הזאת כדי להציג,
+   * אבל מה שנשמר הוא מה שהשרת חישב מהקוד ששלף מהמסד בעצמו. ראו את בדיקת
+   * ההתאמה ב-`/api/orders`.
+   */
+  referral?: { code: string; rule: ReferralRule; pickupOnly?: boolean } | null;
 }
 
-export function priceFor({ productType }: PriceInput): Price {
-  const base = BASE[productType];
-  const total = base + SHIPPING;
-  return { base, shipping: SHIPPING, total, vat: vatIn(total) };
+export function priceFor({ productType, referral }: PriceInput): Price {
+  const list = BASE[productType];
+  const base = referral ? referralBase(referral.rule, productType) : list;
+  // **איסוף עצמי — אין משלוח לגבות.** ‏`pickupOnly` יושב לצד `rule` ולא בתוכו
+  // כי הוא ציר אחר: קוד חנות יכול לתת מחיר מיוחד ועדיין להישלח.
+  const shipping = referral?.pickupOnly ? 0 : SHIPPING;
+  const total = base + shipping;
+  const price: Price = { base, shipping, total, vat: vatIn(total) };
+  // שתי השורות נכתבות רק כשהיה קוד: הזמנה רגילה נשמרת בדיוק כפי שנשמרה עד
+  // היום, ו-`priceLineParts` ממשיך להדפיס אותה בלי שינוי.
+  if (referral) {
+    price.referralCode = referral.code;
+    price.listBase = list;
+  }
+  return price;
 }
