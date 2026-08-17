@@ -323,7 +323,8 @@ function BridgeTable({ bridges }: { bridges: BridgeRecord[] }) {
 }
 
 /** ‏"קנרית" היא הבדיקה האוטומטית ולא אדם. שורה כזאת שנשארת ביומן היא הרצה
- *  שנכשלה — מה שהצליח נמחק מעצמו כל שעתיים (`lib/runs/canary.ts`). */
+ *  שנכשלה, או אחת שהצליחה מאז הניקוי האחרון — מה שהצליח נמחק מעצמו פעם ביום
+ *  (`lib/runs/canary.ts`). */
 const SOURCE_LABEL: Record<string, string> = {
   studio: "אתר", debug: "מעבדה", upload: "העלאה", canary: "קנרית",
 };

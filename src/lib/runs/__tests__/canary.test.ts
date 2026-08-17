@@ -123,16 +123,20 @@ describe("מי מפעיל את הניקוי", () => {
     for (const cron of crons) expect(ENTRY).toContain(`"${cron}"`);
   });
 
-  it("הניקוי רץ כל שעתיים — בקצב של הקנרית עצמה", () => {
-    const purge = crons.find((c) => c.includes("*/2"));
-    expect(purge).toMatch(/^\d+ \*\/2 \* \* \*$/);
+  /** התזמון היחיד שאינו הסריקה. */
+  const purge = crons.find((c) => c !== "*/10 * * * *");
+
+  it("הניקוי רץ פעם ביום — יום של בדיקות נשאר ביומן ואז נמחק בבת אחת", () => {
+    // ובכוונה לא בקצב הקנרית: יומן שבו הבדיקה כמעט אף פעם לא נראית מוחק גם
+    // את הידיעה שהיא רצה ועברה. שדה שעה קבוע, ולא `*/n` — זה מה שהופך את זה
+    // לפעם ביום.
+    expect(purge).toMatch(/^\d+ \d+ \* \* \*$/);
     expect(ENTRY).toContain("/api/jobs/canary-purge");
   });
 
   it("ולא בדקה שבה הסריקה ממילא יורה", () => {
     // שני מתזמנים באותה דקה נכנסים לאותו isolate בלי שום צורך.
-    const purgeMinute = Number(crons.find((c) => c.includes("*/2"))?.split(" ")[0]);
-    expect(purgeMinute % 10).not.toBe(0);
+    expect(Number(purge?.split(" ")[0]) % 10).not.toBe(0);
   });
 });
 
@@ -149,7 +153,7 @@ describe("מי נרשם כקנרית", () => {
 
   it("הסימון עובר שער אדמין", () => {
     // בלי השער כל אחד היה יכול לסמן את ההרצה שלו כקנרית — כלומר לגרום
-    // למחיקה שלה מהיומן שעתיים אחר כך.
+    // למחיקה שלה מהיומן בסבב הניקוי הקרוב.
     expect(ROUTE).toContain("body.canary) requireAdmin(req)");
   });
 });

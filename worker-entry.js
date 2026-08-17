@@ -42,7 +42,7 @@ const SWEEP = { path: "/api/jobs/sweep", name: "sweep" };
 const SCHEDULES = new Map([
   ["*/10 * * * *", SWEEP],
   // ניקוי יומן היצירות מהרצות הקנרית שהסתיימו בטוב. ראה src/lib/runs/canary.ts.
-  ["41 */2 * * *", { path: "/api/jobs/canary-purge", name: "canary-purge" }],
+  ["41 3 * * *", { path: "/api/jobs/canary-purge", name: "canary-purge" }],
 ]);
 
 const entry = {
@@ -52,7 +52,7 @@ const entry = {
   fetch: (request, env, ctx) => worker.fetch(request, env, ctx),
 
   /**
-   * העבודה התקופתית — הסריקה כל עשר דקות, וניקוי הקנרית כל שעתיים.
+   * העבודה התקופתית — הסריקה כל עשר דקות, וניקוי הקנרית פעם ביום.
    *
    * **לעולם לא זורק.** `scheduled` שנכשל אינו נוגע ב-`fetch`, אבל הוא כן צובע
    * את ההרצה כשגיאה ביומן — ולכן הכשל נרשם כאן במפורש, עם הסטטוס והגוף, כדי
