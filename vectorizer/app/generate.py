@@ -43,6 +43,10 @@ class GenerateJob:
     """What forme asks for. Every decision in here was made on the Worker."""
 
     prompt: str
+    # What to send when the first render came back clipped. None = the same
+    # prompt again, which is what every run did before forme started building
+    # this. The text is forme's, like every other prompt here: the box executes.
+    retry_prompt: Optional[str] = None
     calls: int = 1
     rows: int = 1
     # Columns in the render. The cut is a grid of rows x cols; 1 is a single
@@ -143,17 +147,27 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     # the model drew past the border despite being asked for white all around,
     # and no later stage can tell — the crop trims to content and every gate
     # compares against the clipped picture (RM-0076 sailed through approved).
-    # The remedy is one more render, quietly: same prompt, same model, one round
-    # — the worst case doubles the run's image cost and nothing recurses. A
-    # clean replacement takes the clipped one's slot; a clipped replacement
-    # leaves the original in place. Either way the journal hears about it below
-    # (debug.stages / debug.warnings) — quiet toward the customer, not the log.
+    # The remedy is one more render, quietly: one round, the worst case doubles
+    # the run's image cost and nothing recurses. A clean replacement takes the
+    # clipped one's slot; a clipped replacement leaves the original in place.
+    # Either way the journal hears about it below (debug.stages / debug.warnings)
+    # — quiet toward the customer, not the log.
+    #
+    # The retry asks for something *different* when forme sent a `retry_prompt`,
+    # and that is the whole point of the field. An identical second round only
+    # helps when the failure was random, and this one usually is not: measured
+    # over 7 clipped renders it rescued 3 and failed 4 (17.8, see forme's
+    # docs/research/experiments/wide-ratio). What forme adds is a framing
+    # instruction — the piece drawn smaller than the picture — because every one
+    # of the 27 clipped renders in the corpus ran off the *left* border and none
+    # off the top or bottom. Without the field: the same prompt, exactly as before.
     edge_notes: list[str] = []
     clipped = {i: edges for i, r in enumerate(renders) if (edges := clipped_edges(r))}
     if clipped:
         try:
             retry = await imagegen.render_many(
-                openai_key, job.prompt, len(clipped), reference, model, size=job.size, quality=job.quality
+                openai_key, job.retry_prompt or job.prompt, len(clipped), reference, model,
+                size=job.size, quality=job.quality,
             )
             replacements = retry.images
             imagegen.merge_usage(usage, retry.usage)
