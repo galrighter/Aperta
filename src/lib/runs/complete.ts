@@ -12,7 +12,7 @@ import { notifyDesignReady } from "@/lib/designReadyNotice";
 import { signedUrl } from "@/lib/db/storage";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
-import { noteRunVerdicts, verdictOf, type RunStagePaths } from "@/lib/db/runs";
+import { noteRunVerdicts, verdictOf, type RunSource, type RunStagePaths } from "@/lib/db/runs";
 import type { LetterBridge } from "@/lib/geometry/restoreBridges";
 import type { CheckResult } from "@/lib/geometry/types";
 
@@ -56,6 +56,16 @@ export interface JobContext {
   tightShare: number | null;
   /** מתי ההרצה התחילה, לחישוב משך ביומן. */
   startedAt: number;
+  /**
+   * מי הריץ, כפי שנרשם ביומן. חסר = `studio` — גם הקשר שנכתב לפני השדה הזה
+   * וגם כל מסלול הלקוחה.
+   *
+   * **למה זה נשמר ולא נגזר מחדש.** ההשלמה המנותקת כותבת את שורת היומן בעצמה,
+   * והיא רצה בלי הבקשה שפתחה את ההרצה. בלי השדה כאן, הרצת קנרית שהבקשה שלה
+   * מתה והושלמה מהסריקה הייתה נרשמת כיצירה של לקוחה — כלומר בדיוק השורה
+   * שהניקוי לא יידע למחוק, וזו שתישאר ביומן לנצח.
+   */
+  source?: RunSource;
 }
 
 /** למה הסיום לא קרה. הקורא מחליט מה לעשות עם כל אחד. */
@@ -163,7 +173,7 @@ async function finishFromRender(
   // הרצה שהתחילה להיכתב בבקשה שמתה מתעדכנת ולא מוכפלת.
   await persistRun({
     id: ctx.attemptId,
-    source: "studio",
+    source: ctx.source ?? "studio",
     designId: design.id,
     productType: design.product_type,
     prompt: ctx.userPrompt,

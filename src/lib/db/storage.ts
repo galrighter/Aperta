@@ -26,6 +26,24 @@ export async function removeFile(path: string): Promise<void> {
   if (error) console.warn(`[storage] remove failed (${path}): ${error.message}`);
 }
 
+/** כמה נתיבים בבקשת מחיקה אחת. גבול על גודל הבקשה ולא על יכולת ה-API. */
+const REMOVE_BATCH = 100;
+
+/**
+ * מחיקה של אצווה — אותה best-effort, בבקשה אחת לכל 100 נתיבים.
+ *
+ * ‏`remove` מקבל רשימה, וניקוי שקורא לו נתיב-נתיב הופך מחיקה של 200 הרצות
+ * (~1,000 קבצים) לאלף סבבי רשת בתוך בקשה אחת. ראה `runs/canary.ts`.
+ */
+export async function removeFiles(paths: string[]): Promise<void> {
+  const sb = supabaseAdmin();
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const batch = paths.slice(i, i + REMOVE_BATCH);
+    const { error } = await sb.storage.from(STORAGE_BUCKET).remove(batch);
+    if (error) console.warn(`[storage] remove failed (${batch.length} paths): ${error.message}`);
+  }
+}
+
 export async function signedUrl(path: string, expiresInSec = 3600): Promise<string> {
   const { data, error } = await supabaseAdmin()
     .storage.from(STORAGE_BUCKET)
