@@ -212,12 +212,21 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
                 return await anyio.to_thread.run_sync(
                     _trace, panel, job.height_mm, job.color_key, job.min_hole_mm
                 )
-            except Exception:  # a panel the pipeline cannot read is not a failed run
+            except Exception as exc:  # a panel the pipeline cannot read is not a failed run
                 # Swallowed toward the customer, not toward us. A systematic bug
                 # takes out every panel of every run and forme only ever sees
                 # status="rejected" — with nothing on the box to diagnose it
                 # from, because until now this except returned None in silence.
+                #
+                # And that is exactly what happened: `MIN_IMAGE_DIMENSION` was
+                # rejecting every piece thinner than proportion 14.06 (see
+                # config.py), every run, for months — and because the loss left
+                # no trace on this side it read as the image model's own
+                # ceiling. The log line lives on the box; this note travels back
+                # with the run, which is the difference between a diagnosis and
+                # a guess.
                 log.exception("panel trace failed")
+                edge_notes.append(f"panel trace failed: {type(exc).__name__}: {exc}")
                 return None
 
     results = await asyncio.gather(*(trace(p) for p in panels))
