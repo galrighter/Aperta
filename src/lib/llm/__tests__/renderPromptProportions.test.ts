@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { NATURAL_RATIO } from "@/lib/render/panels";
 import { buildRenderPrompt, retryPromptFor, RETRY_FRAMING } from "../imagegen";
@@ -79,4 +80,19 @@ describe("הניסיון החוזר מבקש משהו אחר", () => {
   it("גם על `promptOverride` מהבק־אופיס — מה שנבדק הוא מה שיחזור", () => {
     expect(retryPromptFor("anything at all")).toBe("anything at all" + RETRY_FRAMING);
   });
+});
+
+/**
+ * ‏`framing.txt` של הניסוי מול `RETRY_FRAMING` של הייצור.
+ *
+ * הניסוי רץ ב-Actions ב-node, ולכן אינו יכול לייבא את הקבוע מכאן — הוא קורא
+ * עותק מקובץ. עותק הוא בדיוק הדבר שנשאר מאחור: מדידה של נוסח שאינו זה שנשלח
+ * ללקוחות היא מדידה של כלום, והיא לא תיראה שגויה בשום שלב.
+ */
+it("הניסוי מודד את המשפט שנשלח בייצור, ולא עותק שנשאר מאחור", () => {
+  const onDisk = readFileSync(
+    new URL("../../../../docs/research/experiments/wide-ratio/framing.txt", import.meta.url),
+    "utf8",
+  );
+  expect(onDisk.replace(/\n+$/, "")).toBe(RETRY_FRAMING);
 });
