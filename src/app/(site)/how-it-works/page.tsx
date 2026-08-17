@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { he } from "@/i18n/he";
-import PatternMark, { type PatternVariant } from "@/components/site/PatternMark";
 
 const s = he.site;
 
@@ -11,11 +10,13 @@ export const metadata: Metadata = {
   alternates: { canonical: "/how-it-works" },
 };
 
-const STEPS: { t: string; b: string; v: PatternVariant }[] = [
-  { t: s.step1Title, b: s.step1Body, v: "stripes" },
-  { t: s.step2Title, b: s.step2Body, v: "hexagons" },
-  { t: s.step3Title, b: s.step3Body, v: "diamonds" },
-  { t: s.step4Title, b: s.step4Body, v: "waves" },
+// בלי איורי הצמידים: הם היו דוגמת ניקוב מיוצרת ולא מוצר, והלקוחות קראו אותם
+// כתמונה של פריט אמיתי. הטקסט של השלב מסביר את השלב בלי המחשה מטעה.
+const STEPS: { t: string; b: string }[] = [
+  { t: s.step1Title, b: s.step1Body },
+  { t: s.step2Title, b: s.step2Body },
+  { t: s.step3Title, b: s.step3Body },
+  { t: s.step4Title, b: s.step4Body },
 ];
 
 export default function HowItWorksPage() {
@@ -37,7 +38,6 @@ export default function HowItWorksPage() {
             <div className="border border-graphite/10 bg-chalk p-6">
               <h2 className="text-xl font-semibold text-graphite">{step.t}</h2>
               <p className="mt-2 leading-relaxed text-ink60">{step.b}</p>
-              <PatternMark variant={step.v} className="mt-5 w-full max-w-md" />
             </div>
           </li>
         ))}
