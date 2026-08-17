@@ -18,7 +18,7 @@ import { buildRenderPrompt, LETTERING_MODEL, retryPromptFor } from "@/lib/llm/im
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
-import { canvasFor, sizeParam } from "@/lib/render/canvas";
+import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
@@ -123,6 +123,15 @@ const schema = z.object({
   promptOverride: z.string().max(8000).optional(),
   /** כמה פריטים בתמונה, במקום מה ש-planRender גוזר מהיחס. */
   rowsOverride: z.number().int().min(1).max(40).optional(),
+  /**
+   * צורת הקנבס, במקום זו ש-`canvasFor` גוזר מהאורך.
+   *
+   * הידית היחידה על היחס שהמודל מצייר היא צורת התא, והיא מכפלה של צורת הקנבס
+   * במספר השורות — כלומר עד כה אפשר היה לכייל חצי ממנה. `canvasFor` חוסם קנבס
+   * לאורך מעל 153.2 מ"מ (הפתח המינימלי לא שורד את המעקב), וזה הנכון לייצור;
+   * במעבדה זו בדיוק ההנחה שצריך לבדוק, כי המחיר של פריט חתוך גבוה יותר.
+   */
+  canvasOverride: z.enum(["1536x1024", "1024x1536"]).optional(),
 });
 
 const ALLOWED_MEDIA = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -152,7 +161,7 @@ export async function POST(req: Request) {
     // כיול הפרומפט רץ על **אותו מסלול** כמו הלקוחה — זו כל הנקודה: הבדל אחד
     // מכוון ולא צינור שני שנשאר תואם בזכות משמעת. אבל טקסט חופשי שנשלח ישירות
     // למודל התמונה עם המפתח שלנו הוא, בלי שער, כרטיס אשראי פתוח לכל אחד.
-    if (body.promptOverride || body.rowsOverride || body.canary) requireAdmin(req);
+    if (body.promptOverride || body.rowsOverride || body.canvasOverride || body.canary) requireAdmin(req);
 
     const design = await requireDesignAccess(req, body.designId);
     assertBuildableDims(design);
@@ -486,7 +495,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // מה שכן יש לגזור ממנו הוא **היחס המבוקש**, וזה `layout`: הקנבס שמושך
     // הכי קרוב למרכז מה שמודל הטקסט ביקש. בלעדיו (עריכה, כיתוב, שלב שנפל)
     // נשאר הקיבוע — אחרת עיצוב נוצר על צורה אחת ונערך על שנייה.
-    const canvas = layout?.canvas ?? (story ? storyCanvas() : canvasFor(dims.lengthMm));
+    // עקיפת הבק־אופיס גוברת על הכול, כולל על מסלול Story: היא קיימת כדי לבדוק
+    // בדיוק את מה שהגזירה לא הייתה בוחרת לבד.
+    const canvas = body.canvasOverride
+      ? canvasOf(body.canvasOverride)
+      : layout?.canvas ?? (story ? storyCanvas() : canvasFor(dims.lengthMm));
     const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.

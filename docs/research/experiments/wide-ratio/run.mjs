@@ -31,6 +31,20 @@
 // מ-`framing.txt`. הקובץ הזה מושווה ל-`RETRY_FRAMING` בטסט, כדי שהניסוי לא
 // ימדוד נוסח שאינו זה שנשלח בייצור.
 //
+// **אצווה 2 בודקת תצורה ולא ניסוח** (17.8, אחרי שאצווה 1 החזירה 3 מתוך 9 —
+// זהה לבסיס, כלומר משפט המסגור אינו הידית). מה שנמדד על כל 330 הרנדרים הוא
+// שהחיתוך הוא כמעט כולו תופעה של שורה אחת: 6 מתוך 31 בשורה אחת, 1 מתוך 57
+// בשתיים־שלוש, 0 מתוך 139 בארבע ומעלה. לכן `ROWS` ו-`CANVAS` כאן: שתי שורות
+// על קנבס לאורך, שהוא גם הצורה שמושכת ליחס הנמוך ביותר (5.86 לשורה, 6.41
+// לשתיים — מול 6.55 שפריט רחב מקבל היום לרוחב).
+//
+// ⚠ **זה חורג משני גבולות ייצור בכוונה** (החלטת גל: משלמים בפיקסלים כדי לקבל
+// צמיד לא חתוך). קנבס לאורך נחסם מעל 153.2 מ"מ ושלושת המקרים הם 160.4, ותקרת
+// השורות מחזירה 1 לשניים מהם. הצפיפות הצפויה היא ~5.75 px/mm לאורך הפריט,
+// כלומר הפתח המינימלי (0.5 מ"מ) יצויר בכ-2.9 פיקסלים מול רצפת הישרדות של 3 —
+// **ולכן ייתכן מאוד שהתוצאה תהיה פסים נקיים מחיתוך שנפסלים ב-V5.** גם זו
+// תשובה, והיומן יראה אותה: `status` ליד שלב `edges`.
+//
 // הרצה: ADMIN_TOKEN=… node docs/research/experiments/wide-ratio/run.mjs [repeats=3] [batch=1]
 
 import fs from "node:fs";
@@ -49,6 +63,11 @@ if (!TOKEN) {
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const CASES = JSON.parse(fs.readFileSync(path.join(here, "cases.json"), "utf8"));
+/** התצורה שנבדקת. ריק/ברירת מחדל = מה שהתכנון בוחר לבד. */
+const ROWS = Number(process.env.EDGE_AB_ROWS || 0) || null;
+const CANVAS = process.env.EDGE_AB_CANVAS || null;
+/** האם לצרף את משפט המסגור. אצווה 1 בדקה אותו ומצאה שאינו עוזר. */
+const WITH_FRAMING = process.env.EDGE_AB_FRAMING === "1";
 const FRAMING = fs.readFileSync(path.join(here, "framing.txt"), "utf8").replace(/\n+$/, "");
 
 // כניסה כמו הקנרית — דרך `/api/admin/session`, לא בהרכבת העוגייה ביד.
@@ -81,27 +100,30 @@ for (const c of CASES) {
   const dims = {
     productType: c.productType, lengthMm: c.lengthMm, widthMm: c.widthMm, thicknessMm: c.thicknessMm,
   };
-  const plan = await post("/api/admin/prompt-lab", { ...dims, userPrompt: c.userPrompt });
+  const plan = await post("/api/admin/prompt-lab", {
+    ...dims, userPrompt: c.userPrompt,
+    ...(ROWS ? { rows: ROWS } : {}), ...(CANVAS ? { canvas: CANVAS } : {}),
+  });
 
   // שער: אם הפרוס אינו הקוד המתוקן, הניסוי בודק את אותו נוסח פעמיים ואין לו
   // מה לומר. עדיף להיעצר מאשר להחזיר "אין הבדל" שנובע מפריסה ולא מהמודל.
   const fixed = !plan.prompt.includes("long and narrow") && plan.prompt.includes("beyond both of its ends");
   console.log(
     `AP-${String(c.serial).padStart(4, "0")} ${c.lengthMm}×${c.widthMm} יחס ${c.orderedRatio} · ` +
-    `rows ${plan.rows} · הפרומפט הפרוס מתוקן: ${fixed}`,
+    `rows ${plan.rows} (תקרה ${plan.maxRows}) · קנבס ${plan.canvas} · מסגור ${WITH_FRAMING} · הפרומפט הפרוס מתוקן: ${fixed}`,
   );
   if (!fixed) {
     console.error("::error::the deployed prompt is not the fixed one — aborting, the A/B would compare a text to itself");
     process.exit(1);
   }
 
-  // נוסח אחד: הפרומפט הפרוס **ועוד** משפט המסגור. הבסיס — אותו פרומפט בלעדיו —
-  // נמדד ב-12:00 ואינו מורץ מחדש.
-  const prompt = plan.prompt.trimEnd() + FRAMING;
+  // הפרומפט הוא זה שהקוד הפרוס מייצר לתצורה שנבדקת; משפט המסגור מצטרף רק
+  // כשמבקשים אותו במפורש.
+  const prompt = WITH_FRAMING ? plan.prompt.trimEnd() + FRAMING : plan.prompt;
 
   for (let i = 1; i <= REPEATS; i++) {
     const started = Date.now();
-    const name = `edge-ab AP-${c.serial} framing b${BATCH} ${i}`;
+    const name = `edge-ab AP-${c.serial} b${BATCH} ${i}`;
     try {
       const { design } = await post("/api/designs", { ...dims, profileId: plan.profileId, name });
       await post("/api/generate", {
@@ -109,13 +131,14 @@ for (const c of CASES) {
         userPrompt: c.userPrompt,
         promptOverride: prompt,
         rowsOverride: plan.rows,
+        ...(CANVAS ? { canvasOverride: CANVAS } : {}),
       });
       out.push({ serial: c.serial, batch: BATCH, i, name, designId: design.id, ms: Date.now() - started });
-      console.log(`  framing b${BATCH} ${i}/${REPEATS} design=${design.id} ${Date.now() - started}ms`);
+      console.log(`  b${BATCH} ${i}/${REPEATS} design=${design.id} ${Date.now() - started}ms`);
     } catch (e) {
       // כשל של קריאה אחת מוציא את עצמו מהמכנה ואינו מפיל את הניסוי.
       out.push({ serial: c.serial, batch: BATCH, i, name, error: String(e.message ?? e) });
-      console.error(`  framing b${BATCH} ${i}/${REPEATS} failed: ${e.message ?? e}`);
+      console.error(`  b${BATCH} ${i}/${REPEATS} failed: ${e.message ?? e}`);
     }
   }
 }

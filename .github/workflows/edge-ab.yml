@@ -30,6 +30,18 @@ on:
         description: "מזהה האצווה, כדי שאצוות לא יתערבבו ביומן"
         required: false
         default: "1"
+      rows:
+        description: "שורות בתמונה. ריק = מה שהתכנון בוחר"
+        required: false
+        default: ""
+      canvas:
+        description: "צורת הקנבס: 1536x1024 או 1024x1536. ריק = לפי האורך"
+        required: false
+        default: ""
+      framing:
+        description: "לצרף את משפט המסגור? 1 = כן. נמדד באצווה 1 ולא עזר"
+        required: false
+        default: ""
 
 jobs:
   edge-ab:
@@ -47,6 +59,9 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          EDGE_AB_ROWS: ${{ inputs.rows }}
+          EDGE_AB_CANVAS: ${{ inputs.canvas }}
+          EDGE_AB_FRAMING: ${{ inputs.framing }}
         run: |
           set -euo pipefail
           if [ -z "$ADMIN_TOKEN" ]; then
