@@ -55,7 +55,7 @@ const NO_INDEX_TREES = ["/api", "/admin", "/debug", "/studio", "/auth"];
 const CANONICAL_HOST = new URL(SITE.url).host;
 
 /**
- * origin אחד לכל האתר.
+ * origin אחד לכל האתר — host **וגם scheme**.
  *
  * `www.aperta-designs.com` ו-`aperta-designs.com` הם שני custom domains של אותו
  * Worker (wrangler.jsonc), ולכן שניהם הגישו את האתר במלואו — ולדפדפן הם שני
@@ -70,12 +70,28 @@ const CANONICAL_HOST = new URL(SITE.url).host;
  * מיד, אבל להוסיף כתובת לרשימה זה לרפא סימפטום: כל origin נוסף הוא עוד עותק של
  * מצב הלקוחה. כאן נסגר המקור.
  *
- * מוגבל ל-`www.` המפורש: `localhost` בפיתוח ו-`*.workers.dev` בבדיקות פריסה
- * צריכים להמשיך לענות בעצמם.
+ * ה-scheme נוסף ב-16.8, אחרי דוח Search Console «עותק משוכפל בלי שנבחר דף
+ * קנוני» שהדוגמה היחידה בו היא `http://aperta-designs.com/` (נסרק 4.8). בדיקה
+ * חיה אישרה: `http://` על ה-apex החזיר **200 עם העמוד המלא**, בעוד `http://www`
+ * קיבל 308 — הבדיקה כאן תפסה את ה-host ואיש לא בדק את ה-scheme. «Always Use
+ * HTTPS» של Cloudflare הוא מתג ברמת ה-zone שאינו חלק מהריפו; השורה כאן היא מה
+ * שמבטיח את האינווריאנט גם כשמצב הדשבורד ישתנה. HSTS שכבר נשלח אינו תחליף —
+ * הוא מגן רק על דפדפן שכבר ביקר, וזחלנים מתעלמים ממנו.
+ *
+ * שני אותות ל-http, והפניה רק כשאחד מהם אומר זאת **בחיוב**: בקשת https נושאת
+ * `x-forwarded-proto: https` וגם `nextUrl.protocol === "https:"`, ולכן אינה
+ * יכולה להיכנס ללולאת הפניות.
+ *
+ * מוגבל ל-host הקנוני ול-`www.` המפורש: `localhost` בפיתוח (שהוא תמיד http)
+ * ו-`*.workers.dev` בבדיקות פריסה צריכים להמשיך לענות בעצמם.
  */
 function canonicalHost(req: NextRequest): URL | null {
   const host = req.headers.get("host")?.toLowerCase();
-  if (host !== `www.${CANONICAL_HOST}`) return null;
+  const wrongHost = host === `www.${CANONICAL_HOST}`;
+  const wrongScheme =
+    host === CANONICAL_HOST &&
+    (req.headers.get("x-forwarded-proto") === "http" || req.nextUrl.protocol === "http:");
+  if (!wrongHost && !wrongScheme) return null;
   return new URL(`${req.nextUrl.pathname}${req.nextUrl.search}`, SITE.url);
 }
 
