@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - run: pip install --quiet pillow
+      - run: pip install --quiet pillow numpy opencv-python-headless shapely svgpathtools vtracer
 
       - name: Probe the renders
         env:

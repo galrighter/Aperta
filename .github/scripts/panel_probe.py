@@ -26,9 +26,21 @@ import os
 import subprocess
 import sys
 import tempfile
+import traceback
 from collections import deque
 
 from PIL import Image
+
+# הקופסה חיה באותו ריפו, ולכן אפשר להריץ את **המפריד האמיתי** על אותה תמונה
+# במקום לשער מה הוא עשה. זו כל הנקודה של הבדיקה הזו: הפער בין מה שהעין רואה
+# בתמונה לבין מה ש-`find_bands` מחזיר הוא התשובה, ולא הסקה ממנה.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "vectorizer"))
+try:
+    from app.core.panels import find_bands as box_find_bands, split_panels as box_split
+    from app.pipeline import run_pipeline
+except Exception as exc:  # noqa: BLE001
+    box_find_bands = box_split = run_pipeline = None
+    print(f"::warning::לא ניתן לטעון את המפריד של הקופסה: {exc}")
 
 SITE = os.environ.get("SITE_URL", "https://aperta-designs.com").rstrip("/")
 TOKEN = os.environ.get("ADMIN_TOKEN", "")
@@ -161,9 +173,43 @@ def main() -> int:
             continue
         img = Image.open(path).convert("L")
         w, h = img.size
+        length_mm = float(os.environ.get("LENGTH_MM", "0") or 0)
         bs, _ = bands(img)
         print("=" * 72)
         print(f"{run_id}   תמונה {w}x{h}   פסי שחור שנמצאו: {len(bs)}")
+
+        # מה שהקופסה עצמה מחזירה על אותם בתים. אם המספרים נבדלים — הבאג שם,
+        # ואפשר לראות איזה פס נעלם ומה גובהו.
+        if box_find_bands is not None:
+            import numpy as np
+            with Image.open(path) as raw:
+                rgba = np.array(raw.convert("RGBA"))
+            boxed = box_find_bands(rgba)
+            print(f"   >>> find_bands של הקופסה: {len(boxed)} פסים {boxed}")
+            if box_split is not None:
+                panels = box_split(open(path, "rb").read(), 1)
+                print(f"   >>> split_panels מחזיר: {len(panels)} פאנלים")
+                # **המעקב עצמו.** ‏`split_panels` מחזיר את המספר המלא ובכל זאת
+                # פחות מועמדים חוזרים, והדרך היחידה בקוד שפאנל נעלם בין שתי
+                # הנקודות היא ה-`except` ב-`generate.py` שמחזיר `None`. כאן
+                # רצה בדיוק אותה קריאה, בלי ה-except — כדי שהחריגה תיראה.
+                # `height_mm` בקופסה הוא **הרוחב שהוזמן** (`dims.widthMm`) ולא
+                # האורך — ממנו נגזרת הסקאלה. 18 לצמיד, 6 לטבעת.
+                height_mm = float(os.environ.get("HEIGHT_MM", "0") or 0)
+                if run_pipeline is not None and height_mm > 0:
+                    for pi, panel in enumerate(panels, 1):
+                        try:
+                            res = run_pipeline(
+                                panel, 0.0, height_mm, dark_region_role="metal",
+                                output_mode="both", condition=True,
+                                color_key="dark", min_hole_mm=0.5,
+                            )
+                            sel = res.selection.selected
+                            print(f"       פאנל {pi}: {res.status} · רוחב {res.width_mm:.2f} מ\"מ"
+                                  f" · cutouts {'יש' if sel is not None else 'אין'}")
+                        except Exception as exc:  # noqa: BLE001
+                            print(f"       פאנל {pi}: ✗ {type(exc).__name__}: {exc}")
+                            traceback.print_exc()
         prev_end = None
         for i, (a, b) in enumerate(bs, 1):
             gap = "" if prev_end is None else f"  רווח לבן לפני: {a - prev_end - 1}px"
@@ -173,17 +219,21 @@ def main() -> int:
             print(f"   פס {i}: y={a}–{b}  גובה {b - a + 1}px{gap}")
         if not bs:
             continue
-        # הפתחים נבדקים על הפס הראשון בלבד — מספיק כדי לענות על שאלת הרסיס,
-        # והריצה על כל פס בתמונה של 1.5MP יקרה בלי צורך.
-        length_mm = float(os.environ.get("LENGTH_MM", "0") or 0)
-        a, b = bs[0]
-        if length_mm > 0:
-            mm_per_px = length_mm / (w * 0.9)
+        # כל פס, לא רק הראשון: הפאנל שנפל על V5 אינו בהכרח הראשון, וזו בדיוק
+        # השאלה — האם הפתח שהפיל אותו הוא רסיס מהמעקב או החלטת עיצוב.
+        if length_mm <= 0:
+            continue
+        mm_per_px = length_mm / (w * 0.9)
+        for i, (a, b) in enumerate(bs, 1):
             hs = holes(img, a, b, mm_per_px)
-            print(f"   פתחים בפס 1: {len(hs)}")
-            for mm, area in hs[:6]:
-                flag = "  ← מתחת ל-0.5 מ\"מ, V5 יפסול" if mm < 0.5 else ""
-                print(f"      קוטר ~{mm:.2f} מ\"מ  ({area} פיקסלים){flag}")
+            tiny = [x for x in hs if x[0] < 0.5]
+            real = [x for x in hs if x[0] >= 0.5]
+            print(f"   פס {i}: {len(hs)} פתחים — {len(real)} מעל 0.5 מ\"מ, "
+                  f"{len(tiny)} מתחת" + ("   ← V5 יפסול את הפס הזה" if tiny else ""))
+            if real:
+                print("      אמיתיים: " + " · ".join(f"{mm:.2f}" for mm, _ in real[:8]) + " מ\"מ")
+            if tiny:
+                print("      רסיסים: " + " · ".join(f"{mm:.2f}({a}px)" for mm, a in tiny[:8]))
     return 0
 
 
