@@ -407,13 +407,16 @@ def clipped_png() -> bytes:
     return buf.getvalue()
 
 
-def rounds_of(monkeypatch, *rounds: list[bytes]) -> list[int]:
+def rounds_of(monkeypatch, *rounds: list[bytes], prompts: list[str] | None = None) -> list[int]:
     """Feed render_many one prepared round per call; record how many renders
-    each round asked for."""
+    each round asked for, and — when the caller passes a list — what text each
+    round was sent."""
     asked: list[int] = []
 
     async def render_many(key, prompt, calls, reference=None, model=None, size=None, quality=None):
         asked.append(calls)
+        if prompts is not None:
+            prompts.append(prompt)
         batch = rounds[len(asked) - 1]
         if isinstance(batch, Exception):
             raise batch
@@ -435,6 +438,25 @@ def test_a_clipped_render_is_replaced_without_involving_anyone(wired, monkeypatc
     assert any("replaced after one retry" in w for w in out["debug"]["warnings"])
     # the run itself is untouched: same candidates as a clean run
     assert len(out["candidates"]) == 2
+
+
+def test_the_retry_asks_for_something_else_when_forme_says_what(wired, monkeypatch):
+    """An identical second round only helps when the failure was random, and a
+    clipped render usually is not: measured over 7 of them it rescued 3 and
+    failed 4. So forme sends the text for the second round, and the box uses it."""
+    prompts: list[str] = []
+    rounds_of(monkeypatch, [clipped_png()], [striped_png(1)], prompts=prompts)
+    run(generate.GenerateJob(prompt="p", retry_prompt="p FRAMING: smaller", calls=1, rows=1))
+    assert prompts == ["p", "p FRAMING: smaller"]
+
+
+def test_without_one_the_retry_is_the_same_prompt_as_before(wired, monkeypatch):
+    """A forme deployed before the field sends nothing, and the box keeps doing
+    exactly what it did — a second identical round, not a failure."""
+    prompts: list[str] = []
+    rounds_of(monkeypatch, [clipped_png()], [striped_png(1)], prompts=prompts)
+    run(generate.GenerateJob(prompt="p", calls=1, rows=1))
+    assert prompts == ["p", "p"]
 
 
 def test_a_retry_that_is_also_clipped_keeps_the_original(wired, monkeypatch):

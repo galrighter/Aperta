@@ -70,3 +70,13 @@ export function canvasFor(lengthMm: number, enabled = portraitEnabled()): Canvas
   const [lo, hi] = PORTRAIT_BAND_MM;
   return lengthMm >= lo && lengthMm <= hi ? PORTRAIT : LANDSCAPE;
 }
+
+/**
+ * ‏`"1024x1536"` → `Canvas`. ההיפוך של `sizeParam`, לעקיפה מהבק־אופיס.
+ *
+ * מקבל בדיוק את שתי הצורות הקיימות ולא מפרסר מספרים חופשיים: גודל שהמודל אינו
+ * מכיר חוזר ממנו כשגיאה או בצורה אחרת, ותצורה שלישית היא החלטה ולא פרמטר.
+ */
+export function canvasOf(size: "1536x1024" | "1024x1536"): Canvas {
+  return size === "1024x1536" ? PORTRAIT : LANDSCAPE;
+}

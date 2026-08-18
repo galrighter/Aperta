@@ -2,16 +2,20 @@ name: Edge A/B (wide ratio)
 
 # ניסוי ידני: האם הנוסח שהוחלף ב-PR #271 מפסיק את החיתוך בקצה הקנבס.
 #
-# שלוש קריאות שנחתכו **וגם הניסיון החוזר שלהן נחתך** מורצות שוב — בפרומפט שלהן
-# ובפרומפט של היום. ראה `docs/research/experiments/wide-ratio/run.mjs`.
+# שלוש קריאות שנחתכו **וגם הניסיון החוזר שלהן נחתך** מורצות שוב, עם משפט
+# המסגור. ראה `docs/research/experiments/wide-ratio/run.mjs`.
 #
 # **למה כאן ולא ממחשב.** ההרצה צריכה את `ADMIN_TOKEN` כדי לשלוח `promptOverride`,
 # והסוד הזה חי כ-secret של הריפו — בדיוק כמו בקנרית, שרצה על אותו מסלול API.
 # מי שמריץ מקבל את התוצאה ביומן ההרצות ולא צריך להחזיק את הסוד בשום מקום.
 #
 # **זה עולה כסף.** קריאה אמיתית למודל התמונה לכל הרצה (~$0.006): שלושה מקרים ×
-# שני נוסחים × `repeats`. בברירת המחדל (3) זה 18 הרצות, ~$0.11, ו-18 יחידות
-# ממכסת פרופיל הבודק (50 ליום, הקנרית לוקחת 12) — כלומר פעם ביום.
+# `repeats`. בברירת המחדל (3) זה 9 הרצות ו-~$0.06, מתוך מכסה יומית של 50
+# לפרופיל הבודק שהקנרית לוקחת ממנה 12.
+#
+# **אצווה, ולא הרצה אחת גדולה** (החלטת גל): שלוש חזרות נקיות קורות במקרה
+# ב-30% מהמקרים גם אם השינוי חסר ערך, ולכן אצווה נקייה היא סיבה לקנות עוד
+# אחת — לא תשובה. `batch` מפריד ביניהן ביומן.
 #
 # ידני בלבד. אין `schedule` — ניסוי אינו ניטור.
 
@@ -19,9 +23,25 @@ on:
   workflow_dispatch:
     inputs:
       repeats:
-        description: "חזרות לכל מקרה ולכל נוסח. 3 = 18 הרצות"
+        description: "חזרות לכל מקרה. 3 = 9 הרצות"
         required: false
         default: "3"
+      batch:
+        description: "מזהה האצווה, כדי שאצוות לא יתערבבו ביומן"
+        required: false
+        default: "1"
+      rows:
+        description: "שורות בתמונה. ריק = מה שהתכנון בוחר"
+        required: false
+        default: ""
+      canvas:
+        description: "צורת הקנבס: 1536x1024 או 1024x1536. ריק = לפי האורך"
+        required: false
+        default: ""
+      framing:
+        description: "לצרף את משפט המסגור? 1 = כן. נמדד באצווה 1 ולא עזר"
+        required: false
+        default: ""
 
 jobs:
   edge-ab:
@@ -39,10 +59,13 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
           ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          EDGE_AB_ROWS: ${{ inputs.rows }}
+          EDGE_AB_CANVAS: ${{ inputs.canvas }}
+          EDGE_AB_FRAMING: ${{ inputs.framing }}
         run: |
           set -euo pipefail
           if [ -z "$ADMIN_TOKEN" ]; then
             echo "::error::ADMIN_TOKEN secret is not set — the A/B cannot run."
             exit 1
           fi
-          node docs/research/experiments/wide-ratio/run.mjs "${{ inputs.repeats }}"
+          node docs/research/experiments/wide-ratio/run.mjs "${{ inputs.repeats }}" "${{ inputs.batch }}"

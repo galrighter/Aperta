@@ -162,6 +162,15 @@ async function readBody(resp: Response): Promise<RawJob> {
 
 export interface RenderJobInput {
   prompt: string;
+  /**
+   * הפרומפט לניסיון החוזר, כשהרנדר הראשון נחתך בגבול הקנבס.
+   *
+   * הוא נבנה **כאן ולא בקופסה**, כמו כל פרומפט אחר: הקופסה מבצעת, ומה שנאמר
+   * למודל נכתב במקום אחד (`llm/imagegen.ts`, `retryPromptFor`). קופסה שנפרסה
+   * לפני השדה הזה מתעלמת ממנו וחוזרת להתנהגות הקודמת — סבב שני זהה — כלומר
+   * בקשה ישנה בדיוק ולא כשל.
+   */
+  retryPrompt?: string;
   calls: number;
   rows: number;
   /** עמודות בתמונה. הקופסה חותכת רשת rows×cols; 1 = טור אחד, כמו קודם. */
@@ -250,6 +259,7 @@ export async function runRenderJob(input: RenderJobInput): Promise<RenderJob> {
 
   const request = {
     prompt: input.prompt,
+    retry_prompt: input.retryPrompt ?? null,
     calls: input.calls,
     rows: input.rows,
     cols: input.cols,

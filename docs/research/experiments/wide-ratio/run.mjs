@@ -1,28 +1,51 @@
-// שלוש קריאות שנחתכו — מורצות שוב, בפרומפט שלהן ובפרומפט של היום.
+// משפט המסגור, נמדד: האם הוא מונע את החיתוך בגבול הקנבס.
 //
-// **מה השאלה.** הפרומפט תוקן ב-#271 ומעולם לא נבדק מול המודל. הבדיקה שרצה עד
-// כה הייתה על רנדרים שמורים, וכולם צוירו בנוסח הישן — כלומר היא יכולה לומר
-// כמה חתוכים הגיעו לצינור, ולא אם התיקון עוזר.
+// **מה השאלה.** מתוך 7 רנדרים שנחתכו בניסוי של 17.8, הסבב השני — שהוא היום
+// אותה בקשה בדיוק — הציל 3 ונכשל ב-4. השינוי שנבדק כאן הוא המשפט שנוסף לסבב
+// השני (`RETRY_FRAMING` ב-llm/imagegen.ts): הפריט מצויר בכ-80% מרוחב התמונה,
+// עם לבן בין כל קצה לבין הגבול.
 //
-// **הבחירה של שלוש הקריאות אינה שרירותית.** מתוך 27 הרנדרים שנמצאה בהם מתכת על
-// גבול הקנבס, אלה שלוש שבהן **גם הניסיון החוזר של הקופסה נחתך** ("retry clipped
-// too (left), kept the original") — כלומר המודל נכשל פעמיים ברצף על אותה בקשה,
-// והלקוחה קיבלה פריט שקצהו נחתך על ידי המסגרת. אלה המקרים הקשים, ולכן אלה
-// שראוי למדוד עליהם:
+// **הוא נשלח כאן כפרומפט ראשי ולא כסבב שני, בכוונה.** אחרת רוב ההרצות אינן
+// מודדות דבר: הסבב השני נקרא רק כשהראשון נחתך, כלומר בכ-35% מהמקרים. השאלה
+// שהניסוי עונה עליה היא "האם המשפט הזה מונע חיתוך" — ולא "איך מתנהג המנגנון
+// המשולב", שהוא ממילא זה בלבד ועוד תנאי.
 //
-//     AP-0250  160.4×73  יחס 2.2
-//     AP-0192  160.4×48  יחס 3.34
-//     AP-0131  160.4×41  יחס 3.91
+// **הבסיס אינו מורץ מחדש.** הוא נמדד היום ב-12:00 באותו מודל ואותו צינור,
+// שלוש הרצות לכל מקרה בנוסח הפרוס: AP-0250 ‏0/3 נחתכו, AP-0192 ‏1/3,
+// AP-0131 ‏2/3 — 3 מתוך 9. הרצה חוזרת שלו הייתה קונה מספר שכבר יש.
 //
-// **שני הצדדים אינם מנוסחים כאן.** ה"ישן" הוא ה-`render_prompt` שנשמר ברשומת
-// ההרצה, מילה במילה (`cases.json`). ה"חדש" נמשך מ-`/api/admin/prompt-lab`,
-// כלומר הוא מה ש-`buildRenderPrompt` הפרוס מייצר **עכשיו** לאותן מידות. אין
-// כאן ניסוח שלישי שאפשר לטעות בו, ואין סיכון שהניסוי יבדוק קוד שלא נפרס.
+// **שלוש חזרות, ואז החלטה** (החלטת גל). בשיעור חיתוך של ~35%, שלוש הרצות
+// נקיות ברצף קורות במקרה ב-30% מהמקרים — כלומר אצווה אחת נקייה אינה תשובה,
+// היא סיבה לקנות עוד אחת. שתי אצוות נקיות מורידות את זה ל-7.5%. כך משלמים על
+// הסבב השני רק כשהראשון מבטיח.
 //
-// **התוצאה נקראת מהיומן** — `debug.stages[edges]` הוא הבדיקה שהקופסה מריצה על
-// הרנדר המלא לפני כל קרופ, ובדיוק היא שתפסה את AP-0250 מלכתחילה.
+// שלושת המקרים הם אלה שבהם **גם הניסיון החוזר נחתך** ביצירה המקורית, כלומר
+// הלקוחה קיבלה פריט שקצהו נחתך על ידי המסגרת:
 //
-// הרצה: ADMIN_TOKEN=… node docs/research/experiments/wide-ratio/run.mjs [repeats=3]
+//     AP-0250  160.4x73  יחס 2.2
+//     AP-0192  160.4x48  יחס 3.34
+//     AP-0131  160.4x41  יחס 3.91
+//
+// הפרומפט הבסיסי נמשך מ-`/api/admin/prompt-lab`, כלומר מה שהקוד הפרוס מייצר
+// עכשיו — כך שהניסוי אינו יכול לבדוק קוד שלא נפרס — ומשפט המסגור מצורף לו
+// מ-`framing.txt`. הקובץ הזה מושווה ל-`RETRY_FRAMING` בטסט, כדי שהניסוי לא
+// ימדוד נוסח שאינו זה שנשלח בייצור.
+//
+// **אצווה 2 בודקת תצורה ולא ניסוח** (17.8, אחרי שאצווה 1 החזירה 3 מתוך 9 —
+// זהה לבסיס, כלומר משפט המסגור אינו הידית). מה שנמדד על כל 330 הרנדרים הוא
+// שהחיתוך הוא כמעט כולו תופעה של שורה אחת: 6 מתוך 31 בשורה אחת, 1 מתוך 57
+// בשתיים־שלוש, 0 מתוך 139 בארבע ומעלה. לכן `ROWS` ו-`CANVAS` כאן: שתי שורות
+// על קנבס לאורך, שהוא גם הצורה שמושכת ליחס הנמוך ביותר (5.86 לשורה, 6.41
+// לשתיים — מול 6.55 שפריט רחב מקבל היום לרוחב).
+//
+// ⚠ **זה חורג משני גבולות ייצור בכוונה** (החלטת גל: משלמים בפיקסלים כדי לקבל
+// צמיד לא חתוך). קנבס לאורך נחסם מעל 153.2 מ"מ ושלושת המקרים הם 160.4, ותקרת
+// השורות מחזירה 1 לשניים מהם. הצפיפות הצפויה היא ~5.75 px/mm לאורך הפריט,
+// כלומר הפתח המינימלי (0.5 מ"מ) יצויר בכ-2.9 פיקסלים מול רצפת הישרדות של 3 —
+// **ולכן ייתכן מאוד שהתוצאה תהיה פסים נקיים מחיתוך שנפסלים ב-V5.** גם זו
+// תשובה, והיומן יראה אותה: `status` ליד שלב `edges`.
+//
+// הרצה: ADMIN_TOKEN=… node docs/research/experiments/wide-ratio/run.mjs [repeats=3] [batch=1]
 
 import fs from "node:fs";
 import path from "node:path";
@@ -30,6 +53,8 @@ import path from "node:path";
 const TOKEN = process.env.ADMIN_TOKEN;
 const BASE = process.env.SITE_URL || "https://aperta-designs.com";
 const REPEATS = Number(process.argv[2] || 3);
+/** מזהה האצווה, כדי ששתי אצוות של אותו מקרה לא יתערבבו ביומן. */
+const BATCH = (process.argv[3] || "1").trim();
 
 if (!TOKEN) {
   console.error("ADMIN_TOKEN is not set — nothing to run.");
@@ -38,6 +63,12 @@ if (!TOKEN) {
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const CASES = JSON.parse(fs.readFileSync(path.join(here, "cases.json"), "utf8"));
+/** התצורה שנבדקת. ריק/ברירת מחדל = מה שהתכנון בוחר לבד. */
+const ROWS = Number(process.env.EDGE_AB_ROWS || 0) || null;
+const CANVAS = process.env.EDGE_AB_CANVAS || null;
+/** האם לצרף את משפט המסגור. אצווה 1 בדקה אותו ומצאה שאינו עוזר. */
+const WITH_FRAMING = process.env.EDGE_AB_FRAMING === "1";
+const FRAMING = fs.readFileSync(path.join(here, "framing.txt"), "utf8").replace(/\n+$/, "");
 
 // כניסה כמו הקנרית — דרך `/api/admin/session`, לא בהרכבת העוגייה ביד.
 const login = await fetch(`${BASE}/api/admin/session`, {
@@ -69,40 +100,59 @@ for (const c of CASES) {
   const dims = {
     productType: c.productType, lengthMm: c.lengthMm, widthMm: c.widthMm, thicknessMm: c.thicknessMm,
   };
-  const plan = await post("/api/admin/prompt-lab", { ...dims, userPrompt: c.userPrompt });
+  const plan = await post("/api/admin/prompt-lab", {
+    ...dims, userPrompt: c.userPrompt,
+    ...(ROWS ? { rows: ROWS } : {}), ...(CANVAS ? { canvas: CANVAS } : {}),
+  });
 
   // שער: אם הפרוס אינו הקוד המתוקן, הניסוי בודק את אותו נוסח פעמיים ואין לו
   // מה לומר. עדיף להיעצר מאשר להחזיר "אין הבדל" שנובע מפריסה ולא מהמודל.
   const fixed = !plan.prompt.includes("long and narrow") && plan.prompt.includes("beyond both of its ends");
   console.log(
     `AP-${String(c.serial).padStart(4, "0")} ${c.lengthMm}×${c.widthMm} יחס ${c.orderedRatio} · ` +
-    `rows ${plan.rows} · הפרומפט הפרוס מתוקן: ${fixed}`,
+    `rows ${plan.rows} (תקרה ${plan.maxRows}) · קנבס ${plan.canvas} · מסגור ${WITH_FRAMING} · הפרומפט הפרוס מתוקן: ${fixed}`,
   );
   if (!fixed) {
     console.error("::error::the deployed prompt is not the fixed one — aborting, the A/B would compare a text to itself");
     process.exit(1);
   }
+  // שער שני, ומאותה סיבה: zod **משמיט** שדה שאינו בסכמה במקום להיכשל עליו,
+  // ולכן אתר שנפרס לפני `canvasOverride` היה מריץ לרוחב ומחזיר "התצורה לא
+  // עזרה" — מדידה של משהו אחר לגמרי, שנראית תקינה לחלוטין.
+  if (CANVAS && plan.canvas !== CANVAS) {
+    console.error(
+      `::error::asked for canvas ${CANVAS} but the deployed lab reports ${plan.canvas ?? "nothing"} — ` +
+      "aborting rather than measuring a configuration nobody asked for",
+    );
+    process.exit(1);
+  }
+  if (ROWS && plan.rows !== ROWS) {
+    console.error(`::error::asked for ${ROWS} rows but the deployed lab reports ${plan.rows} — aborting`);
+    process.exit(1);
+  }
+
+  // הפרומפט הוא זה שהקוד הפרוס מייצר לתצורה שנבדקת; משפט המסגור מצטרף רק
+  // כשמבקשים אותו במפורש.
+  const prompt = WITH_FRAMING ? plan.prompt.trimEnd() + FRAMING : plan.prompt;
 
   for (let i = 1; i <= REPEATS; i++) {
-    // לסירוגין ולא בשני גושים: אם משהו בצד השני זז באמצע, הוא זז על שני הצדדים.
-    for (const [variant, prompt] of [["old", c.originalPrompt], ["new", plan.prompt]]) {
-      const started = Date.now();
-      const name = `edge-ab AP-${c.serial} ${variant} ${i}`;
-      try {
-        const { design } = await post("/api/designs", { ...dims, profileId: plan.profileId, name });
-        await post("/api/generate", {
-          designId: design.id,
-          userPrompt: c.userPrompt,
-          promptOverride: prompt,
-          rowsOverride: plan.rows,
-        });
-        out.push({ serial: c.serial, variant, i, name, designId: design.id, ms: Date.now() - started });
-        console.log(`  ${variant} ${i}/${REPEATS} design=${design.id} ${Date.now() - started}ms`);
-      } catch (e) {
-        // כשל של קריאה אחת מוציא את עצמו מהמכנה ואינו מפיל את הניסוי.
-        out.push({ serial: c.serial, variant, i, name, error: String(e.message ?? e) });
-        console.error(`  ${variant} ${i}/${REPEATS} failed: ${e.message ?? e}`);
-      }
+    const started = Date.now();
+    const name = `edge-ab AP-${c.serial} b${BATCH} ${i}`;
+    try {
+      const { design } = await post("/api/designs", { ...dims, profileId: plan.profileId, name });
+      await post("/api/generate", {
+        designId: design.id,
+        userPrompt: c.userPrompt,
+        promptOverride: prompt,
+        rowsOverride: plan.rows,
+        ...(CANVAS ? { canvasOverride: CANVAS } : {}),
+      });
+      out.push({ serial: c.serial, batch: BATCH, i, name, designId: design.id, ms: Date.now() - started });
+      console.log(`  b${BATCH} ${i}/${REPEATS} design=${design.id} ${Date.now() - started}ms`);
+    } catch (e) {
+      // כשל של קריאה אחת מוציא את עצמו מהמכנה ואינו מפיל את הניסוי.
+      out.push({ serial: c.serial, batch: BATCH, i, name, error: String(e.message ?? e) });
+      console.error(`  b${BATCH} ${i}/${REPEATS} failed: ${e.message ?? e}`);
     }
   }
 }
