@@ -42,6 +42,10 @@ on:
         description: "לצרף את משפט המסגור? 1 = כן. נמדד באצווה 1 ולא עזר"
         required: false
         default: ""
+      cases:
+        description: "קובץ המקרים: cases.json (ברירת מחדל) או cases-dense.json"
+        required: false
+        default: ""
 
 jobs:
   edge-ab:
@@ -62,6 +66,7 @@ jobs:
           EDGE_AB_ROWS: ${{ inputs.rows }}
           EDGE_AB_CANVAS: ${{ inputs.canvas }}
           EDGE_AB_FRAMING: ${{ inputs.framing }}
+          EDGE_AB_CASES: ${{ inputs.cases }}
         run: |
           set -euo pipefail
           if [ -z "$ADMIN_TOKEN" ]; then

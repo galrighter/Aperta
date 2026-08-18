@@ -62,7 +62,13 @@ if (!TOKEN) {
 }
 
 const here = path.dirname(new URL(import.meta.url).pathname);
-const CASES = JSON.parse(fs.readFileSync(path.join(here, "cases.json"), "utf8"));
+/**
+ * איזה סט מקרים. ברירת המחדל היא שלוש הקריאות שנחתכו; `cases-dense.json` הוא
+ * שני בריפים **צפופים** — שם מחיר הפיקסלים של הקנבס לאורך אמור להיראות, אם
+ * הוא קיים: 5.75 px/mm לאורך הפריט, כלומר פתח 0.5 מ"מ בכ-2.9 פיקסלים.
+ */
+const CASES_FILE = process.env.EDGE_AB_CASES || "cases.json";
+const CASES = JSON.parse(fs.readFileSync(path.join(here, CASES_FILE), "utf8"));
 /** התצורה שנבדקת. ריק/ברירת מחדל = מה שהתכנון בוחר לבד. */
 const ROWS = Number(process.env.EDGE_AB_ROWS || 0) || null;
 const CANVAS = process.env.EDGE_AB_CANVAS || null;
