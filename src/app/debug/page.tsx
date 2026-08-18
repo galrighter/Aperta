@@ -18,6 +18,10 @@ import Link from "next/link";
 import { he } from "@/i18n/he";
 import { AdminGate } from "@/components/admin/AdminGate";
 import RunsLog from "@/components/admin/RunsLog";
+// dialogue mode — רתמת המדידה של שלב A. לשונית שלישית, ותו לא: הכיול הקיים
+// ויומן ההרצות אינם נוגעים בה, והיא אינה נוגעת בהם.
+import EditLab from "@/components/dialogue/EditLab";
+import { dialogue } from "@/i18n/dialogue";
 
 function fileToDataUrl(f: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -56,7 +60,8 @@ export default function DebugPage() {
 }
 
 function PromptLab() {
-  const [view, setView] = useState<"lab" | "log">("lab");
+  // dialogue mode — `"edit"` נוסף לסט. ריק/ברירת מחדל = הכיול, כמו קודם.
+  const [view, setView] = useState<"lab" | "log" | "edit">("lab");
 
   const [productType, setProductType] = useState<"bracelet" | "ring">("bracelet");
   const [lengthMm, setLengthMm] = useState(160);
@@ -179,9 +184,15 @@ function PromptLab() {
           onClick={() => setView("lab")}>כיול</button>
         <button className={`rounded-[2px] px-4 py-1.5 ${view === "log" ? "bg-graphite text-white" : "border border-graphite/20"}`}
           onClick={() => setView("log")}>{he.site.adminNavRuns}</button>
+        {/* dialogue mode */}
+        <button className={`rounded-[2px] px-4 py-1.5 ${view === "edit" ? "bg-graphite text-white" : "border border-graphite/20"}`}
+          onClick={() => setView("edit")}>{dialogue.lab.title}</button>
       </div>
 
       {view === "log" && <RunsLog />}
+
+      {/* dialogue mode */}
+      {view === "edit" && <EditLab />}
 
       {view === "lab" && (
         <div className="grid gap-4">

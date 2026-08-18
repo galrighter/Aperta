@@ -7,6 +7,15 @@ import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { planRender, maxRows } from "@/lib/render/panels";
 import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
+// dialogue mode — רתמת המדידה של שלב A (‏A0 ב-docs/DIALOGUE_PLAN.md §7).
+import { supabaseAdmin as sbAdmin } from "@/lib/db/supabase";
+import { DIALOGUE_EDIT } from "@/lib/dialogue/mode";
+import { runEditStage, stagedEditPrompt, type EditRegion } from "@/lib/dialogue/editStage";
+import { gradeInstruction } from "@/lib/dialogue/lab";
+import { isEditRun, parseLegacyEditPrompt } from "@/lib/dialogue/corpus";
+import type { EditSpec } from "@/lib/dialogue/spec";
+import type { RunInputs } from "@/lib/db/runs";
+import { editPromptFor } from "@/components/create/model";
 
 // מסך כיול הפרומפט — מה שהוא צריך *לפני* שהוא מריץ.
 //
@@ -15,7 +24,10 @@ import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
 // כאן הוא ההכנה בלבד — לבנות את פרומפט ברירת המחדל לאותן מידות, ולהחזיר את
 // הפרופיל שעיצובי הכיול נשמרים תחתיו.
 
-export const maxDuration = 30;
+// dialogue mode — שלב הטקסט יושב כאן בתוך הבקשה (עד 100 שנ׳ על שני
+// ניסיונות), ו-30 שנ׳ היו הורגות אותה באמצע. הבקשה הזו אינה בונה תמונה
+// ואינה עולה כסף מעבר לשלב הטקסט עצמו.
+export const maxDuration = 180;
 
 /** הפרופיל שכל עיצובי הכיול נרשמים עליו. `tester` — ולכן `assertDesignAccess`
  *  מתיר אותו מאחורי שער האדמין (מסך הכיול ממילא admin-only), והמכסה היומית
@@ -38,6 +50,72 @@ async function labProfileId(): Promise<string> {
   return (created.data as { id: string }).id;
 }
 
+/**
+ * dialogue mode — הקורפוס: בקשות שינוי אמיתיות מהיומן.
+ *
+ * ‏§7 דורש "‏10 בקשות שינוי אמיתיות מתוך `generation_runs`", והן לא יושבות
+ * שם כבקשות: עמודת `prompt` מחזיקה את מה ש-`buildEditPrompt` בנה בלקוחה.
+ * ראה `lib/dialogue/corpus.ts` — שם הפירוק, וגם הנימוק למה הוא נחוץ.
+ *
+ * החלון (`scan`) רחב מהמכסה (`limit`) בכוונה: עריכות הן מיעוט מההרצות,
+ * וסריקה של המכסה בלבד הייתה מחזירה שתיים מתוך עשר בקשות. הקריאה מוגבלת
+ * לעמודות שהיא באמת קוראת — ‏`render_prompt` וה-SVG-ים אינם בה.
+ */
+export async function GET(req: Request) {
+  try {
+    requireAdmin(req);
+    const url = new URL(req.url);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 10, 1), 40);
+    const scan = Math.min(Math.max(Number(url.searchParams.get("scan")) || 400, limit), 1000);
+
+    const { data, error } = await sbAdmin()
+      .from("generation_runs")
+      .select("id, created_at, design_id, product_type, prompt, status, inputs")
+      .order("created_at", { ascending: false })
+      .limit(scan);
+    if (error) throw new Error(error.message);
+
+    type Row = {
+      id: string; created_at: string; design_id: string | null;
+      product_type: "bracelet" | "ring" | null; prompt: string | null;
+      status: string; inputs: RunInputs | null;
+    };
+    const seen = new Set<string>();
+    const requests = [];
+    for (const row of (data ?? []) as Row[]) {
+      if (!isEditRun(row.inputs) || !row.prompt?.trim()) continue;
+      // dialogue mode — `RunInputs.editStage.request` הוא הבקשה הגולמית,
+      // והיא עדיפה על פירוק: היא נשמרה כמו שהיא. היא קיימת רק בהרצות של
+      // המסלול החדש, ולכן הפירוק הוא מה שנשאר לכל ההיסטוריה.
+      const saved = row.inputs?.editStage?.request?.trim();
+      const parsed = parseLegacyEditPrompt(row.prompt);
+      const request = saved || parsed.request;
+      // דדופ לפי הבקשה עצמה: "לדלל קצת" שנשלחה בחמישה עיצובים היא מדידה
+      // אחת, לא חמש, והיא הייתה בולעת את הקורפוס.
+      const key = request.replace(/\s+/g, " ").toLowerCase();
+      if (!request || seen.has(key)) continue;
+      seen.add(key);
+      requests.push({
+        runId: row.id,
+        createdAt: row.created_at,
+        designId: row.design_id,
+        productType: row.product_type ?? "bracelet",
+        request,
+        region: (row.inputs?.editStage?.region as string | undefined) ?? parsed.region,
+        lengthMm: row.inputs?.lengthMm,
+        status: row.status,
+        /** הפרומפט המלא כמו שנשמר — כדי שיהיה אפשר לראות ממה הבקשה חולצה. */
+        legacyPrompt: row.prompt,
+      });
+      if (requests.length >= limit) break;
+    }
+
+    return NextResponse.json({ requests, scanned: (data ?? []).length });
+  } catch (err) {
+    return handleRouteError(err);
+  }
+}
+
 const schema = z.object({
   productType: z.enum(["bracelet", "ring"]).default("bracelet"),
   lengthMm: z.number().positive().max(400).optional(),
@@ -52,6 +130,23 @@ const schema = z.object({
   /** צורת הקנבס, במקום זו ש-`canvasFor` גוזר מהאורך. אותה עקיפה כמו
    *  ב-`/api/generate`, כדי שהפרומפט שנבנה כאן יהיה זה שיישלח שם. */
   canvas: z.enum(["1536x1024", "1024x1536"]).optional(),
+
+  /**
+   * dialogue mode — להריץ את שלב הטקסט ולהחזיר את **שני** המסלולים זה לצד זה.
+   *
+   * ריק = ההתנהגות הקיימת של המעבדה, מילה במילה: פרומפט אחד, בלי קריאה לשום
+   * מודל. השדות שמתחת נקראים רק כשהוא דלוק.
+   */
+  compare: z.boolean().default(false),
+  /** הבקשה בעברית, גולמית. זה מה ששני המסלולים מקבלים — האחד מתרגם אותה,
+   *  השני שולח אותה כמו שהיא. */
+  editRequest: z.string().max(4000).default(""),
+  region: z.enum(["right", "center", "left", "all"]).optional(),
+  /** המפרט המצטבר מהסבב הקודם, כדי שסבב 5 יידע מה נקבע בסבב 2 (§2.2). */
+  spec: z.record(z.string(), z.string()).optional(),
+  /** מודל טקסט אחר, למכרז של §5.4. ריק = המכהן. */
+  textModel: z.string().max(120).optional(),
+  textEffort: z.enum(["low", "medium", "high"]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -97,8 +192,79 @@ export async function POST(req: Request) {
       rows,
       canvas: sizeParam(canvas),
       prompt: buildRenderPrompt(body.userPrompt, body.productType, dims, rows, body.editing),
+      // dialogue mode — שתי הזרועות. ריק כשלא ביקשו השוואה.
+      compare: body.compare
+        ? await compareArms(body, dims, rows)
+        : undefined,
     });
   } catch (err) {
     return handleRouteError(err);
   }
+}
+
+/**
+ * dialogue mode — סבב אחד, בשני המסלולים.
+ *
+ * **שתיהן נבנות מאותה בקשה גולמית ובאותן מידות**, וזה כל מה שהופך את
+ * ההשוואה למשמעותית: מה שנבדל ביניהן הוא הטיפול בבקשה, ולא הפריט, לא הקנבס
+ * ולא מספר השורות.
+ *
+ * הזרוע הקיימת אינה משוחזרת כאן אלא נבנית מ-`editPromptFor` — אותה פונקציה
+ * שהמסע קורא לה, אחרי חילוץ. עותק היה נפרד ממנה בשקט, וזו בדיוק הטעות
+ * שהופכת דוח השוואה למטעה.
+ *
+ * **מה שלא רץ כאן: מודל התמונה.** הבקשה הזו מחזירה שני פרומפטים ואת מה ששלב
+ * הטקסט אמר; מי שקונה רנדר הוא `/api/generate` הרגיל, עם `promptOverride`.
+ * זו אותה הפרדה שהמעבדה בנויה עליה מלכתחילה — הכנה כאן, הרצה שם, בלי צינור
+ * שני שצריך להישאר תואם.
+ */
+async function compareArms(
+  body: { editRequest: string; region?: EditRegion; spec?: Record<string, string>;
+    productType: "bracelet" | "ring"; editing: boolean;
+    textModel?: string; textEffort?: "low" | "medium" | "high" },
+  dims: { lengthMm: number; widthMm: number; thicknessMm: number },
+  rows: number,
+) {
+  const request = body.editRequest.trim();
+  const region = body.region ?? null;
+  const model = body.textModel || DIALOGUE_EDIT.model;
+
+  // הזרוע הקיימת: הבקשה נכנסת לפרומפט של המסע ומשם כמות שהיא למודל התמונה.
+  const legacy = editPromptFor(region, request);
+  const baseline = buildRenderPrompt(legacy, body.productType, dims, rows, true);
+
+  const stage = request
+    ? await runEditStage({
+        productType: body.productType,
+        request,
+        region,
+        spec: (body.spec ?? null) as EditSpec | null,
+        lengthMm: dims.lengthMm,
+        model,
+        effort: body.textEffort,
+      })
+    : null;
+
+  const changeRequest = stage?.ok ? stagedEditPrompt(stage.decision) : legacy;
+  return {
+    textModel: model,
+    effort: body.textEffort ?? DIALOGUE_EDIT.effort,
+    baseline: { changeRequest: legacy, prompt: baseline },
+    dialogue: {
+      ok: Boolean(stage?.ok),
+      /** השלב נפל — הזרוע הזו רצה בפרומפט של היום. **זו ההתנהגות המתוכננת**
+       *  (§2.5), והדוח חייב לספור אותה ככזו ולא כשגיאה. */
+      stageDown: Boolean(stage && !stage.ok),
+      reason: stage && !stage.ok ? stage.reason : undefined,
+      attempts: stage?.attempts,
+      ms: stage?.ms,
+      usage: stage?.usage ?? undefined,
+      decision: stage?.ok ? stage.decision : undefined,
+      spec: stage?.ok ? stage.spec : undefined,
+      /** הציון האוטומטי של ציר התיאור הגרפי (§5.3, §7.1). */
+      grade: stage?.ok ? gradeInstruction(stage.decision.image_instruction) : undefined,
+      changeRequest,
+      prompt: buildRenderPrompt(changeRequest, body.productType, dims, rows, true),
+    },
+  };
 }
