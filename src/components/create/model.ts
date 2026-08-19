@@ -967,11 +967,26 @@ export const MAX_LETTERING = 24;
  * ביקשה לשמר. עובי הגשרים ממילא נאכף בוולידציה ואינו נתון לבחירה.
  */
 export function buildEditPrompt(s: CreateState): string {
+  return editPromptFor(s.region, s.editReq);
+}
+
+/**
+ * dialogue mode — אותו טקסט בדיוק, משני פרמטרים במקום מהמצב כולו.
+ *
+ * **חילוץ ולא שכפול, ובכוונה.** רתמת המדידה (`api/admin/prompt-lab`) צריכה
+ * לבנות את הפרומפט של המסלול הקיים כדי להעמיד אותו מול החדש, והיא רצה בשרת
+ * בלי `CreateState`. הדרך השנייה הייתה לכתוב את המשפט שוב שם — ואז המדידה
+ * הייתה משווה את המסלול החדש מול **עותק** של הישן, שנפרד ממנו בשקט ברגע
+ * שמישהו ישנה כאן מילה. זו בדיוק הטעות שהופכת דוח השוואה למטעה.
+ *
+ * `buildEditPrompt` נשאר החתימה של המסע, ו**מה שהוא מחזיר לא השתנה**.
+ */
+export function editPromptFor(region: Region | null, request: string): string {
   const where =
-    s.region && s.region !== "all"
+    region && region !== "all"
       // he.design.regions כבר אומר "אזור ימין"; ה-ה' הידיעה שהייתה כאן ייצרה
       // "באזור האזור ימין".
-      ? `ב${d.regions[s.region]} של הפריט`
+      ? `ב${d.regions[region]} של הפריט`
       : "בעיצוב כולו";
-  return `שינוי ${where}: ${s.editReq.trim()}`;
+  return `שינוי ${where}: ${request.trim()}`;
 }

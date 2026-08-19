@@ -10,6 +10,9 @@ import {
   runDesignStage,
 } from "@/lib/story/designStage";
 import { storyLayoutFor } from "@/lib/story/ratio";
+// dialogue mode — שלב הטקסט של העריכה. ראה docs/DIALOGUE_PLAN.md §2.
+import { DIALOGUE_EDIT, DIALOGUE_MODE, isDialogue, runsEditStage } from "@/lib/dialogue/mode";
+import { runEditStage, stagedEditPrompt, type EditRegion } from "@/lib/dialogue/editStage";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -26,7 +29,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
+import { latestEditSpec, noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
@@ -103,7 +106,19 @@ const schema = z.object({
    * אופציונלי, וברירת המחדל היא ההתנהגות הקיימת: בקשה בלי השדה הזה עוברת
    * בדיוק באותו קוד כמו קודם.
    */
-  mode: z.literal(STORY_MODE).optional(),
+  mode: z.union([z.literal(STORY_MODE), z.literal(DIALOGUE_MODE)]).optional(),
+
+  /**
+   * dialogue mode — האזור שהלקוחה סימנה בצ'יפים, כערך ולא בתוך הפרומפט.
+   *
+   * במסלול הקיים האזור נצרב לתוך `userPrompt` בלקוחה (`buildEditPrompt`),
+   * ולכן הוא מגיע לשרת כטקסט עברי בתוך משפט. שלב הטקסט צריך אותו **בנפרד**:
+   * הצ'יפ הוא רמז שהמודל אמור להכריע מולו ("סימטריה אינה תכונה של שליש"),
+   * ומשפט אחד שמכיל את שניהם אינו מאפשר את ההכרעה הזו.
+   *
+   * אופציונלי, ולא נקרא בשום מסלול אחר.
+   */
+  region: z.enum(["right", "center", "left", "all"]).optional(),
 
   /**
    * ההרצה היא הבדיקה האוטומטית ולא לקוחה (`.github/workflows/canary.yml`).
@@ -488,6 +503,43 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const askedRatios = designStage ? askedRatiosOf(designStage.spec) : null;
     const layout = askedRatios ? storyLayoutFor(askedRatios) : null;
 
+    /* ===== dialogue mode — שלב הטקסט של העריכה =====
+       אותו פיצול, במקום השני שבו הוא יושב: מודל טקסט מתרגם את הבקשה בעברית
+       להוראת ציור גיאומטרית באנגלית, ומודל התמונה מבצע אותה במקום לפרש אותה.
+       ‏`ok: false` = השלב נפל, והפרומפט חוזר להיות `body.userPrompt` — כלומר
+       `buildEditPrompt` שנבנה בלקוחה, מה שרץ עד עכשיו. עריכה לא נכשלת בגלל
+       השלב הזה. ראה docs/DIALOGUE_PLAN.md §2.5 ו-`lib/dialogue/editStage.ts`.
+
+       **התנאי יושב ב-`runsEditStage` ולא כאן**, כי הוא מה שטסט אי־הפגיעה
+       מוכיח: `/design` בלי `?dialogue=1` אינו נכנס לענף הזה בכלל, וזה חייב
+       להיות ניתן לבדיקה בלי להריץ נתיב שלם. */
+    const editStageRuns = runsEditStage(body);
+    /** המפרט המצטבר מהסבב הקודם (§2.2). `null` = הסבב הראשון על העיצוב. */
+    const priorSpec = editStageRuns ? await latestEditSpec(design.id) : null;
+    const edit = editStageRuns
+      ? await runEditStage({
+          productType: design.product_type,
+          // הבקשה **הגולמית** בעברית, ולא `buildEditPrompt`: העיבוד ההוא הוא
+          // בדיוק מה שהשלב הזה מחליף, ושליחתו הייתה מוסרת את האזור פעמיים,
+          // בשתי שפות, בשני ניסוחים שיכולים לסתור.
+          request: body.userPrompt,
+          region: (body.region ?? null) as EditRegion | null,
+          spec: priorSpec,
+          lengthMm: dims.lengthMm,
+        })
+      : null;
+    const editStage = edit?.ok ? edit : null;
+    /** השלב רץ ונפל בכל הניסיונות. נרשם ביומן; הלקוחה אינה אמורה להרגיש. */
+    const editDown = edit && !edit.ok ? edit : null;
+    /**
+     * בקשת השינוי כפי שמודל התמונה יקבל אותה.
+     *
+     * זה כל ההבדל בין שני המסלולים בנקודה הזו — **מחרוזת אחת**. היא נכנסת
+     * לאותו מקום בדיוק ב-`buildRenderPrompt` (פסקת `CHANGE REQUEST`), כי
+     * הניסוח והסדר שם נמדדו ואינם משתנים; מה שמשתנה הוא מה ממלא אותם.
+     */
+    const changeRequest = editStage ? stagedEditPrompt(editStage.decision) : body.userPrompt;
+
     // הקנבס נגזר מהאורך — חוץ ממסלול Story. שם האורך אינו ידוע בזמן היצירה
     // אלא נמדד אחריה, ולכן אין ממה לגזור: `canvasFor` היה בוחר לפי אורך
     // ברירת המחדל שברשומה, שהוא עוגן תכנוני ולא מידה.
@@ -592,7 +644,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               thicknessMm: dims.thicknessMm,
             })
           : buildRenderPrompt(
-              body.userPrompt, design.product_type, dims, plan.rows,
+              // dialogue mode — ההוראה של שלב הטקסט, או `body.userPrompt`
+              // כשהשלב לא רץ או נפל. ראה `changeRequest`.
+              changeRequest, design.product_type, dims, plan.rows,
               Boolean(editSvg), Boolean(lettering), plan.cols,
               // הרוחב של הפריט שנערך יכול לשבת מחוץ לטווח הייצור מאז שהצביטה
               // הוסרה — הטווח נפתח כדי להכיל אותו. ראה widthRangeOf.
@@ -725,7 +779,40 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** ההרצה הגיעה ממסך הכיול עם פרומפט שנכתב ידנית. */
         promptOverride: Boolean(body.promptOverride?.trim()),
         // story mode — כדי שאפשר יהיה למדוד את הניסוי ביומן מול המסלול הרגיל.
-        mode: story ? STORY_MODE : undefined,
+        // dialogue mode — אותו שדה, אותו תפקיד, מסלול נוסף.
+        mode: story ? STORY_MODE : isDialogue(body.mode) ? DIALOGUE_MODE : undefined,
+        /**
+         * dialogue mode — שלב הטקסט של העריכה: האם רץ, במה, ומה החזיר.
+         *
+         * בלי זה אי אפשר להבדיל ביומן בין עריכה דו־שלבית לעריכה שנפלה חזרה
+         * לפרומפט של היום, והן נראות זהות בכל שדה אחר — כולל בתוצאה. וזו
+         * בדיוק ההשוואה שהמסלול הזה קיים בשבילה.
+         */
+        editStage: editStageRuns
+          ? {
+              ok: Boolean(editStage),
+              model: DIALOGUE_EDIT.model,
+              effort: DIALOGUE_EDIT.effort,
+              ms: edit?.ms,
+              attempts: edit?.attempts,
+              failure: editDown?.reason.slice(0, 500),
+              prompt: edit?.sent.prompt.slice(0, 12000),
+              system: edit?.sent.system,
+              decision: editStage?.json.slice(0, 8000),
+              /** הבקשה בעברית, לפני התרגום. זו העמודה שהקורפוס של הרתמה
+               *  נבנה ממנה — `prompt` ביומן הוא כבר האנגלית. */
+              request: body.userPrompt.slice(0, 2000),
+              region: body.region,
+              scope: editStage?.decision.scope?.slice(0, 500),
+              /** המודל ביקש הבהרה. נרשם ואינו נאכף בשלב A — הוא מה שימדוד
+               *  כמה סבבים שאלה אחת הייתה חוסכת, וזו ההצדקה של שלב B. */
+              clarification: editStage?.decision.needs_clarification?.slice(0, 500),
+              usage: edit?.usage ?? undefined,
+            }
+          : undefined,
+        /** dialogue mode — המפרט המצטבר אחרי הסבב הזה. זה מה שהסבב הבא
+         *  יקרא (`latestEditSpec`), ולכן זה גם מה שהופך את השרשרת לקריאה. */
+        editSpec: editStage?.spec,
       },
       // ה-base64 שכבר בידנו, לא בייטים: כאן נבנה קודם data URL חדש בשרשור
       // (עותק שלישי של המטען) רק כדי לפרק אותו מיד, והבייטים שיצאו הוחזקו עד

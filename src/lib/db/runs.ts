@@ -2,6 +2,8 @@ import { supabaseAdmin } from "./supabase";
 import type { ProductType } from "@/lib/fabrication.config";
 import type { LlmUsage } from "@/lib/llm/core";
 import type { RunCursor } from "@/lib/runs/cursor";
+// dialogue mode — טיפוסים בלבד, מקובץ בלי תלות ריצה. ראה `lib/dialogue/spec.ts`.
+import type { EditSpec } from "@/lib/dialogue/spec";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
 // שנוכל לאבחן תלונות ולכייל יחד. ראה migration 0003_generation_runs.sql.
@@ -265,7 +267,56 @@ export interface RunInputs {
    * לא במתיחה ולא ברוחב שיצא. ריק = המסלול הרגיל, וזה מה שכתוב בכל שורה
    * שנרשמה עד היום.
    */
-  mode?: "story";
+  /**
+   * dialogue mode — `"dialogue"` נוסף כאן, ובזה כל הנגיעה של המסלול החדש
+   * בשדה הזה: אותו תפקיד, אותה סמנטיקה. ריק = המסלול הרגיל, וזה מה שכתוב
+   * בכל שורה שנרשמה עד היום.
+   */
+  mode?: "story" | "dialogue";
+  /**
+   * dialogue mode — שלב הטקסט שקדם למודל התמונה **בעריכה**
+   * (`lib/dialogue/editStage.ts`).
+   *
+   * `ok: false` = השלב רץ ונכשל, והעריכה נפלה חזרה ל-`buildEditPrompt` של
+   * היום. חסר לגמרי = לא היה שלב כזה בכלל (כל עריכה מחוץ למסלול). בלי
+   * ההבחנה הזו שתי העריכות נראות זהות ביומן, וזו בדיוק ההשוואה שהניסוי
+   * קיים בשבילה — ראה `designStage` למעלה, שנבנה מאותו נימוק.
+   */
+  editStage?: {
+    ok: boolean;
+    model?: string;
+    effort?: string;
+    ms?: number;
+    /** מה שנשלח למודל **הטקסט**. `render_prompt` הוא כבר תוצר של השלב הזה,
+     *  ובלי הקלט שלו אי אפשר לומר על הוראה חלשה אם הפרומפט ביקש את הדבר
+     *  הלא נכון או שהמודל ענה רע. */
+    prompt?: string;
+    system?: string;
+    /** ה-JSON שהשלב החזיר, חתוך. */
+    decision?: string;
+    /** הבקשה בעברית כמו שהלקוחה כתבה אותה — לפני התרגום. זו העמודה
+     *  שמאפשרת לאסוף קורפוס בקשות אמיתי לרתמה (`/api/admin/prompt-lab`),
+     *  ובלעדיה `prompt` ביומן הוא כבר האנגלית ולא מה שהיא הקלידה. */
+    request?: string;
+    /** האזור שהצ'יפ סימן, ומה שהמודל הכריע עליו בפועל. שניהם, כי הפער
+     *  ביניהם הוא בדיוק מה שהשלב הזה אמור לתקן. */
+    region?: string;
+    scope?: string;
+    /** המודל ביקש הבהרה. נרשם ואינו נאכף בשלב A — ראה `EditDecision`. */
+    clarification?: string;
+    attempts?: number;
+    failure?: string;
+    usage?: LlmUsage;
+  };
+  /**
+   * dialogue mode — המפרט המצטבר **אחרי** הסבב הזה (§2.2).
+   *
+   * נוסע כאן ולא בעמודה: אין מיגרציה בשלב A, בדיוק כמו `mode` ב-Story. זה
+   * גם מה שהופך את השרשרת לקריאה — הסבב הבא קורא את השורה האחרונה של אותו
+   * עיצוב שנושאת שדה כזה (`latestEditSpec`), ולכן ההיסטוריה של המפרט היא
+   * ההיסטוריה של היומן ולא מצב נפרד שיכול להיפרד ממנו.
+   */
+  editSpec?: EditSpec;
   /** הפרומפט נכתב ידנית בבק־אופיס במקום להיבנות מהמידות. */
   promptOverride?: boolean;
   /**
@@ -785,4 +836,39 @@ export async function deleteRuns(ids: string[]): Promise<number> {
     .select("id");
   if (error) throw new Error(error.message);
   return (data ?? []).length;
+}
+
+/**
+ * dialogue mode — המפרט המצטבר של העיצוב הזה, מהסבב האחרון שנשא אחד.
+ *
+ * **למה שאילתה ולא מצב בלקוחה.** הלקוחה יכולה לחזור לגרסה ישנה ולערוך אותה,
+ * לרענן באמצע, לחזור אחרי יום מקישור, או להמשיך ממכשיר אחר — וכל אחד מאלה
+ * היה מאבד מפרט שנשמר בזיכרון הדפדפן. היומן שורד את כולם, והוא ממילא נכתב.
+ *
+ * **`limit` ולא "השורה האחרונה".** בין שני סבבי עריכה יכולות להיכתב שורות
+ * שאינן נושאות מפרט — כשל, הרצה מהבק־אופיס, בחירת חלופה — ושורה אחת אחורה
+ * הייתה מאבדת את השרשרת בכל אחת מהן. חלון קטן וקבוע: מי שערכה שתים־עשרה
+ * פעם ואף אחת מהן לא נשאה מפרט, מתחילה מחדש, וזה מצב תקין (`EDIT_SPEC_NONE`).
+ *
+ * **כשל אינו מפיל עריכה.** מפרט חסר פירושו סבב אחד בלי הקשר מצטבר, וזה
+ * בדיוק המסלול של היום — לא סיבה להחזיר שגיאה ללקוחה.
+ */
+export async function latestEditSpec(designId: string, limit = 12): Promise<EditSpec | null> {
+  try {
+    const sb = supabaseAdmin();
+    const { data, error } = await sb
+      .from("generation_runs")
+      .select("inputs")
+      .eq("design_id", designId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as Array<{ inputs: RunInputs | null }>) {
+      const spec = row.inputs?.editSpec;
+      if (spec && typeof spec === "object" && Object.keys(spec).length) return spec;
+    }
+  } catch (e) {
+    console.error("latestEditSpec failed:", e instanceof Error ? e.message : e);
+  }
+  return null;
 }

@@ -157,8 +157,12 @@ async function startAndAwaitGeneration(
      * ללקוחה ציור שלא ביקשה.
      */
     jobId?: string;
-    /** story mode — נמסר לשרת כמות שהוא. ריק = ההתנהגות הקיימת. */
-    mode?: "story";
+    /** story mode — נמסר לשרת כמות שהוא. ריק = ההתנהגות הקיימת.
+     *  dialogue mode — אותו שדה, מסלול נוסף. */
+    mode?: "story" | "dialogue";
+    /** dialogue mode — האזור שהצ'יפ סימן, כערך ולא בתוך הפרומפט. שלב הטקסט
+     *  צריך אותו בנפרד מהבקשה כדי להכריע על ההיקף. ריק בכל מסלול אחר. */
+    region?: "right" | "center" | "left" | "all";
   },
   onStage?: (stage: string | null) => void,
   /** המזהה, ברגע שנקבע — כדי שהקורא יוכל לזכור אותו ולמצוא את התוצאה אחר כך. */
