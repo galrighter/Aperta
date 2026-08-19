@@ -96,6 +96,44 @@ jobs:
       # אם יתברר שספרייה כן חסרה, זה ייפול כאן בשנייה הראשונה של הסריקה עם
       # שם הספרייה בשגיאה — כשל שאומר מה לעשות, ולא תקיעה שאינה אומרת דבר.
       # תקרה משלו כדי שיהיה ברור **מי** נתקע, ולא רק שה-job נגמר בזמן.
+      #
+      # **וזו גם כל האיטיות של ה-job הזה** (נמדד 19.8 על 28 הריצות האחרונות).
+      # כל שאר השלבים יציבים לגמרי: `npm ci` ‏14–18 שנ׳, `tsc` ‏10–12, `lint`
+      # ‏15, `npm test` ‏25, `build` ‏23, הסריקה עצמה 55. הזנב כולו כאן, בהורדה:
+      #
+      #     חציון                    ~10 שנ׳
+      #     ריצה 32069803095 (17.8)  13 דק׳ 42 שנ׳ — ה-job כולו 16:50
+      #     ריצות 32172759112, 32185809396  נתקעו עד שבוטלו ידנית
+      #
+      # ‏13:42 מתוך 16:50. הורדה איטית אחת מכפילה את ה-job פי חמישה, ומאז
+      # שנוספה התקרה היא כבר לא מכפילה אותו אלא **מאדימה** אותו — PR ירוק לגמרי
+      # שנופל על מראה של Playwright.
+      #
+      # לכן מטמון. הדפדפן יורד לספרייה קבועה (`~/.cache/ms-playwright`) והמפתח
+      # הוא הגרסה מתוך `package-lock.json` — כלומר שדרוג של Playwright מוריד
+      # מחדש מעצמו, ואין מצב שבו הריצה מקבלת דפדפן שאינו תואם לספרייה.
+      #
+      # ‏`playwright install` נשאר רץ גם בפגיעה, בכוונה: הוא מזהה דפדפן קיים
+      # ויוצא בשנייה, וזו הבדיקה שהמטמון אכן שלם. `if: cache-hit != 'true'`
+      # היה חוסך את השנייה הזו ומשלם עליה במטמון חלקי שנכשל בסריקה עצמה.
+      - name: Resolve the Playwright version for the cache key
+        id: playwright
+        run: |
+          set -euo pipefail
+          # שדה חסר מחזיר `undefined`, וזה מפתח מטמון תקין לחלוטין שלעולם לא
+          # מתיישן — כלומר דפדפן ישן שמוגש לספרייה חדשה, בשקט. עדיף להיעצר.
+          version=$(node -p "require('./package-lock.json').packages['node_modules/playwright']?.version ?? ''")
+          if [ -z "$version" ]; then
+            echo "::error::playwright is not in package-lock.json under node_modules/playwright — the cache key would be meaningless"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright.outputs.version }}
+
       - name: Install Chromium for the accessibility scan
         timeout-minutes: 5
         run: npx playwright install chromium
