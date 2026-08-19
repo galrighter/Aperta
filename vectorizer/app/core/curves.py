@@ -233,7 +233,35 @@ def _fit_cubic(pts: list[Pt], ts: list[float], t0: Pt, t1: Pt) -> tuple[Pt, Pt]:
         a2_len = (c11 * x2 - c12 * x1) / det
     # A non-positive or absurdly long arm folds the curve back on itself; the
     # classic third-of-the-chord is the safe fallback.
-    if not (1e-6 * chord <= a1_len <= 3.0 * chord) or not (1e-6 * chord <= a2_len <= 3.0 * chord):
+    #
+    # **The ceiling is one chord, not three** (18.8). Three was not a limit: an
+    # arm longer than the chord is exactly what makes a cubic loop over itself,
+    # so the guard admitted the shape it was written to reject. Measured on
+    # AP-0317 — 33 near-parallel slots, the case that shows it — the fitted
+    # rings came back like this:
+    #
+    #     ceiling   self-intersecting rings   holes source/vector   IoU
+    #       3.0            10 of 34                32 / 34         0.9899
+    #       2.0             2 of 34                32 / 33         0.9897
+    #       1.0             0 of 34                32 / 32         0.9898
+    #
+    # A looped ring is not a cosmetic defect. The boolean union downstream
+    # resolves the crossing into a main polygon plus hairline artefacts, and
+    # where the loop sits the outline bulges into the neighbouring rib: on
+    # AP-0317 two ribs of 2.8mm reached the customer at 0.74mm and 1.12mm,
+    # while every other rib in the piece stayed at 2.8. In a repeating pattern
+    # that is the whole design.
+    #
+    # Nothing above catches it. `geometry_stats` counts self-intersections on
+    # the traced polygon, before this fit runs, and the fidelity gate scores
+    # area — a loop of 0.003mm² moves IoU by 0.0001, which is exactly what the
+    # table shows. So the fit has to not produce it.
+    #
+    # The fidelity cost of the tighter ceiling is that 0.0001 of IoU. 0.67
+    # (the ratio that draws a circular arc) is equally clean and was left on
+    # the table: one chord is the standard bound and keeps more of the fit's
+    # freedom on genuinely long smooth runs.
+    if not (1e-6 * chord <= a1_len <= 1.0 * chord) or not (1e-6 * chord <= a2_len <= 1.0 * chord):
         a1_len = a2_len = chord / 3.0
     return (
         (p0[0] + a1_len * t0[0], p0[1] + a1_len * t0[1]),
