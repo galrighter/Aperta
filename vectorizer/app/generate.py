@@ -43,10 +43,6 @@ class GenerateJob:
     """What forme asks for. Every decision in here was made on the Worker."""
 
     prompt: str
-    # What to send when the first render came back clipped. None = the same
-    # prompt again, which is what every run did before forme started building
-    # this. The text is forme's, like every other prompt here: the box executes.
-    retry_prompt: Optional[str] = None
     calls: int = 1
     rows: int = 1
     # Columns in the render. The cut is a grid of rows x cols; 1 is a single
@@ -153,20 +149,19 @@ async def run(job: GenerateJob, artifacts: Artifacts, openai_key: str, concurren
     # Either way the journal hears about it below (debug.stages / debug.warnings)
     # — quiet toward the customer, not the log.
     #
-    # The retry asks for something *different* when forme sent a `retry_prompt`,
-    # and that is the whole point of the field. An identical second round only
-    # helps when the failure was random, and this one usually is not: measured
-    # over 7 clipped renders it rescued 3 and failed 4 (17.8, see forme's
-    # docs/research/experiments/wide-ratio). What forme adds is a framing
-    # instruction — the piece drawn smaller than the picture — because every one
-    # of the 27 clipped renders in the corpus ran off the *left* border and none
-    # off the top or bottom. Without the field: the same prompt, exactly as before.
+    # The second round sends the same prompt. Forme tried sending a different
+    # one — a framing instruction, the piece drawn smaller than the picture —
+    # and measured it over three cases x three repeats: 3 of 9 still clipped,
+    # the same rate as the plain prompt (18.8, docs/research/experiments/
+    # wide-ratio). What did move the number is the configuration, not the
+    # wording: two rows on a portrait canvas, 0 of 18. So the prompt for the
+    # second round is the first one, and the wording lever is closed.
     edge_notes: list[str] = []
     clipped = {i: edges for i, r in enumerate(renders) if (edges := clipped_edges(r))}
     if clipped:
         try:
             retry = await imagegen.render_many(
-                openai_key, job.retry_prompt or job.prompt, len(clipped), reference, model,
+                openai_key, job.prompt, len(clipped), reference, model,
                 size=job.size, quality=job.quality,
             )
             replacements = retry.images
