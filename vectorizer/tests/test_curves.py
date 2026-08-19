@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+import pathlib
 
 import numpy as np
 import pytest
@@ -204,3 +206,28 @@ def test_fitted_svg_still_closes_every_subpath(layer: str, fn) -> None:
     assert f'id="{layer}"' in built.svg
     d = built.svg.rsplit('d="', 1)[1].split('"')[0]
     assert d.count("M") == d.count("Z") == 2  # exterior + hole
+
+
+def test_a_fitted_ring_never_crosses_itself() -> None:
+    """The fit may smooth, but it may not tie a knot.
+
+    A cubic whose control arm runs longer than its chord loops back over
+    itself. The ring is still closed and still has the right area, so nothing
+    above notices: `geometry_stats` counts self-intersections on the traced
+    polygon *before* this fit runs, and the fidelity gate scores area — a loop
+    of a few thousandths of a mm² moves IoU by 0.0001.
+
+    What it costs is not cosmetic. The boolean union downstream resolves the
+    crossing into a main polygon plus hairline artefacts, and where the loop
+    sits the outline bulges into the neighbouring rib. AP-0317 (33 near-parallel
+    slots) reached the customer with two ribs of 2.8mm cut to 0.74mm and 1.12mm
+    while every other rib in the piece stayed at 2.8.
+
+    The fixture is one of that design's own traced rings — the shape is what
+    matters here, and an analytic curve does not reproduce it: a real trace
+    carries the raster step, and it is the near-collinear runs between steps
+    that send the least-squares arm running.
+    """
+    ring = json.loads((pathlib.Path(__file__).parent / "fixtures_knotted_ring.json").read_text())
+    fitted = fit_ring([tuple(p) for p in ring], CurveSettings(max_error_mm=0.025, corner_deg=55.0, window_mm=0.3))
+    assert Polygon(_sample(fitted)).exterior.is_simple, "the fitted ring crosses itself"
