@@ -113,3 +113,52 @@ describe("origin קנוני", () => {
     expect(config.matcher).toEqual(["/((?!_next/static|_next/image|favicon\\.ico).*)"]);
   });
 });
+
+// כלל ה-scheme נוסף ב-16.8, אחרי דוח Search Console «עותק משוכפל בלי שנבחר דף
+// קנוני» שהדוגמה היחידה בו הייתה `http://aperta-designs.com/` — שהחזיר אז 200
+// עם העמוד המלא. הוא נוסף בלי בדיקה, וזו הייתה השורה היחידה במעטפת הקנוניקל
+// שאיש לא הגן עליה: הכלל תלוי בשני אותות, ומספיק שאחד מהם ייקרא הפוך כדי לקבל
+// לולאת הפניות על **כל** האתר במקום כתובת אחת שהתנקתה.
+describe("scheme קנוני", () => {
+  const httpReq = (path: string, host = "aperta-designs.com") =>
+    new NextRequest(`http://${host}${path}`, {
+      headers: { host, "x-forwarded-proto": "http" },
+    });
+
+  it("מעלה http על הדומיין הראשי ל-https, קבוע ובלי לאבד את הנתיב", () => {
+    const res = middleware(httpReq("/gallery"));
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://aperta-designs.com/gallery");
+  });
+
+  it("מספיק ש-`x-forwarded-proto` אומר http, גם כשה-URL הפנימי כבר https", () => {
+    // מאחורי Cloudflare ה-TLS נסגר בקצה, ולכן זו הכותרת שיודעת במה הלקוחה
+    // באמת הגיעה. אילו נבדק רק `nextUrl.protocol`, הכלל לא היה נורה בפרודקשן.
+    const res = middleware(req("/", { "x-forwarded-proto": "http" }));
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://aperta-designs.com/");
+  });
+
+  it("‏`http://www` נופל בקפיצה אחת אל ה-origin הקנוני, ולא בשתיים", () => {
+    // שתי טעויות בבקשה אחת — host ו-scheme — ותשובה אחת שמתקנת את שתיהן.
+    const res = middleware(httpReq("/design", "www.aperta-designs.com"));
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe("https://aperta-designs.com/design");
+  });
+
+  it("בקשת https אינה יכולה להיכנס ללולאה", () => {
+    // האינווריאנט שמחזיק את האתר: שני האותות חיוביים, ולכן היעד של ההפניה
+    // לעולם אינו עומד שוב בתנאי שלה.
+    const res = middleware(req("/", { "x-forwarded-proto": "https" }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("מניח ל-http של פיתוח ושל תת-דומיין הפריסה", () => {
+    // `localhost` הוא תמיד http, ו-`*.workers.dev` נבדק ישירות לפני החלפת
+    // הדומיין. הפניה שם הייתה מוציאה כל בדיקה מהמכונה שעליה היא רצה.
+    for (const host of ["localhost:3000", "forme-studio.workers.dev"]) {
+      expect(middleware(httpReq("/design", host)).status).toBe(200);
+    }
+  });
+});
