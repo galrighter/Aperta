@@ -1,0 +1,36 @@
+name: Verify AP-0317 through the deployed box
+
+# אימות חד-פעמי, ידני: התמונה המקורית של AP-0317 דרך הקופסה החיה.
+#
+# **למה workflow ולא הרצה מהמחשב.** `/api/vectorize` יושב מאחורי שער האדמין,
+# ו-`ADMIN_TOKEN` חי כ-secret של הריפו — אותו מסלול שהקנרית וניסוי ה-edge-ab
+# עוברים בו.
+#
+# **זה לא עולה כסף למודל התמונה.** הקלט הוא תמונה שכבר קיימת; מה שרץ הוא
+# הווקטורייזר בלבד. מה שכן: יחידת מכסה אחת של פרופיל הבודק.
+#
+# ידני בלבד, ואין `schedule` — אימות אינו ניטור.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Vectorise the original panel
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://aperta-designs.com' }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "::error::ADMIN_TOKEN secret is not set — the verification cannot run."
+            exit 1
+          fi
+          node docs/research/experiments/wide-ratio/verify-317.mjs
