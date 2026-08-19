@@ -29,7 +29,7 @@ import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { latestEditSpec, noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
+import { editSpecFor, noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
@@ -73,6 +73,43 @@ export const maxDuration = 300;
  * מ-150 שניות והלאה מוותרים על הניסיון השני ומחזירים את מה שיש.
  */
 const RETRY_DEADLINE_MS = 150_000;
+
+/**
+ * dialogue mode — איזה כיוון עיצוב כל פאנל **הוא**, או `null` כשאי אפשר לדעת.
+ *
+ * זו החוליה שהופכת מפרט של שלב הטקסט לניתן להזרעה: המפרט מחזיק 3–6 כיוונים,
+ * הלקוחה בוחרת אחד, וסבב העריכה צריך את החמישייה של **הכיוון שלה** ולא של
+ * אחר. בלי המיפוי הזה המפרט מתחיל ריק בסבב הראשון, וזה סבב שלם בלי הקשר —
+ * לקוחה פחות מרוצה, ולפעמים לקוחה שלא חוזרת לסבב הבא.
+ *
+ * **המיפוי נגזר משורות התמונה, והוא נכון רק כשכולן חזרו.** הפרומפט נוקב
+ * "DESIGN 1 — top row" וכן הלאה, והקופסה חותכת את התמונה לשורות באותו סדר.
+ * אבל היא לא תמיד מחזירה את כולן — נמדד 83–95% מסירה — וכששורה אחת אובדת כל
+ * מה שאחריה מוסט: הכיוון של עיצוב 3 מוצמד לעיצוב 2, בביטחון מלא.
+ *
+ * לכן שלושה תנאים, וכל אחד שולל בפני עצמו:
+ *
+ *  1. **טור אחד.** ברשת הפאנל אינו שורה, ו"שורה = עיצוב" אינו נכון בכלל.
+ *  2. **מספר הפאנלים שווה למספר המתוכנן.** זו הבדיקה שתופסת שורה שאבדה.
+ *  3. **מספרי הפאנלים הם בדיוק 0..n-1.** הקופסה מספרת אותם בעצמה
+ *     (`RenderCandidate.panel`), ומיספור שאינו התמורה הזו פירושו שהחיתוך
+ *     אינו מה שההנחה מניחה — ואז עדיף לא לדעת מאשר לדעת לא נכון.
+ *
+ * `null` פירושו "לא נרשם", והצד השני (`seedEditSpec`) מתחיל ריק. זה בדיוק
+ * המצב שהיה עד עכשיו בכל הרצה, כלומר הרעה אפס.
+ */
+export function designIndexesFor(
+  panels: ReadonlyArray<{ panel: number }>,
+  plan: { rows: number; cols: number },
+  enabled: boolean,
+): number[] | null {
+  if (!enabled || plan.cols !== 1) return null;
+  if (panels.length !== plan.rows) return null;
+  const seen = new Set(panels.map((c) => c.panel));
+  if (seen.size !== plan.rows) return null;
+  for (let i = 0; i < plan.rows; i++) if (!seen.has(i)) return null;
+  return panels.map((c) => c.panel);
+}
 
 const imageSchema = z.object({
   kind: z.enum(["inspiration", "annotation"]),
@@ -514,8 +551,20 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
        מוכיח: `/design` בלי `?dialogue=1` אינו נכנס לענף הזה בכלל, וזה חייב
        להיות ניתן לבדיקה בלי להריץ נתיב שלם. */
     const editStageRuns = runsEditStage(body);
-    /** המפרט המצטבר מהסבב הקודם (§2.2). `null` = הסבב הראשון על העיצוב. */
-    const priorSpec = editStageRuns ? await latestEditSpec(design.id) : null;
+    /**
+     * המפרט המצטבר שהסבב הזה מתחיל ממנו (§2.2).
+     *
+     * **הכניסה היא הגרסה שנערכת ולא העיצוב.** כל בקשת שינוי יוצרת שורת עיצוב
+     * חדשה (`createSampleDesign`), בזמן שההרצה נרשמת תחת העיצוב שממנו יצאה —
+     * ולכן חיפוש לפי `design_id` לא היה מוצא את הסבב הקודם לעולם. הגרסה
+     * מחזיקה את השרשרת. ראה `editSpecFor`.
+     *
+     * `baseVersionId` הוא מה שהלקוחה באמת עורכת (היא יכולה לחזור לגרסה ישנה),
+     * ולכן הוא קודם לגרסה הנוכחית של הרשומה.
+     */
+    const priorSpec = editStageRuns
+      ? await editSpecFor(body.baseVersionId ?? design.current_version_id)
+      : null;
     const edit = editStageRuns
       ? await runEditStage({
           productType: design.product_type,
@@ -836,6 +885,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // `log` הוא `runLog` בקבוע, כדי שהסגור לא יצטרך להתמודד עם `let` שיכול
     // להתאפס: כאן הוא כבר נבנה, וזה מה שנרשם בכל ניסיון.
     const log = runLog;
+    /** dialogue mode — מועמד ממוסגר, עם הכיוון שהוא בא ממנו. השדה אופציונלי
+     *  ולכן `FramedPreview` נכנס לכאן כמו שהוא — המסלול הרגיל אינו משתנה. */
+    type Framed = FramedPreview & { designIndex?: number };
     const attemptOnce = async (attemptId: string, attemptNo: number) => {
       lastAttemptId = attemptId;
       // הנתיבים שהקופסה תכתוב אליהם. אנחנו חותמים כתובת העלאה לכל אחד; הבייטים
@@ -996,7 +1048,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // על זיכרון בבקשה יחידה (reqs=1), ולכן מה שנשאר להוציא הוא המקצה עצמו,
       // לא ההחזקה שלו. מכאן ה-isolate של האתר ממסגר פעם אחת בלבד — את הזוכה,
       // בתוך ingestCutouts, שגוזר את הגאומטריה שלו ממילא מחדש.
-      const approved = job.candidates.filter((c) => c.status === "approved" && c.cutoutsSvg);
+      // dialogue mode — הזהות נצמדת **כאן**, על הפאנל, לפני כל סינון ומיון.
+      // מכאן היא נוסעת על האובייקט עצמו: `pickClosestRatio` מחזיר את אותם
+      // אובייקטים, ולכן היא שורדת גם את הזריקה וגם את הסידור מחדש.
+      const designIdx = designIndexesFor(job.candidates, plan, Boolean(designStage));
+      const approved = job.candidates
+        .map((c, i) => ({ ...c, designIndex: designIdx?.[i] }))
+        .filter((c) => c.status === "approved" && c.cutoutsSvg);
       // מייצרים לפי היחס, מציגים עד `offered` (11.8). כשהתמונה נחתכה ליותר
       // פסים ממה שמציגים, הנבחרים הם הקרובים ביותר ליחס שהוזמן — כלומר אלה
       // שיצטרכו את המתיחה הקטנה ביותר. הבחירה על ה-viewBox בלבד, לפני המסגור:
@@ -1010,12 +1068,21 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הקריאה נשארת `frameCandidates`, מועמד בכל פעם: הפונקציה ממסגרת סדרתית
       // ממילא (מועמד אחד חי בכל רגע — ראה frameClient), וכך גם הנפילה־לאחור
       // בין הקופסה, ה-Worker והמסלול המקומי נשארת זהה לשני המסלולים.
-      const ranked = (
+      // הטיפוס מפורש: הענף האחר מחזיר `FramedPreview[]` (בלי השדה), ובלי
+      // ההצהרה הזו האיחוד בין שני הענפים מתקבע על הצורה הצרה מבין השתיים
+      // והשדה נעלם מהטיפוס אף שהוא נמצא בערך.
+      const ranked: Framed[] = (
         story
-          ? await shortlist.reduce<Promise<FramedPreview[]>>(async (acc, c) => {
+          ? await shortlist.reduce<Promise<Framed[]>>(async (acc, c) => {
               const out = await acc;
               const svg = c.cutoutsSvg!;
-              out.push(...(await frameCandidates(storyFrameDims(designDims(design), svg), [svg], bridgePlan)));
+              const previews = await frameCandidates(storyFrameDims(designDims(design), svg), [svg], bridgePlan);
+              // dialogue mode — הזהות נצמדת בתוך הלולאה ולא בזיפ אחריה.
+              // ‏`frameCandidates` **זורק** מועמד שהמסגור שלו נפל (ראה שם), ולכן
+              // התאמה לפי מיקום בין מה שנכנס למה שיצא מוסטת בשקט ברגע שאחד
+              // נפל — וזה בדיוק הכשל שהמיפוי הזה קיים כדי למנוע. כאן ידוע
+              // שכל מה שחזר הוא של `c`, כי רק הוא נשלח.
+              out.push(...previews.map((p) => ({ ...p, designIndex: c.designIndex })));
               return out;
             }, Promise.resolve([]))
           : await frameCandidates(designDims(design), shortlist.map((c) => c.cutoutsSvg!), bridgePlan)
@@ -1108,6 +1175,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // ומה גולח מהמתאר. ריק בתשובה של שירות מסגור שעוד לא נפרס מחדש — ראה
       // `FramedPreview.spurs`.
       spurs: c.spurs ?? [],
+      // dialogue mode — הכיוון שהמועמד הזה בא ממנו. יחד עם `picked_index`
+      // זה מה שהופך "ההצעה שהלקוחה בחרה" ל"החמישייה שמתארת אותה", ומאפשר
+      // לסבב העריכה הראשון להתחיל עם הקשר במקום ריק. ראה `VersionCandidate`.
+      ...(c.designIndex !== undefined ? { designIndex: c.designIndex } : {}),
     }));
     const { version, report, geometry, lengthMm, widthMm } = await ingestCutouts({
       design: ingestTarget,

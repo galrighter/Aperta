@@ -4,6 +4,7 @@ import type { LlmUsage } from "@/lib/llm/core";
 import type { RunCursor } from "@/lib/runs/cursor";
 // dialogue mode — טיפוסים בלבד, מקובץ בלי תלות ריצה. ראה `lib/dialogue/spec.ts`.
 import type { EditSpec } from "@/lib/dialogue/spec";
+import { chosenDesignIndex, specFromDesignStage } from "@/lib/dialogue/seed";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
 // שנוכל לאבחן תלונות ולכייל יחד. ראה migration 0003_generation_runs.sql.
@@ -839,36 +840,59 @@ export async function deleteRuns(ids: string[]): Promise<number> {
 }
 
 /**
- * dialogue mode — המפרט המצטבר של העיצוב הזה, מהסבב האחרון שנשא אחד.
+ * dialogue mode — המפרט המצטבר שסבב העריכה הזה מתחיל ממנו.
  *
- * **למה שאילתה ולא מצב בלקוחה.** הלקוחה יכולה לחזור לגרסה ישנה ולערוך אותה,
- * לרענן באמצע, לחזור אחרי יום מקישור, או להמשיך ממכשיר אחר — וכל אחד מאלה
- * היה מאבד מפרט שנשמר בזיכרון הדפדפן. היומן שורד את כולם, והוא ממילא נכתב.
+ * **הכניסה היא הגרסה שנערכת ולא העיצוב**, וזה תיקון של טעות: כל בקשת שינוי
+ * יוצרת **שורת עיצוב חדשה** (`createSampleDesign` — ‏`AP-0085.2`), בזמן
+ * שההרצה נרשמת ביומן תחת העיצוב ש**ממנו** יצאה. כלומר חיפוש לפי `design_id`
+ * אחד לעולם אינו מוצא את הסבב הקודם, והמפרט מתחיל ריק בכל סבב — כלומר
+ * המנגנון שלם ולא עושה דבר.
  *
- * **`limit` ולא "השורה האחרונה".** בין שני סבבי עריכה יכולות להיכתב שורות
- * שאינן נושאות מפרט — כשל, הרצה מהבק־אופיס, בחירת חלופה — ושורה אחת אחורה
- * הייתה מאבדת את השרשרת בכל אחת מהן. חלון קטן וקבוע: מי שערכה שתים־עשרה
- * פעם ואף אחת מהן לא נשאה מפרט, מתחילה מחדש, וזה מצב תקין (`EDIT_SPEC_NONE`).
+ * הגרסה מחזיקה את השרשרת האמיתית: `generation_id` מצביע על ההרצה שיצרה
+ * אותה, ושם יושב המפרט. זה גם נכון כשהלקוחה חוזרת לגרסה ישנה ועורכת אותה —
+ * ואז ההקשר הנכון הוא של **הגרסה ההיא**, לא של האחרונה בזמן.
  *
- * **כשל אינו מפיל עריכה.** מפרט חסר פירושו סבב אחד בלי הקשר מצטבר, וזה
- * בדיוק המסלול של היום — לא סיבה להחזיר שגיאה ללקוחה.
+ * שני מקורות, לפי סדר:
+ *
+ *  1. `inputs.editSpec` — מה שסבב העריכה הקודם קבע. זו השרשרת.
+ *  2. **הזרעה מהיצירה** — הסבב הראשון, שאין לפניו עריכה. החמישייה נלקחת
+ *     מהכיוון שהלקוחה בחרה (`designIndex` על ההצעה), מתוך המפרט ששלב הטקסט
+ *     של היצירה החזיר. זה מה שמונע סבב ראשון בלי הקשר.
+ *
+ * `null` = אין אף אחד מהשניים, והסבב מתחיל מ-`EDIT_SPEC_NONE`. כשל אינו
+ * מפיל עריכה: מפרט חסר פירושו סבב אחד בלי הקשר מצטבר, וזה בדיוק המסלול של
+ * היום — לא סיבה להחזיר שגיאה ללקוחה.
  */
-export async function latestEditSpec(designId: string, limit = 12): Promise<EditSpec | null> {
+export async function editSpecFor(versionId: string | null | undefined): Promise<EditSpec | null> {
+  if (!versionId) return null;
   try {
     const sb = supabaseAdmin();
-    const { data, error } = await sb
-      .from("generation_runs")
-      .select("inputs")
-      .eq("design_id", designId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as Array<{ inputs: RunInputs | null }>) {
-      const spec = row.inputs?.editSpec;
-      if (spec && typeof spec === "object" && Object.keys(spec).length) return spec;
-    }
+    const { data: version, error: vErr } = await sb
+      .from("design_versions")
+      .select("generation_id, picked_index, candidates")
+      .eq("id", versionId)
+      .maybeSingle();
+    if (vErr) throw new Error(vErr.message);
+    if (!version) return null;
+
+    const row = version as {
+      generation_id: string | null;
+      picked_index: number | null;
+      candidates: Array<{ designIndex?: number }> | null;
+    };
+    if (!row.generation_id) return null;
+
+    const run = await getRun(row.generation_id);
+    const inputs = run?.inputs ?? null;
+
+    // 1) השרשרת: מה שהסבב הקודם קבע.
+    const carried = inputs?.editSpec;
+    if (carried && typeof carried === "object" && Object.keys(carried).length) return carried;
+
+    // 2) ההזרעה: הסבב הראשון, מהכיוון שהלקוחה בחרה ביצירה.
+    return specFromDesignStage(inputs?.designStage?.spec, chosenDesignIndex(row));
   } catch (e) {
-    console.error("latestEditSpec failed:", e instanceof Error ? e.message : e);
+    console.error("editSpecFor failed:", e instanceof Error ? e.message : e);
+    return null;
   }
-  return null;
 }
