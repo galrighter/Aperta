@@ -440,19 +440,11 @@ def test_a_clipped_render_is_replaced_without_involving_anyone(wired, monkeypatc
     assert len(out["candidates"]) == 2
 
 
-def test_the_retry_asks_for_something_else_when_forme_says_what(wired, monkeypatch):
-    """An identical second round only helps when the failure was random, and a
-    clipped render usually is not: measured over 7 of them it rescued 3 and
-    failed 4. So forme sends the text for the second round, and the box uses it."""
-    prompts: list[str] = []
-    rounds_of(monkeypatch, [clipped_png()], [striped_png(1)], prompts=prompts)
-    run(generate.GenerateJob(prompt="p", retry_prompt="p FRAMING: smaller", calls=1, rows=1))
-    assert prompts == ["p", "p FRAMING: smaller"]
-
-
-def test_without_one_the_retry_is_the_same_prompt_as_before(wired, monkeypatch):
-    """A forme deployed before the field sends nothing, and the box keeps doing
-    exactly what it did — a second identical round, not a failure."""
+def test_the_retry_sends_the_same_prompt_again(wired, monkeypatch):
+    """Forme tried sending a different prompt for the second round — a framing
+    instruction — and measured it: 3 of 9 renders still clipped, the same rate
+    as the plain prompt. The lever that worked was the configuration, not the
+    wording, so the second round is the first request again."""
     prompts: list[str] = []
     rounds_of(monkeypatch, [clipped_png()], [striped_png(1)], prompts=prompts)
     run(generate.GenerateJob(prompt="p", calls=1, rows=1))

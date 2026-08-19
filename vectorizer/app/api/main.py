@@ -151,10 +151,6 @@ class GenerateIn(BaseModel):
     """A whole customer generation. Every decision here was made by forme."""
 
     prompt: str
-    # What to send when the first render came back clipped at a canvas edge.
-    # None = the same prompt again, the behaviour every run had before forme
-    # started building this. The text is forme's, like every prompt here.
-    retry_prompt: str | None = Field(default=None, max_length=8000)
     calls: int = Field(default=1, ge=1, le=8)
     rows: int = Field(default=1, ge=1, le=8)
     # Columns in the render; the cut is a grid of rows x cols. A short piece (a
@@ -221,7 +217,6 @@ async def create_generation(body: GenerateIn) -> JSONResponse:
 
     job = generate.GenerateJob(
         prompt=body.prompt,
-        retry_prompt=body.retry_prompt,
         calls=body.calls,
         rows=body.rows,
         cols=body.cols,

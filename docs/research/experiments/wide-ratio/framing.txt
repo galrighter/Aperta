@@ -1,1 +1,0 @@
- FRAMING: draw the piece smaller than the picture. Its full extent, end to end, takes up about 80% of the image width, centred, leaving a clear band of plain white between each end of the piece and the edge of the image. The whole piece is inside the picture, both of its ends included.

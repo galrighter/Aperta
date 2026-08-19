@@ -17,7 +17,7 @@ import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
 import { dataUrlMediaType, signedUrl } from "@/lib/db/storage";
-import { buildRenderPrompt, LETTERING_MODEL, retryPromptFor } from "@/lib/llm/imagegen";
+import { buildRenderPrompt, LETTERING_MODEL } from "@/lib/llm/imagegen";
 import { LlmError, type LlmImage } from "@/lib/llm/core";
 import { ingestCutouts, designDims, type FramedPreview } from "@/lib/vectorizer";
 import { MAX_CANDIDATES, NATURAL_RATIO, planRender, type RenderPlan } from "@/lib/render/panels";
@@ -913,10 +913,6 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       const job = await runRenderJob({
         jobId: attemptId,
         prompt,
-        // הסבב השני אחרי רנדר שנחתך בגבול — עם משפט המסגור, ולא אותה בקשה שוב.
-        // נגזר מ-`prompt` ולכן נכון גם להרצה עם `promptOverride`. ראה
-        // `retryPromptFor` ב-lib/llm/imagegen.ts.
-        retryPrompt: retryPromptFor(prompt),
         calls: plan.calls,
         rows: plan.rows,
         size: sizeParam(canvas),
