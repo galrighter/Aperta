@@ -95,6 +95,8 @@ describe("runEditStage — הניסיון החוזר", () => {
     expect(out.ok && out.spec).toEqual({
       outer_silhouette: "a tapering band",
       negative_space: "three wide slots",
+      // ערך שהשתנה בלי הצהרת מקור הוא בחירת המודל — `chosen` (§1.3).
+      sources: { negative_space: "chosen" },
     });
   });
 

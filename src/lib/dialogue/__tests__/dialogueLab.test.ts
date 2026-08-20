@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  IMAGE_CALL_USD, blindOrder, gradeInstruction, reportLab, summariseArm, textUsd,
+  IMAGE_CALL_USD, blindOrder, closureCoverage, dispersion, gradeInstruction, interpretiveExcess,
+  reportLab, summariseArm, textUsd,
   type LabRound, type LabSession,
 } from "../lab";
 
@@ -229,5 +230,107 @@ describe("blindOrder", () => {
     const keys = ["a", "b", "c", "d", "e", "f", "g", "h"];
     const firsts = new Set(keys.map((k) => blindOrder(k)[0]));
     expect(firsts.size).toBe(2);
+  });
+});
+
+describe("closureCoverage — כיסוי הסגירה (‏PROMPT_SPEC §7)", () => {
+  it("שדות שנכתבו נספרים לפי מקורם; חסר-תיוג נקרא inferred", () => {
+    const out = closureCoverage({
+      outer_silhouette: "a band",
+      negative_space: "seven slots",
+      symmetry: "mirrored along the length",
+      length_to_width_ratio: 8,
+      sources: { negative_space: "user", symmetry: "chosen" },
+    });
+    expect(out.total).toBe(11);
+    expect(out.decided).toBe(4);
+    expect(out.bySource).toEqual({ user: 1, inferred: 2, chosen: 1 });
+  });
+
+  it("שדה חסר אינו «inferred חסר» — הוא דרגת חופש פתוחה", () => {
+    const out = closureCoverage({ outer_silhouette: "a band" });
+    expect(out.decided).toBe(1);
+    expect(out.bySource.inferred).toBe(1);
+  });
+
+  it("מפרט ריק או חסר — אפס הכרעות, לא שגיאה", () => {
+    for (const empty of [null, undefined, {}]) {
+      expect(closureCoverage(empty).decided).toBe(0);
+    }
+  });
+
+  it("יחס פסול אינו נספר כהכרעה", () => {
+    expect(closureCoverage({ length_to_width_ratio: 0 }).decided).toBe(0);
+  });
+});
+
+describe("dispersion — הפיזור של מדידה חוזרת (§1.4)", () => {
+  it("ממוצע, סטיית תקן מדגמית ו-cv", () => {
+    const d = dispersion([8, 10, 12]);
+    expect(d.n).toBe(3);
+    expect(d.mean).toBe(10);
+    expect(d.sd).toBeCloseTo(2, 10);
+    expect(d.cv).toBeCloseTo(0.2, 10);
+  });
+
+  it("ערכים חסרים נזרקים ואינם נספרים כאפס", () => {
+    // הרצה שנפלה אינה "יחס 0" — ספירתה ככזה הייתה מנפחת את הפיזור בדיוק
+    // כשהמדגם הכי רועש ממילא.
+    const d = dispersion([8, null, undefined, NaN, 10, 12]);
+    expect(d.n).toBe(3);
+    expect(d.mean).toBe(10);
+  });
+
+  it("פחות משתי מדידות — אין פיזור, לא פיזור אפס", () => {
+    expect(dispersion([]).mean).toBeNull();
+    const one = dispersion([7]);
+    expect(one.mean).toBe(7);
+    expect(one.sd).toBeNull();
+    expect(one.cv).toBeNull();
+  });
+
+  it("ממוצע אפס — cv לא מוגדר, לא אינסוף", () => {
+    expect(dispersion([-1, 1]).cv).toBeNull();
+  });
+
+  it("מדידה זהה N פעמים — פיזור אפס אמיתי", () => {
+    const d = dispersion([7, 7, 7, 7]);
+    expect(d.sd).toBe(0);
+    expect(d.cv).toBe(0);
+  });
+});
+
+describe("interpretiveExcess — מה שמעל רצפת רעש הביצוע (§1.4)", () => {
+  it("העודף מעל הרצפה — השונות הפרשנית, אשמת הפרומפט", () => {
+    const sample = dispersion([8, 10, 12]);
+    const floor = dispersion([9.5, 10, 10.5]);
+    expect(interpretiveExcess(sample, floor)).toBeCloseTo(sample.cv! - floor.cv!, 10);
+  });
+
+  it("פיזור מתחת לרצפה — אפס, לא שלילי", () => {
+    const tight = dispersion([10, 10, 10]);
+    const floor = dispersion([9, 10, 11]);
+    expect(interpretiveExcess(tight, floor)).toBe(0);
+  });
+
+  it("**בלי מדידת רצפה — null.** בלעדיה כל מספר אחידות חסר משמעות", () => {
+    const sample = dispersion([8, 10, 12]);
+    expect(interpretiveExcess(sample, dispersion([]))).toBeNull();
+    expect(interpretiveExcess(dispersion([]), sample)).toBeNull();
+  });
+});
+
+describe("summariseArm — סבבי respec", () => {
+  it("נספרים רק עד שביעות הרצון, כמו כל השאר", () => {
+    const rounds: LabRound[] = [
+      round({ arm: "dialogue", respec: true, satisfied: false }),
+      round({ arm: "dialogue", respec: true, satisfied: true }),
+      round({ arm: "dialogue", respec: true, satisfied: null }),
+    ];
+    expect(summariseArm("dialogue", rounds, "gpt-5.6-luna").respecRounds).toBe(2);
+  });
+
+  it("זרוע בלי respec — אפס, כולל הזרוע הקיימת", () => {
+    expect(summariseArm("baseline", [round({})], "gpt-5.6-luna").respecRounds).toBe(0);
   });
 });

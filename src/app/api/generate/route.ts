@@ -12,7 +12,9 @@ import {
 import { storyLayoutFor } from "@/lib/story/ratio";
 // dialogue mode — שלב הטקסט של העריכה. ראה docs/DIALOGUE_PLAN.md §2.
 import { DIALOGUE_EDIT, DIALOGUE_MODE, isDialogue, runsEditStage } from "@/lib/dialogue/mode";
-import { runEditStage, stagedEditPrompt, type EditRegion } from "@/lib/dialogue/editStage";
+import {
+  buildRespecRenderPrompt, runEditStage, runsRespec, stagedEditPrompt, type EditRegion,
+} from "@/lib/dialogue/editStage";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -581,11 +583,29 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     /** השלב רץ ונפל בכל הניסיונות. נרשם ביומן; הלקוחה אינה אמורה להרגיש. */
     const editDown = edit && !edit.ok ? edit : null;
     /**
-     * בקשת השינוי כפי שמודל התמונה יקבל אותה.
+     * dialogue mode — ‏respec (‏PROMPT_SPEC §6): התמונה נוצרת **מחדש**
+     * מהמפרט המעודכן, בלי תמונת ייחוס — `/v1/images/generations` במקום
+     * `/v1/images/edits`. זו ברירת המחדל של כל עריכה במסלול; עריכת הייחוס
+     * נשארת לשלושה מצבים שהפונקציה הטהורה `runsRespec` מגדירה: המודל ביקש
+     * `reference_edit`, המפרט המצטבר ריק (עיצובים מלפני ההזרעה — ‏respec
+     * עליהם היה מצייר פריט חדש), או שיש כיתוב שחי רק בתמונה הקיימת.
+     * מחוץ למסלול `editStage` הוא `null` ולכן זה תמיד `false` — המסלול
+     * הרגיל אינו משתנה.
+     */
+    const respec = editStage
+      ? runsRespec({
+          decision: editStage.decision,
+          priorSpec,
+          lettering: Boolean(body.text?.trim()),
+        })
+      : false;
+    /**
+     * בקשת השינוי כפי שמודל התמונה יקבל אותה — בעריכת ייחוס.
      *
      * זה כל ההבדל בין שני המסלולים בנקודה הזו — **מחרוזת אחת**. היא נכנסת
      * לאותו מקום בדיוק ב-`buildRenderPrompt` (פסקת `CHANGE REQUEST`), כי
      * הניסוח והסדר שם נמדדו ואינם משתנים; מה שמשתנה הוא מה ממלא אותם.
+     * ב-respec היא אינה בשימוש — שם הפרומפט כולו נבנה מהמפרט, לא כדלתא.
      */
     const changeRequest = editStage ? stagedEditPrompt(editStage.decision) : body.userPrompt;
 
@@ -601,10 +621,14 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     const canvas = body.canvasOverride
       ? canvasOf(body.canvasOverride)
       : layout?.canvas ?? (story ? storyCanvas() : canvasFor(dims.lengthMm));
-    const editSvg = buildBaseRenderSvg(body.currentSvg, canvas);
+    // dialogue mode — ‏ב-respec תמונת הייחוס אינה נבנית ואינה נשלחת: זו כל
+    // הנקודה של §6. `editSvg` ריק הוא מה שמפיל את הקופסה ל-generations.
+    const editSvg = respec ? null : buildBaseRenderSvg(body.currentSvg, canvas);
     // מספר הגרסה שנמסרה כבסיס. שאילתה נוספת אחת לכל עריכה, ורק כדי שהיומן
     // יידע *על מה* השינוי נשלח. שדה יומן לא מפיל הרצה: כשל כאן משאיר אותו ריק.
-    const baseVersionNo = editSvg && body.baseVersionId
+    // dialogue mode — גם ב-respec: הבסיס לא צויר, אבל השינוי עדיין נשלח *על*
+    // הגרסה הזו — דרכה נכנסת שרשרת המפרט, והיומן בלעדיה אינו ניתן להסבר.
+    const baseVersionNo = (editSvg || respec) && body.baseVersionId
       ? await getVersion(body.baseVersionId)
           .then((v) => (v.design_id === design.id ? v.version_no : undefined))
           .catch(() => undefined)
@@ -660,9 +684,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // ללקוחה, וההשראה היא רוח שאפשר לתאר במילים. נאפס אותה כאן ולא נשאיר
     // ליומן דיווח על תמונה שלא נשלחה.
     /** התמונה שהמשתמשת צירפה ונזרקה, ולמה. ריק = לא נזרקה. */
-    let imageDropped: "lettering" | "edit" | null = null;
-    if (inspiration && (lettering || editSvg)) {
-      imageDropped = lettering ? "lettering" : "edit";
+    // dialogue mode — "respec" נוסף לסיבות: שם אף ייחוס אינו נשלח בכוונה,
+    // והשארת ההשראה הייתה מחזירה תמונת ייחוס למסלול שכל הגדרתו היא בלעדיה.
+    let imageDropped: "lettering" | "edit" | "respec" | null = null;
+    if (inspiration && (lettering || editSvg || respec)) {
+      imageDropped = lettering ? "lettering" : respec ? "respec" : "edit";
       inspiration = null;
     }
     // הפרומפט מהבק־אופיס נשלח **כמו שהוא**. שים לב שמשפט ה-LAYOUT יושב בתוכו,
@@ -681,7 +707,20 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // מה שנבנה ממנו.
     const prompt =
       body.promptOverride?.trim() ||
-      (designStage
+      // dialogue mode — ‏respec: פרומפט שלם מהמפרט הסגור, בלי "CHANGE REQUEST"
+      // ובלי תמונה מצורפת. היחס נופל למידות הפריט הנערך כשהמפרט עוד לא נושא
+      // אותו — ציר פתוח הוא קובייה (‏PROMPT_SPEC §1.1).
+      (respec && editStage
+        ? buildRespecRenderPrompt({
+            spec: editStage.spec,
+            decision: editStage.decision,
+            canvas,
+            rows: plan.rows,
+            cols: plan.cols,
+            thicknessMm: dims.thicknessMm,
+            fallbackRatio: dims.widthMm > 0 ? dims.lengthMm / dims.widthMm : null,
+          })
+        : designStage
         ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec, dims.thicknessMm)
         : storyCreate
           ? buildStoryRenderPrompt({
@@ -797,7 +836,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         imageDropped: imageDropped ?? undefined,
         // האם ההרצה יצאה מהעיצוב הקיים או מאפס. בלי זה אי אפשר להבחין ביומן
         // בין עריכה שלא שימרה את הבסיס לבין יצירה חדשה שכך התבקשה.
-        editedFromCurrent: Boolean(editSvg),
+        // dialogue mode — גם respec יוצא מהעיצוב הקיים: דרך המפרט, לא דרך
+        // תמונה מצורפת. בלי זה הרצות respec היו נקראות ביומן ובקורפוס
+        // (`isEditRun`) כיצירה מאפס — והן בדיוק העריכות שהמדידה צריכה.
+        editedFromCurrent: Boolean(editSvg) || respec,
         editedFromVersion: baseVersionNo,
         /** הכיתוב שנחתך, והטיפוגרפיה שכל שורה קיבלה. בלי זה אי אפשר להסביר
          *  ביומן למה חלופה אחת נראית אחרת מהשנייה.
@@ -856,6 +898,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               /** המודל ביקש הבהרה. נרשם ואינו נאכף בשלב A — הוא מה שימדוד
                *  כמה סבבים שאלה אחת הייתה חוסכת, וזו ההצדקה של שלב B. */
               clarification: editStage?.decision.needs_clarification?.slice(0, 500),
+              /** מה המודל הכריע (§6) ומה הצינור עשה. שניהם, כי הם יכולים
+               *  להיפרד — respec שהוצהר על מפרט ריק ירד לעריכת ייחוס. */
+              strategy: editStage?.decision.strategy,
+              respec: respec || undefined,
               usage: edit?.usage ?? undefined,
             }
           : undefined,

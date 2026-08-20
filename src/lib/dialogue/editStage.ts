@@ -1,14 +1,21 @@
 import { askOpenAi } from "@/lib/llm/openai";
 import { addLlmUsage, type LlmRequest, type LlmUsage } from "@/lib/llm/core";
 import type { RenderProductType } from "@/lib/llm/imagegen";
+import type { Canvas } from "@/lib/render/canvas";
+import { FAB } from "@/lib/fabrication.config";
 import { DIALOGUE_EDIT } from "./mode";
-import { describeSpec, nextEditSpec, type EditDecision, type EditSpec } from "./spec";
+import {
+  EDIT_STRATEGIES, describeSpec, hasSpec, nextEditSpec, ratioOf,
+  type EditDecision, type EditSpec, type EditStrategy,
+} from "./spec";
 
 // המפרט המצטבר וההחלטה חיים ב-`./spec` — טיפוסים ופונקציות טהורות, בלי תלות
 // בלקוח ה-LLM, כדי ששכבת ה-DB תוכל לייבא אותם. הם מיוצאים מחדש מכאן כי זו
 // נקודת הכניסה של השלב, ומי שקורא לו ממילא צריך את שניהם.
-export { describeSpec, nextEditSpec, EDIT_SPEC_NONE, hasSpec } from "./spec";
-export type { EditDecision, EditSpec } from "./spec";
+export {
+  describeSpec, nextEditSpec, EDIT_SPEC_NONE, hasSpec, runsRespec, coerceEditSpec, ratioOf,
+} from "./spec";
+export type { EditDecision, EditSpec, EditStrategy, FieldSource, SpecSources } from "./spec";
 
 // dialogue mode — שלב הטקסט שקודם למודל התמונה **בעריכה**.
 //
@@ -22,17 +29,22 @@ export type { EditDecision, EditSpec } from "./spec";
 //
 //     בקשה בעברית + אזור → [מודל טקסט] → JSON גיאומטרי באנגלית → [מודל תמונה]
 //
-// **ומה שונה כאן מ-`designStage`, ולמה.** שם הקלט הוא סיפור והפלט הוא שלושה
-// כיוונים חדשים. כאן כבר יש פריט על המסך, והשאלה אינה "מה לצייר" אלא **מה
-// לשנות ומה לא לגעת בו**. לכן הפלט הוא שלושה שדות ולא מפרט מלא:
+// **ומאז PROMPT_SPEC §6 — ‏respec הוא ברירת המחדל.** כשיש מפרט מצטבר, כל
+// עריכה היא עריכת מפרט: המודל מעדכן את המפרט הסגור, והתמונה נוצרת **מחדש**
+// ממנו, בלי תמונת ייחוס (`buildRespecRenderPrompt`). זה הופך את §2.3 של
+// DIALOGUE_PLAN — היצירה-מחדש שהייתה שם הווריאנט הניסויי היא עכשיו ברירת
+// המחדל, והייחוס נפילה-לאחור. מה שמחזיק "כל השאר נשאר" בלי ייחוס: הסגירה
+// של §2 + המקורות של §1.3 — שדות `user` קפואים, וה-respec נוגע רק במה
+// שהבקשה ביקשה. עריכת הייחוס נשארת חיה לשני מצבים: מפרט ריק (עיצובים
+// מלפני ההזרעה — ראה `runsRespec`) והנפילה-לאחור, ולכן יש כאן **שני נוסחי
+// פרומפט**: ‏respec (יש מפרט) וייחוס (אין).
 //
-//  - `image_instruction` — מה לצייר אחרת, גיאומטרית ובאנגלית.
-//  - `preserve` — מה שהבקשה **לא** נגעה בו ולכן חייב להישאר. זה הצד שאין לו
-//    מקבילה ביצירה, והוא מה שהופך "פחות בלאגן פה" לשינוי מקומי במקום לעיצוב
-//    חדש שבמקרה דומה.
-//  - `scope` — איפה. הצ'יפ שהלקוחה בחרה הוא רמז ולא גזירה: "פחות בלאגן פה"
-//    עם צ'יפ "אזור ימין" הוא בקשה על השליש הימני, אבל "שיהיה יותר סימטרי"
-//    עם אותו צ'יפ הוא בקשה על הפריט כולו — סימטריה אינה תכונה של שליש.
+// **מה הפלט.** ב-respec — ‏`image_instruction` שהוא הוראה מלאה על הפריט
+// כולו כפי שיהיה, `updated_spec` שלם עם מקור לכל שדה, ו-`strategy`. בעריכת
+// ייחוס — הוראת דלתא, `preserve[]` (מה שהבקשה לא נגעה בו ולכן חייב לחזור),
+// ו-`scope`. ההבחנה place/property נשארת בשני הנוסחים: "פחות בלאגן פה" עם
+// צ'יפ "אזור ימין" היא בקשה על השליש הימני, אבל "שיהיה יותר סימטרי" עם אותו
+// צ'יפ היא בקשה על הפריט כולו — סימטריה אינה תכונה של שליש.
 //
 // **המפרט המצטבר** (§2.2 ב-docs/DIALOGUE_PLAN.md). כל סבב מקבל את מה שנקבע
 // בסבבים הקודמים ומחזיר אותו מעודכן. זה מה שפותר את הכשל האמיתי של עריכה
@@ -54,8 +66,8 @@ export type { EditDecision, EditSpec } from "./spec";
  * בדיוק כמו ב-`designStage`: השלב יושב **בתוך** בקשת היצירה שנהרגת ב-300 שנ׳,
  * ואחריו עוד רצים הרנדר (11–20 שנ׳ בעריכה), המסגור והוולידציה.
  *
- * 60 שנ׳ ולא 90 כמו ביצירה: הפלט כאן קטן בהרבה — שלושה שדות על פריט קיים,
- * ולא שלושה עד שישה מפרטים מלאים — וההמתנה כאן נמדדת מול סבלנות של לקוחה
+ * 60 שנ׳ ולא 90 כמו ביצירה: הפלט כאן קטן בהרבה — החלטה על פריט קיים, ולא
+ * שלושה עד שישה מפרטים מלאים — וההמתנה כאן נמדדת מול סבלנות של לקוחה
  * שכבר ראתה תוצאה וביקשה תיקון קטן, לא של מי שמחכה ליצירה הראשונה.
  */
 const EDIT_TIMEOUT_MS = 60_000;
@@ -71,7 +83,8 @@ const EDIT_BUDGET_MS = 100_000;
 /** פחות מזה אין טעם לנסות: התשובה לא תספיק לחזור, והקריאה רק שורפת תקציב. */
 const EDIT_MIN_ATTEMPT_MS = 15_000;
 
-/** כמה פריטי `preserve` נמסרים למודל התמונה. ראה `stagedEditPrompt`. */
+/** כמה פריטי `preserve` נמסרים למודל התמונה — בעריכת ייחוס בלבד.
+ *  ראה `stagedEditPrompt`. */
 export const MAX_PRESERVE = 6;
 
 /** עומק החשיבה, כפי שהספק מקבל אותו. מוגדר כאן כשם כדי שהרתמה תוכל להעביר
@@ -127,11 +140,98 @@ export type EditStageOutcome =
   | ({ ok: true } & EditStageResult)
   | ({ ok: false } & EditStageFailure);
 
-/* ===== הפרומפט ===== */
+/* ===== הפרומפט — שני נוסחים ===== */
 
 const EDIT_SYSTEM = "You are the conceptual jewelry designer for Aperta, revising a piece you already designed.";
 
-const EDIT_PROMPT = `A customer is looking at a piece of jewellery we made for her and has asked for one change to it. Your job is to turn her request into a precise drawing instruction for an image model that will edit the existing image.
+/**
+ * הנוסח של respec — רץ כשיש מפרט מצטבר (‏PROMPT_SPEC §6).
+ *
+ * ההבדל המהותי מהנוסח השני: אין תמונת ייחוס בהמשך הדרך, ולכן אין `preserve`
+ * — השימור יושב במפרט עצמו ("העתק מילה במילה את מה שהבקשה לא נגעה בו"),
+ * ו-`image_instruction` היא הוראה **מלאה** שעומדת לבדה. הסגירה של §2 יושבת
+ * כאן: מניין מדויק, מידות כיחסים בתוך התמונה (לקח 4 — לא מ"מ), ו"אין" הוא
+ * הכרעה ולא שתיקה (לקח 3 — כל שדה בנוסח "…or none").
+ */
+const EDIT_PROMPT_RESPEC = `A customer is looking at a piece of jewellery we made for her and has asked for one change to it. The piece will be REDRAWN FROM ITS SPECIFICATION: the image model will not see the current image — your updated specification and drawing instruction are everything it gets, and any decision you leave open it will make differently on every run.
+
+You are not drawing, and you are not designing a new piece. You are revising the specification of an existing piece so that what she asked to change changes — and everything else comes back because the specification says so.
+
+PRODUCT: "{PRODUCT_TYPE}"   (bracelet or ring)
+LENGTH: {LENGTH_MM}
+REGION SHE POINTED AT: {REGION}
+HER REQUEST, VERBATIM (Hebrew): "{USER_REQUEST}"
+
+WHAT THE PIECE IS NOW
+
+Each field is tagged with who decided it. [user] — she said or approved it explicitly: frozen, change it only if her request explicitly reaches it. [inferred] — read from her words: stable, adjust it only if her request suggests the reading missed. [chosen] — a designer's call: yours to re-make, but only where her request or a making constraint forces it. An untagged field counts as [inferred].
+
+{CURRENT_SPEC}
+
+READING THE REQUEST
+
+It is written in spoken Hebrew, not a specification: it may be vague ("less of a mess here"), relative ("a bit more like the first one"), emotional ("it should feel calmer"), misspelled, or a fragment. Read what she means, not what she typed.
+
+Two things she says are different in kind, and confusing them is the failure this stage exists to prevent. A request about a PLACE ("the right side is too busy") applies to that place. A request about a PROPERTY of the whole piece ("make it more symmetrical", "calmer", "lighter") applies to the whole piece, whatever region she happened to have selected — symmetry is not a property a third of a piece can have. The region above is what she pointed at; you decide what her sentence actually reaches.
+
+If her request could reasonably mean two different changes, choose the smaller and more reversible of the two, and say what was ambiguous in "needs_clarification".
+
+STRATEGY
+
+Return "strategy": "respec" and proceed — unless her request asks for something this product cannot be. The piece is laser-cut from one flat sheet of metal: openings and the outer contour are its entire language. There is no engraving, no stones, no colour, no texture, no relief. If that is what she asked for, return "strategy": "clarify", put the question for her in "needs_clarification", and write the specification with only the part of her request the medium can honour — unchanged where none of it can be.
+
+WHAT TO RETURN
+
+"updated_spec" is the piece AFTER this change, complete. Copy forward, word for word, every field the change does not touch — identical words redraw the same piece. Where the specification above leaves an axis open, decide it now: "none" (no openings, no repeated elements) is a decision; silence is not. State every count exactly ("seven openings", never "several"), and give sizes as comparisons inside the image ("the band is as narrow as the gap beside it"), never in millimetres.
+
+"sources" tags every field you wrote in "updated_spec": "user" if her request set it explicitly, "inferred" if you read it from her words, "chosen" if you decided because someone must.
+
+"image_instruction" is the field that matters most. Write it in English, as one complete, literal, geometric drawing instruction for the WHOLE piece as it will be after the change — outer contour, metal structure, every opening with its exact count, placement and spacing, both ends. It must stand alone: the model drawing it has never seen the piece.
+
+MAKING
+
+The piece is laser-cut from one flat sheet and rolled. Whatever metal remains has to hold together as a single connected piece, so a change that would sever it, or thin it past cutting, is not the change to make — make the nearest one that survives.
+
+OUTPUT
+
+Return ONLY valid JSON — no markdown, no explanation before or after it:
+
+{
+"strategy": "respec",
+"scope": "Exactly what part of the piece this change reaches, and why that is what her sentence means.",
+"image_instruction": "One complete, geometrically precise instruction describing the whole piece as it will be.",
+"needs_clarification": "The question worth asking her, if her request was genuinely ambiguous or outside the medium. Omit this field otherwise.",
+"updated_spec": {
+"outer_silhouette": "The complete outer contour, described concretely enough to draw — and whether it is a frame that contains the elements, or the elements themselves are the outer edge.",
+"metal_structure": "The major connected areas of remaining metal.",
+"negative_space": "The empty space the piece uses — internal openings, carving of the outer contour, the space around the piece, or none of these.",
+"rhythm_balance": "Movement, rhythm, tension, visual weight.",
+"symmetry": "Which symmetry the piece keeps — along its length, around its centre, both, or deliberately none.",
+"ends_treatment": "How each of the two ends finishes, concretely — the ends meet on the wrist and are a visible part of the piece.",
+"metal_void_balance": "How much of the piece is open against solid, as a share of its area (\\"about a third of the area is open\\") — or that it is fully solid.",
+"elements": "Every repeated element the piece carries: its shape, its exact count, its line weight relative to something visible in the piece, its spacing, where it sits, and whether its corners are sharp or rounded — or that the piece has no repeated elements.",
+"region_map": "What sits in the right, centre and left thirds of the piece as drawn — or that it reads as one continuous whole.",
+"manufacturability": "Why this stays one robust manufacturable piece.",
+"length_to_width_ratio": 0,
+"sources": {"outer_silhouette": "user"}
+}
+}
+
+"length_to_width_ratio" must be a plain number — the piece's length divided by its width. Keep the current one unless her request changes the width.
+
+"image_instruction" and every "updated_spec" field must be in English. Write them for a model that will draw the piece from them alone.`;
+
+/**
+ * נוסח הייחוס — רץ כשאין מפרט מצטבר: עיצוב מלפני ההזרעה, או שרשרת שנקטעה.
+ * ‏respec על מפרט ריק אינו עריכה אלא פריט חדש (ראה `runsRespec`), ולכן כאן
+ * התמונה הקיימת נשארת מצורפת וההוראה היא דלתא עליה — המסלול של DIALOGUE_PLAN
+ * §2.1 כפי שנבנה, ועכשיו גם הנפילה-לאחור השמורה של §6.
+ *
+ * ‏`updated_spec` מתבקש גם כאן — הוא מה שמזרים את השרשרת כך שהסבב **הבא**
+ * כבר יוכל לרוץ respec — אבל עם רישיון השמטה מפורש: המודל אינו רואה את
+ * התמונה, ושדה מומצא היה מצהיר בביטחון על פריט אחר (לקח 3).
+ */
+const EDIT_PROMPT_REFERENCE = `A customer is looking at a piece of jewellery we made for her and has asked for one change to it. Your job is to turn her request into a precise drawing instruction for an image model that will edit the existing image.
 
 You are not drawing, and you are not designing a new piece. You are deciding exactly what changes and exactly what must not.
 
@@ -158,7 +258,7 @@ WHAT TO RETURN
 
 "preserve" is the other half, and it is what keeps this an edit. List the concrete features of the piece that her request does NOT touch and that must come back unchanged — the outer contour, a particular opening, the rhythm along the rest of the length, whatever the current specification says is there. Between two and {MAX_PRESERVE} items, each one concrete enough to check against the image. Do not list "everything else".
 
-"updated_spec" is the specification above, rewritten as it will be AFTER this change — the same five fields, carried forward. Fields the change does not touch are copied across unchanged. This is what the next round will read, so it must describe the piece as it will then be, not the change you made to it.
+"updated_spec" is the piece's specification as it will be AFTER this change. There is no recorded specification to carry forward, so write only the fields her request and this change establish, and omit — do not invent — the ones you cannot know: an invented field would confidently describe a different piece, and the next round would edit it as if it were true. State counts exactly, and give sizes as comparisons inside the image, never in millimetres. "sources" tags every field you wrote: "user" if her request set it explicitly, "inferred" if you read it from her words, "chosen" if you decided because someone must.
 
 MAKING
 
@@ -176,9 +276,15 @@ Return ONLY valid JSON — no markdown, no explanation before or after it:
 "updated_spec": {
 "outer_silhouette": "The complete outer contour, as it will be after this change.",
 "metal_structure": "The major connected areas of remaining metal, as they will be.",
-"negative_space": "The empty space the piece uses, as it will be.",
-"rhythm_balance": "Movement, symmetry or asymmetry, tension, visual weight, as they will be.",
-"manufacturability": "Why this stays one robust manufacturable piece."
+"negative_space": "The empty space the piece uses, as it will be — or none of these.",
+"rhythm_balance": "Movement, rhythm, tension, visual weight, as they will be.",
+"symmetry": "Which symmetry the piece keeps — along its length, around its centre, both, or deliberately none.",
+"ends_treatment": "How each of the two ends finishes, if this change or her request establishes it.",
+"metal_void_balance": "How much of the piece is open against solid, as a share of its area — or that it is fully solid.",
+"elements": "Every repeated element this change establishes: shape, exact count, relative line weight, spacing, placement, corners — or that the piece has no repeated elements.",
+"region_map": "What sits in the right, centre and left thirds of the piece as drawn, if known.",
+"manufacturability": "Why this stays one robust manufacturable piece.",
+"sources": {"outer_silhouette": "user"}
 }
 }
 
@@ -207,15 +313,23 @@ export interface EditStageInput {
   lengthMm?: number;
 }
 
+/**
+ * הנוסח נבחר לפי מה שיש, לא לפי מה שהוצהר: יש מפרט → ‏respec; אין → ייחוס.
+ * זו אותה הכרעה בדיוק ש-`runsRespec` עושה בצינור — הפרומפט והמסירה חייבים
+ * להסכים, אחרת המודל עונה על שאלה אחת והתמונה נבנית לפי אחרת.
+ */
 export function buildEditStagePrompt(input: EditStageInput): string {
-  return fill(EDIT_PROMPT, {
+  const respec = hasSpec(input.spec);
+  return fill(respec ? EDIT_PROMPT_RESPEC : EDIT_PROMPT_REFERENCE, {
     PRODUCT_TYPE: input.productType,
     USER_REQUEST: input.request.trim().replace(/\s+/g, " "),
     REGION: REGION_HINT[input.region ?? "all"],
     LENGTH_MM: input.lengthMm && input.lengthMm > 0
       ? `${Math.round(input.lengthMm * 10) / 10} mm`
       : "not specified",
-    CURRENT_SPEC: describeSpec(input.spec),
+    // תיוגי המקור נמסרים לפרומפט **התכנון** בלבד — זה המקום שבו ההחלטות
+    // מתקבלות. לפרומפט הביצוע (buildRespecRenderPrompt) הם לא מגיעים.
+    CURRENT_SPEC: describeSpec(input.spec, { sources: respec }),
     MAX_PRESERVE: String(MAX_PRESERVE),
   });
 }
@@ -223,7 +337,9 @@ export function buildEditStagePrompt(input: EditStageInput): string {
 /* ===== מה שנמסר למודל התמונה ===== */
 
 /**
- * הטקסט שמחליף את `buildEditPrompt` בקריאה ל-`buildRenderPrompt(editing=true)`.
+ * הטקסט שמחליף את `buildEditPrompt` בקריאה ל-`buildRenderPrompt(editing=true)`
+ * — **בעריכת ייחוס בלבד**. ב-respec אין תמונה מצורפת ואין "CHANGE REQUEST";
+ * מה שנמסר הוא פרומפט שלם משלו — ראה `buildRespecRenderPrompt`.
  *
  * **הוא נכנס באותו מקום בדיוק**, ולא כפרמטר נוסף: הפסקה שם ("CHANGE REQUEST
  * (apply only this)" ואחריה פסקת השמירה) היא ניסוח שנמדד, וסדר שני חלקיה הוא
@@ -243,6 +359,128 @@ export function stagedEditPrompt(decision: EditDecision): string {
     .slice(0, MAX_PRESERVE);
   if (!keep.length) return instruction;
   return `${instruction}. Leave these exactly as they are in the attached image: ${keep.join("; ")}`;
+}
+
+/* ===== הפרומפט של respec למודל התמונה ===== */
+
+/** מספר → מילה, לפרומפט. מועתק מ-imagegen ולא משותף — מסלול מקביל. */
+const COUNT_WORD: Record<number, string> = {
+  1: "ONE", 2: "TWO", 3: "THREE", 4: "FOUR", 5: "FIVE", 6: "SIX", 7: "SEVEN", 8: "EIGHT",
+};
+const countWord = (n: number): string => COUNT_WORD[n] ?? String(n);
+
+/**
+ * התבנית של respec: יצירה מחדש מהמפרט הסגור, בלי תמונת ייחוס.
+ *
+ * בתבנית `RENDER_PROMPT` של `designStage` — אותו חוזה מדיום, מילה במילה —
+ * אבל פריט **אחד** ולא 3–6 כיוונים: כל השורות הן אותו פריט, מצויר שוב מאותו
+ * מפרט. זה היפוך מכוון של משפט השורות ביצירה ("כל שורה עיצוב אחר"): המפרט
+ * סגור, מה שנבדל בין השורות הוא רעש ביצוע בלבד (§1.1 ב-PROMPT_SPEC), והוא
+ * עצמו מדיד — פיזור בין שורות של אותה קריאה הוא דגימה של רצפת הרעש (§1.4).
+ */
+const RESPEC_RENDER_PROMPT = `Create ONE {CANVAS_SHAPE} image containing exactly {PIECES_WORD} flat jewellery blanks.
+
+A jewellery designer has revised an existing piece and closed every decision. Your job is to execute the specification — not to reinterpret it, and not to add ideas of your own.
+
+THE PIECE
+
+{INSTRUCTION}
+
+SPECIFICATION
+
+{SPEC}
+
+Draw exactly what the specification describes. Draw the outer contour it specifies, not only what is cut out of it.
+{PROPORTION}
+LAYOUT
+
+{LAYOUT}
+
+WHAT THESE ARE
+
+Flat blanks as they come off the laser bed, before being rolled into the finished piece. Each one is cut from a single sheet of {THICKNESS_MM} mm brass, so the metal that remains has to hold together as one connected piece.
+
+HOW TO DRAW THEM
+
+Solid black on a pure white background, seen straight from above, perfectly flat: no perspective, no curvature, no depth, no bevel, no texture, no reflection, no gradient, no shadow, no lighting. Openings are the same pure white as the background. Nothing else appears in the image — no text, no labels, no dimensions, no frames, no hands, no background of any kind.
+
+BLACK IS METAL. WHITE IS NOT.`;
+
+/** משפט הפרופורציה — רק כשיש יחס. בלעדיו נשאר מה שהפרומפט ממילא אומר,
+ *  בלי מספרים מומצאים (אותה הנמקה כמו `proportionLines` ב-designStage). */
+function respecProportion(ratio: number | null): string {
+  if (ratio === null) return "";
+  const r = Math.round(ratio * 10) / 10;
+  return `\nPROPORTION\n\nThe piece's length-to-width ratio is 1:${r}. A LOW ratio is a WIDE piece; a HIGH ratio is a NARROW one. This is the finished width of the piece — draw every copy at exactly this ratio.\n`;
+}
+
+/**
+ * משפט הפריסה. שלוש צורות, כמו ב-`buildRenderPrompt` — פריט יחיד, טור,
+ * רשת — אבל כולן אומרות את אותו דבר אחד: כל עותק הוא **אותו פריט**, לא
+ * וריאציה. פס לבן רצוף בין שורות הוא חוזה הפריסה שנמדד (ראה designStage) —
+ * הוא מה ש-`split_rows` מחפש, ובלעדיו עותקים שצוירו אינם מגיעים ללקוחה.
+ */
+function respecLayout(rows: number, cols: number): string {
+  const pieces = rows * cols;
+  if (pieces <= 1) {
+    return "The image contains this one piece. Show it whole and unclipped, centred, with plain white all around it.";
+  }
+  const same =
+    "Every copy is the same piece — the specification above, drawn again — not a variation of it and not an alternative to it.";
+  const band =
+    "Leave a clear, unbroken horizontal band of pure white between every two copies, running the full width of the image. No part of one copy may reach into that band.";
+  if (cols <= 1) {
+    return (
+      `The image contains exactly ${countWord(pieces)} copies of that one piece, stacked one above another as ` +
+      `${countWord(rows)} evenly spaced horizontal rows, with plain white space between them and no line, frame, ` +
+      `divider or caption of any kind. ${same} Show every copy whole and unclipped, its bounding box spanning ` +
+      `almost the full width of the image with a thin white margin at each end.\n\n${band}`
+    );
+  }
+  return (
+    `The image contains exactly ${countWord(pieces)} copies of that one piece, laid out as a grid of ` +
+    `${countWord(rows)} evenly spaced horizontal rows by ${countWord(cols)} evenly spaced vertical columns, ` +
+    `with plain white space between every copy and no line, frame, divider, grid line or caption of any kind. ` +
+    `${same} Each copy's bounding box spans almost the full width of its own column with a thin white margin at ` +
+    `each end — a copy never runs across the full width of the image. Show every copy whole and unclipped.`
+  );
+}
+
+/**
+ * הפרומפט למודל התמונה ב-respec — התמונה נוצרת מחדש מהמפרט, בלי ייחוס.
+ *
+ * `canvas` נמסר ולא מונח, מאותו נימוק כמו `buildStagedRenderPrompt`: הצורה
+ * שהטקסט מבקש חייבת להיות זו שנשלחת ב-`size`, ושני מקומות לאותה החלטה הם
+ * שני מקומות שיכולים להיפרד.
+ *
+ * `fallbackRatio` — היחס של הפריט הנערך (אורך/רוחב מהרשומה), למפרט שעדיין
+ * אינו נושא יחס משלו: מפרטים מסבבים שלפני ההרחבה. עדיף יחס מדוד של הפריט
+ * האמיתי על היעדר הכרעה — ציר פתוח הוא קובייה (§1.1).
+ */
+export function buildRespecRenderPrompt(input: {
+  spec: EditSpec;
+  decision: EditDecision;
+  canvas: Canvas;
+  rows?: number;
+  cols?: number;
+  thicknessMm?: number;
+  fallbackRatio?: number | null;
+}): string {
+  const rows = Math.max(1, input.rows ?? 1);
+  const cols = Math.max(1, input.cols ?? 1);
+  const fallback = Number(input.fallbackRatio);
+  const ratio = ratioOf(input.spec) ?? (Number.isFinite(fallback) && fallback > 0 ? fallback : null);
+  return fill(RESPEC_RENDER_PROMPT, {
+    CANVAS_SHAPE: input.canvas.widthPx < input.canvas.heightPx ? "portrait / tall" : "landscape / wide",
+    PIECES_WORD: countWord(rows * cols),
+    INSTRUCTION: input.decision.image_instruction?.trim() ?? "",
+    // בלי תיוגי מקור: בדרך למודל התמונה כל השדות שווים — סגורים (§1.3),
+    // ותיוג כאן היה אוצר-מילים בפרומפט הביצוע, שכבת האיסור של §2.4.
+    SPEC: describeSpec(input.spec),
+    PROPORTION: respecProportion(ratio),
+    LAYOUT: respecLayout(rows, cols),
+    THICKNESS_MM: String(input.thicknessMm ?? FAB.defaultThicknessMm),
+  });
 }
 
 /* ===== הפענוח ===== */
@@ -266,6 +504,9 @@ function unfence(text: string): string {
  *
  * **`preserve` שאינו מערך של מחרוזות מנוקה ולא פוסל**, מאותו נימוק: מודל
  * שהחזיר מחרוזת אחת במקום מערך אמר משהו שמיש בצורה הלא נכונה.
+ *
+ * **`strategy` שאינו אחד משלושת הערכים נקרא כחסר** — כלומר respec, ברירת
+ * המחדל של §6. מי שמכריע אם הייחוס באמת נשלח הוא `runsRespec`, לא המחרוזת.
  */
 export function parseEditDecision(raw: string): { json: string; decision: EditDecision } | null {
   const json = unfence(raw);
@@ -283,10 +524,12 @@ export function parseEditDecision(raw: string): { json: string; decision: EditDe
   const preserve = (Array.isArray(box.preserve) ? box.preserve : [box.preserve])
     .filter((p): p is string => typeof p === "string" && p.trim().length > 0)
     .map((p) => p.trim());
+  const strategy = EDIT_STRATEGIES.find((s): s is EditStrategy => s === box.strategy);
   const spec = box.updated_spec;
   const decision: EditDecision = {
     image_instruction: instruction,
     preserve,
+    ...(strategy ? { strategy } : {}),
     ...(typeof box.scope === "string" && box.scope.trim() ? { scope: box.scope.trim() } : {}),
     ...(typeof box.needs_clarification === "string" && box.needs_clarification.trim()
       ? { needs_clarification: box.needs_clarification.trim() }

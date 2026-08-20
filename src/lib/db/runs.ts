@@ -3,7 +3,7 @@ import type { ProductType } from "@/lib/fabrication.config";
 import type { LlmUsage } from "@/lib/llm/core";
 import type { RunCursor } from "@/lib/runs/cursor";
 // dialogue mode — טיפוסים בלבד, מקובץ בלי תלות ריצה. ראה `lib/dialogue/spec.ts`.
-import type { EditSpec } from "@/lib/dialogue/spec";
+import { hasSpec, type EditSpec } from "@/lib/dialogue/spec";
 import { chosenDesignIndex, specFromDesignStage } from "@/lib/dialogue/seed";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
@@ -248,7 +248,8 @@ export interface RunInputs {
    * תמונת הייחוס, `edit` = העיצוב הקיים תפס אותו. בלי השדה הזה שורה עם
    * `imageCount: 1` ובלי תמונת קלט נראית כמו כשל בהעלאה.
    */
-  imageDropped?: "lettering" | "edit";
+  /** dialogue mode — ‏"respec" נוסף לערכים: שם שום ייחוס אינו נשלח בכוונה. */
+  imageDropped?: "lettering" | "edit" | "respec";
   /** עריכה: העיצוב הקיים נמסר למודל התמונה כרפרנס, וההרצה לא יצאה מאפס. */
   editedFromCurrent?: boolean;
   /**
@@ -305,6 +306,16 @@ export interface RunInputs {
     scope?: string;
     /** המודל ביקש הבהרה. נרשם ואינו נאכף בשלב A — ראה `EditDecision`. */
     clarification?: string;
+    /** מה המודל הכריע (‏PROMPT_SPEC §6): `respec` / `clarify` /
+     *  `reference_edit`. חסר = לא הוצהר, שנקרא respec. */
+    strategy?: string;
+    /**
+     * מה הצינור עשה בפועל: התמונה נוצרה מחדש מהמפרט, **בלי תמונת ייחוס**.
+     * נפרד מ-`strategy` כי הם יכולים להיפרד — מודל שהצהיר respec על מפרט
+     * ריק ירד לעריכת ייחוס (`runsRespec`), ובלי שני השדות הפער הזה,
+     * שהוא בדיוק מה ש-A0 סופרת, היה בלתי נראה ביומן.
+     */
+    respec?: boolean;
     attempts?: number;
     failure?: string;
     usage?: LlmUsage;
@@ -885,9 +896,11 @@ export async function editSpecFor(versionId: string | null | undefined): Promise
     const run = await getRun(row.generation_id);
     const inputs = run?.inputs ?? null;
 
-    // 1) השרשרת: מה שהסבב הקודם קבע.
+    // 1) השרשרת: מה שהסבב הקודם קבע. `hasSpec` ולא ספירת מפתחות: jsonb
+    // היסטורי יכול לשאת אובייקט עם `sources` בלבד או יחס בלבד, וזה אינו
+    // מפרט — אי אפשר לצייר ממנו פריט, ועדיף לרדת להזרעה מהיצירה.
     const carried = inputs?.editSpec;
-    if (carried && typeof carried === "object" && Object.keys(carried).length) return carried;
+    if (carried && typeof carried === "object" && hasSpec(carried)) return carried;
 
     // 2) ההזרעה: הסבב הראשון, מהכיוון שהלקוחה בחרה ביצירה.
     return specFromDesignStage(inputs?.designStage?.spec, chosenDesignIndex(row));

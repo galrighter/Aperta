@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { INITIAL, buildEditPrompt, type CreateState } from "@/components/create/model";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { DIALOGUE_MODE, isDialogue, runsEditStage } from "../mode";
+import { runsRespec } from "../spec";
 
 /**
  * dialogue mode — **טסט אי־הפגיעה** (§8 ב-DIALOGUE_PLAN, בתבנית §4.6 ב-
@@ -112,12 +113,28 @@ describe("מה שנשלח למודל התמונה בעריכה רגילה", () =
   });
 
   it("שום דבר מהמסלול החדש אינו נכנס", () => {
-    for (const foreign of ["Leave these exactly as they are", "preserve", "image_instruction", "updated_spec"]) {
+    for (const foreign of [
+      "Leave these exactly as they are", "preserve", "image_instruction", "updated_spec",
+      // ומאז respec — גם שפת הפרומפט שנבנה מהמפרט. עריכה רגילה תמיד מדברת
+      // על התמונה המצורפת, לעולם לא "מפרט סגור שמציירים ממנו".
+      "SPECIFICATION", "closed every decision", "copies of that one piece",
+    ]) {
       expect(prompt).not.toContain(foreign);
     }
   });
 
   it("אותה קריאה, אותו פלט — הפרומפט של העריכה יציב", () => {
     expect(buildRenderPrompt(legacy, "bracelet", dims, 3, true)).toBe(prompt);
+  });
+});
+
+describe("runsRespec — המסלול הרגיל לעולם אינו מגיע לשם", () => {
+  // בנתיב היצירה `runsRespec` נקרא רק על החלטה של שלב הטקסט, ושלב הטקסט רץ
+  // רק כש-`runsEditStage` אישר — כלומר רק עם הדגל. הטענה הנבדקת כאן היא
+  // הקצה: גם אם מישהו יקרא לפונקציה בלי החלטה (המצב של המסלול הרגיל),
+  // התשובה היא לא — תמונת הייחוס נשארת, `/v1/images/edits` נשאר.
+  it("בלי החלטה של שלב הטקסט — לעולם לא respec", () => {
+    expect(runsRespec({ decision: null, priorSpec: { outer_silhouette: "a band" } })).toBe(false);
+    expect(runsRespec({})).toBe(false);
   });
 });
