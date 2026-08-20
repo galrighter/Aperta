@@ -31,8 +31,30 @@ export const DIALOGUE_EDIT = {
   effort: "medium",
 } as const;
 
+/**
+ * המודל והמאמץ של הראיון (שלב B) — **המכהן**, מאותו נימוק בדיוק כמו למעלה:
+ * §5.4 מציע לראיון מודלים זולים, אבל "אין סיבה להחליף את המכהן בלי מדידה"
+ * (§9.1) קודם — וכשכל שלבי הטקסט של המסלול רצים על אותו ספק ואותו מודל,
+ * ההשוואה מול המסלול הקיים היא על הפרומפט ולא על הספק. `runInterviewTurn`
+ * מקבל מודל ומאמץ כפרמטרים, כך שהמכרז נבדק בלי לגעת בשורה הזו.
+ */
+export const DIALOGUE_INTERVIEW = {
+  model: "gpt-5.6-luna",
+  effort: "medium",
+} as const;
+
 /** האם הבקשה הזו היא במסלול Dialogue. */
 export const isDialogue = (mode: string | null | undefined): boolean => mode === DIALOGUE_MODE;
+
+/**
+ * מה שמסך הראיון שולח כשהלקוחה מדלגת על שאלה. טוקן ולא משפט טבעי: "לא משנה
+ * לי" של דילוג אומר "אל תשאלי שוב", בעוד "לא משנה לי" שנכתב על ציר ספציפי
+ * הוא מידע — ושניהם אסור שייראו זהים למודל.
+ *
+ * יושב כאן ולא ב-`interview.ts` כי שני הצדדים צריכים אותו — המסך (לקוח)
+ * והפרומפט (שרת) — ו-`interview.ts` גורר את לקוח ה-LLM, שאין לו מקום בבאנדל.
+ */
+export const INTERVIEW_SKIP = "[דילוג]";
 
 /**
  * מה נכנס לשלב הטקסט — התנאי, לבדו.
@@ -69,5 +91,36 @@ export function runsEditStage(req: {
     && Boolean(req.currentSvg)
     && !req.promptOverride?.trim()
     && Boolean(req.userPrompt?.trim())
+  );
+}
+
+/**
+ * dialogue mode — האם זו **יצירה** במסלול: תוצר הראיון (שלב B) נכנס לרנדר.
+ *
+ * אותו מעמד כמו `runsEditStage`, ומאותו נימוק: זה התנאי שמפריד את המסלול
+ * מהקיים, והוא חייב להיות טהור ונבדק. ארבעה תנאים, כל אחד שולל בפני עצמו:
+ *
+ *  1. **`mode === "dialogue"`** — בלי הדגל אין מסלול. בקשה שנושאת תוצר ראיון
+ *     בלי הדגל מתעלמת ממנו — זו השורה שטסט אי־הפגיעה נשען עליה.
+ *  2. **אין `currentSvg`** — יצירה, לא עריכה. עריכה היא `runsEditStage`.
+ *  3. **אין כיתוב** — מסלול הכיתוב דורש חיתוך מהפונט ותמונת ייחוס, והראיון
+ *     אינו שואל עליו (ראה lib/dialogue/interview.ts).
+ *  4. **אין `promptOverride`** — הבק־אופיס מבקש לשלוח את מה שכתב.
+ *
+ * מה שהפונקציה **אינה** בודקת: שהכיוונים עצמם קריאים. זו שאלת קבילות של
+ * התוכן (`parseInterviewDirections` בנתיב), וכשהם פסולים היצירה ממשיכה —
+ * שלב `designStage` רץ על הבריף כנפילה-לאחור, לא שגיאה ללקוחה.
+ */
+export function runsInterviewCreate(req: {
+  mode?: string | null;
+  currentSvg?: string | null;
+  text?: string | null;
+  promptOverride?: string | null;
+}): boolean {
+  return (
+    isDialogue(req.mode)
+    && !req.currentSvg
+    && !req.text?.trim()
+    && !req.promptOverride?.trim()
   );
 }

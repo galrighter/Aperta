@@ -11,10 +11,16 @@ import {
 } from "@/lib/story/designStage";
 import { storyLayoutFor } from "@/lib/story/ratio";
 // dialogue mode — שלב הטקסט של העריכה. ראה docs/DIALOGUE_PLAN.md §2.
-import { DIALOGUE_EDIT, DIALOGUE_MODE, isDialogue, runsEditStage } from "@/lib/dialogue/mode";
+import { DIALOGUE_EDIT, DIALOGUE_MODE, isDialogue, runsEditStage, runsInterviewCreate } from "@/lib/dialogue/mode";
 import {
   buildRespecRenderPrompt, runEditStage, runsRespec, stagedEditPrompt, type EditRegion,
 } from "@/lib/dialogue/editStage";
+// dialogue mode — יצירה מתוצר הראיון (שלב B). ראה lib/dialogue/interview.ts.
+import { parseInterviewDirections } from "@/lib/dialogue/interview";
+// dialogue mode — הנפילה-לאחור של עריכה שנכשלה מרכיבה את הפרומפט של היום,
+// כולל האזור — מאותו מקור שהלקוחה הייתה שולחת, לא מעותק. חולץ לשרת בדיוק
+// בשביל זה (ראה editPromptFor).
+import { editPromptFor } from "@/components/create/model";
 import { svgFrame } from "@/lib/geometry/frame";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { requireAdmin } from "@/lib/admin";
@@ -146,6 +152,22 @@ const schema = z.object({
    * בדיוק באותו קוד כמו קודם.
    */
   mode: z.union([z.literal(STORY_MODE), z.literal(DIALOGUE_MODE)]).optional(),
+
+  /**
+   * dialogue mode — תוצר הראיון (שלב B): הכיוונים שהראיון סגר, הסיכום
+   * שאושר, התמליל וה-utm. נקרא רק כש-`runsInterviewCreate` מאשר — בקשה
+   * בלי הדגל שנושאת אותו מתעלמת ממנו. הכיוונים מאומתים מחדש בשרת
+   * (`parseInterviewDirections`): גוף בקשה אינו הצהרה.
+   */
+  interview: z
+    .object({
+      directions: z.string().min(1).max(64_000),
+      summary: z.string().max(4000).optional(),
+      transcript: z.string().max(20_000).optional(),
+      utm: z.string().max(200).optional(),
+      expectation: z.string().max(40).optional(),
+    })
+    .optional(),
 
   /**
    * dialogue mode — האזור שהלקוחה סימנה בצ'יפים, כערך ולא בתוך הפרומפט.
@@ -500,6 +522,25 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // יצירה מאפס במסלול Story רצה דו-שלבית: מודל טקסט מתרגם את הסיפור לשלושה
     // כיווני עיצוב, ומודל התמונה מבצע אותם. בקשת שינוי וכיתוב אינן עוברות שם.
     const storyCreate = story && !body.currentSvg && !body.text?.trim();
+    /* ===== dialogue mode — יצירה מתוצר הראיון (שלב B) =====
+       התנאי יושב ב-`runsInterviewCreate` ולא כאן, מאותו נימוק כמו
+       `runsEditStage`: `/design` בלי הדגל אינו נכנס לענף, וזה ניתן להוכחה
+       בטסט בלי להריץ נתיב שלם.
+
+       הכיוונים שהראיון סגר מגיעים בגוף הבקשה — הם נוצרו בשיחה, במסך אחר,
+       לפני שהבקשה הזו נשלחה. כיוונים פסולים אינם שגיאה ללקוחה: היצירה
+       נופלת ל-`runDesignStage` על הבריף (הסיכום העברי שאושר), כלומר בדיוק
+       המסלול הדו-שלבי של Story — והנפילה נרשמת (`interview.ok: false`). */
+    const interviewCreate = runsInterviewCreate(body);
+    const interview = interviewCreate && body.interview?.directions
+      ? parseInterviewDirections(body.interview.directions)
+      : null;
+    /* dialogue mode — עיצוב שחי במסלול: יצירה מראיון, או עריכה של עיצוב
+       שנוצר בו (המצב נקרא מהרשומה, כמו ב-Story — 0024). הרוחב של עיצוב כזה
+       נגזר ממה שצויר ולא הוזמן, ולכן הוא עובר בקנבס הקבוע ובמסגור הנגזר של
+       המסלול הפשוט. עריכת מעבדה על עיצוב מהמסלול הרגיל אינה כאן — הרשומה
+       שלה אינה נושאת את המצב, והיא ממשיכה בדיוק כמו בשלב A. */
+    const dialogueTrack = interviewCreate || (isDialogue(body.mode) && isDialogue(design.mode));
 
     /* ===== שלב העיצוב — רץ כאן, לפני שנבחרת התצורה =====
        ביצירה מאפס במסלול Story רץ מודל טקסט שמתרגם את הסיפור לכיווני עיצוב
@@ -514,7 +555,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
 
        שום מסלול אחר לא זז: `storyCreate` שולל במפורש עריכה וכיתוב, ולכן בין
        הנקודה הזו לקודמת לא נמצא דבר שתלוי בקנבס. */
-    const stage = storyCreate && !body.promptOverride?.trim()
+    // dialogue mode — גם הנפילה-לאחור של יצירת ראיון שכיווניה לא נקראו:
+    // ‏runDesignStage על הבריף, בדיוק המסלול הדו-שלבי של Story.
+    const stage = (storyCreate || (interviewCreate && !interview)) && !body.promptOverride?.trim()
       ? await runDesignStage({
           productType: design.product_type,
           userInput: body.userPrompt,
@@ -539,7 +582,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
      * היום: השלב נפל, או שהוא הצליח אך לא נשא יחסים. היומן מבחין ביניהם
      * (`designStage.ok` מול `askedRatios` ריק).
      */
-    const askedRatios = designStage ? askedRatiosOf(designStage.spec) : null;
+    // dialogue mode — כיווני ראיון נושאים יחסים בדיוק כמו מפרט של designStage,
+    // והם קובעים את התצורה באותה דרך.
+    const askedRatios = interview
+      ? askedRatiosOf(interview.spec)
+      : designStage ? askedRatiosOf(designStage.spec) : null;
     const layout = askedRatios ? storyLayoutFor(askedRatios) : null;
 
     /* ===== dialogue mode — שלב הטקסט של העריכה =====
@@ -607,7 +654,14 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
      * הניסוח והסדר שם נמדדו ואינם משתנים; מה שמשתנה הוא מה ממלא אותם.
      * ב-respec היא אינה בשימוש — שם הפרומפט כולו נבנה מהמפרט, לא כדלתא.
      */
-    const changeRequest = editStage ? stagedEditPrompt(editStage.decision) : body.userPrompt;
+    const changeRequest = editStage
+      ? stagedEditPrompt(editStage.decision)
+      // dialogue mode — שלב הטקסט רץ ונפל: הנפילה-לאחור היא **בדיוק** הפרומפט
+      // של היום, כולל האזור. במסלול הזה `userPrompt` הוא הבקשה הגולמית (בלי
+      // "שינוי ב<אזור>"), ושליחתה כמות שהיא הייתה מאבדת את הצ'יפ שסומן.
+      : editStageRuns
+        ? editPromptFor(body.region ?? null, body.userPrompt)
+        : body.userPrompt;
 
     // הקנבס נגזר מהאורך — חוץ ממסלול Story. שם האורך אינו ידוע בזמן היצירה
     // אלא נמדד אחריה, ולכן אין ממה לגזור: `canvasFor` היה בוחר לפי אורך
@@ -618,9 +672,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // נשאר הקיבוע — אחרת עיצוב נוצר על צורה אחת ונערך על שנייה.
     // עקיפת הבק־אופיס גוברת על הכול, כולל על מסלול Story: היא קיימת כדי לבדוק
     // בדיוק את מה שהגזירה לא הייתה בוחרת לבד.
+    // dialogue mode — עיצוב שחי במסלול עובר בקנבס הקבוע, כמו Story: הרוחב
+    // שלו נגזר ולא הוזמן, ואין ממה לגזור צורת קנבס.
     const canvas = body.canvasOverride
       ? canvasOf(body.canvasOverride)
-      : layout?.canvas ?? (story ? storyCanvas() : canvasFor(dims.lengthMm));
+      : layout?.canvas ?? (story || dialogueTrack ? storyCanvas() : canvasFor(dims.lengthMm));
     // dialogue mode — ‏ב-respec תמונת הייחוס אינה נבנית ואינה נשלחת: זו כל
     // הנקודה של §6. `editSvg` ריק הוא מה שמפיל את הקופסה ל-generations.
     const editSvg = respec ? null : buildBaseRenderSvg(body.currentSvg, canvas);
@@ -645,22 +701,29 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
           offered: Math.min(body.rowsOverride, MAX_CANDIDATES),
           canvas,
         }
-      : storyCreate
+      : storyCreate || interviewCreate
         // מספר השורות חייב להיות בדיוק מספר העיצובים שבמפרט: הפרומפט אומר
         // "exactly N" ונוקב בשורות אחת-אחת, ומספר אחר בתכנון היה חותך שורה
         // שלא צוירה או זורק אחת שכן. לכן זה נגזר מהמפרט ולא מ-`planRender`,
         // שנשען על יחס שהוזמן — ובמסלול הזה אין כזה.
+        // dialogue mode — אותו דין ליצירת ראיון: הכיוונים הם השורות.
         //
         // בלי מפרט (השלב נפל, או שלא נשא יחסים) חוזרים לקיבוע שהיה עד 16.8:
         // שלוש שורות על הקנבס הקבוע.
-        ? {
-            rows: layout?.rows ?? DESIGN_COUNT,
-            cols: 1,
-            calls: 1 as const,
-            candidates: layout?.rows ?? DESIGN_COUNT,
-            offered: Math.min(layout?.rows ?? DESIGN_COUNT, MAX_CANDIDATES),
-            canvas,
-          }
+        ? (() => {
+            // dialogue mode — כיווני ראיון בלי יחסים עדיין קובעים את מניין
+            // השורות: הפרומפט ינקוב בדיוק במספר הכיוונים, ותכנון על מספר אחר
+            // היה חותך שורה שצוירה או זורק אחת שכן.
+            const rows = layout?.rows ?? interview?.spec.designs.length ?? DESIGN_COUNT;
+            return {
+              rows,
+              cols: 1,
+              calls: 1 as const,
+              candidates: rows,
+              offered: Math.min(rows, MAX_CANDIDATES),
+              canvas,
+            };
+          })()
         : planRender({ ratio: dims.lengthMm / dims.widthMm, widthMm: dims.widthMm, minHoleMm, canvas });
 
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
@@ -720,6 +783,11 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
             thicknessMm: dims.thicknessMm,
             fallbackRatio: dims.widthMm > 0 ? dims.lengthMm / dims.widthMm : null,
           })
+        // dialogue mode — יצירה מתוצר הראיון: הכיוונים נכנסים לאותה תבנית
+        // בדיוק של היצירה הדו-שלבית. `renderJson` — בלי `sources`: תיוגי
+        // מקור אינם מגיעים לפרומפט הביצוע לעולם (‏PROMPT_SPEC §1.3).
+        : interview
+        ? buildStagedRenderPrompt(interview.renderJson, canvas, interview.spec, dims.thicknessMm)
         : designStage
         ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec, dims.thicknessMm)
         : storyCreate
@@ -738,7 +806,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               Boolean(editSvg), Boolean(lettering), plan.cols,
               // הרוחב של הפריט שנערך יכול לשבת מחוץ לטווח הייצור מאז שהצביטה
               // הוסרה — הטווח נפתח כדי להכיל אותו. ראה widthRangeOf.
-              story ? { widthRange: widthRangeOf(design.product_type, dims.widthMm) } : undefined,
+              // dialogue mode — גם עיצוב מהמסלול: הרוחב שלו נגזר באותה דרך.
+              story || dialogueTrack
+                ? { widthRange: widthRangeOf(design.product_type, dims.widthMm) }
+                : undefined,
             ));
 
     // מה שהיומן צריך כדי להסביר את התוצאה: הפרומפט שיצא בפועל, והמאפיינים
@@ -760,7 +831,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** המאמץ שנשלח למודל. `render_model` כבר נשמר מתשובת הקופסה, וזה החצי
          *  השני של אותה שאלה — ובלי שניהם אי אפשר להסביר ביומן למה שתי הרצות
          *  של אותו פריט חזרו ברמת פירוט שונה לגמרי. */
-        renderQuality: story ? storyRender.quality : undefined,
+        // dialogue mode — יצירת ראיון רצה על אותו זוג מודל/מאמץ של Story.
+        renderQuality: story || interviewCreate ? storyRender.quality : undefined,
         /**
          * שלב העיצוב: האם רץ, במה, וכמה זמן לקח.
          *
@@ -768,7 +840,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
          * לפרומפט של שלב אחד — והן נראות זהות בכל שדה אחר, כולל בתוצאה. וזו
          * בדיוק ההשוואה שהניסוי הזה קיים בשבילה.
          */
-        designStage: storyCreate
+        // dialogue mode — גם הנפילה-לאחור של יצירת ראיון: השלב רץ, ונרשם.
+        designStage: storyCreate || (interviewCreate && !interview)
           ? {
               ok: Boolean(designStage),
               model: STORY_DESIGN.model,
@@ -794,6 +867,24 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
               // זה כל מה שהרצת Story עלתה. נלקח מ-`stage` ולא מ-`designStage`:
               // ניסיונות שנפלו שולם עליהם, וזה בדיוק המקרה שבו החשבון גבוה.
               usage: stage?.usage ?? undefined,
+            }
+          : undefined,
+        /**
+         * dialogue mode — הראיון שקדם ליצירה הזו (שלב B).
+         *
+         * `directions` נשמר **רק כשהם קריאים**: כשהם נפסלו היצירה רצה על
+         * `designStage`, והמועמדים — וה-`designIndex` שלהם — שייכים לו;
+         * שמירת כיוונים דחויים הייתה מזריעה את סבב העריכה מהכיוונים הלא
+         * נכונים (`specFromInterview` קודם ל-`specFromDesignStage`).
+         */
+        interview: interviewCreate
+          ? {
+              ok: Boolean(interview),
+              directions: interview ? body.interview?.directions?.slice(0, 16_000) : undefined,
+              summary: body.interview?.summary?.slice(0, 2000),
+              transcript: body.interview?.transcript?.slice(0, 8000),
+              utm: body.interview?.utm?.slice(0, 200),
+              expectation: body.interview?.expectation?.slice(0, 40),
             }
           : undefined,
         /**
@@ -980,8 +1071,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // אין כיתוב במסלול Story.
         // כששלב הטקסט נפל, מודל התמונה חוזר לפרש סיפור בעצמו — ולזה הוא צריך
         // להיות חזק. ראה `STORY_RENDER_FALLBACK`.
-        model: lettering ? LETTERING_MODEL : story ? storyRender.model : undefined,
-        quality: story ? storyRender.quality : undefined,
+        // dialogue mode — יצירת ראיון רצה על זוג המודל/מאמץ של Story, מאותו
+        // נימוק: המפרט סגור, נשאר רק לבצע — וכשהשלב נפל, הפיצוי החזק.
+        model: lettering ? LETTERING_MODEL : story || interviewCreate ? storyRender.model : undefined,
+        quality: story || interviewCreate ? storyRender.quality : undefined,
         // הפרומפט של המסלול הדו-שלבי נושא בתוכו את ה-JSON של שלב העיצוב, שאינו
         // זהה בין ניסיונות — ולכן מזהה ה-job מול הקופסה נגזר מהקלט היציב ולא
         // ממנו. בלי זה כל ניתוק היה קונה רנדר שני. ראה `requestKey`.
@@ -1093,7 +1186,8 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // dialogue mode — הזהות נצמדת **כאן**, על הפאנל, לפני כל סינון ומיון.
       // מכאן היא נוסעת על האובייקט עצמו: `pickClosestRatio` מחזיר את אותם
       // אובייקטים, ולכן היא שורדת גם את הזריקה וגם את הסידור מחדש.
-      const designIdx = designIndexesFor(job.candidates, plan, Boolean(designStage));
+      // dialogue mode — גם כיווני ראיון הם זהות שנצמדת: שורה = כיוון.
+      const designIdx = designIndexesFor(job.candidates, plan, Boolean(designStage || interview));
       const approved = job.candidates
         .map((c, i) => ({ ...c, designIndex: designIdx?.[i] }))
         .filter((c) => c.status === "approved" && c.cutoutsSvg);
@@ -1113,8 +1207,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // הטיפוס מפורש: הענף האחר מחזיר `FramedPreview[]` (בלי השדה), ובלי
       // ההצהרה הזו האיחוד בין שני הענפים מתקבע על הצורה הצרה מבין השתיים
       // והשדה נעלם מהטיפוס אף שהוא נמצא בערך.
+      // dialogue mode — עיצוב שחי במסלול ממוסגר כמו ב-Story: כל מועמד למידות
+      // של עצמו, כי הרוחב נגזר ממה שצויר ולא הוזמן.
       const ranked: Framed[] = (
-        story
+        story || dialogueTrack
           ? await shortlist.reduce<Promise<Framed[]>>(async (acc, c) => {
               const out = await acc;
               const svg = c.cutoutsSvg!;
@@ -1133,7 +1229,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       // מי שהייתה (היא זו שנשמרת כגרסה); מה שמשתנה הוא הסדר של השאר, כדי
       // ששתי ההצעות הראשונות שהלקוחה רואה לא יהיו הדומות ביותר זו לזו.
       // ראה orderByVariety.
-      const framed = story ? orderByVariety(ranked) : ranked;
+      // dialogue mode — סדר-לפי-שונות ביצירה בלבד: בעריכת respec כל השורות
+      // הן אותו פריט, ומה שנבדל ביניהן הוא רעש ביצוע — שם הדירוג לפי מתיחה
+      // אומר יותר.
+      const framed = story || interviewCreate ? orderByVariety(ranked) : ranked;
       // ומה עלה בגורל כל אחד מהם. השורה נכתבה למעלה, לפני שהמסגור רץ, ולכן
       // הפסילות שקורות כאן לא הופיעו בה מעולם: `offeredRows` שנשמר על הגרסה
       // מכיל רק את מי שעבר. הרצה שבה שלושה פסים נפלו ושלושתם נעלמו נראית
@@ -1186,7 +1285,10 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // יושב בה אחרי המסגור. הרשומה מתעדכנת כדי שכל מה שבא אחרי — בקשת שינוי,
     // מעבר בין הצעות, ההזמנה והבק־אופיס — ידבר על אותו רוחב, ו-`ingested`
     // נושא אותו כבר עכשיו כדי שהמסגור של הזוכה יהיה זהות ולא מתיחה שנייה.
-    const storyWidthMm = story ? svgFrame(candidates[0].framedSvg)?.widthMm ?? null : null;
+    // dialogue mode — גם במסלול הזה: הרוחב הוא של העיצוב, והזוכה קובע אותו.
+    const storyWidthMm = story || dialogueTrack
+      ? svgFrame(candidates[0].framedSvg)?.widthMm ?? null
+      : null;
     const ingestTarget =
       storyWidthMm !== null ? { ...target, width_mm: storyWidthMm } : target;
     if (storyWidthMm !== null) await updateDesignWidth(target.id, storyWidthMm);

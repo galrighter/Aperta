@@ -163,6 +163,14 @@ async function startAndAwaitGeneration(
     /** dialogue mode — האזור שהצ'יפ סימן, כערך ולא בתוך הפרומפט. שלב הטקסט
      *  צריך אותו בנפרד מהבקשה כדי להכריע על ההיקף. ריק בכל מסלול אחר. */
     region?: "right" | "center" | "left" | "all";
+    /** dialogue mode — תוצר הראיון (שלב B), ביצירה בלבד. השרת מאמת מחדש. */
+    interview?: {
+      directions: string;
+      summary?: string;
+      transcript?: string;
+      utm?: string;
+      expectation?: string;
+    };
   },
   onStage?: (stage: string | null) => void,
   /** המזהה, ברגע שנקבע — כדי שהקורא יוכל לזכור אותו ולמצוא את התוצאה אחר כך. */
@@ -398,8 +406,19 @@ export const api = {
       images: Array<{ kind: "inspiration" | "annotation"; dataUrl: string }>;
       /** ניסיון חוזר על הרצה שנקטעה — ראה `startAndAwaitGeneration`. */
       jobId?: string;
-      /** story mode — המסלול הפשוט. ריק בכל מסלול אחר, וזו ההתנהגות הקיימת. */
-      mode?: "story";
+      /** story mode — המסלול הפשוט. ריק בכל מסלול אחר, וזו ההתנהגות הקיימת.
+       *  dialogue mode — אותו שדה, מסלול נוסף. */
+      mode?: "story" | "dialogue";
+      /** dialogue mode — האזור שהצ'יפ סימן, בעריכה במסלול בלבד. */
+      region?: "right" | "center" | "left" | "all";
+      /** dialogue mode — תוצר הראיון, ביצירה במסלול בלבד. */
+      interview?: {
+        directions: string;
+        summary?: string;
+        transcript?: string;
+        utm?: string;
+        expectation?: string;
+      };
     },
     onStage?: (stage: string | null) => void,
     onJob?: (jobId: string) => void,
@@ -424,8 +443,9 @@ export const api = {
     svg: string,
     index?: number,
     fromVersionId?: string,
-    /** story mode — ההצעה נמסגרת למידות של עצמה. ריק = ההתנהגות הקיימת. */
-    mode?: "story",
+    /** story mode — ההצעה נמסגרת למידות של עצמה. ריק = ההתנהגות הקיימת.
+     *  dialogue mode — אותו דין: הרוחב נגזר, לא הוזמן. */
+    mode?: "story" | "dialogue",
   ) =>
     call<{
       version: Version;
@@ -437,6 +457,38 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ svg, index, fromVersionId, mode }),
     }),
+
+  /* ===== dialogue mode — הראיון (שלב B) ===== */
+
+  /** סבב שיחה אחד: התמליל והמפרט שהצטבר → השאלה הבאה, או הסיכום לאישור.
+   *  `spec` אטום ללקוח בכוונה — הוא נוסע הלוך-ושוב כמות שהוא, והשרת מנקה. */
+  interviewTurn: (input: {
+    product: "bracelet" | "ring";
+    turns: Array<{ role: "interviewer" | "customer"; text: string }>;
+    spec?: unknown;
+    utm?: string;
+  }) =>
+    call<{
+      spec: unknown;
+      ask: { question: string; chips: string[] } | null;
+      summary: string | null;
+      expectation: string | null;
+    }>("/api/dialogue/interview", {
+      method: "POST",
+      body: JSON.stringify({ ...input, phase: "turn" }),
+    }),
+
+  /** הסגירה: המפרט המאושר → הכיוונים שנמסרים ל-`/design?dialogue=1`. */
+  interviewDirections: (input: {
+    product: "bracelet" | "ring";
+    turns: Array<{ role: "interviewer" | "customer"; text: string }>;
+    spec: unknown;
+    summary: string;
+  }) =>
+    call<{ directions: string; renderJson: string; designsCount: number }>(
+      "/api/dialogue/interview",
+      { method: "POST", body: JSON.stringify({ ...input, phase: "directions" }) },
+    ),
 
   vectorize: (input: {
     designId: string;

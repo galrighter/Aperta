@@ -34,6 +34,9 @@ import { clearCreateState, popCreateState, stashCreateState } from "@/lib/client
 import { popStoryHandoff } from "@/lib/client/storyHandoff";
 import { STORY_MODE, isStory } from "@/lib/story/mode";
 import { story } from "@/i18n/story";
+// dialogue mode — הכניסה מהראיון (`/dialogue/create`), בתבנית Story.
+import { popDialogueHandoff } from "@/lib/client/dialogueHandoff";
+import { DIALOGUE_MODE, isDialogue } from "@/lib/dialogue/mode";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { shrinkReferenceImage } from "@/lib/client/referenceImage";
@@ -753,7 +756,8 @@ export default function DesignPage() {
               // המסלול נשמר על הרשומה (0024) ולא רק ב-state של העמוד: הוא מה
               // שקובע את סדר השלבים, ולקוחה שחוזרת לעיצוב הזה — מהרשימה, מקישור
               // במייל, או ממכשיר אחר — חייבת לקבל את אותו סדר. ראה `resume`.
-              mode: st.story ? STORY_MODE : undefined,
+              // dialogue mode — הדגל שלו קודם: מסע dialogue מדליק גם story.
+              mode: st.dialogue ? DIALOGUE_MODE : st.story ? STORY_MODE : undefined,
             })
           ).design;
       // המידות נשלחות בכל מקרה: הן יכולות להשתנות בין ניסיון לניסיון.
@@ -801,7 +805,12 @@ export default function DesignPage() {
                 images: referenceImages,
                 // story mode — הדגל היחיד שנוסע לשרת במסלול הפשוט. בכל מסלול
                 // אחר הוא `undefined`, כלומר הבקשה זהה למה שהייתה.
-                mode: st.story ? ("story" as const) : undefined,
+                // dialogue mode — הדגל שלו, עם תוצר הראיון: הכיוונים שהראיון
+                // סגר נכנסים לרנדר במקום להריץ designStage מחדש. אבד התוצר
+                // (כניסה ישירה, מסירה שנמחקה) — נשלח רק הדגל, והשרת נופל
+                // ל-designStage על הבריף.
+                mode: st.dialogue ? DIALOGUE_MODE : st.story ? ("story" as const) : undefined,
+                interview: st.dialogue && st.interview ? st.interview : undefined,
                 // ניסיון חוזר אחרי ניתוק: אותו מזהה, ולכן אותה הרצה על הקופסה.
                 // מה שכבר רונדר ושולם נאסף במקום להיקנות שוב. `jobRef` שורד רק
                 // כשל רשת/תפוגה — תשובה אמיתית של השרת מנקה אותו למטה, וקלט
@@ -1010,7 +1019,11 @@ export default function DesignPage() {
            (`STORY_RAIL`), "בחר עיצוב" דילג מהתוצאה ישר לסיכום, וההזמנה יצאה
            באורך העוגן שהרשומה נפתחה בו — בלי שאיש נשאל. עיצוב שנוצר לפני
            המיגרציה מחזיר `undefined` ונשאר במסלול הרגיל, כמו קודם. */
-        const story = isStory(design.mode);
+        // dialogue mode — עיצוב מהמסלול חוזר עם שני הדגלים: צורת המסע היא
+        // צורת Story, ומה שמשתנה על הקו (mode, הבקשה הגולמית בעריכה) הוא
+        // של dialogue. ראה CreateState.
+        const dialogueTrack = isDialogue(design.mode);
+        const story = isStory(design.mode) || dialogueTrack;
 
         // עיצוב שנוצר אך היצירה שלו נקטעה — מחזירים לטופס עם מה שהוזן, כדי
         // שאפשר יהיה פשוט לנסות שוב במקום להתחיל מאפס. עם הסבר: בלעדיו
@@ -1019,6 +1032,7 @@ export default function DesignPage() {
           setState({
             ...INITIAL,
             story,
+            dialogue: dialogueTrack, // dialogue mode
             resumeIncomplete: true,
             screen: "brief",
             product: design.product_type,
@@ -1065,6 +1079,7 @@ export default function DesignPage() {
         setState({
           ...INITIAL,
           story,
+          dialogue: dialogueTrack, // dialogue mode
           screen: "result",
           product: design.product_type,
           designId: design.id,
@@ -1274,7 +1289,13 @@ export default function DesignPage() {
       const res = await api.generate(
         {
           designId: s.designId,
-          userPrompt: buildEditPrompt(s),
+          // dialogue mode — במסלול נוסעת הבקשה **הגולמית** והאזור בנפרד:
+          // שלב הטקסט צריך אותם כך (`runEditStage`), והרכבת "שינוי ב<אזור>"
+          // חוזרת בשרת רק בנפילה-לאחור. בכל מסלול אחר — הפרומפט של היום,
+          // מילה במילה.
+          userPrompt: s.dialogue ? s.editReq.trim() : buildEditPrompt(s),
+          region: s.dialogue ? (s.region ?? "all") : undefined,
+          mode: s.dialogue ? DIALOGUE_MODE : undefined,
           currentSvg: entry.svg,
           // איזו גרסה נמסרה למודל כבסיס. הלקוחה יכולה לחזור לגרסה ישנה ולערוך
           // אותה, ולכן זו לא בהכרח האחרונה — וביומן הבק־אופיס זה ההבדל בין
@@ -1328,7 +1349,8 @@ export default function DesignPage() {
         // מהעיצוב ולא נבחר. בכל מסלול אחר הפרמטר ריק והבקשה זהה לקודמתה.
         const res = await api.chooseCandidate(
           entryDesignId(s, entry)!, svg, index, entry.versionId,
-          s.story ? ("story" as const) : undefined,
+          // dialogue mode — אותו דין: לכל הצעה רוחב משלה, הנגזר ממה שצויר.
+          s.dialogue ? ("dialogue" as const) : s.story ? ("story" as const) : undefined,
         );
         const next: EditEntry = {
           ...entryFromGeneration(res, { region: null, text: "" }),
@@ -1397,8 +1419,10 @@ export default function DesignPage() {
       // `chosen ?? 0` ולא `chosen`: ההצעה שלא נגעו בה היא הראשונה (כך גם
       // `chooseCandidate` משווה), והמספר הזה הוא מה שהופך את השורה החדשה
       // לשורת בחירה — כלומר מידה שנייה תעדכן אותה במקום להוסיף עוד אחת.
+      // dialogue mode — אותה גזירה בדיוק, תחת הדגל של המסלול.
       const res = await api.chooseCandidate(
-        designId, entry.svg, entry.chosen ?? 0, entry.versionId, "story",
+        designId, entry.svg, entry.chosen ?? 0, entry.versionId,
+        s.dialogue ? "dialogue" : "story",
       );
       const next: EditEntry = {
         ...entryFromGeneration(res, { region: null, text: "" }),
@@ -1442,7 +1466,42 @@ export default function DesignPage() {
     const wantsSignIn = params.get("signin");
     const shareToken = params.get("from");
     const fromStory = params.get("story");
-    if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken && !fromStory) return;
+    // dialogue mode
+    const fromDialogue = params.get("dialogue");
+    if (!resumeId && !wantsDesigns && !wantsSignIn && !shareToken && !fromStory && !fromDialogue) return;
+
+    /* dialogue mode — הגעה מהראיון (`/dialogue/create`), בתבנית Story בדיוק:
+       המוצר, הסיכום (כבריף) ותוצר הראיון כבר נמסרו, ונכנסים ישר ליצירה.
+       שתי רשומות ההיסטוריה — מאותו נימוק, מילה במילה, כמו בענף Story מתחת. */
+    if (fromDialogue) {
+      const handoff = popDialogueHandoff();
+      if (handoff) {
+        setState((prev) => ({
+          ...prev,
+          // `story: true` בכוונה: צורת המסע היא צורת Story (ראה CreateState).
+          story: true,
+          dialogue: true,
+          product: handoff.product,
+          brief: handoff.summary,
+          interview: {
+            directions: handoff.directions,
+            summary: handoff.summary,
+            transcript: handoff.transcript,
+            utm: handoff.utm,
+            expectation: handoff.expectation,
+          },
+          screen: "processing",
+        }));
+        setMaxReached(railIndex(true, "processing"));
+        storyStart.current = true;
+        markScreen("brief", window.location.pathname);
+        pushHist("processing");
+        return;
+      }
+      // מסירה שלא נמצאה (רענון, כניסה ישירה): מסע רגיל מהתחלה.
+      markScreen(INITIAL.screen, window.location.pathname);
+      return;
+    }
 
     /* story mode — הגעה מהמסלול הפשוט (`/story/create`).
        המוצר והסיפור כבר נמסרו (lib/client/storyHandoff), ואין על מה לעצור:

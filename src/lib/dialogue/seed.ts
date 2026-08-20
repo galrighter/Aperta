@@ -1,4 +1,4 @@
-import { SPEC_FIELDS, type EditSpec, type SpecSources } from "./spec";
+import { SPEC_FIELDS, coerceEditSpec, hasSpec, type EditSpec, type SpecSources } from "./spec";
 
 // dialogue mode — הזרעת המפרט המצטבר מהיצירה (§9.2 ב-DIALOGUE_PLAN).
 //
@@ -76,6 +76,39 @@ export function specFromDesignStage(
   }
   out.sources = sources;
   return out;
+}
+
+/**
+ * הזרעה מ**ראיון** (שלב B) — הכיוון שנבחר, עם המקורות שלו.
+ *
+ * ההבדל מ-`specFromDesignStage`, והוא כל הסיבה לפונקציה נפרדת: כיווני הראיון
+ * נושאים `sources` משלהם — מה שהלקוחה אמרה במפורש בראיון מתויג `user` —
+ * והזרעה דרך המסלול של היצירה הייתה קוראת לכול `inferred` ומפשירה בדיוק את
+ * מה שהיא קיבעה (‏PROMPT_SPEC §1.3: ראיון בלי מקורות נותן ל-respec רישיון
+ * לשכתב את מה שנאמר). `coerceEditSpec` כבר יודע לקרוא את השדות המורחבים
+ * ואת `sources` — כיוון ראיון הוא בדיוק הצורה שהוא מנקה.
+ *
+ * שדה שהכיוון נושא בלי תיוג ייקרא `inferred` בהמשך (`sourceOf`) — ההנחה
+ * השמרנית, כמו תמיד.
+ */
+export function specFromInterview(
+  directionsJson: string | null | undefined,
+  designIndex: number | null | undefined,
+): EditSpec | null {
+  if (!directionsJson || typeof designIndex !== "number" || !Number.isInteger(designIndex) || designIndex < 0) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(directionsJson);
+  } catch {
+    return null;
+  }
+  const designs = (parsed as { designs?: unknown })?.designs;
+  if (!Array.isArray(designs) || designIndex >= designs.length) return null;
+  const spec = coerceEditSpec(designs[designIndex]);
+  // יחס או מקורות בלי אף שדה טקסט אינם מפרט — כמו ב-`specFromDesignStage`.
+  return spec && hasSpec(spec) ? spec : null;
 }
 
 /**

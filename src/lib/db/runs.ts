@@ -4,7 +4,7 @@ import type { LlmUsage } from "@/lib/llm/core";
 import type { RunCursor } from "@/lib/runs/cursor";
 // dialogue mode — טיפוסים בלבד, מקובץ בלי תלות ריצה. ראה `lib/dialogue/spec.ts`.
 import { hasSpec, type EditSpec } from "@/lib/dialogue/spec";
-import { chosenDesignIndex, specFromDesignStage } from "@/lib/dialogue/seed";
+import { chosenDesignIndex, specFromDesignStage, specFromInterview } from "@/lib/dialogue/seed";
 
 // יומן הרצות הצינור (image→SVG). כל הרצה נשמרת — כולל דחיות ושגיאות — כדי
 // שנוכל לאבחן תלונות ולכייל יחד. ראה migration 0003_generation_runs.sql.
@@ -319,6 +319,30 @@ export interface RunInputs {
     attempts?: number;
     failure?: string;
     usage?: LlmUsage;
+  };
+  /**
+   * dialogue mode — הראיון (שלב B) שקדם ליצירה הזו.
+   *
+   * נפרד מ-`designStage` בכוונה: שם השלב רץ **בתוך** הבקשה, וכאן הוא רץ לפני
+   * — בשיחה, במסך אחר — והבקשה רק נושאת את תוצרו. `ok: false` = הכיוונים
+   * שהגיעו לא היו קריאים והיצירה נפלה ל-`designStage` על הבריף (שאז נרשם
+   * לצידו, כרגיל). חסר לגמרי = לא היה ראיון — כל מסלול אחר.
+   */
+  interview?: {
+    ok: boolean;
+    /** הכיוונים כפי שהראיון החזיר — **עם** `sources` לכל כיוון. זה מה
+     *  שההזרעה קוראת (`specFromInterview`), ולכן זה מה שמחזיק את ההבחנה
+     *  user/inferred מהראיון אל סבבי העריכה. חתוך, כמו `designStage.spec`. */
+    directions?: string;
+    /** הסיכום שאושר, בעברית — הציפייה שהלקוחה חתמה עליה. מול התמונה שיצאה
+     *  זה כל חקר "תיקון מול רצון חדש" (‏PROMPT_SPEC §5). */
+    summary?: string;
+    /** התמליל, חתוך — הקורפוס של §5. */
+    transcript?: string;
+    /** ‏`utm_content` — הקריאייטיב שהביא אותה (§3.4). ריק = הגיעה ישירות. */
+    utm?: string;
+    /** מצב הידיעה שהראיון זיהה (§3.5) — נחתך מולו סבבים-עד-הזמנה. */
+    expectation?: string;
   };
   /**
    * dialogue mode — המפרט המצטבר **אחרי** הסבב הזה (§2.2).
@@ -863,10 +887,13 @@ export async function deleteRuns(ids: string[]): Promise<number> {
  * אותה, ושם יושב המפרט. זה גם נכון כשהלקוחה חוזרת לגרסה ישנה ועורכת אותה —
  * ואז ההקשר הנכון הוא של **הגרסה ההיא**, לא של האחרונה בזמן.
  *
- * שני מקורות, לפי סדר:
+ * שלושה מקורות, לפי סדר:
  *
  *  1. `inputs.editSpec` — מה שסבב העריכה הקודם קבע. זו השרשרת.
- *  2. **הזרעה מהיצירה** — הסבב הראשון, שאין לפניו עריכה. החמישייה נלקחת
+ *  2. **הזרעה מראיון** (שלב B) — יצירה במסלול dialogue: הכיוון שנבחר, עם
+ *     `sources` שלו — מה שנאמר במפורש בראיון נשאר `user`. ראה
+ *     `specFromInterview`.
+ *  3. **הזרעה מהיצירה** — הסבב הראשון, שאין לפניו עריכה. החמישייה נלקחת
  *     מהכיוון שהלקוחה בחרה (`designIndex` על ההצעה), מתוך המפרט ששלב הטקסט
  *     של היצירה החזיר. זה מה שמונע סבב ראשון בלי הקשר.
  *
@@ -902,7 +929,14 @@ export async function editSpecFor(versionId: string | null | undefined): Promise
     const carried = inputs?.editSpec;
     if (carried && typeof carried === "object" && hasSpec(carried)) return carried;
 
-    // 2) ההזרעה: הסבב הראשון, מהכיוון שהלקוחה בחרה ביצירה.
+    // 2) הזרעה מראיון (שלב B): הכיוון שנבחר נושא `sources` משלו — מה שנאמר
+    // במפורש בראיון נשאר `user` וקפוא ב-respec. קודם ל-designStage, כי
+    // ביצירת dialogue שנפלה ל-designStage אין `interview.directions` בכלל
+    // (‏ok: false נרשם בלי כיוונים) — כלומר אין מצב ששניהם מלאים וסותרים.
+    const interviewed = specFromInterview(inputs?.interview?.directions, chosenDesignIndex(row));
+    if (interviewed) return interviewed;
+
+    // 3) ההזרעה: הסבב הראשון, מהכיוון שהלקוחה בחרה ביצירה.
     return specFromDesignStage(inputs?.designStage?.spec, chosenDesignIndex(row));
   } catch (e) {
     console.error("editSpecFor failed:", e instanceof Error ? e.message : e);

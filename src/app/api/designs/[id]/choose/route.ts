@@ -6,6 +6,8 @@ import { getVersion, renderPathOf, updateDesignWidth } from "@/lib/db/designs";
 import { isReplaceablePick } from "@/lib/versionRole";
 import { designDims, ingestCutouts } from "@/lib/vectorizer";
 import { STORY_MODE, isStory, storyFrameDims } from "@/lib/story/mode";
+// dialogue mode — גם במסלול הזה לכל הצעה רוחב משלה, מאותו נימוק בדיוק.
+import { DIALOGUE_MODE, isDialogue } from "@/lib/dialogue/mode";
 
 // בחירת מועמד. /api/generate מחזיר כמה הצעות ושומר את הטובה ביותר כגרסה;
 // כשהלקוחה בוחרת אחרת, הבחירה נרשמת כגרסה — אבל **שורה אחת לכל הרצה**:
@@ -38,8 +40,9 @@ const schema = z.object({
    * צייר בה, ולא מבחירה של הלקוחה. בלי הדגל הזה מעבר להצעה אחרת היה ממסגר
    * אותה לרוחב של ההצעה הזוכה — כלומר מותח אותה בדיוק בציר שהמסלול הזה בא
    * לשמור. ריק = ההתנהגות הקיימת.
+   * dialogue mode — אותו דין, מאותו נימוק: הרוחב נגזר, לא הוזמן.
    */
-  mode: z.literal(STORY_MODE).optional(),
+  mode: z.union([z.literal(STORY_MODE), z.literal(DIALOGUE_MODE)]).optional(),
 });
 
 export async function POST(req: Request, { params }: Params) {
@@ -63,7 +66,7 @@ export async function POST(req: Request, { params }: Params) {
     // אחיד מייצר עבורה. ה-SVG שהגיע כבר יושב במסגרת הזו (הוא מוסגר כך ביצירה),
     // ולכן זו זהות ולא מתיחה שנייה — והרשומה מתעדכנת כדי שההזמנה, ההדמיה וכל
     // בקשת שינוי שתבוא אחריה ידברו על אותו רוחב.
-    const storyDims = isStory(body.mode)
+    const storyDims = isStory(body.mode) || isDialogue(body.mode) // dialogue mode
       ? storyFrameDims(designDims(design), body.svg)
       : null;
     if (storyDims) await updateDesignWidth(design.id, storyDims.widthMm);
