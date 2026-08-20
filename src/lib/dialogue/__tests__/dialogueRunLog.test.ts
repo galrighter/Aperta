@@ -64,11 +64,35 @@ describe("inputChips — שלב העריכה", () => {
     expect(chips).toContain("שלב העריכה ביקש הבהרה");
   });
 
-  it("המפרט המצטבר נמדד בשדות שמלאים", () => {
+  it("המפרט המצטבר נמדד בשדות שמלאים — מתוך הסכמה המורחבת", () => {
     // אפס פירושו סבב בלי הקשר — בדיוק מה שההזרעה והשרשרת באו למנוע.
-    expect(chipsOf({ editSpec: {} })).toContain("מפרט מצטבר 0/5");
+    expect(chipsOf({ editSpec: {} })).toContain("מפרט מצטבר 0/10");
     expect(chipsOf({ editSpec: { outer_silhouette: "a band", metal_structure: "  " } }))
-      .toContain("מפרט מצטבר 1/5");
+      .toContain("מפרט מצטבר 1/10");
+  });
+
+  it("היחס ו-`sources` אינם נספרים — הם אינם שדות שמציירים מהם", () => {
+    expect(chipsOf({
+      editSpec: { outer_silhouette: "a band", length_to_width_ratio: 7, sources: { outer_silhouette: "user" } },
+    })).toContain("מפרט מצטבר 1/10");
+  });
+
+  it("‏respec מסומן — בלעדיו עריכת respec ועריכת ייחוס נראות זהות", () => {
+    const chips = chipsOf({ mode: "dialogue", editStage: { ok: true, respec: true, strategy: "respec" } });
+    expect(chips.some((c) => c.includes("respec") && c.includes("מהמפרט"))).toBe(true);
+  });
+
+  it("‏respec שהוצהר וירד לייחוס — הפער נראה, כי הוא הנתון", () => {
+    const down = chipsOf({ mode: "dialogue", editStage: { ok: true, strategy: "respec" } });
+    expect(down).toContain("⚠ respec הוצהר וירד לעריכת ייחוס");
+    // וכשההצהרה כובדה — תגית ה-respec לבדה, בלי אזהרה.
+    const honoured = chipsOf({ mode: "dialogue", editStage: { ok: true, strategy: "respec", respec: true } });
+    expect(honoured.some((c) => c.includes("הוצהר וירד"))).toBe(false);
+  });
+
+  it("הכרעה שאינה ברירת המחדל — clarify — נראית", () => {
+    const chips = chipsOf({ mode: "dialogue", editStage: { ok: true, strategy: "clarify" } });
+    expect(chips).toContain("שלב העריכה: clarify");
   });
 
   it("הרצה בלי שלב עריכה — אף אחת מהתגיות האלה", () => {

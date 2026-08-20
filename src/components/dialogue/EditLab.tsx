@@ -21,7 +21,7 @@ import { dialogue } from "@/i18n/dialogue";
 import { he } from "@/i18n/he";
 import {
   INSTRUCTION_AXES, blindOrder, gradeInstruction, reportLab,
-  type InstructionGrade, type LabArm, type LabRound, type LabSession,
+  type ClosureCoverage, type InstructionGrade, type LabArm, type LabRound, type LabSession,
 } from "@/lib/dialogue/lab";
 import type { EditSpec } from "@/lib/dialogue/spec";
 import type { LlmUsage } from "@/lib/llm/core";
@@ -56,12 +56,17 @@ interface CompareResult {
     ms?: number;
     usage?: LlmUsage;
     decision?: {
+      strategy?: string;
       scope?: string;
       image_instruction?: string;
       preserve?: string[];
       needs_clarification?: string;
     };
     spec?: EditSpec;
+    /** הסבב צויר מחדש מהמפרט (‏PROMPT_SPEC §6) — לא עריכת ייחוס. */
+    respec?: boolean;
+    /** כיסוי הסגירה (§7) — כמה דרגות חופש המפרט הכריע, ובאיזה מקור. */
+    coverage?: ClosureCoverage;
     grade?: InstructionGrade;
   };
 }
@@ -188,6 +193,8 @@ export default function EditLab() {
           instruction: r.compare.dialogue.decision?.image_instruction ?? null,
           attempts: r.compare.dialogue.attempts ?? null,
           stageDown: r.compare.dialogue.stageDown,
+          strategy: r.compare.dialogue.decision?.strategy ?? null,
+          respec: r.compare.dialogue.respec,
           usage: r.compare.dialogue.usage ?? null,
           satisfied: r.rating.dialogue.satisfied,
           intentCaptured: r.rating.dialogue.intentCaptured,
@@ -466,6 +473,29 @@ function ArmView({
             </Field>
           ) : null}
           {rich.decision?.scope && <Field label={t.scope}><p className="text-[12px]" dir="ltr">{rich.decision.scope}</p></Field>}
+          {/* respec מול ייחוס (§6). מוצג רק כשהשלב רץ — ורק מחוץ לדירוג
+              עיוור, כי הוא מסגיר איזו זרוע זו (הבלוק כולו כזה). */}
+          {rich.ok && (
+            <p className="text-[12px] text-ink60">
+              {rich.respec ? t.respecOn : t.respecOff}
+              {rich.decision?.strategy && rich.decision.strategy !== (rich.respec ? "respec" : "reference_edit")
+                ? ` · ${t.strategyLabel}: ${rich.decision.strategy}`
+                : ""}
+            </p>
+          )}
+          {rich.coverage && (
+            <Field label={t.coverage}>
+              <p className="text-[12px]">
+                {t.coverageLine(
+                  rich.coverage.decided,
+                  rich.coverage.total,
+                  rich.coverage.bySource.user,
+                  rich.coverage.bySource.inferred,
+                  rich.coverage.bySource.chosen,
+                )}
+              </p>
+            </Field>
+          )}
           {rich.decision?.needs_clarification && (
             <Field label={t.clarification}>
               <p className="text-[12px]" dir="ltr">{rich.decision.needs_clarification}</p>

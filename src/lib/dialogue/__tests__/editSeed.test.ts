@@ -22,24 +22,57 @@ const SPEC = JSON.stringify({
 });
 
 describe("specFromDesignStage", () => {
-  it("מחזיר את החמישייה של הכיוון הנכון", () => {
+  it("מחזיר את החמישייה של הכיוון הנכון — במקור inferred", () => {
+    // ‏inferred ולא user: הלקוחה בחרה את הכיוון כמכלול, לא אישרה כל שדה
+    // בנפרד; ולא chosen — "חופשי" היה מתיר ל-respec לשכתב פריט שנבחר.
     expect(specFromDesignStage(SPEC, 1)).toEqual({
       outer_silhouette: "s2",
       metal_structure: "m2",
       negative_space: "n2",
       rhythm_balance: "r2",
       manufacturability: "k2",
+      sources: {
+        outer_silhouette: "inferred",
+        metal_structure: "inferred",
+        negative_space: "inferred",
+        rhythm_balance: "inferred",
+        manufacturability: "inferred",
+      },
     });
   });
 
   it("`concept` ו-`image_instruction` **אינם** נכנסים למפרט", () => {
-    // המפרט הוא חמישה שדות, ואותם חמישה בדיוק שיוצאים מ-`designStage` —
-    // זהות שהיא מה שמאפשר לשרשרת לעבוד. `concept` הוא רקע, ו-
-    // `image_instruction` הוא הוראה לסבב **ההוא**, לא תיאור של הפריט.
+    // המפרט מוזרע משדות `designStage` בלבד — הזהות היא מה שמאפשר לשרשרת
+    // לעבוד. `concept` הוא רקע, ו-`image_instruction` הוא הוראה לסבב
+    // **ההוא**, לא תיאור של הפריט. `sources` הוא תיוג שלנו, לא שדה משם.
     const out = specFromDesignStage(SPEC, 0)!;
     expect(Object.keys(out).sort()).toEqual([
       "manufacturability", "metal_structure", "negative_space", "outer_silhouette", "rhythm_balance",
+      "sources",
     ]);
+  });
+
+  it("היחס מוזרע כשהכיוון נושא אותו — ‏respec צריך ממי לרשת אותו", () => {
+    const withRatio = JSON.stringify({
+      designs: [{ outer_silhouette: "s1", length_to_width_ratio: 8.5 }],
+    });
+    const out = specFromDesignStage(withRatio, 0)!;
+    expect(out.length_to_width_ratio).toBe(8.5);
+    expect(out.sources?.length_to_width_ratio).toBe("inferred");
+  });
+
+  it("יחס פסול אינו מוזרע — והכיוון עדיין שמיש", () => {
+    const badRatio = JSON.stringify({
+      designs: [{ outer_silhouette: "s1", length_to_width_ratio: "wide" }],
+    });
+    const out = specFromDesignStage(badRatio, 0)!;
+    expect(out.outer_silhouette).toBe("s1");
+    expect(out.length_to_width_ratio).toBeUndefined();
+  });
+
+  it("יחס בלי אף שדה טקסט — null: אי אפשר לצייר מיחס לבדו", () => {
+    const only = JSON.stringify({ designs: [{ length_to_width_ratio: 8 }] });
+    expect(specFromDesignStage(only, 0)).toBeNull();
   });
 
   it("אינדקס מחוץ לתחום — null, ולא הכיוון הראשון", () => {

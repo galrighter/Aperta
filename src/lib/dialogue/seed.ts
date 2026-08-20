@@ -1,4 +1,4 @@
-import { SPEC_FIELDS, type EditSpec } from "./spec";
+import { SPEC_FIELDS, type EditSpec, type SpecSources } from "./spec";
 
 // dialogue mode — הזרעת המפרט המצטבר מהיצירה (§9.2 ב-DIALOGUE_PLAN).
 //
@@ -26,6 +26,15 @@ import { SPEC_FIELDS, type EditSpec } from "./spec";
  * ה-JSON נחתך ב-8,000 תווים כשהוא נשמר ליומן (`RunInputs.designStage.spec`),
  * וחיתוך באמצע הופך אותו לבלתי-קריא. זה נופל כאן כמו כל קלט פסול אחר, וזו
  * ההתנהגות הנכונה: מפרט חתוך אינו מפרט.
+ *
+ * **המקור של כל שדה מוזרע הוא `inferred`** (‏PROMPT_SPEC §1.3). לא `user` —
+ * הלקוחה בחרה את הכיוון כמכלול, לא אישרה כל שדה בנפרד; ולא `chosen` —
+ * "חופשי לבחירה מחדש" היה מתיר ל-respec לשכתב את הפריט שהיא בחרה. זה בדיוק
+ * התקדים של §3.2: בחירה בגלריה מזרימה את תגי העיצוב שנבחר למפרט כ-`inferred`.
+ *
+ * **והיחס מוזרע גם הוא** (`length_to_width_ratio`): תמונת הייחוס נשאה אותו
+ * במרומז, וב-respec אין ממי לרשת אותו — בלעדיו יצירה-מחדש מטילה קובייה על
+ * הרוחב, הציר שנמדד מכולם (‏askedRatios מול drawnRatio).
  */
 export function specFromDesignStage(
   specJson: string | null | undefined,
@@ -47,11 +56,26 @@ export function specFromDesignStage(
 
   const box = chosen as Record<string, unknown>;
   const out: EditSpec = {};
+  const sources: SpecSources = {};
+  let fields = 0;
   for (const [key] of SPEC_FIELDS) {
     const value = box[key];
-    if (typeof value === "string" && value.trim()) out[key] = value.trim();
+    if (typeof value === "string" && value.trim()) {
+      out[key] = value.trim();
+      sources[key] = "inferred";
+      fields += 1;
+    }
   }
-  return Object.keys(out).length ? out : null;
+  // יחס בלי אף שדה טקסט אינו מפרט — אי אפשר לצייר ממנו פריט, בדיוק כמו
+  // ב-`hasSpec`. כיוון כזה נופל כמו כיוון ריק.
+  if (!fields) return null;
+  const ratio = Number(box.length_to_width_ratio);
+  if (Number.isFinite(ratio) && ratio > 0) {
+    out.length_to_width_ratio = ratio;
+    sources.length_to_width_ratio = "inferred";
+  }
+  out.sources = sources;
+  return out;
 }
 
 /**

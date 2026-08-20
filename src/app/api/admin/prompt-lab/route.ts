@@ -6,14 +6,16 @@ import { supabaseAdmin } from "@/lib/db/supabase";
 import { FAB, resolveFab } from "@/lib/fabrication.config";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
 import { planRender, maxRows } from "@/lib/render/panels";
-import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
+import { canvasFor, canvasOf, sizeParam, type Canvas } from "@/lib/render/canvas";
 // dialogue mode — רתמת המדידה של שלב A (‏A0 ב-docs/DIALOGUE_PLAN.md §7).
 import { supabaseAdmin as sbAdmin } from "@/lib/db/supabase";
 import { DIALOGUE_EDIT } from "@/lib/dialogue/mode";
-import { runEditStage, stagedEditPrompt, type EditRegion } from "@/lib/dialogue/editStage";
-import { gradeInstruction } from "@/lib/dialogue/lab";
+import {
+  buildRespecRenderPrompt, coerceEditSpec, runEditStage, runsRespec, stagedEditPrompt,
+  type EditRegion,
+} from "@/lib/dialogue/editStage";
+import { closureCoverage, gradeInstruction } from "@/lib/dialogue/lab";
 import { isEditRun, parseLegacyEditPrompt } from "@/lib/dialogue/corpus";
-import type { EditSpec } from "@/lib/dialogue/spec";
 import type { RunInputs } from "@/lib/db/runs";
 import { editPromptFor } from "@/components/create/model";
 
@@ -142,8 +144,10 @@ const schema = z.object({
    *  השני שולח אותה כמו שהיא. */
   editRequest: z.string().max(4000).default(""),
   region: z.enum(["right", "center", "left", "all"]).optional(),
-  /** המפרט המצטבר מהסבב הקודם, כדי שסבב 5 יידע מה נקבע בסבב 2 (§2.2). */
-  spec: z.record(z.string(), z.string()).optional(),
+  /** המפרט המצטבר מהסבב הקודם, כדי שסבב 5 יידע מה נקבע בסבב 2 (§2.2).
+   *  ‏`unknown` ולא `string` — מאז ההרחבה המפרט נושא גם יחס (מספר) ומפת
+   *  `sources`; הניקוי האמיתי יושב ב-`coerceEditSpec`, לא בסכמה. */
+  spec: z.record(z.string(), z.unknown()).optional(),
   /** מודל טקסט אחר, למכרז של §5.4. ריק = המכהן. */
   textModel: z.string().max(120).optional(),
   textEffort: z.enum(["low", "medium", "high"]).optional(),
@@ -192,9 +196,10 @@ export async function POST(req: Request) {
       rows,
       canvas: sizeParam(canvas),
       prompt: buildRenderPrompt(body.userPrompt, body.productType, dims, rows, body.editing),
-      // dialogue mode — שתי הזרועות. ריק כשלא ביקשו השוואה.
+      // dialogue mode — שתי הזרועות. ריק כשלא ביקשו השוואה. הקנבס נמסר כי
+      // פרומפט ה-respec נוקב בצורתו, ושני מקומות לאותה החלטה נפרדים בשקט.
       compare: body.compare
-        ? await compareArms(body, dims, rows)
+        ? await compareArms(body, dims, rows, canvas)
         : undefined,
     });
   } catch (err) {
@@ -219,15 +224,18 @@ export async function POST(req: Request) {
  * שני שצריך להישאר תואם.
  */
 async function compareArms(
-  body: { editRequest: string; region?: EditRegion; spec?: Record<string, string>;
+  body: { editRequest: string; region?: EditRegion; spec?: Record<string, unknown>;
     productType: "bracelet" | "ring"; editing: boolean;
     textModel?: string; textEffort?: "low" | "medium" | "high" },
   dims: { lengthMm: number; widthMm: number; thicknessMm: number },
   rows: number,
+  canvas: Canvas,
 ) {
   const request = body.editRequest.trim();
   const region = body.region ?? null;
   const model = body.textModel || DIALOGUE_EDIT.model;
+  // המפרט שהגיע מהלקוח של הרתמה, מנוקה: קלט חיצוני אינו הצהרה.
+  const priorSpec = coerceEditSpec(body.spec);
 
   // הזרוע הקיימת: הבקשה נכנסת לפרומפט של המסע ומשם כמות שהיא למודל התמונה.
   const legacy = editPromptFor(region, request);
@@ -238,14 +246,23 @@ async function compareArms(
         productType: body.productType,
         request,
         region,
-        spec: (body.spec ?? null) as EditSpec | null,
+        spec: priorSpec,
         lengthMm: dims.lengthMm,
         model,
         effort: body.textEffort,
       })
     : null;
 
-  const changeRequest = stage?.ok ? stagedEditPrompt(stage.decision) : legacy;
+  /** ‏PROMPT_SPEC §6 — אותה הכרעה בדיוק כמו בנתיב היצירה: ‏respec כשיש מפרט
+   *  והמודל לא ביקש ייחוס; אחרת עריכת הייחוס. סבב ראשון ברתמה מתחיל תמיד
+   *  בלי מפרט ולכן בייחוס — וזה נכון: ‏respec על מפרט ריק אינו נמדד, הוא
+   *  היה מצייר פריט חדש (וזו גם מלכודת עיצובי טרום-ההזרעה). */
+  const respec = stage?.ok
+    ? runsRespec({ decision: stage.decision, priorSpec, lettering: false })
+    : false;
+  const changeRequest = stage?.ok
+    ? (respec ? stage.decision.image_instruction ?? "" : stagedEditPrompt(stage.decision))
+    : legacy;
   return {
     textModel: model,
     effort: body.textEffort ?? DIALOGUE_EDIT.effort,
@@ -261,10 +278,24 @@ async function compareArms(
       usage: stage?.usage ?? undefined,
       decision: stage?.ok ? stage.decision : undefined,
       spec: stage?.ok ? stage.spec : undefined,
+      /** מה הסבב הזה היה עושה בצינור האמיתי — צויר מחדש מהמפרט או ייחוס. */
+      respec,
+      /** כיסוי הסגירה (‏PROMPT_SPEC §7): כמה דרגות חופש המפרט הכריע, ולפי
+       *  איזה מקור. אוטומטי מה-JSON, כמו שהטבלה שם דורשת. */
+      coverage: stage?.ok ? closureCoverage(stage.spec) : undefined,
       /** הציון האוטומטי של ציר התיאור הגרפי (§5.3, §7.1). */
       grade: stage?.ok ? gradeInstruction(stage.decision.image_instruction) : undefined,
       changeRequest,
-      prompt: buildRenderPrompt(changeRequest, body.productType, dims, rows, true),
+      prompt: respec && stage?.ok
+        ? buildRespecRenderPrompt({
+            spec: stage.spec,
+            decision: stage.decision,
+            canvas,
+            rows,
+            thicknessMm: dims.thicknessMm,
+            fallbackRatio: dims.widthMm > 0 ? dims.lengthMm / dims.widthMm : null,
+          })
+        : buildRenderPrompt(changeRequest, body.productType, dims, rows, true),
     },
   };
 }

@@ -52,6 +52,15 @@ export const dialogue = {
     preserve: "מה שנשמר",
     scope: "היקף",
     clarification: "שאלה שהמודל היה שואל",
+    /* --- respec (‏PROMPT_SPEC §6) --- */
+    strategyLabel: "אסטרטגיה",
+    respecOn: "‏respec — נוצר מחדש מהמפרט, בלי תמונת ייחוס",
+    respecOff: "עריכת ייחוס — התמונה הקיימת מצורפת",
+    /** כיסוי הסגירה (§7): כמה מדרגות החופש של §2 המפרט הכריע, ולפי איזה
+     *  מקור. אוטומטי מה-JSON — בלי דירוג אנושי. */
+    coverage: "סגירת הפרמטרים",
+    coverageLine: (decided: number, total: number, user: number, inferred: number, chosen: number) =>
+      `${decided} מתוך ${total} דרגות חופש הוכרעו · ‏user ${user} · ‏inferred ${inferred} · ‏chosen ${chosen}`,
     /** נפילה־לאחור. לא שגיאה: זו ההתנהגות המתוכננת, וזה מה שהמסך אומר. */
     stageDown: "שלב הטקסט נפל — הסבב הזה רץ בפרומפט של היום",
     attempts: (n: number) => (n > 1 ? `${n} ניסיונות` : "ניסיון אחד"),

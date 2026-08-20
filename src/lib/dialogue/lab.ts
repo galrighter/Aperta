@@ -1,4 +1,5 @@
 import type { LlmUsage } from "@/lib/llm/core";
+import { SPEC_FIELDS, ratioOf, sourceOf, type EditSpec, type FieldSource } from "./spec";
 
 // dialogue mode — רתמת המדידה של שלב A (‏A0 ב-docs/DIALOGUE_PLAN.md §7).
 //
@@ -113,6 +114,88 @@ export function gradeInstruction(text: string | null | undefined): InstructionGr
   };
 }
 
+/* ===== כיסוי הסגירה (‏PROMPT_SPEC §7) ===== */
+
+/**
+ * כמה מדרגות החופש של §2 המפרט הכריע — ובאיזה מקור.
+ *
+ * זו העמודה השנייה בטבלת A0 של ‏PROMPT_SPEC §7 ("כיסוי הסגירה"), והיא
+ * אוטומטית מה-JSON בכוונה: היא רצה על כל סבב, בלי דירוג אנושי. המניין הוא
+ * על שדות הטקסט + היחס; `sources` אינו נספר — הוא מטא-נתון, לא הכרעה.
+ *
+ * ‏`bySource` נספר רק על שדות **שנכתבו**: שדה חסר אינו "inferred חסר" אלא
+ * דרגת חופש פתוחה, וזו בדיוק ההבחנה שהמדד קיים בשבילה (§1.1 — ציר פתוח
+ * הוא קובייה).
+ */
+export interface ClosureCoverage {
+  /** כמה דרגות חופש יש בסכמה בכלל — שדות הטקסט + היחס. */
+  total: number;
+  /** כמה מהן הוכרעו במפרט הזה. */
+  decided: number;
+  bySource: Record<FieldSource, number>;
+}
+
+export function closureCoverage(spec: EditSpec | null | undefined): ClosureCoverage {
+  const bySource: Record<FieldSource, number> = { user: 0, inferred: 0, chosen: 0 };
+  let decided = 0;
+  for (const [key] of SPEC_FIELDS) {
+    if (spec?.[key]?.trim()) {
+      decided += 1;
+      bySource[sourceOf(spec, key)] += 1;
+    }
+  }
+  if (ratioOf(spec) !== null) {
+    decided += 1;
+    bySource[sourceOf(spec, "length_to_width_ratio")] += 1;
+  }
+  return { total: SPEC_FIELDS.length + 1, decided, bySource };
+}
+
+/* ===== אחידות ורצפת הרעש (‏PROMPT_SPEC §1.4, §7) ===== */
+
+/**
+ * פיזור של מדידה חוזרת — אותו פרומפט N פעמים, על מה שהצינור ממילא מודד:
+ * ‏`drawnRatio`, מניין פתחים, שיעור מסירת פאנלים.
+ *
+ * ‏`cv` (סטיית תקן ÷ ממוצע) ולא סטיית התקן לבדה, כי המדדים חיים בסקאלות
+ * שונות — פיזור של 0.5 הוא ענק במניין פתחים וזניח ביחס 16 — וההשוואה מול
+ * הרצפה חייבת מספר חסר-יחידות. `null` כשאין ממה לחשב: פחות משתי מדידות,
+ * או ממוצע אפס.
+ */
+export interface Dispersion {
+  n: number;
+  mean: number | null;
+  /** סטיית תקן מדגמית (n−1). */
+  sd: number | null;
+  /** ‏sd ÷ |mean| — מקדם ההשתנות. `null` גם כשהממוצע אפס. */
+  cv: number | null;
+}
+
+export function dispersion(values: Array<number | null | undefined>): Dispersion {
+  const real = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  const n = real.length;
+  if (!n) return { n: 0, mean: null, sd: null, cv: null };
+  const mean = real.reduce((a, b) => a + b, 0) / n;
+  if (n < 2) return { n, mean, sd: null, cv: null };
+  const sd = Math.sqrt(real.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
+  return { n, mean, sd, cv: mean === 0 ? null : sd / Math.abs(mean) };
+}
+
+/**
+ * ‏§1.4 — הפירוק לשני רכיבי השונות: מה שמעל רצפת רעש הביצוע הוא **שונות
+ * פרשנית** — אשמת הפרומפט, ניתנת לתיקון; הרצפה עצמה היא אשמת המודל, ואינה
+ * נסגרת בפרומפט סגור ככל שיהיה.
+ *
+ * הרצפה נמדדת **פעם אחת, לפני הכול** — פרומפט סגור-מקסימלית N פעמים — וכל
+ * פרומפט אחר מושווה אליה. בלי מדידת הרצפה כל מספר אחידות חסר משמעות, ולכן
+ * `null` כשאחד הצדדים לא נמדד: "לא ידוע" הוא מידע נכון (אותה הנמקה כמו
+ * `textUsd`), ואפס מומצא היה מציג פרומפט רועש כסגור.
+ */
+export function interpretiveExcess(sample: Dispersion, floor: Dispersion): number | null {
+  if (sample.cv === null || floor.cv === null) return null;
+  return Math.max(0, sample.cv - floor.cv);
+}
+
 /* ===== העלות ===== */
 
 /**
@@ -186,6 +269,11 @@ export interface LabRound {
   attempts?: number | null;
   /** שלב הטקסט נפל בכל הניסיונות ונפלנו ל-`buildEditPrompt`. */
   stageDown?: boolean;
+  /** מה המודל הכריע (‏PROMPT_SPEC §6). `null` במסלול הקיים. */
+  strategy?: string | null;
+  /** הסבב צויר מחדש מהמפרט, בלי תמונת ייחוס. הפער בין זה ל-`strategy` —
+   *  ‏respec שהוצהר וירד לייחוס (מפרט ריק) — הוא נתון בפני עצמו. */
+  respec?: boolean;
   usage?: LlmUsage | null;
   /** כמה קריאות למודל התמונה הסבב הזה קנה. כמעט תמיד 1 — ראה `panels.ts`. */
   imageCalls?: number;
@@ -219,6 +307,8 @@ export interface ArmSummary {
   firstParseRate: number | null;
   /** כמה סבבים נפלו־לאחור ל-`buildEditPrompt`. */
   stageDowns: number;
+  /** כמה סבבים צוירו מחדש מהמפרט (‏respec) — המונה של מדידת שימור ה-scope. */
+  respecRounds: number;
   /** ציר 1, מצטבר: מתוך הסבבים שדורגו, בכמה הכוונה נקלטה. */
   intentCaptured: { rated: number; captured: number };
   /** ציר 2, מצטבר: ממוצע הכיסוי (0–4) וכמה הוראות נשארו בעברית. */
@@ -271,6 +361,7 @@ export function summariseArm(arm: LabArm, all: LabRound[], textModel: string): A
       ? withAttempts.filter((r) => r.attempts === 1).length / withAttempts.length
       : null,
     stageDowns: counted.filter((r) => r.stageDown).length,
+    respecRounds: counted.filter((r) => r.respec).length,
     intentCaptured: { rated: rated.length, captured: rated.filter((r) => r.intentCaptured).length },
     instruction: {
       graded: grades.length,

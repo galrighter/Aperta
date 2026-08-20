@@ -11,6 +11,8 @@
 // מעבדת ההרצה (להריץ פרומפט או תמונה) ומשתמש באותם רכיבי אבחון.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { STRETCH_ALERT } from "@/lib/render/ratioGap";
+// dialogue mode — סדר שדות המפרט המצטבר, למניין "כמה נסגר". קבוע טהור.
+import { SPEC_FIELDS } from "@/lib/dialogue/spec";
 import ExportFiles from "./ExportFiles";
 
 export type Stage ={ name: string; status: string; detail: string };
@@ -80,10 +82,15 @@ export type RunInputs = {
     scope?: string;
     clarification?: string;
     decision?: string;
+    /** מה המודל הכריע (‏PROMPT_SPEC §6) ומה הצינור עשה בפועל — `respec`
+     *  פירושו שהתמונה נוצרה מחדש מהמפרט, בלי תמונת ייחוס. */
+    strategy?: string;
+    respec?: boolean;
     usage?: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number };
   };
-  /** dialogue mode — המפרט המצטבר אחרי הסבב הזה (§2.2). */
-  editSpec?: Record<string, string>;
+  /** dialogue mode — המפרט המצטבר אחרי הסבב הזה (§2.2). מאז ההרחבה הוא נושא
+   *  גם שדות שאינם מחרוזת (`length_to_width_ratio`, `sources`). */
+  editSpec?: Record<string, unknown>;
   /** story mode — שלב הטקסט שקדם למודל התמונה, ומה שהוא עלה. `usage` חסר
    *  בהרצות מלפני שהוא נמדד. */
   designStage?: {
@@ -114,8 +121,9 @@ export type RunInputs = {
   askedRatios?: number[];
   storyNaturalRatio?: number;
   imageCount?: number; imageUpload?: boolean; promptOverride?: boolean;
-  /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס. */
-  imageDropped?: "lettering" | "edit";
+  /** הקובץ צורף ולא נשלח למודל: הכיתוב או העיצוב הקיים תפסו את מקום הייחוס.
+   *  dialogue mode — או שההרצה היא respec, שאינה שולחת שום ייחוס בכוונה. */
+  imageDropped?: "lettering" | "edit" | "respec";
   /** האם ההרצה יצאה מהעיצוב הקיים (עריכה) או מאפס. */
   editedFromCurrent?: boolean;
   /** מספר הגרסה שנמסרה למודל כבסיס לעריכה. חסר בהרצות שנשמרו לפני שהוא נרשם. */
@@ -805,11 +813,26 @@ export function inputChips(inputs: RunInputs): string[] {
   // המודל **ביקש** הבהרה והסבב רץ בכל זאת (שלב A). זה המספר שיצדיק את שלב B,
   // ובלי שהוא נראה ביומן אי אפשר לספור אותו.
   if (inputs.editStage?.clarification) chips.push("שלב העריכה ביקש הבהרה");
-  // המפרט המצטבר — כמה שדות מתוך חמישה כבר נקבעו. אפס פירושו סבב בלי הקשר,
-  // וזה בדיוק מה שההזרעה והשרשרת באו למנוע (§9.2–9.3).
+  // ‏respec (‏PROMPT_SPEC §6) — התמונה נוצרה מחדש מהמפרט, בלי תמונת ייחוס.
+  // בלי התגית, עריכת respec ועריכת ייחוס נראות זהות ביומן — וזו בדיוק
+  // ההשוואה שמדידת שימור ה-scope של A0 עומדת עליה.
+  if (inputs.editStage?.respec) chips.push("‏respec — צויר מחדש מהמפרט");
+  else if (inputs.editStage?.strategy === "respec") {
+    // המודל הצהיר respec והצינור הוריד אותו לעריכת ייחוס — מפרט ריק או
+    // כיתוב (`runsRespec`). הפער בין ההצהרה למעשה הוא נתון בפני עצמו.
+    chips.push("⚠ respec הוצהר וירד לעריכת ייחוס");
+  } else if (inputs.editStage?.strategy) {
+    // הכרעה שאינה ברירת המחדל — clarify או reference_edit.
+    chips.push(`שלב העריכה: ${inputs.editStage.strategy}`);
+  }
+  // המפרט המצטבר — כמה משדות הטקסט כבר נקבעו. אפס פירושו סבב בלי הקשר,
+  // וזה בדיוק מה שההזרעה והשרשרת באו למנוע (§9.2–9.3). המניין הוא על שדות
+  // הטקסט בלבד — `sources` והיחס אינם שדות שמציירים מהם.
   if (inputs.editSpec) {
-    const filled = Object.values(inputs.editSpec).filter((v) => typeof v === "string" && v.trim()).length;
-    chips.push(`מפרט מצטבר ${filled}/5`);
+    const filled = SPEC_FIELDS
+      .filter(([key]) => typeof inputs.editSpec?.[key] === "string" && (inputs.editSpec[key] as string).trim())
+      .length;
+    chips.push(`מפרט מצטבר ${filled}/${SPEC_FIELDS.length}`);
   }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
@@ -825,7 +848,10 @@ export function inputChips(inputs: RunInputs): string[] {
     chips.push(
       inputs.imageDropped === "lettering"
         ? "⚠ התמונה לא נשלחה — הכיתוב תפס את הייחוס"
-        : "⚠ התמונה לא נשלחה — העיצוב הקיים תפס את הייחוס",
+        // dialogue mode — ‏respec אינו שולח שום ייחוס בכוונה, גם לא השראה.
+        : inputs.imageDropped === "respec"
+          ? "⚠ התמונה לא נשלחה — ‏respec מצייר מהמפרט בלבד"
+          : "⚠ התמונה לא נשלחה — העיצוב הקיים תפס את הייחוס",
     );
   }
   // הכיתוב והגשרים שנחתכו בו. הרוחב המרבי הוא מה שמחפשים בעין כשמגיעה תלונה
