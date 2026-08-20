@@ -169,6 +169,30 @@ export async function createSampleDesign(base: DesignRow, name?: string): Promis
 }
 
 /**
+ * ניתוק הדוגמאות מעיצוב-אב שעומד להימחק.
+ *
+ * ה-FK הוא `on delete set null` על `root_design_id` **בלבד**, אבל
+ * `designs_sample_fields_check` דורש ששני השדות יתרוקנו יחד:
+ * `(root_design_id is null) = (sample_no is null)`. כלומר המחיקה עצמה מייצרת את
+ * השורה שמפרה את האילוץ — Postgres דוחה אותה ב-`23514`, ומחיקת עיצוב שיש לו
+ * דוגמאות נופלת ב-500 סתמי במקום להצליח. התגלה ב-20.8 בניקוי יומן היצירות:
+ * מחיקת AP-0111 נעצרה על AP-0111.1/.3/.4.
+ *
+ * הדוגמאות אינן נמחקות — הן עיצובים לכל דבר, עם `serial` משלהן, ואינן שייכות
+ * לאב יותר משהוא שייך להן. הן מאבדות רק את השיוך: `AP-0111.3` נקרא מכאן ואילך
+ * `AP-0114`, כי `designSampleDigits` נופל חזרה ל-`serial` העצמי כששדות הדוגמה
+ * ריקים. `root_serial` מתאפס איתם — אילוץ אינו דורש זאת, אבל סידורי שמצביע על
+ * עיצוב שאינו קיים הוא מספר שאי אפשר לפתוח.
+ */
+export async function detachSamples(rootDesignId: string): Promise<void> {
+  const { error } = await supabaseAdmin()
+    .from("designs")
+    .update({ root_design_id: null, root_serial: null, sample_no: null })
+    .eq("root_design_id", rootDesignId);
+  if (error) throw new Error(error.message);
+}
+
+/**
  * הגישור של ההרצה: של הגרסה שנשמרה, ושל כל הצעה שהוצעה לצידה.
  *
  * נקרא מהגרסה ולא מההרצה כי שם זה נכתב — הגישור הוא תכונה של הגאומטריה

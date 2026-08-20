@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/db/supabase";
 import { handleRouteError, parseBody, ApiError } from "@/lib/api";
-import { listVersions } from "@/lib/db/designs";
+import { detachSamples, listVersions } from "@/lib/db/designs";
 import { hasActiveOrderForDesign } from "@/lib/db/orders";
 import { requireDesignAccess } from "@/lib/designAccess";
 import { FAB } from "@/lib/fabrication.config";
@@ -108,6 +108,9 @@ export async function DELETE(req: Request, { params }: Params) {
     // ניתוק ה-FK של הגרסה הנוכחית לפני מחיקת הגרסאות
     const { error: unsetErr } = await sb.from("designs").update({ current_version_id: null }).eq("id", id);
     if (unsetErr) throw new Error(unsetErr.message);
+    // הדוגמאות מנותקות ביד: ה-`on delete set null` של ה-FK מרוקן חצי זוג שדות
+    // ונופל על `designs_sample_fields_check`. ראה `detachSamples`.
+    await detachSamples(id);
     const { error } = await sb.from("designs").delete().eq("id", id);
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
