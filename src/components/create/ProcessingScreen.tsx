@@ -53,8 +53,12 @@ const RETRY_POINTLESS = new Set([
 
 export function ProcessingScreen({
   error, detail, code, failCount = 0, accountEmail, onFeedback, disconnected, locked, onRetry, onBack,
+  backLabel,
 }: {
   error: string | null;
+  /** dialogue mode — תווית החזרה. במסלול הראיון "העיצוב" הוא שיחה, והכפתור
+   *  אומר לאן באמת חוזרים. ריק = "חזרה לעיצוב" של היום, בכל מסלול אחר. */
+  backLabel?: string;
   /** מזהה טכני קצר (קוד + סטטוס) — כדי שצילום מסך יהיה ראיה. */
   detail?: string | null;
   /** קוד הכשל — קובע אם "נסה שוב" הוא בכלל פעולה. */
@@ -206,17 +210,17 @@ export function ProcessingScreen({
             לצד כפתור שמזמין לחזור על אותו כשל. */}
         <div className="flex flex-wrap items-center justify-center gap-3">
           {RETRY_POINTLESS.has(code ?? "") ? (
-            <PrimaryBtn onClick={onBack}>{d.procBack}</PrimaryBtn>
+            <PrimaryBtn onClick={onBack}>{backLabel ?? d.procBack}</PrimaryBtn>
           ) : recurring ? (
             // הניסיון החוזר כבר נכשל — הוא נשאר זמין, אבל מפסיק להיות ההצעה.
             <>
               <GhostBtn onClick={onRetry}>{d.procRetry}</GhostBtn>
-              <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
+              <GhostBtn onClick={onBack}>{backLabel ?? d.procBack}</GhostBtn>
             </>
           ) : (
             <>
               <PrimaryBtn onClick={onRetry}>{d.procRetry}</PrimaryBtn>
-              <GhostBtn onClick={onBack}>{d.procBack}</GhostBtn>
+              <GhostBtn onClick={onBack}>{backLabel ?? d.procBack}</GhostBtn>
             </>
           )}
           {/* סירוב של מסנן התוכן הוא הכשל היחיד שיש עליו מה לקרוא: ההודעה

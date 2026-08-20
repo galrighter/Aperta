@@ -88,11 +88,21 @@ export async function POST(req: Request) {
     // `mode` נשלח רק כשהוא קיים, כמו שדות 0012 ב-`insertVersion`: מסד שעוד לא
     // קיבל את 0024 דוחה עמודה שאינו מכיר, וכשל כאן הוא כשל של **יצירת העיצוב**
     // כולה. במקרה כזה נשמר עיצוב בלי המסלול — פחות טוב, אבל לא חוסם.
+    //
+    // dialogue mode — גם הפרת האילוץ (`designs_mode_check`) נתפסת, לא רק
+    // עמודה חסרה. זה לא תרחיש תיאורטי: 0024 קיבע `mode in ('story')`, והריצה
+    // החיה הראשונה של המסלול (20.8) נפלה בדיוק כאן — ‏insert של `dialogue`
+    // הפר את האילוץ והלקוחה קיבלה 500 במקום עיצוב. ‏0029 מרחיב את האילוץ;
+    // השורה הזו היא מה שמבטיח שערך-מסלול שהמסד עוד לא מכיר לעולם לא יפיל
+    // יצירה — אותה פילוסופיה בדיוק כמו העמודה החסרה.
     const sb = supabaseAdmin();
     const withMode = body.mode ? { ...insert, mode: body.mode } : insert;
     let { data, error } = await sb.from("designs").insert(withMode).select("*").single();
-    if (error && body.mode && /column .* does not exist|schema cache/i.test(error.message)) {
-      console.error("designs.mode missing (0024 not applied yet):", error.message);
+    if (
+      error && body.mode
+      && /column .* does not exist|schema cache|designs_mode_check|check constraint/i.test(error.message)
+    ) {
+      console.error("designs.mode rejected (0024/0029 not applied yet):", error.message);
       ({ data, error } = await sb.from("designs").insert(insert).select("*").single());
     }
     if (error) throw new Error(error.message);
