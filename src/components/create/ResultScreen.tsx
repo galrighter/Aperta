@@ -8,6 +8,9 @@
 import { he } from "@/i18n/he";
 // story mode — מסגור טקסטואלי בלבד לתוצאה במסלול הפשוט. ראה STORY_FLOW_PLAN.md §17.
 import { story } from "@/i18n/story";
+// dialogue mode — אותה הבחנה, בניסוח של המסלול: מה שעל המסך הוא כיוונים
+// ממה שסוכם בראיון, לא "העיצוב שלך".
+import { dialogue } from "@/i18n/dialogue";
 import { designCode } from "@/lib/designCode";
 import {
   blockCause, fabricationRef, hasFindings, markedChecks, needsLook,
@@ -87,7 +90,8 @@ export function ResultScreen({
 
   return (
     <section className="mx-auto max-w-[1200px] px-5 py-12 sm:px-10">
-      <Eyebrow>{s.story ? story.result.eyebrow : d.resultEyebrow}</Eyebrow>
+      {/* dialogue mode — הדגל שלו קודם: מסע dialogue מדליק גם story. */}
+      <Eyebrow>{s.dialogue ? dialogue.result.eyebrow : s.story ? story.result.eyebrow : d.resultEyebrow}</Eyebrow>
       {/* פעם היו כאן שתי כותרות, ו"קובץ מוכן לחיתוך" קיבל "הקובץ שלך מוכן".
           מרגע שהמילה "קובץ" ירדה מהאתר, שני הענפים אמרו את אותו הדבר —
           והלקוחה מקבלת את אותה כותרת בלי קשר למאיפה הגיע העיצוב.
@@ -98,7 +102,11 @@ export function ResultScreen({
           שלך" מזמין את השאלה "איזה מהם הכי שלי". זו כל ההבחנה, והיא טקסטואלית
           בלבד — המסך, הפקדים וההזמנה זהים. */}
       <ScreenTitle>
-        {s.story
+        {s.dialogue // dialogue mode
+          ? picks.length > 1
+            ? dialogue.result.titleMany
+            : dialogue.result.titleOne
+          : s.story
           ? picks.length > 1
             ? story.result.titleMany
             : story.result.titleOne
@@ -106,7 +114,8 @@ export function ResultScreen({
       </ScreenTitle>
       {s.story && (
         <p className="mt-3 max-w-[560px] text-[15px] leading-relaxed text-ink60" style={{ textWrap: "pretty" }}>
-          {story.result.note}
+          {/* dialogue mode */}
+          {s.dialogue ? dialogue.result.note : story.result.note}
         </p>
       )}
 

@@ -21,6 +21,9 @@ import RunsLog from "@/components/admin/RunsLog";
 // dialogue mode — רתמת המדידה של שלב A. לשונית שלישית, ותו לא: הכיול הקיים
 // ויומן ההרצות אינם נוגעים בה, והיא אינה נוגעת בהם.
 import EditLab from "@/components/dialogue/EditLab";
+// dialogue mode — דף הביקורת על תיוג הגלריה (‏PROMPT_SPEC §3.2). לשונית
+// רביעית, מאותו דין.
+import GalleryReview from "@/components/dialogue/GalleryReview";
 import { dialogue } from "@/i18n/dialogue";
 
 function fileToDataUrl(f: File): Promise<string> {
@@ -60,8 +63,8 @@ export default function DebugPage() {
 }
 
 function PromptLab() {
-  // dialogue mode — `"edit"` נוסף לסט. ריק/ברירת מחדל = הכיול, כמו קודם.
-  const [view, setView] = useState<"lab" | "log" | "edit">("lab");
+  // dialogue mode — `"edit"` ו-`"gallery"` נוספו לסט. ברירת המחדל = הכיול.
+  const [view, setView] = useState<"lab" | "log" | "edit" | "gallery">("lab");
 
   const [productType, setProductType] = useState<"bracelet" | "ring">("bracelet");
   const [lengthMm, setLengthMm] = useState(160);
@@ -187,12 +190,18 @@ function PromptLab() {
         {/* dialogue mode */}
         <button className={`rounded-[2px] px-4 py-1.5 ${view === "edit" ? "bg-graphite text-white" : "border border-graphite/20"}`}
           onClick={() => setView("edit")}>{dialogue.lab.title}</button>
+        {/* dialogue mode */}
+        <button className={`rounded-[2px] px-4 py-1.5 ${view === "gallery" ? "bg-graphite text-white" : "border border-graphite/20"}`}
+          onClick={() => setView("gallery")}>{dialogue.gallery.title}</button>
       </div>
 
       {view === "log" && <RunsLog />}
 
       {/* dialogue mode */}
       {view === "edit" && <EditLab />}
+
+      {/* dialogue mode */}
+      {view === "gallery" && <GalleryReview />}
 
       {view === "lab" && (
         <div className="grid gap-4">

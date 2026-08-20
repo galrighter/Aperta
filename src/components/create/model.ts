@@ -170,6 +170,32 @@ export interface CreateState {
    */
   story: boolean;
 
+  /**
+   * dialogue mode — הגיעו מהראיון (`/dialogue/create`).
+   *
+   * מסע dialogue מדליק **גם** את `story`: צורת המסע זהה — המוצר והבריף כבר
+   * נמסרו, המידה נשאלת אחרי התוצאה, הרוחב נגזר ממה שצויר — וכל 19 ההסתעפויות
+   * של `story` בעמוד נכונות לו אחד-לאחד. מה שהדגל הזה מוסיף הוא רק מה
+   * שמשתנה **על הקו**: `mode: "dialogue"` בבקשות, תוצר הראיון ביצירה,
+   * והבקשה הגולמית עם האזור בעריכה. `false` בכל מסלול אחר.
+   */
+  dialogue: boolean;
+
+  /**
+   * dialogue mode — תוצר הראיון, מהמסירה ועד שההרצה הראשונה רצה.
+   *
+   * יושב במצב ולא ב-ref מאותה סיבה שהדגלים יושבים בו: הוא חייב לשרוד את
+   * היציאה לגוגל וחזרה דרך `stashCreateState`. מי שאיבד אותו (כניסה ישירה,
+   * מסירה שנמחקה) עדיין יוצר — השרת נופל ל-designStage על הבריף.
+   */
+  interview?: {
+    directions: string;
+    summary: string;
+    transcript?: string;
+    utm?: string;
+    expectation?: string;
+  } | null;
+
   // מידות
   wristPreset: string;
   circ: string;
@@ -314,6 +340,7 @@ export const INITIAL: CreateState = {
   screen: "product",
   product: null,
   story: false,
+  dialogue: false, // dialogue mode
   wristPreset: "medium",
   circ: "",
   fit: "regular",

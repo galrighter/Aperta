@@ -24,7 +24,9 @@ const PAGE = read("src/app/(site)/design/page.tsx");
 describe("המסלול נשמר על הרשומה", () => {
   it("היצירה מוסרת את המסלול לשרת", () => {
     // בלי זה אין מה לקרוא בחזרה — הרשומה נראית בדיוק כמו עיצוב רגיל.
-    expect(PAGE).toContain("mode: st.story ? STORY_MODE : undefined");
+    // dialogue mode — הדגל שלו קודם באותה שורה; ‏Story ממשיך להישלח בדיוק
+    // כמו קודם לכל מסע שאינו dialogue.
+    expect(PAGE).toContain("mode: st.dialogue ? DIALOGUE_MODE : st.story ? STORY_MODE : undefined");
   });
 
   it("החזרה קוראת אותו מהרשומה ולא מ-INITIAL", () => {

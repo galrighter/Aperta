@@ -7,6 +7,8 @@ import { requireAdmin } from "@/lib/admin";
 import { getAccount } from "@/lib/db/accounts";
 import { FAB } from "@/lib/fabrication.config";
 import { STORY_MODE } from "@/lib/story/mode";
+// dialogue mode — גם עיצוב שנוצר בראיון נושא את המסלול על הרשומה (0024).
+import { DIALOGUE_MODE } from "@/lib/dialogue/mode";
 
 /**
  * העיצובים של פרופיל אחד.
@@ -51,12 +53,13 @@ const createSchema = z.object({
   gapMm: z.number().positive().optional(),
   thicknessMm: z.number().positive().optional(),
   /**
-   * 0024 — המסלול שהעיצוב נוצר בו. `story` בלבד, וריק בכל השאר.
+   * 0024 — המסלול שהעיצוב נוצר בו. ריק בכל השאר.
    *
    * זו עובדה על העיצוב ולא בקשה: במסלול Story המידה נשאלת אחרי התוצאה, ולכן
    * מי שחוזרת לעיצוב שמור חייבת לקבל את אותו סדר שלבים — גם ממכשיר אחר.
+   * dialogue mode — אותו דין: המידה נשאלת אחרי התוצאה גם שם.
    */
-  mode: z.literal(STORY_MODE).optional(),
+  mode: z.union([z.literal(STORY_MODE), z.literal(DIALOGUE_MODE)]).optional(),
 });
 
 export async function POST(req: Request) {

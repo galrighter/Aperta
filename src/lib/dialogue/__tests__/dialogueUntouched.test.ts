@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { INITIAL, buildEditPrompt, type CreateState } from "@/components/create/model";
 import { buildRenderPrompt } from "@/lib/llm/imagegen";
-import { DIALOGUE_MODE, isDialogue, runsEditStage } from "../mode";
+import { DIALOGUE_MODE, isDialogue, runsEditStage, runsInterviewCreate } from "../mode";
 import { runsRespec } from "../spec";
 
 /**
@@ -69,6 +69,39 @@ describe("runsEditStage — המסלול הרגיל אינו נכנס", () => {
     for (const empty of ["", "   ", undefined]) {
       expect(runsEditStage({ mode: DIALOGUE_MODE, userPrompt: empty, currentSvg: "<svg/>" })).toBe(false);
     }
+  });
+});
+
+describe("runsInterviewCreate — המסלול הרגיל אינו נכנס", () => {
+  /** מה ש-`/design` בלי הדגל שולח — כולל בקשה שמישהו הצמיד לה תוצר ראיון:
+   *  בלי `mode` הוא מתעלם, וזו השורה שאי-הפגיעה נשענת עליה. */
+  const EXISTING = [
+    { name: "יצירה מאפס", req: { currentSvg: null } },
+    { name: "יצירה עם תוצר ראיון אבל בלי הדגל", req: { currentSvg: null, interview: { directions: "{}" } } },
+    { name: "מסלול Story — יצירה", req: { mode: "story", currentSvg: null } },
+    { name: "בקשת שינוי רגילה", req: { currentSvg: "<svg/>" } },
+  ];
+
+  for (const { name, req } of EXISTING) {
+    it(`${name} — לא`, () => {
+      expect(runsInterviewCreate(req)).toBe(false);
+    });
+  }
+
+  it("עם הדגל, יצירה — כן. זה הענף היחיד", () => {
+    expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: null })).toBe(true);
+  });
+
+  it("עם הדגל, עריכה — לא: עריכה היא runsEditStage", () => {
+    expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: "<svg/>" })).toBe(false);
+  });
+
+  it("עם הדגל, כיתוב — לא: מסלול הכיתוב דורש חיתוך מהפונט וייחוס", () => {
+    expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: null, text: "אורי" })).toBe(false);
+  });
+
+  it("עם הדגל, promptOverride — לא: הבק־אופיס מבקש לשלוח את מה שכתב", () => {
+    expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: null, promptOverride: "P" })).toBe(false);
   });
 });
 
