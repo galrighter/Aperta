@@ -45,6 +45,10 @@ function tagsOf(r: TagRecord): string[] {
   return tags.filter((t): t is string => typeof t === "string");
 }
 
+/** האם הרשומה ברשימה המאוצרת — מה שהגלריה של הראיון תציג. הסימון חי
+ *  ב-`overrides` בכוונה: ריצת תיוג חוזרת לא נוגעת בו. */
+const isCurated = (r: TagRecord): boolean => r.overrides?.gallery === true;
+
 /** ערך שדה להצגה: מספרים מעוגלים, אובייקטים מקופלים ל-JSON קצר. */
 function show(value: unknown): string {
   if (value === null || value === undefined) return "—";
@@ -57,6 +61,7 @@ function show(value: unknown): string {
 export default function GalleryReview() {
   const [tag, setTag] = useState<string | null>(null);
   const [product, setProduct] = useState<string | null>(null);
+  const [curatedOnly, setCuratedOnly] = useState(false);
   const [shown, setShown] = useState(PAGE);
   const [svgs, setSvgs] = useState<Record<string, string>>({});
   const fetching = useRef(new Set<string>());
@@ -71,10 +76,11 @@ export default function GalleryReview() {
     () =>
       RECORDS.filter(
         (r) =>
+          (!curatedOnly || isCurated(r)) &&
           (!tag || tagsOf(r).includes(tag)) &&
           (!product || r.product_type === product),
       ),
-    [tag, product],
+    [tag, product, curatedOnly],
   );
   const visible = filtered.slice(0, shown);
 
@@ -123,6 +129,13 @@ export default function GalleryReview() {
             </button>
           ))}
           <span className="mx-2 h-4 w-px bg-graphite/20" aria-hidden="true" />
+          {/* הרשימה המאוצרת — בדיוק מה שהגלריה של הראיון תציג. */}
+          <button
+            className={`rounded-[2px] px-3 py-1 text-[13px] ${curatedOnly ? "bg-lapis text-white" : "border border-lapis/40 text-lapis-ink"}`}
+            onClick={() => { setCuratedOnly((v) => !v); setShown(PAGE); }}
+          >
+            ★ {g.filterCurated} · {RECORDS.filter(isCurated).length}
+          </button>
           {(["bracelet", "ring"] as const).map((p) => (
             <button
               key={p}
@@ -153,6 +166,7 @@ export default function GalleryReview() {
                 </div>
               )}
               <div className="mt-1 text-[12px] text-ink60">
+                {isCurated(r) && <span className="me-1 text-lapis-ink">★</span>}
                 {r.serial ? `#${r.serial} · ` : ""}
                 {g.product[r.product_type ?? ""] ?? r.product_type} · {show(r.length_mm)}×{show(r.width_mm)} מ״מ
                 {r.missing ? " · חסר ב-DB" : ""}
