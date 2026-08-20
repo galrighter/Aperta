@@ -43,7 +43,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "5a8971ff-7420-4e89-8352-ec7deeec5a0b",
@@ -86,7 +87,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "a8d38e46-030a-4170-8273-97ccfd5f639b",
@@ -129,7 +131,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "b8cb268d-e7d7-42f7-8741-9b2b118fb3e2",
@@ -172,7 +175,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "bcf03c35-f3c3-48c6-a4a3-881d1ca50d74",
@@ -215,7 +219,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "4636fe69-bbc4-4695-9341-35685ebe8478",
@@ -258,7 +263,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "f7a8061b-8b61-45d0-84c9-83066307b37d",
@@ -301,7 +307,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "95384dc9-c4fd-4d22-9f62-4397028de974",
@@ -344,7 +351,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "d24f4f1a-00c9-4495-ab71-3397c9277e66",
@@ -387,7 +395,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "fae5590e-1efa-4721-ad33-61004ea21094",
@@ -430,7 +439,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "0a6b8370-39f6-4ff1-8823-8189dfb4bd13",
@@ -473,7 +483,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "91b3ba55-4a82-4f17-8372-35dc76ed034b",
@@ -517,7 +528,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "269a40c8-9c53-49fe-9475-a97b1430e60b",
@@ -561,7 +573,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נמדדו 2 רכיבי מתכת — נדרש איחוי לפני ייצור"
+   "production_note": "נמדדו 2 רכיבי מתכת — נדרש איחוי לפני ייצור",
+   "missing": true
   },
   {
    "version_id": "69e9f4d4-65d3-4f4d-aab1-2bf3819a4e5f",
@@ -605,7 +618,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "bd7dfbf5-f3d5-4641-a811-78aba221c827",
@@ -649,7 +663,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "edbf0470-379e-4c30-b4f7-14f84fa7da4d",
@@ -693,7 +708,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נמדדו 2 רכיבי מתכת — נדרש איחוי לפני ייצור"
+   "production_note": "נמדדו 2 רכיבי מתכת — נדרש איחוי לפני ייצור",
+   "missing": true
   },
   {
    "version_id": "5fcc49de-85c2-436b-a2f8-d5f6964c0c74",
@@ -738,7 +754,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נמדדו 20 רכיבי מתכת — חלקי הסמל צפים; לא ייצורי כמות שהוא"
+   "production_note": "נמדדו 20 רכיבי מתכת — חלקי הסמל צפים; לא ייצורי כמות שהוא",
+   "missing": true
   },
   {
    "version_id": "ec8e1f7a-1fad-4707-9d26-930c95e10aee",
@@ -783,7 +800,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נמדדו 11 רכיבי מתכת — חלקים צפים; לא ייצורי כמות שהוא"
+   "production_note": "נמדדו 11 רכיבי מתכת — חלקים צפים; לא ייצורי כמות שהוא",
+   "missing": true
   },
   {
    "version_id": "c55d31ce-69c0-4c3c-b07b-3e703129b706",
@@ -826,7 +844,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "447120b2-3552-4698-9e0a-575866871fe1",
@@ -869,7 +888,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "4e89863c-5f9f-498c-b603-c7493225e039",
@@ -957,7 +977,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "981d7490-a2a1-4399-8f86-6666198b56bc",
@@ -1042,7 +1063,9 @@
     ],
     "concept": "שלכת — עלים מפוזרים ברוח"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -1216,7 +1239,9 @@
     ],
     "concept": "פסיפס לבנים חופשי בתוך מסגרת רכה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -1348,7 +1373,9 @@
     ],
     "concept": "סרט ספירלות שבטי בין שני חלונות"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -1436,7 +1463,9 @@
     ],
     "concept": "חלון ויטראז' מודרניסטי כצמיד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -1569,7 +1598,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "66fe990b-ee6a-4ee4-b85d-c71208daadbf",
@@ -1611,7 +1641,9 @@
     ],
     "concept": "שרשרת של ארבע טבעות שהיא עצמה הטבעת"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -1787,7 +1819,9 @@
     ],
     "concept": "מסלולי אנרגיה עתידניים בין שתי נקודות"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -2005,7 +2039,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "705fd7f3-ea79-4629-a3a4-724ddbd93abf",
@@ -2263,7 +2298,9 @@
     ],
     "concept": "פסי אזהרה — אלכסון חוזר נקי"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -2351,7 +2388,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "cc837b9b-66a7-4ce8-b26a-4fdd3997f986",
@@ -2394,7 +2432,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "0235005e-450d-483e-8771-54d8748de827",
@@ -2568,7 +2607,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "b64cc989-182a-4e5e-95d6-a61b72473460",
@@ -2695,7 +2735,9 @@
     ],
     "concept": "מיקי מאוס רוקד לאורך הטבעת"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -2824,7 +2866,9 @@
     ],
     "concept": "קווקוו אלכסוני מצויר ביד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -2913,7 +2957,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "59db992b-39b4-4ae8-bbec-47c4838d2845",
@@ -3088,7 +3133,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "a8f6c74e-813b-43fe-b3e1-482b62c30c35",
@@ -3259,7 +3305,9 @@
     ],
     "concept": "קו מתוח עם קשר יחיד במרכזו"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -3348,7 +3396,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "4f310a2f-a780-4fa9-9235-a93b2d771584",
@@ -3519,7 +3568,9 @@
     ],
     "concept": "קו יד אחד שנפתח לניצן במרכז"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -3651,7 +3702,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "df0e26dc-c920-4294-8324-c2d3872ff4e1",
@@ -3735,7 +3787,9 @@
     ],
     "concept": "ברק — זיגזג חד על קו שקט"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -3865,7 +3919,9 @@
     ],
     "concept": "מגן דוד יחיד על פס מלא — הצהרה שקטה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -3952,7 +4008,9 @@
     ],
     "concept": "נוצה שנפרשת לשני הכיוונים"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4083,7 +4141,9 @@
     ],
     "concept": "להבה שבטית שמתגלגלת על היד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4172,7 +4232,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "4340f48f-1854-455f-8995-9eec14ffe5e3",
@@ -4215,7 +4276,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "950d6d7d-ed7d-41de-8594-1b01917c8175",
@@ -4300,7 +4362,9 @@
     ],
     "concept": "פסי זברה שבורים על קפסולה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4475,7 +4539,9 @@
     ],
     "concept": "קשר קלטי שהוא עצמו הצמיד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4605,7 +4671,9 @@
     ],
     "concept": "דג מופשט — תנועה אחת של מים"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4691,7 +4759,9 @@
     ],
     "concept": "פס חלק עם סוד קטן אחד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4821,7 +4891,9 @@
     ],
     "concept": "עין גדולה אחת פקוחה ברוחב מלא"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -4952,7 +5024,9 @@
     ],
     "concept": "הר אחד חתום בפס מלא"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5082,7 +5156,9 @@
     ],
     "concept": "מסגרת — הצמיד הוא ההיקף של החלל"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5213,7 +5289,9 @@
     ],
     "concept": "פס שמתנפץ בקצהו האחד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5300,7 +5378,9 @@
     ],
     "concept": "קפסולה חלולה — פשטות מוחלטת"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5430,7 +5510,9 @@
     ],
     "concept": "גלים על גלים — הים בפנים ובחוץ"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5561,7 +5643,9 @@
     ],
     "concept": "גשר שנגמר במרחב פתוח"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5692,7 +5776,9 @@
     ],
     "concept": "שלוש טיפות אור בשלד אורגני"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5779,7 +5865,9 @@
     ],
     "concept": "קו רכס ההרים כשולי הצמיד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -5908,7 +5996,9 @@
     ],
     "concept": "שלוש כיכרות אור"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6037,7 +6127,9 @@
     ],
     "concept": "כתר גלים הפוך — הגל הוא השוליים"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6166,7 +6258,9 @@
     ],
     "concept": "צוהר משושה יחיד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6296,7 +6390,9 @@
     ],
     "concept": "שני גלים רכים על פס שקט"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6384,7 +6480,9 @@
     ],
     "concept": "ברק עבה — הצללית היא ההצהרה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6515,7 +6613,9 @@
     ],
     "concept": "דופק יחיד על קו מתוח"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6645,7 +6745,9 @@
     ],
     "concept": "פסנתר שנכרך על היד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -6778,7 +6880,9 @@
     ],
     "concept": "קור עכביש שנטווה על היד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
    "production_note": "עורקים דקים — לוודא מינימום ייצור"
@@ -6910,7 +7014,9 @@
     ],
     "concept": "עלה גיאומטרי — עורקים כסבכה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
    "production_note": "עורקים דקים — לוודא מינימום ייצור"
@@ -6998,7 +7104,9 @@
     ],
     "concept": "שטיח מעוינים קלוע"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7127,7 +7235,9 @@
     ],
     "concept": "לוטוס עולה מסבכה שבטית"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7217,7 +7327,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "263 פתחים זעירים — לוודא מינימום ייצור"
+   "production_note": "263 פתחים זעירים — לוודא מינימום ייצור",
+   "missing": true
   },
   {
    "version_id": "52642461-4c98-4b95-bd58-7976f2c195d0",
@@ -7301,7 +7412,9 @@
     ],
     "concept": "עלי שלכת שנלכדו בעדשה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7430,7 +7543,9 @@
     ],
     "concept": "עלה מייפל שפורץ מגבולות הרצועה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7561,7 +7676,9 @@
     ],
     "concept": "רשת תאים שנפרשת מנקודה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
    "production_note": "קורים דקים"
@@ -7648,7 +7765,9 @@
     ],
     "concept": "גלי מאורי חתוכים במשושה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7777,7 +7896,9 @@
     ],
     "concept": "עלים בסערה — מערבולת שלכת"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7906,7 +8027,9 @@
     ],
     "concept": "קן קווים ארוג ביד"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -7951,7 +8074,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "2c850735-0ce1-4cd6-b57e-a9fa99877c09",
@@ -8163,7 +8287,9 @@
     ],
     "concept": "כנף שנפרשת מנקודה"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -8293,7 +8419,9 @@
     ],
     "concept": "סבך ענפי אלון"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -8380,7 +8508,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נקודות זעירות — ייתכן מתחת למינימום חיתוך"
+   "production_note": "נקודות זעירות — ייתכן מתחת למינימום חיתוך",
+   "missing": true
   },
   {
    "version_id": "adb52d33-b98d-412e-9736-1f381cc3c0d4",
@@ -8424,7 +8553,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "149 פתחים זעירים — לוודא מינימום ייצור"
+   "production_note": "149 פתחים זעירים — לוודא מינימום ייצור",
+   "missing": true
   },
   {
    "version_id": "2454772b-0447-4908-851f-376dae3b972d",
@@ -8467,7 +8597,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "c9b9ff2f-6794-497c-80c9-69aec122c867",
@@ -8511,7 +8642,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסי מתכת דקים — לוודא מינימום"
+   "production_note": "פסי מתכת דקים — לוודא מינימום",
+   "missing": true
   },
   {
    "version_id": "eeac6b67-e91a-421f-b290-6438c2398b48",
@@ -8553,7 +8685,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "a39c1457-ee71-469e-8b68-12970a272f3a",
@@ -8596,7 +8729,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "ce6f0fe7-2f65-4910-82bc-196140d32c2a",
@@ -8639,7 +8773,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פתחים זעירים — ככל הנראה שאריות; שקול ניקוי"
+   "production_note": "פתחים זעירים — ככל הנראה שאריות; שקול ניקוי",
+   "missing": true
   },
   {
    "version_id": "acb4265c-7145-415e-9626-57576f786f49",
@@ -8682,7 +8817,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "נקודות קטנות — לוודא מינימום"
+   "production_note": "נקודות קטנות — לוודא מינימום",
+   "missing": true
   },
   {
    "version_id": "ec020d10-0a72-4770-bc41-3d4f801ccfd4",
@@ -8724,7 +8860,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "57eccbc4-80e6-4ba2-8e89-9efcb863548b",
@@ -8768,7 +8905,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "44ecb4e6-8b0f-43fb-bacb-79c4d0d39e59",
@@ -8811,7 +8949,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "26ff2cf1-b93a-47a1-bb6a-8252b0f7cb84",
@@ -8855,7 +8994,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "c1e1092b-0d5e-4495-ab6e-96189eb29b6f",
@@ -8895,7 +9035,9 @@
     ],
     "concept": "סורג צפוף על גוף מדורג"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
    "production_note": "פסים דקים"
@@ -8986,7 +9128,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "עורקים דקים"
+   "production_note": "עורקים דקים",
+   "missing": true
   },
   {
    "version_id": "0ce5a5f4-669b-4cf6-9c68-e41470136809",
@@ -9070,7 +9213,9 @@
     ],
     "concept": "יהלום בין חיצים כפולים"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -9285,7 +9430,9 @@
     ],
     "concept": "סבך עלי מייפל שקוף"
    },
-   "overrides": {},
+   "overrides": {
+    "gallery": true
+   },
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session"
   },
@@ -9330,7 +9477,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "32e9e969-590c-4547-9fc6-8f290d9c7b4e",
@@ -9373,7 +9521,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פתחים זעירים — ככל הנראה שאריות"
+   "production_note": "פתחים זעירים — ככל הנראה שאריות",
+   "missing": true
   },
   {
    "version_id": "d0349f63-1e9b-4111-9212-099f1b892049",
@@ -9416,7 +9565,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "1238973b-3258-4860-9d9a-3735c93ae788",
@@ -9459,7 +9609,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "3011281e-e020-48ca-af22-67e22bd16826",
@@ -9503,7 +9654,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "e3c9f0ae-d2e0-45b1-aa6c-0d6d85f2ead2",
@@ -9547,7 +9699,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "57135170-7289-4c21-9279-6c73deceab6a",
@@ -9590,7 +9743,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פתחים זעירים — ככל הנראה שאריות"
+   "production_note": "פתחים זעירים — ככל הנראה שאריות",
+   "missing": true
   },
   {
    "version_id": "54f8247c-b4f4-449c-9379-c6f316c4fb2d",
@@ -9633,7 +9787,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "411f9a01-8925-4e9d-bac4-5388bba3d5c0",
@@ -9676,7 +9831,8 @@
    },
    "overrides": {},
    "tagged_at": "2026-08-21",
-   "tagged_by": "claude-session"
+   "tagged_by": "claude-session",
+   "missing": true
   },
   {
    "version_id": "6d7d619a-318f-46a7-802f-69ee341d1554",
@@ -9720,7 +9876,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים"
+   "production_note": "פסים דקים",
+   "missing": true
   },
   {
    "version_id": "10b04243-525e-47c7-ab45-1d2fc59c58f7",
@@ -9764,7 +9921,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "פסים דקים מאוד"
+   "production_note": "פסים דקים מאוד",
+   "missing": true
   },
   {
    "version_id": "af1da455-15f4-481f-b064-3cf7ebb17fce",
@@ -9808,7 +9966,8 @@
    "overrides": {},
    "tagged_at": "2026-08-21",
    "tagged_by": "claude-session",
-   "production_note": "206 פתחים — צפוף מאוד, לוודא ייצור"
+   "production_note": "206 פתחים — צפוף מאוד, לוודא ייצור",
+   "missing": true
   }
  ]
 }

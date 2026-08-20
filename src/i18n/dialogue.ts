@@ -195,6 +195,8 @@ export const dialogue = {
     empty: "אין רשומות שעוברות את הסינון.",
     count: (shown: number, total: number) => `${shown} מתוך ${total} עיצובים`,
     filterAll: "הכול",
+    /** הרשימה המאוצרת — מה שהגלריה תציג. הסימון: `overrides.gallery: true`. */
+    filterCurated: "בגלריה",
     product: { bracelet: "צמיד", ring: "טבעת" } as Record<string, string>,
     svgMissing: "אין ציור — הגרסה נמחקה או לא נטענה",
     computedTitle: "חישוב",
