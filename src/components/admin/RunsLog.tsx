@@ -61,8 +61,29 @@ export type RunInputs = {
     textTokens: number;
     imageTokens: number;
   };
-  /** story mode — ההרצה הגיעה מהמסלול הפשוט (`/story`). ריק = המסלול הרגיל. */
-  mode?: "story";
+  /** story mode — ההרצה הגיעה מהמסלול הפשוט (`/story`). ריק = המסלול הרגיל.
+   *  dialogue mode — אותו שדה, מסלול נוסף. */
+  mode?: "story" | "dialogue";
+  /** dialogue mode — שלב הטקסט של **העריכה**, ומה שהוא עלה. חסר לגמרי = לא
+   *  היה שלב כזה (כל עריכה מחוץ למסלול). ראה `lib/dialogue/editStage.ts`. */
+  editStage?: {
+    ok: boolean;
+    model?: string;
+    effort?: string;
+    ms?: number;
+    attempts?: number;
+    failure?: string;
+    /** הבקשה בעברית כפי שהלקוחה כתבה אותה, וההיקף שהמודל הכריע עליו. שניהם
+     *  ברשימה כי הם קצרים — ודווקא הפער ביניהם הוא מה שהשלב הזה בא לתקן. */
+    request?: string;
+    region?: string;
+    scope?: string;
+    clarification?: string;
+    decision?: string;
+    usage?: { inputTokens: number; outputTokens: number; totalTokens: number; reasoningTokens?: number };
+  };
+  /** dialogue mode — המפרט המצטבר אחרי הסבב הזה (§2.2). */
+  editSpec?: Record<string, string>;
   /** story mode — שלב הטקסט שקדם למודל התמונה, ומה שהוא עלה. `usage` חסר
    *  בהרצות מלפני שהוא נמדד. */
   designStage?: {
@@ -699,13 +720,22 @@ function OwnerHeader({ owner, count }: { owner: Owner | null; count: number }) {
   );
 }
 
-/** המאפיינים שקבעו את ההרצה, כשורת תגיות. */
-export function InputChips({ inputs }: { inputs: RunInputs }) {
+/**
+ * המאפיינים שקבעו את ההרצה, כרשימת מחרוזות.
+ *
+ * מופרד מהרינדור כדי שיהיה מה לבדוק: מה שיכול להישבר כאן הוא **אילו** תגיות
+ * נבנות ומתי — למשל הרצה של מסלול חדש שנקראת ביומן כמו הרצה רגילה — ולא איך
+ * הן נראות. הפרדה של החלטה מציור היא אותה תבנית כמו `runsEditStage`.
+ */
+export function inputChips(inputs: RunInputs): string[] {
   const chips: string[] = [];
   // המסלול קודם לכל המידות: הוא מה שקובע איך לקרוא אותן. במסלול Story הרוחב
   // אינו מידה שהוזמנה אלא כזו שנגזרה מהציור, ובלי התגית הזו שורה של Story
   // נקראת ביומן כמו הרצה רגילה שהמודל פספס בה את הרוחב.
   if (inputs.mode === "story") chips.push("מסלול הסיפור");
+  // dialogue mode — אותו נימוק: בלי התגית הזו הרצה של המסלול החדש נקראת ביומן
+  // כמו עריכה רגילה, וזו בדיוק ההשוואה שהניסוי קיים בשבילה.
+  if (inputs.mode === "dialogue") chips.push("מסלול השיחה");
   if (inputs.lengthMm != null && inputs.widthMm != null) {
     chips.push(`${round(inputs.lengthMm)}×${round(inputs.widthMm)} מ״מ`);
   }
@@ -756,6 +786,31 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
     // נעלם לגמרי אם סופרים רק כשלים.
     chips.push(`שלב הטקסט: ${inputs.designStage.attempts} ניסיונות`);
   }
+  // dialogue mode — שלב הטקסט של העריכה. אותה חלוקה כמו של `designStage`:
+  // מה זה עלה, והאם זה עבד — ובכמה ניסיונות.
+  if (inputs.editStage?.usage) {
+    const { totalTokens, outputTokens, reasoningTokens } = inputs.editStage.usage;
+    const thinking = reasoningTokens ? `, ${fmt(reasoningTokens)} חשיבה` : "";
+    chips.push(`שלב העריכה ${fmt(totalTokens)} טוקנים (${fmt(outputTokens)} פלט${thinking})`);
+  }
+  if (inputs.editStage && !inputs.editStage.ok) {
+    // השלב רץ ונפל — הסבב ירד ל-`buildEditPrompt` של היום. זו ההתנהגות
+    // המתוכננת ולא שגיאה, אבל בלי התגית הזו ההרצה נראית כמו עריכה דו־שלבית
+    // שיצאה גרוע — והמדידה של A0 הייתה סופרת אותה ככזו.
+    const n = inputs.editStage.attempts;
+    chips.push(`⚠ שלב העריכה נפל${n ? ` (${n} ניסיונות)` : ""} — רץ בפרומפט של היום`);
+  } else if (inputs.editStage?.ok && (inputs.editStage.attempts ?? 1) > 1) {
+    chips.push(`שלב העריכה: ${inputs.editStage.attempts} ניסיונות`);
+  }
+  // המודל **ביקש** הבהרה והסבב רץ בכל זאת (שלב A). זה המספר שיצדיק את שלב B,
+  // ובלי שהוא נראה ביומן אי אפשר לספור אותו.
+  if (inputs.editStage?.clarification) chips.push("שלב העריכה ביקש הבהרה");
+  // המפרט המצטבר — כמה שדות מתוך חמישה כבר נקבעו. אפס פירושו סבב בלי הקשר,
+  // וזה בדיוק מה שההזרעה והשרשרת באו למנוע (§9.2–9.3).
+  if (inputs.editSpec) {
+    const filled = Object.values(inputs.editSpec).filter((v) => typeof v === "string" && v.trim()).length;
+    chips.push(`מפרט מצטבר ${filled}/5`);
+  }
   if (inputs.colorKey) chips.push(`צבע ${inputs.colorKey}`);
   // עריכה מול יצירה מאפס — ההבחנה שקובעת אם מה שהמשתמש ראה היה אמור להישמר.
   // כשידוע *על איזו* גרסה השינוי נשלח, זה מה שנכתב: "עריכה של הקיים" לבדו לא
@@ -783,6 +838,12 @@ export function InputChips({ inputs }: { inputs: RunInputs }) {
       chips.push(`${planned.length} גשרי כיתוב · עד ${Math.round(worst * 100)}% מהחלל`);
     }
   }
+  return chips;
+}
+
+/** המאפיינים שקבעו את ההרצה, כשורת תגיות. */
+export function InputChips({ inputs }: { inputs: RunInputs }) {
+  const chips = inputChips(inputs);
   const ratio = ratioChip(inputs);
   if (chips.length === 0 && !ratio) return null;
   return (

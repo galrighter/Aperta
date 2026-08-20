@@ -69,14 +69,29 @@ function slimDebug(debug: unknown): unknown {
 function slimInputs(inputs: unknown): unknown {
   if (!inputs || typeof inputs !== "object") return inputs;
   const i = inputs as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...i };
+
   const stage = i.designStage;
-  if (!stage || typeof stage !== "object") return i;
-  const { prompt, system, spec, ...rest } = stage as Record<string, unknown>;
-  // הנוכחות נשמרת גם כשהתוכן יורד: בלעדיה הרשימה לא יכולה לומר שיש מה לפתוח.
-  return {
-    ...i,
-    designStage: { ...rest, hasPrompt: Boolean(prompt || system), hasSpec: Boolean(spec) },
-  };
+  if (stage && typeof stage === "object") {
+    const { prompt, system, spec, ...rest } = stage as Record<string, unknown>;
+    // הנוכחות נשמרת גם כשהתוכן יורד: בלעדיה הרשימה לא יכולה לומר שיש מה לפתוח.
+    out.designStage = { ...rest, hasPrompt: Boolean(prompt || system), hasSpec: Boolean(spec) };
+  }
+
+  // dialogue mode — אותו קיצוץ בדיוק על שלב העריכה, ומאותו נימוק: `prompt`
+  // נחתך ב-12,000 תווים ו-`decision` ב-8,000, ואף אחד מהם אינו מוצג ברשימה.
+  // בלי זה כל שורת עריכה במסלול הזה גוררת עד 20KB — והרשימה גדלה בשקט, וזה
+  // בדיוק מה ש-`slimDebug` נכתב כדי למנוע.
+  //
+  // ‏`request`, `region`, `scope` ו-`clarification` **נשארים**: הם קצרים,
+  // והם מה שהתגיות קוראות.
+  const edit = i.editStage;
+  if (edit && typeof edit === "object") {
+    const { prompt, system, decision, ...rest } = edit as Record<string, unknown>;
+    out.editStage = { ...rest, hasPrompt: Boolean(prompt || system), hasSpec: Boolean(decision) };
+  }
+
+  return out;
 }
 
 export async function GET(req: Request) {
