@@ -4,6 +4,8 @@
 // מחובר למנוע האמיתי: יצירת עיצוב, גנרציה, ולידציה וגרסאות עוברים דרך ה-API,
 // ולא דרך state מדומה. שמירת העיצובים נוספה מעבר ל-handoff (לבקשת גל).
 import { useCallback, useEffect, useRef, useState } from "react";
+// dialogue mode — היציאה היחידה של העמוד לנתיב אחר: "חזרה לשיחה" מכשל יצירה.
+import { useRouter } from "next/navigation";
 import { he } from "@/i18n/he";
 import { FAB } from "@/lib/fabrication.config";
 import { api, ClientApiError, DISCONNECTED_STAGE } from "@/lib/client/api";
@@ -37,6 +39,7 @@ import { story } from "@/i18n/story";
 // dialogue mode — הכניסה מהראיון (`/dialogue/create`), בתבנית Story.
 import { popDialogueHandoff } from "@/lib/client/dialogueHandoff";
 import { DIALOGUE_MODE, isDialogue } from "@/lib/dialogue/mode";
+import { dialogue } from "@/i18n/dialogue";
 import { clearAddrDraft, loadAddrDraft, saveAddrDraft } from "@/lib/client/addrDraft";
 import { clearFunnelDraft, loadFunnelDraft, saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { shrinkReferenceImage } from "@/lib/client/referenceImage";
@@ -143,6 +146,8 @@ function scrollToTop(): void {
 }
 
 export default function DesignPage() {
+  // dialogue mode — ראה הייבוא: משמש רק את "חזרה לשיחה".
+  const router = useRouter();
   const [s, setState] = useState<CreateState>(INITIAL);
   const [maxReached, setMaxReached] = useState(0);
   const [saved, setSaved] = useState<SavedDesign[]>([]);
@@ -2028,6 +2033,9 @@ export default function DesignPage() {
               disconnected={s.procStage === DISCONNECTED_STAGE}
               locked={running}
               onRetry={() => void startGeneration()}
+              // dialogue mode — במסלול הראיון "העיצוב" הוא השיחה, והכפתור
+              // אומר לאן חוזרים באמת. ראה onBack.
+              backLabel={s.dialogue ? dialogue.create.backToChat : undefined}
               onBack={() => {
                 // החזרה לעיצוב היא שינוי כיוון — הרצף נשבר: מי שחוזרת, משנה
                 // משהו ומנסה שוב מתחילה ספירה חדשה, לא ממשיכה את הישנה.
@@ -2035,6 +2043,14 @@ export default function DesignPage() {
                   procError: null, procErrorDetail: null, procErrorCode: null,
                   procFailCount: 0, procStage: null,
                 });
+                // dialogue mode — הלקוחה מעולם לא הייתה בעורך: היא הגיעה
+                // מהשיחה, והחזרה היא אליה. ניווט לנתיב ולא נסיגת היסטוריה —
+                // מסך השיחה מתחיל שיחה נקייה (המצב שלה חי אצלו, לא כאן),
+                // ומה ששולם על הראיון ממשיך לחיות ב"נסו שוב" שנשאר כאן.
+                if (s.dialogue) {
+                  router.push("/dialogue/create");
+                  return;
+                }
                 leaveProcessing();
               }}
             />
