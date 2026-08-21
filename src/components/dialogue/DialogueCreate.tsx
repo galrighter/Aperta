@@ -53,6 +53,9 @@ export function DialogueCreate() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** המזהה הטכני של הכשל — קטן, ליד ההודעה: צילום מסך של תקלה הופך לראיה.
+   *  בריצה החיה השנייה (21.8) "שגיאה" בלי מזהה לא אמרה במה נפל הדילוג. */
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   /** מה "לנסות שוב" חוזר עליו: התמליל כבר נושא את התשובה האחרונה, ולכן
    *  retry הוא קריאה חוזרת — לא הקלדה מחדש. */
   const retryRef = useRef<(() => void) | null>(null);
@@ -74,6 +77,7 @@ export function DialogueCreate() {
   const runTurn = (chosen: Product, nextTurns: Bubble[]): void => {
     setBusy(true);
     setError(null);
+    setErrorDetail(null);
     retryRef.current = () => runTurn(chosen, nextTurns);
     api
       .interviewTurn({ product: chosen, turns: nextTurns, spec: spec ?? undefined, utm: utmRef.current })
@@ -94,7 +98,8 @@ export function DialogueCreate() {
       })
       .catch((e) => {
         setBusy(false);
-        setError(e instanceof ClientApiError ? e.message : c.failed);
+        setError(c.failed);
+        setErrorDetail(e instanceof ClientApiError ? c.failedDetail(e.code, e.message) : null);
       });
   };
 
@@ -104,6 +109,7 @@ export function DialogueCreate() {
     setPhase("closing");
     setBusy(true);
     setError(null);
+    setErrorDetail(null);
     retryRef.current = confirm;
     api
       .interviewDirections({ product, turns, spec, summary })
@@ -126,7 +132,8 @@ export function DialogueCreate() {
       .catch((e) => {
         setBusy(false);
         setPhase("summary");
-        setError(e instanceof ClientApiError ? e.message : c.failed);
+        setError(c.failed);
+        setErrorDetail(e instanceof ClientApiError ? c.failedDetail(e.code, e.message) : null);
       });
   };
 
@@ -213,17 +220,24 @@ export function DialogueCreate() {
             )}
 
             {error && (
-              <div className="flex flex-wrap items-center gap-3 self-start">
-                <p role="alert" className="text-[14px]" style={{ color: "var(--color-failred)" }}>
-                  {error}
-                </p>
-                <button
-                  type="button"
-                  className="rounded-[2px] border border-graphite/20 px-3 py-1.5 text-[14px] text-graphite hover:bg-porcelain"
-                  onClick={() => retryRef.current?.()}
-                >
-                  {c.retry}
-                </button>
+              <div className="self-start">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert" className="text-[14px]" style={{ color: "var(--color-failred)" }}>
+                    {error}
+                  </p>
+                  <button
+                    type="button"
+                    className="rounded-[2px] border border-graphite/20 px-3 py-1.5 text-[14px] text-graphite hover:bg-porcelain"
+                    onClick={() => retryRef.current?.()}
+                  >
+                    {c.retry}
+                  </button>
+                </div>
+                {errorDetail && (
+                  <p dir="ltr" className="mt-1 font-mono text-[11px] text-ink60">
+                    {errorDetail}
+                  </p>
+                )}
               </div>
             )}
 

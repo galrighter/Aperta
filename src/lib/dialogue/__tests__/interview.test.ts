@@ -65,8 +65,16 @@ describe("buildInterviewTurnPrompt", () => {
 
   it("חוזה המדיום בפרומפט — בקשה מחוץ למדיום הופכת לשאלה (§2.5)", () => {
     expect(prompt).toContain("No engraving, no stones");
-    // וכיתוב מופנה לעורך, לא נשלל: הוא קיים במדיום, רק לא במסלול הזה.
-    expect(prompt).toContain("advanced editor");
+    // כיתוב מופנה לעורך ובאמת המכניקית: נקבע בתחילת יצירה, לא מתווסף אחר-כך.
+    expect(prompt).toContain("full editor");
+    expect(prompt).toContain("cannot be added to a finished piece");
+  });
+
+  it("דילוג לעולם אינו משאיר סבב בידיים ריקות — הכשל של הריצה החיה השנייה", () => {
+    // דילוג מוקדם: המודל אינו רשאי לשאול שוב על הציר, ואם ירגיש שאין לו גם
+    // מה לשאול וגם מה לסכם — יחזיר כלום, שנפסל, פעמיים, 502. הפרומפט סוגר
+    // את הדלת: תמיד בדיוק אחד מ-ask/summary.
+    expect(prompt).toContain("A skip never leaves the turn empty-handed");
   });
 });
 
