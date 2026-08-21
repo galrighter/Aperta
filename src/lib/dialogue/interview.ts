@@ -42,7 +42,10 @@ import { coerceEditSpec, describeSpec, hasSpec, nextEditSpec, type EditSpec } fr
 //
 // **כיתוב אינו נשאל כאן** אף שהוא ברשימת ה-slots של DIALOGUE_PLAN §3: מסלול
 // הכיתוב דורש חיתוך מהפונט ותמונת ייחוס, ויצירת dialogue רצה בלעדיהם
-// (כמו Story). מי שמבקשת כיתוב מקבלת מהמודל הפניה לעורך — שם הוא קיים.
+// (כמו Story). והאמת המכניקית חשובה (הערת גל, 21.8): כיתוב הוא קלט של
+// **תחילת** יצירה — הוא נשלח למודל התמונה כייחוס והעיצוב נבנה סביבו — כלומר
+// כשהוא ייכנס לראיון הוא ייכנס כשאלה מוקדמת, לא כתוספת אחרי כיוון. עד אז
+// מי שמבקשת כיתוב מקבלת את האמת: העורך המלא, שם הוא חלק מהיצירה מהצעד הראשון.
 //
 // **כשל אינו נופל בשקט.** אין כאן מסלול-של-היום ליפול אליו — הראיון הוא
 // המסך. `ok: false` חוזר למסך, שמציע לנסות שוב או לעבור לעורך הקיים.
@@ -177,13 +180,13 @@ const INTERVIEW_TURN_PROMPT = `A customer is planning a custom piece of jeweller
 
 PRODUCT: "{PRODUCT_TYPE}"   (bracelet or ring)
 {UTM_LINE}
-THE MEDIUM — already told to her, and it binds you too: the piece is laser-cut from one flat sheet of metal. Openings and the outer contour are its entire language. No engraving, no stones, no colour, no texture, no relief. If she asks for something outside this, do not translate it into something-that-looks-like: use your question to say, warmly, what the medium can do instead and ask what matters to her about it. Cut lettering exists in the advanced editor, not here — if she asks for text on the piece, say it can be added later in the editor, and continue.
+THE MEDIUM — already told to her, and it binds you too: the piece is laser-cut from one flat sheet of metal. Openings and the outer contour are its entire language. No engraving, no stones, no colour, no texture, no relief. If she asks for something outside this, do not translate it into something-that-looks-like: use your question to say, warmly, what the medium can do instead and ask what matters to her about it. Cut lettering is decided at the START of a piece — the design is built around the letters — and this conversation does not support it yet. If she asks for text on the piece, say that honestly: lettering is possible in the full editor, where it is part of creation from the first step; it cannot be added to a finished piece afterwards. Then continue with the rest of her idea.
 
 THE CONVERSATION SO FAR
 
 {TRANSCRIPT}
 
-A customer line of "{SKIP}" means she skipped that question: she does not care about that axis. Do not ask about it again — it will be decided for her later.
+A customer line of "{SKIP}" means she skipped that question: she does not care about that axis. Do not ask about it again — it will be decided for her later. A skip never leaves the turn empty-handed: move on to a different open axis that seems to matter to her, or — if what you know is enough, or questions ran out — return the summary. Either way you still return exactly one of "ask" / "summary".
 
 WHAT IS ALREADY ESTABLISHED
 
