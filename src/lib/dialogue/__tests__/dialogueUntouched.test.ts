@@ -78,6 +78,9 @@ describe("runsInterviewCreate — המסלול הרגיל אינו נכנס", ()
   const EXISTING = [
     { name: "יצירה מאפס", req: { currentSvg: null } },
     { name: "יצירה עם תוצר ראיון אבל בלי הדגל", req: { currentSvg: null, interview: { directions: "{}" } } },
+    // סבב הכיתוב: `text` הפסיק לשלול בתוך המסלול — ולכן חובה להוכיח
+    // שבלעדי הדגל יצירת כיתוב רגילה עדיין לא נכנסת.
+    { name: "יצירה עם כיתוב, בלי הדגל", req: { currentSvg: null, text: "אורי" } },
     { name: "מסלול Story — יצירה", req: { mode: "story", currentSvg: null } },
     { name: "בקשת שינוי רגילה", req: { currentSvg: "<svg/>" } },
   ];
@@ -96,8 +99,12 @@ describe("runsInterviewCreate — המסלול הרגיל אינו נכנס", ()
     expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: "<svg/>" })).toBe(false);
   });
 
-  it("עם הדגל, כיתוב — לא: מסלול הכיתוב דורש חיתוך מהפונט וייחוס", () => {
-    expect(runsInterviewCreate({ mode: DIALOGUE_MODE, currentSvg: null, text: "אורי" })).toBe(false);
+  it("עם הדגל, כיתוב — כן (סבב הכיתוב): הכיתוב נמסר בשיחה ונוסע ב-text", () => {
+    // `text` אינו תנאי של הפונקציה יותר — בקשה שנושאת אותו נכנסת: היצירה
+    // רצה עם הכיוונים וגם עם תמונת ייחוס הכיתוב. מחוץ למסלול תנאי הדגל
+    // ממשיך לחסום — "יצירה עם כיתוב, בלי הדגל" ברשימה למעלה.
+    const withLettering = { mode: DIALOGUE_MODE, currentSvg: null, text: "אורי" };
+    expect(runsInterviewCreate(withLettering)).toBe(true);
   });
 
   it("עם הדגל, promptOverride — לא: הבק־אופיס מבקש לשלוח את מה שכתב", () => {

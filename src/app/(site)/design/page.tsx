@@ -1488,6 +1488,10 @@ export default function DesignPage() {
           dialogue: true,
           product: handoff.product,
           brief: handoff.summary,
+          // dialogue mode — הכיתוב שנקבע בשיחה (סבב הכיתוב): נכנס לשדה
+          // הקיים של המצב, ומשם לשדה `text` של בקשת היצירה — הצינור של
+          // הכיתוב לא השתנה, רק המקור שלו.
+          lettering: handoff.lettering ?? "",
           interview: {
             directions: handoff.directions,
             summary: handoff.summary,

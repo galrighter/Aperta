@@ -20,7 +20,7 @@ import {
 import { ratioOf, type EditSpec } from "@/lib/dialogue/spec";
 import { ratioBandFor } from "@/lib/story/ratio";
 import { Eyebrow, ScreenTitle, OptionBtn, PrimaryBtn } from "@/components/create/ui";
-import { INITIAL, type Product } from "@/components/create/model";
+import { INITIAL, MAX_LETTERING, type Product } from "@/components/create/model";
 
 // dialogue mode — מסך הראיון (שלב B): שיחת החידוד שקודמת לרנדר הראשון.
 //
@@ -47,6 +47,12 @@ import { INITIAL, type Product } from "@/components/create/model";
 // (במילים שלה) בתוספת מטען מובנה שהשרת מנקה, מתרגם ומציב במפרט כ-`user`
 // (‏editControls.ts). הקביעה אינה חובה: אפשר לקבע רק חלק, לכתוב חופשי,
 // או לדלג — בדיוק כמו בגלריה.
+//
+// **והכיתוב הוא שדה באותו פאנל (סבב הכיתוב), לא slot של הראיון.** האותיות
+// נחתכות כלשונן מהפונט ונמסרות למודל התמונה כתמונת ייחוס — ולכן הן מוקלדות
+// בשדה מדויק, לא נאספות ממילים חופשיות. מה שנקבע חי ב-`letteringRef` (מצב
+// הפריט, לא הפאנל), נשלח לשרת בכל סבב, ונוסע ב-handoff אל
+// `CreateState.lettering` — משם הצינור הקיים של הכיתוב ממשיך כמו שהוא.
 //
 // **כשל אינו נבלע.** אין כאן מסלול-של-היום ליפול אליו — הראיון הוא המסך.
 // שגיאה מציגה "לנסות שוב" (התמליל נשמר), והעורך הקיים פתוח תמיד כפעולה
@@ -81,6 +87,17 @@ export function DialogueCreate() {
   const [editRatio, setEditRatio] = useState<number | null>(null);
   const [editSymmetry, setEditSymmetry] = useState<SymmetryChoice | null>(null);
   const [editDensity, setEditDensity] = useState<DensityChoice | null>(null);
+  /** שדה הכיתוב בפאנל — מה שמוקלד עכשיו. `null` = לא נגעו. */
+  const [editLettering, setEditLettering] = useState<string | null>(null);
+  /**
+   * הכיתוב שנקבע (סבב הכיתוב) — מצב מתמשך של הפריט, לא של הפאנל: נשלח
+   * לשרת בכל סבב (שורת ה-LETTERING בפרומפט), ובסוף נוסע ב-handoff אל
+   * `CreateState.lettering` ומשם לשדה `text` של היצירה. ‏ref ולא state כי
+   * הקריאה היחידה שלו היא בקריאות רשת — אין רינדור שתלוי בו, והקביעה
+   * חייבת להיראות באותה קריאה שבה נקבעה. הפאנל הוא הכותב היחיד: האותיות
+   * המדויקות אינן נאספות ממילים חופשיות, וזה גם מה שהפרומפט אומר למודל.
+   */
+  const letteringRef = useRef<string>("");
   const [summary, setSummary] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -105,12 +122,14 @@ export function DialogueCreate() {
     endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [turns, summary, busy]);
 
-  /** סגירת פאנל המצב-המדויק, כולל מה שסומן בו. */
+  /** סגירת פאנל המצב-המדויק, כולל מה שסומן בו. הכיתוב שנקבע (`letteringRef`)
+   *  אינו מתאפס — הוא מצב הפריט, לא מצב הפאנל. */
   const closeEditPanel = (): void => {
     setEditAsk(null);
     setEditRatio(null);
     setEditSymmetry(null);
     setEditDensity(null);
+    setEditLettering(null);
   };
 
   /** קריאת סבב אחת. `nextTurns` כבר כולל את תשובת הלקוחה; `chosenId` נשלח
@@ -133,6 +152,8 @@ export function DialogueCreate() {
         utm: utmRef.current,
         chosenVersionId: chosenId,
         editChoice: choice,
+        // הכיתוב נשלח בכל סבב — מצב מתמשך, לא אירוע (שורת LETTERING בפרומפט).
+        lettering: letteringRef.current || undefined,
       })
       .then((res) => {
         setSpec(res.spec);
@@ -162,6 +183,9 @@ export function DialogueCreate() {
           setGallery(null);
           closeEditPanel();
           setEditAsk(res.edit as EditControlsAsk);
+          // שדה הכיתוב נפתח על הערך שנקבע — עריכה מתחילה ממנו. הקריאה מה-ref
+          // כאן (אירוע) ולא ברנדר; קביעה של אותו ערך שוב ממילא אינה קביעה.
+          if (letteringRef.current) setEditLettering(letteringRef.current);
           setPhase("chat");
         } else if (res.ask) {
           setTurns([...nextTurns, { role: "interviewer", text: res.ask.question }]);
@@ -188,15 +212,21 @@ export function DialogueCreate() {
     setErrorDetail(null);
     retryRef.current = confirm;
     api
-      .interviewDirections({ product, turns, spec, summary })
+      .interviewDirections({
+        product, turns, spec, summary,
+        // הסגירה מעצבת סביב הכיתוב — הכיוונים חייבים לדעת עליו.
+        lettering: letteringRef.current || undefined,
+      })
       .then((res) => {
         // הבריף של המסע הוא הסיכום שאושר — הוא מה שנרשם ביומן, ומה
-        // שהנפילה-לאחור בשרת רצה עליו אם הכיוונים ייפסלו שם.
-        saveFunnelDraft({ ...INITIAL, product, brief: summary });
+        // שהנפילה-לאחור בשרת רצה עליו אם הכיוונים ייפסלו שם. הכיתוב נכנס
+        // לטיוטה מאותו נימוק — נפילה לעורך אינה מאבדת את מה שנקבע.
+        saveFunnelDraft({ ...INITIAL, product, brief: summary, lettering: letteringRef.current });
         saveDialogueHandoff({
           product,
           directions: res.directions,
           summary,
+          lettering: letteringRef.current || undefined,
           transcript: turns
             .map((t) => `${t.role === "interviewer" ? "מראיינת" : "לקוחה"}: ${bubbleText(t)}`)
             .join("\n")
@@ -243,6 +273,16 @@ export function DialogueCreate() {
     if (!product || busy) return;
     const choice: EditChoice = {};
     const parts: string[] = [];
+    // הכיתוב אינו חלק מה-`choice` (הוא אינו שדה מפרט — ראה editControls.ts):
+    // הוא נכתב ל-ref ונוסע בשדה `lettering` של כל סבב. ניקוי שדה שהיה בו
+    // כיתוב הוא קביעה — "בלי כיתוב" — ולא דילוג; אותו ערך שוב אינו קביעה.
+    if (editLettering !== null) {
+      const value = editLettering.replace(/\s+/g, " ").trim().slice(0, MAX_LETTERING);
+      if (value !== letteringRef.current) {
+        letteringRef.current = value;
+        parts.push(value ? c.editLetteringPart(value) : c.editLetteringNone);
+      }
+    }
     if (editRatio !== null) {
       choice.ratio = Math.round(editRatio * 10) / 10;
       parts.push(c.editWidthPart(c.editWidthQual[widthThirdOf(choice.ratio, ratioBandFor(product))]));
@@ -279,7 +319,8 @@ export function DialogueCreate() {
   /** מה שנמסר לעורך המתקדם — כמו במסך Story: הטיוטה שהמסע ממילא קורא. */
   const handOffToEditor = (): void => {
     if (!product) return;
-    saveFunnelDraft({ ...INITIAL, product, brief: summary ?? "" });
+    // גם הכיתוב עובר — מה שנקבע בשיחה לא נכתב פעמיים.
+    saveFunnelDraft({ ...INITIAL, product, brief: summary ?? "", lettering: letteringRef.current });
   };
 
   return (
@@ -503,10 +544,32 @@ export function DialogueCreate() {
                     </div>
                   </div>
                 )}
+                {/* הכיתוב (סבב הכיתוב): שדה מדויק — האותיות נחתכות כלשונן,
+                    ולכן הן מוקלדות ולא נאספות מהשיחה. הערך הקיים מוצג כדי
+                    שעריכה תתחיל ממנו; ניקוי + קביעה = הסרה. */}
+                {editAsk.controls.includes("lettering") && (
+                  <div>
+                    <div className="text-[13px] font-semibold text-graphite">
+                      {c.editLetteringLabel}
+                    </div>
+                    <input
+                      type="text"
+                      value={editLettering ?? ""}
+                      maxLength={MAX_LETTERING}
+                      placeholder={c.editLetteringPlaceholder}
+                      aria-label={c.editLetteringLabel}
+                      className="mt-2 w-full rounded-[2px] border border-graphite/20 bg-porcelain px-4 py-2.5 text-[15px] text-graphite transition-colors focus:border-lapis focus:outline-none"
+                      onChange={(e) => setEditLettering(e.target.value)}
+                    />
+                    <p className="mt-1 text-[12px] text-ink60">{c.editLetteringHint}</p>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    disabled={editRatio === null && !editSymmetry && !editDensity}
+                    disabled={
+                      editRatio === null && !editSymmetry && !editDensity && editLettering === null
+                    }
                     className="rounded-[2px] bg-graphite px-4 py-2 text-[14px] font-semibold text-porcelain disabled:opacity-50"
                     onClick={applyPrecise}
                   >

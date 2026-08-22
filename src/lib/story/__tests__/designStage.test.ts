@@ -112,6 +112,26 @@ describe("buildStagedRenderPrompt", () => {
     const wide = buildStagedRenderPrompt(SPEC(3), LANDSCAPE);
     expect(wide).toContain("Create ONE landscape / wide image");
   });
+
+  // dialogue mode — בלוק הכיתוב (סבב הכיתוב): יצירת ראיון עם כיתוב מקבלת
+  // את ההוראות המדודות של imagegen, ומסלול Story בלעדיו אינו זז בתו.
+  it("בלי כיתוב אין בלוק ואין סמן — פרומפט Story זהה למה שהיה", () => {
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
+    expect(p).not.toContain("{LETTERING}");
+    expect(p).not.toContain("LETTERING\n");
+    expect(p).toBe(buildStagedRenderPrompt(SPEC(3), storyCanvas(), undefined, undefined, false));
+  });
+
+  it("עם כיתוב: להעתיק ולא לצייר, פנים לכל שורה, והחריג היחיד ל-no-text", () => {
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas(), undefined, undefined, true);
+    expect(p).toContain("already carries the lettering");
+    expect(p).toContain("Copy it across unchanged");
+    // שלוש שורות — שלוש פנים: המגוון הטיפוגרפי שהלקוחה בוחרת ממנו.
+    expect(p).toContain("three rows");
+    expect(p).toContain("do not carry one row's letterforms over to another");
+    // בלעדי המשפט הזה "no text" של HOW TO DRAW THEM סותר את הייחוס.
+    expect(p).toContain("the one exception to the no-text rule");
+  });
 });
 
 describe("parseDesignSpec", () => {

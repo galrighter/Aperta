@@ -31,8 +31,11 @@ import type { EditSpec, SpecSources } from "./spec";
 // אחראי רק על ההמשך השיחתי (מה לשאול עכשיו, או לסכם).
 
 /** הפקדים שהמסך יודע להציג. `width` הוא **היחס** (§2.1 — "רוחב לעולם אינו
- *  נאמר לבד"): האורך קבוע מהגוף, והמידה נשאלת רק אחרי התוצאה. */
-export const EDIT_CONTROL_KEYS = ["width", "symmetry", "density"] as const;
+ *  נאמר לבד"): האורך קבוע מהגוף, והמידה נשאלת רק אחרי התוצאה. `lettering`
+ *  (סבב הכיתוב) הוא שדה הטקסט המדויק — האותיות שייחתכו, כלשונן: הכיתוב
+ *  הוא ההבטחה הקשיחה היחידה בצינור, ולכן הוא בדיוק "מה שמילים עושות רע"
+ *  שהמצב-המדויק קיים בשבילו. */
+export const EDIT_CONTROL_KEYS = ["width", "symmetry", "density", "lettering"] as const;
 
 export type EditControlKey = (typeof EDIT_CONTROL_KEYS)[number];
 
@@ -77,6 +80,26 @@ export const DENSITY_SPEC_TEXT: Record<DensityChoice, string> = {
   medium: "Balanced between metal and openings — roughly a third of the area is open.",
   high: "Airy and open — many fine cuts, around half of the area is open.",
 };
+
+/**
+ * תקרת הכיתוב כפי שהנתיבים מקבלים אותו — אותו גבול של שדה `text` בבקשת
+ * היצירה (‏`/api/generate`, ‏z.string().max(40)): מה שהראיון נושא הוא בדיוק
+ * מה שהיצירה תקבל, ותקרה שונה הייתה מפילה בסוף מה שעבר בהתחלה. הממשק חותך
+ * קודם ב-`MAX_LETTERING` (24); הגבול האמיתי הוא הפס עצמו, בשרת.
+ */
+export const LETTERING_TEXT_MAX = 40;
+
+/**
+ * הכיתוב שהגיע מבחוץ, מנוקה: רווחים מכווצים — תו שורה בתוך כיתוב היה שובר
+ * גם את שורת הפרומפט וגם את שורת התמליל — וחיתוך לתקרה. `null` כשאין טקסט.
+ * **אין כאן תיקון איות ואין נרמול תווים**: הכיתוב נחתך כלשונו (זה כל מסלול
+ * הכיתוב), ומה שמותר לנקות הוא רק מה שאינו אות.
+ */
+export function coerceLettering(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/\s+/g, " ").trim().slice(0, LETTERING_TEXT_MAX).trim();
+  return text || null;
+}
 
 /**
  * קביעה שהגיעה מבחוץ, מנוקה לצורה שמותר להמשיך איתה. `null` כשאין בה כלום.

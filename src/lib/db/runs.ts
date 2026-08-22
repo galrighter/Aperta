@@ -345,6 +345,18 @@ export interface RunInputs {
     expectation?: string;
   };
   /**
+   * dialogue mode — הכיתוב שהשרשרת נושאת (סבב הכיתוב), על הרצת **עריכה**.
+   *
+   * ביצירה הכיתוב נרשם ב-`lettering.text` — שם הוא דיווח על מה שנחתך
+   * בהרצה הזו. עריכה אינה חותכת כיתוב (הוא יושב בתמונת הבסיס), אבל השרשרת
+   * עדיין נושאת אותו — ו-`runsRespec` חייב לדעת זאת שרת-צד, כי הלקוח אינו
+   * שולח `text` בעריכות: ‏respec על שרשרת עם כיתוב היה מצייר מחדש מהמפרט
+   * ומאבד את האותיות, שאין להן ייצוג בו (בכוונה — ראה editControls.ts).
+   * לכן ההרצה מעתיקה את הסימון הלאה, hop אחר hop, מאותו מקום שהמפרט עצמו
+   * נוסע בו. נקרא ב-`editChainFor`.
+   */
+  chainLettering?: string;
+  /**
    * dialogue mode — המפרט המצטבר **אחרי** הסבב הזה (§2.2).
    *
    * נוסע כאן ולא בעמודה: אין מיגרציה בשלב A, בדיוק כמו `mode` ב-Story. זה
@@ -897,12 +909,25 @@ export async function deleteRuns(ids: string[]): Promise<number> {
  *     מהכיוון שהלקוחה בחרה (`designIndex` על ההצעה), מתוך המפרט ששלב הטקסט
  *     של היצירה החזיר. זה מה שמונע סבב ראשון בלי הקשר.
  *
- * `null` = אין אף אחד מהשניים, והסבב מתחיל מ-`EDIT_SPEC_NONE`. כשל אינו
- * מפיל עריכה: מפרט חסר פירושו סבב אחד בלי הקשר מצטבר, וזה בדיוק המסלול של
- * היום — לא סיבה להחזיר שגיאה ללקוחה.
+ * `spec: null` = אין אף אחד מהשלושה, והסבב מתחיל מ-`EDIT_SPEC_NONE`. כשל
+ * אינו מפיל עריכה: מפרט חסר פירושו סבב אחד בלי הקשר מצטבר, וזה בדיוק
+ * המסלול של היום — לא סיבה להחזיר שגיאה ללקוחה.
+ *
+ * **`lettering` נקרא כאן ולא מגוף הבקשה** (סבב הכיתוב): הלקוח אינו שולח
+ * `text` בעריכות — הכיתוב יושב בתמונת הבסיס — ומה שמכריע אם respec מותר
+ * חייב לבוא מהשרשרת עצמה: `lettering.text` על הרצת היצירה, או
+ * `chainLettering` שהרצת עריכה קודמת העתיקה הלאה. `null` = השרשרת אינה
+ * נושאת כיתוב, או שאי אפשר לדעת — ואז ההתנהגות היא של היום.
  */
-export async function editSpecFor(versionId: string | null | undefined): Promise<EditSpec | null> {
-  if (!versionId) return null;
+export interface EditChain {
+  spec: EditSpec | null;
+  lettering: string | null;
+}
+
+const NO_CHAIN: EditChain = { spec: null, lettering: null };
+
+export async function editChainFor(versionId: string | null | undefined): Promise<EditChain> {
+  if (!versionId) return NO_CHAIN;
   try {
     const sb = supabaseAdmin();
     const { data: version, error: vErr } = await sb
@@ -911,35 +936,45 @@ export async function editSpecFor(versionId: string | null | undefined): Promise
       .eq("id", versionId)
       .maybeSingle();
     if (vErr) throw new Error(vErr.message);
-    if (!version) return null;
+    if (!version) return NO_CHAIN;
 
     const row = version as {
       generation_id: string | null;
       picked_index: number | null;
       candidates: Array<{ designIndex?: number }> | null;
     };
-    if (!row.generation_id) return null;
+    if (!row.generation_id) return NO_CHAIN;
 
     const run = await getRun(row.generation_id);
     const inputs = run?.inputs ?? null;
+
+    // הכיתוב שהשרשרת נושאת: מה שנחתך ביצירה, או הסימון שעריכה קודמת
+    // העתיקה. שניהם מחרוזות מ-jsonb — מה שאינו מחרוזת עם תוכן נקרא "אין".
+    const cut = inputs?.lettering?.text;
+    const carriedLettering = inputs?.chainLettering;
+    const lettering =
+      typeof cut === "string" && cut.trim() ? cut.trim()
+        : typeof carriedLettering === "string" && carriedLettering.trim() ? carriedLettering.trim()
+          : null;
+    const chain = (spec: EditSpec | null): EditChain => ({ spec, lettering });
 
     // 1) השרשרת: מה שהסבב הקודם קבע. `hasSpec` ולא ספירת מפתחות: jsonb
     // היסטורי יכול לשאת אובייקט עם `sources` בלבד או יחס בלבד, וזה אינו
     // מפרט — אי אפשר לצייר ממנו פריט, ועדיף לרדת להזרעה מהיצירה.
     const carried = inputs?.editSpec;
-    if (carried && typeof carried === "object" && hasSpec(carried)) return carried;
+    if (carried && typeof carried === "object" && hasSpec(carried)) return chain(carried);
 
     // 2) הזרעה מראיון (שלב B): הכיוון שנבחר נושא `sources` משלו — מה שנאמר
     // במפורש בראיון נשאר `user` וקפוא ב-respec. קודם ל-designStage, כי
     // ביצירת dialogue שנפלה ל-designStage אין `interview.directions` בכלל
     // (‏ok: false נרשם בלי כיוונים) — כלומר אין מצב ששניהם מלאים וסותרים.
     const interviewed = specFromInterview(inputs?.interview?.directions, chosenDesignIndex(row));
-    if (interviewed) return interviewed;
+    if (interviewed) return chain(interviewed);
 
     // 3) ההזרעה: הסבב הראשון, מהכיוון שהלקוחה בחרה ביצירה.
-    return specFromDesignStage(inputs?.designStage?.spec, chosenDesignIndex(row));
+    return chain(specFromDesignStage(inputs?.designStage?.spec, chosenDesignIndex(row)));
   } catch (e) {
-    console.error("editSpecFor failed:", e instanceof Error ? e.message : e);
-    return null;
+    console.error("editChainFor failed:", e instanceof Error ? e.message : e);
+    return NO_CHAIN;
   }
 }
