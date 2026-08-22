@@ -10,6 +10,9 @@ import { api, ClientApiError } from "@/lib/client/api";
 import { saveFunnelDraft } from "@/lib/client/funnelDraft";
 import { saveDialogueHandoff } from "@/lib/client/dialogueHandoff";
 import { INTERVIEW_SKIP } from "@/lib/dialogue/mode";
+import {
+  gallerySvgPath, selectGalleryDesigns, type CuratedDesign,
+} from "@/lib/dialogue/gallery";
 import { Eyebrow, ScreenTitle, OptionBtn, PrimaryBtn } from "@/components/create/ui";
 import { INITIAL, type Product } from "@/components/create/model";
 
@@ -24,6 +27,13 @@ import { INITIAL, type Product } from "@/components/create/model";
 // (סטטיים — זהים לכולן, אין סיבה לשלם עליהם קריאה) → סבבי שאלה/תשובה עם
 // צ'יפים ודילוג → סיכום לאישור (הרנדר המילולי בחינם של PROMPT_SPEC §3.1) →
 // סגירה לכיוונים ומסירה למסע הקיים.
+//
+// **הגלריה (§3.2) היא תור בתוך השיחה, לא מסך.** המודל מחליט להציג אותה
+// (סוג תור שלישי — הכרעת גל, 22.8) ומחזיר שאילתת תגים; המסך מסנן את הרשימה
+// המאוצרת (`selectGalleryDesigns` — קובץ בגיט, אפס רשת) ומציג עד שישה
+// ציורים סטטיים מ-`public/gallery/`. בחירה נשלחת כתשובה רגילה בתמליל —
+// ה-concept כטקסט הבועה — בתוספת מזהה שהשרת מתרגם בעצמו לרשומה המאוצרת;
+// "אף אחד מהם" הוא תשובה במילים, כי דחייה של שישה היא מידע ולא דילוג.
 //
 // **כשל אינו נבלע.** אין כאן מסלול-של-היום ליפול אליו — הראיון הוא המסך.
 // שגיאה מציגה "לנסות שוב" (התמליל נשמר), והעורך הקיים פתוח תמיד כפעולה
@@ -49,6 +59,8 @@ export function DialogueCreate() {
   const [turns, setTurns] = useState<Bubble[]>([]);
   const [spec, setSpec] = useState<unknown>(null);
   const [chips, setChips] = useState<string[]>([]);
+  /** העיצובים שהגלריה מציגה כרגע — הסינון כבר רץ (`selectGalleryDesigns`). */
+  const [gallery, setGallery] = useState<CuratedDesign[] | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,14 +85,21 @@ export function DialogueCreate() {
     endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [turns, summary, busy]);
 
-  /** קריאת סבב אחת. `nextTurns` כבר כולל את תשובת הלקוחה. */
-  const runTurn = (chosen: Product, nextTurns: Bubble[]): void => {
+  /** קריאת סבב אחת. `nextTurns` כבר כולל את תשובת הלקוחה; `chosenId` נשלח
+   *  רק כשהתשובה הזו היא בחירה בגלריה. */
+  const runTurn = (chosen: Product, nextTurns: Bubble[], chosenId?: string): void => {
     setBusy(true);
     setError(null);
     setErrorDetail(null);
-    retryRef.current = () => runTurn(chosen, nextTurns);
+    retryRef.current = () => runTurn(chosen, nextTurns, chosenId);
     api
-      .interviewTurn({ product: chosen, turns: nextTurns, spec: spec ?? undefined, utm: utmRef.current })
+      .interviewTurn({
+        product: chosen,
+        turns: nextTurns,
+        spec: spec ?? undefined,
+        utm: utmRef.current,
+        chosenVersionId: chosenId,
+      })
       .then((res) => {
         setSpec(res.spec);
         if (res.summary) {
@@ -88,10 +107,21 @@ export function DialogueCreate() {
           setTurns([...nextTurns, { role: "interviewer", text: res.summary }]);
           setSummary(res.summary);
           setChips([]);
+          setGallery(null);
           setPhase("summary");
+        } else if (res.gallery) {
+          // תור גלריה: ההזמנה נכנסת לתמליל כתור מראיינת — כך היא גם נספרת
+          // בתקרה (askedOf) בלי מנגנון שני. הסינון רץ כאן, על קובץ הגיט.
+          const designs = selectGalleryDesigns(chosen, res.gallery.tags);
+          setTurns([...nextTurns, { role: "interviewer", text: res.gallery.lead }]);
+          setChips([]);
+          // רשימה מאוצרת ריקה (לא אמור לקרות) — ההזמנה נשארת שאלה פתוחה.
+          setGallery(designs.length > 0 ? designs : null);
+          setPhase("chat");
         } else if (res.ask) {
           setTurns([...nextTurns, { role: "interviewer", text: res.ask.question }]);
           setChips(res.ask.chips ?? []);
+          setGallery(null);
           setPhase("chat");
         }
         setBusy(false);
@@ -143,7 +173,19 @@ export function DialogueCreate() {
     setText("");
     setSummary(null);
     setChips([]);
+    setGallery(null);
     runTurn(product, [...turns, { role: "customer", text: value.slice(0, 2000) }]);
+  };
+
+  /** בחירה בגלריה: תשובה רגילה בתמליל — ה-concept הוא טקסט הבועה — בתוספת
+   *  המזהה, שהשרת מתרגם בעצמו לרשומה המאוצרת (הבחירה→‏inferred של §3.2). */
+  const pickDesign = (d: CuratedDesign): void => {
+    if (!product || busy) return;
+    setSummary(null);
+    setChips([]);
+    setGallery(null);
+    const text = d.concept ? c.galleryPicked(d.concept) : c.galleryPickedPlain;
+    runTurn(product, [...turns, { role: "customer", text }], d.version_id);
   };
 
   const pickProduct = (p: Product): void => {
@@ -262,6 +304,41 @@ export function DialogueCreate() {
                     {chip}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* הגלריה (‏PROMPT_SPEC §3.2) — בחירה במקום שאלה. ציורים סטטיים
+                מ-public/gallery/, עמודה אחת: צמיד הוא רצועה ביחס ~10:1,
+                ורשת צפופה הייתה מקטינה אותה לקו. הבחירה אינה חובה — "אף אחד
+                מהם" הוא תשובה, והשדה החופשי נשאר פתוח מתחת. */}
+            {phase === "chat" && !busy && !error && gallery && gallery.length > 0 && (
+              <div className="mt-1 grid gap-2 self-stretch">
+                {gallery.map((d) => (
+                  <button
+                    key={d.version_id}
+                    type="button"
+                    className="rounded-[2px] border border-graphite/15 bg-chalk px-4 py-3 transition-colors hover:border-lapis focus-visible:border-lapis"
+                    onClick={() => pickDesign(d)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={gallerySvgPath(d.version_id)}
+                      alt={d.concept ?? c.galleryAlt}
+                      loading="lazy"
+                      className="mx-auto max-h-24 w-full"
+                    />
+                  </button>
+                ))}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    className="rounded-[2px] border border-graphite/20 px-3 py-1.5 text-[14px] text-ink60 hover:bg-porcelain"
+                    onClick={() => send(c.galleryNone)}
+                  >
+                    {c.galleryNone}
+                  </button>
+                  <span className="text-[13px] text-ink60">{c.galleryHint}</span>
+                </div>
               </div>
             )}
 

@@ -73,8 +73,34 @@ describe("buildInterviewTurnPrompt", () => {
   it("דילוג לעולם אינו משאיר סבב בידיים ריקות — הכשל של הריצה החיה השנייה", () => {
     // דילוג מוקדם: המודל אינו רשאי לשאול שוב על הציר, ואם ירגיש שאין לו גם
     // מה לשאול וגם מה לסכם — יחזיר כלום, שנפסל, פעמיים, 502. הפרומפט סוגר
-    // את הדלת: תמיד בדיוק אחד מ-ask/summary.
+    // את הדלת: תמיד בדיוק אחד מ-ask/gallery/summary.
     expect(prompt).toContain("A skip never leaves the turn empty-handed");
+    expect(prompt).toContain('exactly one of "ask" / "gallery" / "summary"');
+  });
+
+  it("פסקת הגלריה נכנסת עם אוצר התגים האמיתי — והתגים הם שפת אחזור, לא מרחב (§2.4)", () => {
+    expect(prompt).toContain("THE GALLERY");
+    // תג מהרשימה המאוצרת האמיתית של צמידים — הפרומפט נושא את האוצר עצמו.
+    expect(prompt).toContain("מינימליסטי");
+    // הגדר מול לקח 2: הרשימה מאנדקסת פריטים, אינה אוצר מילים למפרט.
+    expect(prompt).toContain("not the design space");
+    // גלריה נספרת בתקרה — ספירה אחת, מהתמליל.
+    expect(prompt).toContain("A gallery counts as one of your questions");
+  });
+
+  it("בלוק הבחירה נכנס רק כשיש בחירה — ומקודד את inferred-בלי-להפשיר-user", () => {
+    expect(prompt).not.toContain("SHE CHOSE FROM THE GALLERY");
+    const p = buildInterviewTurnPrompt({
+      productType: "bracelet",
+      turns,
+      spec: null,
+      asked: 2,
+      galleryChoice: "Concept: קו נודד\nCharacter: עדין",
+    });
+    expect(p).toContain("SHE CHOSE FROM THE GALLERY");
+    expect(p).toContain("Concept: קו נודד");
+    expect(p).toContain('as "inferred"');
+    expect(p).toContain("it never overwrites her words");
   });
 });
 
@@ -150,6 +176,63 @@ describe("parseInterviewTurn", () => {
       null,
     );
     expect(out?.decision.ask?.question).toBe("מה הצללית?");
+  });
+
+  it("תור גלריה — סוג התור השלישי (§3.2): הזמנה ושאילתת תגים", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({
+        gallery: { lead: "איזה מהם הכי מדבר אלייך?", tags: ["עדין", "אוורירי", 3, " "] },
+        ask: null,
+        summary: null,
+      }),
+      null,
+    )!;
+    expect(out.decision.gallery).toEqual({
+      lead: "איזה מהם הכי מדבר אלייך?",
+      tags: ["עדין", "אוורירי"],
+    });
+    expect(out.decision.ask).toBeNull();
+    expect(out.decision.summary).toBeNull();
+  });
+
+  it("קדימות: סיכום גובר על גלריה, וגלריה על שאלה — בדיוק אחד מוצג", () => {
+    const withSummary = parseInterviewTurn(
+      JSON.stringify({
+        gallery: { lead: "לבחור?", tags: [] },
+        summary: "צמיד עדין — נכון?",
+      }),
+      null,
+    )!;
+    expect(withSummary.decision.summary).toBe("צמיד עדין — נכון?");
+    expect(withSummary.decision.gallery).toBeNull();
+
+    const withAsk = parseInterviewTurn(
+      JSON.stringify({
+        gallery: { lead: "לבחור?", tags: ["עדין"] },
+        ask: { question: "עוד שאלה?" },
+      }),
+      null,
+    )!;
+    expect(withAsk.decision.gallery?.lead).toBe("לבחור?");
+    expect(withAsk.decision.ask).toBeNull();
+  });
+
+  it("גלריה בלי הזמנה אינה תור — ובלי אף אחד משלושתם הסבב פסול", () => {
+    const fallsToAsk = parseInterviewTurn(
+      JSON.stringify({ gallery: { lead: " ", tags: ["עדין"] }, ask: { question: "מה חשוב לך?" } }),
+      null,
+    )!;
+    expect(fallsToAsk.decision.gallery).toBeNull();
+    expect(fallsToAsk.decision.ask?.question).toBe("מה חשוב לך?");
+    expect(parseInterviewTurn(JSON.stringify({ gallery: { tags: ["עדין"] } }), null)).toBeNull();
+  });
+
+  it("שאילתה ריקה היא תור תקין — המסך נופל לגיוון על הרשימה המאוצרת", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({ gallery: { lead: "אולי נסתכל על כמה?", tags: "garbage" } }),
+      null,
+    )!;
+    expect(out.decision.gallery).toEqual({ lead: "אולי נסתכל על כמה?", tags: [] });
   });
 });
 

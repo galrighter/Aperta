@@ -4,6 +4,7 @@ import { ApiError, handleRouteError, parseBody } from "@/lib/api";
 import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
 import { coerceEditSpec } from "@/lib/dialogue/spec";
+import { curatedById, describeGalleryChoice } from "@/lib/dialogue/gallery";
 import {
   askedOf, coerceInterviewTurns, runInterviewDirections, runInterviewTurn,
 } from "@/lib/dialogue/interview";
@@ -42,6 +43,13 @@ const schema = z.object({
   spec: z.unknown().optional(),
   /** ‏`utm_content` — הקריאייטיב שהביא אותה (‏PROMPT_SPEC §3.4). */
   utm: z.string().max(200).optional(),
+  /**
+   * ‏dialogue mode — הגלריה (§3.2): מזהה העיצוב שנבחר, כשההודעה האחרונה היא
+   * בחירה. **מזהה, לא תיאור**: מה שנכנס לפרומפט הוא הרשומה המאוצרת מהקובץ
+   * בגיט (`curatedById`), לא טקסט שהלקוח שלח — גוף בקשה אינו הצהרה. מזהה
+   * שאינו ברשימה המאוצרת פשוט מתעלמים ממנו.
+   */
+  chosenVersionId: z.string().uuid().optional(),
   /** לסגירה בלבד: הסיכום שהלקוחה אישרה. */
   summary: z.string().max(4000).optional(),
 });
@@ -82,6 +90,7 @@ export async function POST(req: Request) {
       });
     }
 
+    const chosen = body.chosenVersionId ? curatedById(body.chosenVersionId) : null;
     const out = await runInterviewTurn({
       productType: body.product,
       turns,
@@ -89,6 +98,7 @@ export async function POST(req: Request) {
       // המניין מהתמליל עצמו, לא ממונה שהלקוח שולח — ראה askedOf.
       asked: askedOf(turns),
       utm: body.utm ?? null,
+      galleryChoice: chosen ? describeGalleryChoice(chosen) : null,
     });
     if (!out.ok) {
       throw new ApiError("interview_failed", out.reason.slice(0, 300), 502);
@@ -96,6 +106,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       spec: out.decision.spec,
       ask: out.decision.ask,
+      gallery: out.decision.gallery,
       summary: out.decision.summary,
       expectation: out.decision.expectation ?? null,
     });

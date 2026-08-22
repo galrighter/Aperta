@@ -1,0 +1,70 @@
+# dialogue mode — ייצוא נכסי הגלריה (‏PROMPT_SPEC §3.2).
+#
+# מריץ את `npm run gallery:export` — שמפיק את `src/data/gallery-curated.json`
+# ואת קובצי התצוגה `public/gallery/<version_id>.svg` — ומקמט את התוצר חזרה
+# לענף. רץ כאן ולא מקומית מאותו נימוק כמו `story-lab.yml`: ה-SVG הקנוני חי
+# ב-`design_versions`, והסודות (`SUPABASE_URL`/`SUPABASE_SECRET_KEY`) חיים
+# ב-secrets של GitHub — מי שמפעיל את הייצוא לעולם לא רואה אותם.
+#
+# **מתי מריצים:** אחרי כל שינוי אוצרות ב-`gallery-tags.json` (הוספה/הסרה של
+# `overrides.gallery: true`), מענף העבודה — כך שהתוצר נכנס לאותו PR של
+# האוצרות. שתי דרכים: `workflow_dispatch`, או נגיעה בקובץ הטריגר
+# `.github/triggers/gallery-export.txt` ודחיפה.
+#
+# ה-`branches` מסונן ל-`claude/**` בכוונה: דחיפת ה-merge ל-main נושאת את
+# קובץ הטריגר כנתיב שהשתנה, ובלי הסינון ה-workflow היה נורה שוב על כל מיזוג.
+
+name: Gallery export
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: ["claude/**"]
+    paths: [".github/triggers/gallery-export.txt"]
+
+permissions:
+  contents: write
+
+concurrency: gallery-export-${{ github.ref }}
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Export gallery assets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        # סוד חסר נכשל בקול עם שם הסוד — ‏secret שאינו מוגדר נקרא כמחרוזת
+        # ריקה בשקט, וריצה ירוקה שלא ייצאה כלום גרועה מריצה אדומה.
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_SECRET_KEY}" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_SECRET_KEY secrets are not set — nothing was exported."
+            exit 1
+          fi
+          npm run gallery:export
+
+      - name: Commit exported assets back to the branch
+        run: |
+          set -euo pipefail
+          git add public/gallery src/data/gallery-curated.json
+          if git diff --cached --quiet; then
+            echo "Gallery already up to date — nothing to commit."
+            exit 0
+          fi
+          git -c user.name="gallery-export" -c user.email="actions@users.noreply.github.com" \
+            commit -m "chore(dialogue): export curated gallery assets"
+          git push origin "HEAD:${{ github.ref_name }}"

@@ -46,6 +46,8 @@ export default [
       ".wrangler/**",
       "node_modules/**",
       "geometry-service/dist/**",
+      // dialogue mode — תוצר הביניים של npm run gallery:export (באנדל esbuild).
+      "scripts/dist/**",
       "vectorizer/**",
       "next-env.d.ts",
       // נתוני פונט מיוצרים — מערך אחד ענק, ו-espree נופל עליו על עומק המחסנית.

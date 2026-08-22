@@ -460,17 +460,21 @@ export const api = {
 
   /* ===== dialogue mode — הראיון (שלב B) ===== */
 
-  /** סבב שיחה אחד: התמליל והמפרט שהצטבר → השאלה הבאה, או הסיכום לאישור.
-   *  `spec` אטום ללקוח בכוונה — הוא נוסע הלוך-ושוב כמות שהוא, והשרת מנקה. */
+  /** סבב שיחה אחד: התמליל והמפרט שהצטבר → השאלה הבאה, גלריה לבחירה, או
+   *  הסיכום לאישור. `spec` אטום ללקוח בכוונה — הוא נוסע הלוך-ושוב כמות
+   *  שהוא, והשרת מנקה. `chosenVersionId` נשלח כשההודעה האחרונה היא בחירה
+   *  בגלריה — השרת מתרגם אותו לרשומה המאוצרת בעצמו. */
   interviewTurn: (input: {
     product: "bracelet" | "ring";
     turns: Array<{ role: "interviewer" | "customer"; text: string }>;
     spec?: unknown;
     utm?: string;
+    chosenVersionId?: string;
   }) =>
     call<{
       spec: unknown;
       ask: { question: string; chips: string[] } | null;
+      gallery: { lead: string; tags: string[] } | null;
       summary: string | null;
       expectation: string | null;
     }>("/api/dialogue/interview", {
