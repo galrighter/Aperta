@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:a11y": "node scripts/a11y-scan.mjs",
+    "gallery:export": "esbuild scripts/export-gallery.ts --bundle --platform=node --target=node22 --format=esm --alias:@=./src --outfile=scripts/dist/export-gallery.mjs --log-level=warning && node scripts/dist/export-gallery.mjs",
     "build:geometry": "esbuild geometry-service/server.ts --bundle --platform=node --target=node22 --outfile=geometry-service/dist/server.js",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy": "opennextjs-cloudflare deploy",

@@ -12,6 +12,9 @@ next-env.d.ts
 .claude/state/
 geometry-service/dist/
 
+# תוצר הביניים של npm run gallery:export (dialogue mode)
+scripts/dist/
+
 # מטמון של docs/brand/build-brand-assets.py (גופנים שמורדים בהרצה)
 docs/brand/.cache/
 
