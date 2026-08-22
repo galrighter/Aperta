@@ -33,6 +33,8 @@ import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
+// dialogue mode — "יש בחירה ברורה בסגנון": מה שמכריע פנים-אחת מול מגוון.
+import { briefPicksStyle } from "@/lib/text/style";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
@@ -750,6 +752,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       ? null
       : await buildLetteringRenderSvg(
           body.text, dims, design.product_type, plan.rows, letteringBrief, plan.cols, canvas,
+          // dialogue mode — פנים אחת לכל השורות כשהשיחה בחרה אופי ברור
+          // (החלטת גל): מי שאמרה "קלאסי" ביקשה סריף, ושלוש טיפוגרפיות שונות
+          // הן התעלמות ממה שאמרה. בלי בחירה — המגוון נשאר, כי אז הבחירה
+          // הטיפוגרפית שלה היא בחירת החלופה. המסלול הרגיל אינו מעביר את
+          // הדגל, ולכן אינו משתנה.
+          { oneStyle: interviewCreate && briefPicksStyle(letteringBrief) },
         );
     if (!editSvg && body.text?.trim() && !lettering) {
       throw new ApiError(
@@ -759,6 +767,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       );
     }
     const baseSvg = editSvg ?? lettering?.svg ?? null;
+    // dialogue mode — מה שנחתך **בפועל**: פנים אחת לכל השורות, או פנים לכל
+    // אחת. נגזר מהתוצר ולא מהבקשה, כי גם בלי `oneStyle` יכולה להתאים רק פנים
+    // אחת (טקסט ארוך על טבעת) — והפרומפט חייב לתאר את התמונה שצורפה.
+    const letteringUniform = lettering
+      ? new Set(lettering.rows.map((r) => r.fontId)).size === 1
+      : false;
     // למודל התמונה יש מקום לתמונת ייחוס אחת (`_reference` בקופסה בוחר את
     // base_svg על פני ההשראה). כשיש כיתוב הוא זה שנוסע — הוא ההבטחה הקשיחה
     // ללקוחה, וההשראה היא רוח שאפשר לתאר במילים. נאפס אותה כאן ולא נשאיר
@@ -807,11 +821,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // הייחוס היא פס הכיתוב, וכל כיוון מעצב סביב השורה שלו.
         : interview
         ? buildStagedRenderPrompt(
-            interview.renderJson, canvas, interview.spec, dims.thicknessMm, Boolean(lettering),
+            interview.renderJson, canvas, interview.spec,
+            dims.thicknessMm, lettering ? { uniform: letteringUniform } : null,
           )
         : designStage
         ? buildStagedRenderPrompt(
-            designStage.json, canvas, designStage.spec, dims.thicknessMm, Boolean(lettering),
+            designStage.json, canvas, designStage.spec,
+            dims.thicknessMm, lettering ? { uniform: letteringUniform } : null,
           )
         : storyCreate
           ? buildStoryRenderPrompt({

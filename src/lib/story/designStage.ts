@@ -419,9 +419,11 @@ export const buildStagedRenderPrompt = (
   spec?: DesignSpec | null,
   thicknessMm: number = FAB.defaultThicknessMm,
   // dialogue mode — יצירת ראיון עם כיתוב (סבב הכיתוב): תמונת הייחוס היא פס
-  // הכיתוב, וכל שורה בו נחתכה בפנים אחרות. בלעדי הפרמטר הפרומפט זהה תו-בתו
+  // הכיתוב. `uniform` הוא מה שנחתך **בפועל** — פנים אחת לכל השורות או פנים
+  // לכל אחת — ולא מה שהתבקש: הפרומפט חייב לתאר את התמונה שצורפה, אחרת הוא
+  // מזמין את המודל להמציא מגוון שאינו שם. בלעדי הפרמטר הפרומפט זהה תו-בתו
   // למה שהיה — מסלול Story לא נגוע.
-  lettering?: boolean | null,
+  lettering?: { uniform: boolean } | null,
 ): string => {
   const designs = spec?.designs ?? [];
   const count = designs.length || DESIGN_COUNT;
@@ -433,7 +435,7 @@ export const buildStagedRenderPrompt = (
     ROW_LIST: rowList(count),
     PROPORTIONS: proportionLines(ratios),
     THICKNESS_MM: String(thicknessMm),
-    LETTERING: lettering ? letteringBlock(count) : "",
+    LETTERING: lettering ? letteringBlock(count, lettering.uniform) : "",
   });
 };
 
@@ -446,10 +448,14 @@ export const buildStagedRenderPrompt = (
  * האחרון הוא החריג היחיד ל-"no text" של HOW TO DRAW THEM — בלעדיו שתי
  * ההוראות סותרות, והמודל בוחר בעצמו במי לפגוע.
  */
-function letteringBlock(count: number): string {
-  const rows = count > 1
-    ? ` The reference shows ${numberWord(count)} rows, and the lettering is drawn in a different typeface in each one. Keep every row's own lettering exactly as it is in that row — do not carry one row's letterforms over to another.`
-    : "";
+function letteringBlock(count: number, uniform: boolean): string {
+  const rows = count <= 1
+    ? ""
+    : uniform
+      // פנים אחת לכל השורות: המשפט אומר את זה במפורש, אחרת המודל "משלים"
+      // מגוון טיפוגרפי שהלקוחה לא ביקשה — היא בחרה אופי, וזה מה שנחתך.
+      ? ` The reference shows ${numberWord(count)} rows, and the lettering is drawn in the SAME typeface in every one of them — that typeface is what she asked for. Keep it identical across all rows; the rows differ in the design around the lettering, never in the letterforms.`
+      : ` The reference shows ${numberWord(count)} rows, and the lettering is drawn in a different typeface in each one. Keep every row's own lettering exactly as it is in that row — do not carry one row's letterforms over to another.`;
   return (
     "\n\nLETTERING\n\n" +
     "The attached reference image already carries the lettering, cut into each band. " +

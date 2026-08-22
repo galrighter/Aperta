@@ -203,6 +203,11 @@ async function letteringPolygons(
  * מספר הפנים מוגבל בפועל בכמה מהן נכנסות לפס הזה: אם נכנסות פחות מכפי שיש
  * תאים, הן חוזרות במחזוריות — תא בלי כיתוב הוא פריט שהמודל ימציא לו אותיות.
  *
+ * ‏`opts.oneStyle` הופך את המגוון לאחידות: פנים אחת לכל התאים. הקורא מכריע,
+ * ולכן **הקורא גם חייב לומר את האמת בפרומפט** — משפט "פנים אחרות בכל שורה"
+ * מול ייחוס אחיד הוא הזמנה למודל להמציא את המגוון בעצמו. מה שיצא בפועל
+ * קריא מ-`rows`: פנים אחת = כל ה-`fontId` זהים.
+ *
  * `null` = הטקסט לא נכנס לפס בשום פנים. הקורא אחראי להגיד את זה ללקוחה.
  */
 export async function buildLetteringRenderSvg(
@@ -215,6 +220,17 @@ export async function buildLetteringRenderSvg(
   // בלי ברירת מחדל, כמו ב-buildBaseRenderSvg: הייחוס חייב להצטייר על אותו
   // קנבס שיישלח למודל באותה קריאה, וברירת מחדל שקטה היא איך שהשניים נפרדים.
   canvas: Canvas,
+  /**
+   * dialogue mode — **פנים אחת לכל השורות** (החלטת גל): כשהבריף בחר אופי
+   * ברור, מגוון טיפוגרפי הוא התעלמות ממה שנאמר, לא הצעה. הקורא מכריע
+   * (`briefPicksStyle`); ברירת המחדל היא ההתנהגות הקיימת — פנים לכל שורה,
+   * והמסלול הרגיל אינו מעביר את הדגל בכלל.
+   *
+   * **הנפילה-לאחור נשמרת**: זו אינה "רק הפנים הראשונות" אלא הראשונות
+   * **שנכנסות לפס** — טקסט ארוך שלא נכנס בסריף עדיין יורד לפנים צרות
+   * במקום להיפסל.
+   */
+  opts?: { oneStyle?: boolean },
 ): Promise<LetteringReference | null> {
   const content = text.trim();
   if (!content) return null;
@@ -236,9 +252,12 @@ export async function buildLetteringRenderSvg(
   //
   // מי שפחות פנים מתאימות לו מהתאים שיש עדיין מנסה את כולן, וחוזר עליהן
   // במחזוריות למטה — כלומר ההתנהגות במקרה הצר לא השתנתה.
+  // כמה פנים באמת דרושות: תא לכל אחת, או אחת לכולן כשהבריף בחר. המחזוריות
+  // למטה היא שממלאת את היתר — כלומר "אחידות" אינה ענף נפרד אלא מכסה של 1.
+  const wanted = opts?.oneStyle ? 1 : cells;
   const fitting: NonNullable<Awaited<ReturnType<typeof letteringPolygons>>>[] = [];
   for (const style of ordered) {
-    if (fitting.length >= cells) break;
+    if (fitting.length >= wanted) break;
     const drawn = await letteringPolygons(content, dims, productType, style);
     if (drawn) fitting.push(drawn);
   }
