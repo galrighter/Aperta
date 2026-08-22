@@ -73,9 +73,33 @@ describe("buildInterviewTurnPrompt", () => {
   it("דילוג לעולם אינו משאיר סבב בידיים ריקות — הכשל של הריצה החיה השנייה", () => {
     // דילוג מוקדם: המודל אינו רשאי לשאול שוב על הציר, ואם ירגיש שאין לו גם
     // מה לשאול וגם מה לסכם — יחזיר כלום, שנפסל, פעמיים, 502. הפרומפט סוגר
-    // את הדלת: תמיד בדיוק אחד מ-ask/gallery/summary.
+    // את הדלת: תמיד בדיוק אחד מ-ask/gallery/edit/summary.
     expect(prompt).toContain("A skip never leaves the turn empty-handed");
-    expect(prompt).toContain('exactly one of "ask" / "gallery" / "summary"');
+    expect(prompt).toContain('exactly one of "ask" / "gallery" / "edit" / "summary"');
+  });
+
+  it("תור המצב-המדויק בחוזה — פקדים בתוך השיחה, נספר בתקרה (החלטת גל 21.8)", () => {
+    expect(prompt).toContain('"edit"');
+    expect(prompt).toContain('"width" / "symmetry" / "density"');
+    // נספר כשאלה — התקרה נשארת ספירה אחת, מהתמליל.
+    expect(prompt).toContain("An edit counts as one of your questions");
+    // לא כלי לחקירה רגשית — למי שמדברת במידות ומבקשת לקבוע.
+    expect(prompt).toContain("Do not offer it to someone still exploring in feelings");
+  });
+
+  it("בלוק הקביעה נכנס רק כשיש קביעה — והצירים שנקבעו קפואים", () => {
+    expect(prompt).not.toContain("SHE SET THE CONTROLS");
+    const p = buildInterviewTurnPrompt({
+      productType: "bracelet",
+      turns,
+      spec: null,
+      asked: 2,
+      editChoice: "Length-to-width ratio: 1:8.5 — set exactly, on a slider.",
+    });
+    expect(p).toContain("SHE SET THE CONTROLS");
+    expect(p).toContain("1:8.5");
+    expect(p).toContain('tagged "user"');
+    expect(p).toContain("do not ask about these axes again");
   });
 
   it("פסקת הגלריה נכנסת עם אוצר התגים האמיתי — והתגים הם שפת אחזור, לא מרחב (§2.4)", () => {
@@ -233,6 +257,65 @@ describe("parseInterviewTurn", () => {
       null,
     )!;
     expect(out.decision.gallery).toEqual({ lead: "אולי נסתכל על כמה?", tags: [] });
+  });
+
+  it("תור מצב-מדויק — סוג התור הרביעי: הזמנה ורשימת פקדים מסוננת", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({
+        edit: { lead: "רוצה לקבוע את זה בדיוק?", controls: ["width", "width", "font", 3, "symmetry"] },
+        ask: null,
+        summary: null,
+      }),
+      null,
+    )!;
+    expect(out.decision.edit).toEqual({
+      lead: "רוצה לקבוע את זה בדיוק?",
+      controls: ["width", "symmetry"],
+    });
+    expect(out.decision.ask).toBeNull();
+    expect(out.decision.gallery).toBeNull();
+  });
+
+  it("רשימת פקדים ריקה נקראת 'הצג הכול' — הזמנה בלי פקדים אינה מסך ריק", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({ edit: { lead: "בואי נקבע", controls: [] } }),
+      null,
+    )!;
+    expect(out.decision.edit?.controls).toEqual(["width", "symmetry", "density"]);
+  });
+
+  it("קדימות התור הרביעי: סיכום גובר עליו, והוא גובר על גלריה ועל שאלה", () => {
+    const withSummary = parseInterviewTurn(
+      JSON.stringify({
+        edit: { lead: "לקבוע?", controls: ["width"] },
+        summary: "צמיד עדין — נכון?",
+      }),
+      null,
+    )!;
+    expect(withSummary.decision.summary).toBe("צמיד עדין — נכון?");
+    expect(withSummary.decision.edit).toBeNull();
+
+    const withAll = parseInterviewTurn(
+      JSON.stringify({
+        edit: { lead: "לקבוע?", controls: ["width"] },
+        gallery: { lead: "לבחור?", tags: ["עדין"] },
+        ask: { question: "עוד שאלה?" },
+      }),
+      null,
+    )!;
+    expect(withAll.decision.edit?.lead).toBe("לקבוע?");
+    expect(withAll.decision.gallery).toBeNull();
+    expect(withAll.decision.ask).toBeNull();
+  });
+
+  it("הזמנה ריקה אינה תור מצב-מדויק — נופל לשאלה, כמו בגלריה", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({ edit: { lead: " ", controls: ["width"] }, ask: { question: "מה חשוב לך?" } }),
+      null,
+    )!;
+    expect(out.decision.edit).toBeNull();
+    expect(out.decision.ask?.question).toBe("מה חשוב לך?");
+    expect(parseInterviewTurn(JSON.stringify({ edit: { controls: ["width"] } }), null)).toBeNull();
   });
 });
 

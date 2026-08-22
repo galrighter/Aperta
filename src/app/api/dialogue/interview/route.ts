@@ -5,6 +5,7 @@ import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
 import { coerceEditSpec } from "@/lib/dialogue/spec";
 import { curatedById, describeGalleryChoice } from "@/lib/dialogue/gallery";
+import { applyEditChoice, coerceEditChoice, describeEditChoice } from "@/lib/dialogue/editControls";
 import {
   askedOf, coerceInterviewTurns, runInterviewDirections, runInterviewTurn,
 } from "@/lib/dialogue/interview";
@@ -50,6 +51,12 @@ const schema = z.object({
    * שאינו ברשימה המאוצרת פשוט מתעלמים ממנו.
    */
   chosenVersionId: z.string().uuid().optional(),
+  /**
+   * dialogue mode — מצב-מדויק (תור `edit`): מה שנקבע בפקדים, כשההודעה
+   * האחרונה היא קביעה. מנוקה ב-`coerceEditChoice` — רק ערכים מתוך
+   * הטווח/הרשימה ממשיכים, וגוף בקשה אינו הצהרה.
+   */
+  editChoice: z.unknown().optional(),
   /** לסגירה בלבד: הסיכום שהלקוחה אישרה. */
   summary: z.string().max(4000).optional(),
 });
@@ -91,6 +98,7 @@ export async function POST(req: Request) {
     }
 
     const chosen = body.chosenVersionId ? curatedById(body.chosenVersionId) : null;
+    const setting = coerceEditChoice(body.editChoice, body.product);
     const out = await runInterviewTurn({
       productType: body.product,
       turns,
@@ -99,14 +107,18 @@ export async function POST(req: Request) {
       asked: askedOf(turns),
       utm: body.utm ?? null,
       galleryChoice: chosen ? describeGalleryChoice(chosen) : null,
+      editChoice: setting ? describeEditChoice(setting) : null,
     });
     if (!out.ok) {
       throw new ApiError("interview_failed", out.reason.slice(0, 300), 502);
     }
     return NextResponse.json({
-      spec: out.decision.spec,
+      // קביעה בפקדים נאכפת בקוד, אחרי הסבב: הערך שנקבע הוא הערך שנשמר,
+      // `user` וקפוא — גם אם המודל ניסח אחרת (ראה editControls.ts).
+      spec: setting ? applyEditChoice(out.decision.spec, setting) : out.decision.spec,
       ask: out.decision.ask,
       gallery: out.decision.gallery,
+      edit: out.decision.edit,
       summary: out.decision.summary,
       expectation: out.decision.expectation ?? null,
     });

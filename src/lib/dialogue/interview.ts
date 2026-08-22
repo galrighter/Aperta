@@ -7,6 +7,7 @@ import { DIALOGUE_INTERVIEW, INTERVIEW_SKIP } from "./mode";
 import type { LlmEffort } from "./editStage";
 import { coerceEditSpec, describeSpec, hasSpec, nextEditSpec, type EditSpec } from "./spec";
 import { galleryTagVocabulary, type GalleryAsk } from "./gallery";
+import { EDIT_CONTROL_KEYS, type EditControlKey, type EditControlsAsk } from "./editControls";
 
 // dialogue mode — הראיון (שלב B): שיחת החידוד שקודמת לרנדר הראשון.
 //
@@ -106,12 +107,14 @@ export interface InterviewAsk {
 /**
  * מה שסבב שיחה אחד מחזיר.
  *
- * בדיוק אחד משלושה: `ask` (השיחה נמשכת בשאלה), `gallery` (השיחה נמשכת
+ * בדיוק אחד מארבעה: `ask` (השיחה נמשכת בשאלה), `gallery` (השיחה נמשכת
  * בבחירה — ‏§3.2: מדידה דרך בחירות למי שאין לה מילון צורני; המסך מסנן את
- * הרשימה המאוצרת לפי התגים שהמודל החזיר) או `summary` (המפרט בשל — התיאור
- * המילולי של §3.1, מחכה לאישור שלה). ההכרעה מי משלושתם היא של **המודל**
- * (הכרעת גל, 22.8): הטיפולוגיה היא תוכן פרומפט, לא ענפי קוד — נקודה קבועה
- * במסך הייתה מציגה גלריה גם למי שבאה עם תמונה בראש. `spec` הוא המפרט
+ * הרשימה המאוצרת לפי התגים שהמודל החזיר), `edit` (מצב-מדויק בתוך השיחה —
+ * החלטת גל 21.8: פקדים מדויקים לרוחב/סימטריה/צפיפות במקום קישור יציאה
+ * לעורך) או `summary` (המפרט בשל — התיאור המילולי של §3.1, מחכה לאישור
+ * שלה). ההכרעה מי מהם היא של **המודל** (הכרעת גל, 22.8): הטיפולוגיה היא
+ * תוכן פרומפט, לא ענפי קוד — נקודה קבועה במסך הייתה מציגה גלריה גם למי
+ * שבאה עם תמונה בראש, ופקדים גם למי שמדברת במילות איכות. `spec` הוא המפרט
  * המצטבר **אחרי** הסבב, כבר ממוזג עם הקודם דרך `nextEditSpec` — כלומר עם
  * שמירת המקורות: ערך שלא השתנה יכול רק להתחזק, ומודל אינו מפשיר `user` בשקט.
  */
@@ -119,6 +122,8 @@ export interface InterviewTurnDecision {
   spec: EditSpec;
   ask: InterviewAsk | null;
   gallery: GalleryAsk | null;
+  /** dialogue mode — תור מצב-מדויק: הזמנה + אילו פקדים. */
+  edit: EditControlsAsk | null;
   summary: string | null;
   /** מצב הידיעה הנוכחי (§3.5) — ליומן, לא לזרימה: הטיפוס אינו תווית על
    *  המשתמשת אלא על השיחה, והוא נמדד אחר כך מול סבבים-עד-הזמנה. */
@@ -194,8 +199,8 @@ THE CONVERSATION SO FAR
 
 {TRANSCRIPT}
 
-A customer line of "{SKIP}" means she skipped that question: she does not care about that axis. Do not ask about it again — it will be decided for her later. A skip never leaves the turn empty-handed: move on to a different open axis that seems to matter to her, or — if what you know is enough, or questions ran out — return the summary. Either way you still return exactly one of "ask" / "gallery" / "summary".
-{GALLERY_CHOICE_BLOCK}
+A customer line of "{SKIP}" means she skipped that question: she does not care about that axis. Do not ask about it again — it will be decided for her later. A skip never leaves the turn empty-handed: move on to a different open axis that seems to matter to her, or — if what you know is enough, or questions ran out — return the summary. Either way you still return exactly one of "ask" / "gallery" / "edit" / "summary".
+{GALLERY_CHOICE_BLOCK}{EDIT_CHOICE_BLOCK}
 
 WHAT IS ALREADY ESTABLISHED
 
@@ -226,6 +231,8 @@ Then exactly one of:
 
 "gallery" — instead of a question, an invitation to choose: the screen will show her a handful of real pieces matching your "tags", and her pick (or "none of these") comes back as her next message. A gallery counts as one of your questions, exactly like "ask" — at zero remaining, summarise instead.
 
+"edit" — instead of a question, exact controls on screen: a width slider (the piece's length-to-width proportion) and one-tap choices for symmetry and cut density. Return a warm Hebrew "lead" inviting her to set things exactly, plus "controls" — which of "width" / "symmetry" / "density" to show ([] shows all). Use it when she talks in measures or asks to fix something exactly ("כמה רחב", "אני רוצה לקבוע בדיוק"), or when a summary correction keeps missing on one of these axes. What she sets returns as her next message and is her explicit, frozen decision. Do not offer it to someone still exploring in feelings, and not twice unless she asks. An edit counts as one of your questions, exactly like "ask" — at zero remaining, summarise instead.
+
 "summary" — when what you know is enough to design from, or questions ran out: a short Hebrew paragraph, in her language rather than specification language, describing the piece as it will be — and ending by asking if that is right. This is the cheap verbal render: a gap between her mental image and the specification must surface here, not after a paid image. If her last message corrects a previous summary, update the specification and return a corrected summary rather than a new question.
 
 OUTPUT
@@ -249,10 +256,11 @@ Return ONLY valid JSON — no markdown, no explanation before or after it:
 },
 "ask": {"question": "…", "chips": ["…", "…"]},
 "gallery": {"lead": "…", "tags": ["…", "…"]},
+"edit": {"lead": "…", "controls": ["width", "symmetry", "density"]},
 "summary": null
 }
 
-Include in "updated_spec" only fields the conversation established. "length_to_width_ratio" is a plain number (length divided by width), only if her words imply one — {RATIO_LO} (widest) to {RATIO_HI} (narrowest). Exactly one of "ask" / "gallery" / "summary" is non-null. "ask.question", "gallery.lead" and "summary" are Hebrew; "gallery.tags" are labels from the gallery list; "updated_spec" fields are English.`;
+Include in "updated_spec" only fields the conversation established. "length_to_width_ratio" is a plain number (length divided by width), only if her words imply one — {RATIO_LO} (widest) to {RATIO_HI} (narrowest). Exactly one of "ask" / "gallery" / "edit" / "summary" is non-null. "ask.question", "gallery.lead", "edit.lead" and "summary" are Hebrew; "gallery.tags" are labels from the gallery list; "updated_spec" fields are English.`;
 
 /**
  * פסקת הגלריה בפרומפט הסבב — נכנסת רק כשיש למוצר רשימה מאוצרת ({TAGS} אינו
@@ -290,6 +298,26 @@ Her last message picked a real piece from the gallery. Our curators describe it:
 {CHOICE}
 
 The choice is a measurement, not an order to copy: fold what it reveals about her taste into "updated_spec" as "inferred", in English — the axes the piece shows (silhouette, rhythm, symmetry, how open or full), not a replica of it. Fields already tagged [user] stay exactly as she said, even where this piece differs — a choice refines what was open, it never overwrites her words. Use its concept line to tell her, warmly and in your own Hebrew, what direction you are taking from it — then continue: ask about an axis the choice left open, or summarise if it closed enough.
+`;
+
+/**
+ * מה שנכנס לפרומפט אחרי קביעה בפקדים המדויקים — הערכים כפי שהשרת ניקה אותם
+ * (`describeEditChoice`), עם הטקסטים הקנוניים עצמם.
+ *
+ * ההצבה במפרט נעשית **בקוד**, אחרי הסבב (`applyEditChoice` — קוד תבנית, לא
+ * קריאת מודל, §1.2), ולכן ההנחיה כאן היא על מה שנשאר למודל: לא לשאול שוב על
+ * הצירים שנקבעו, ולהמשיך את השיחה. ההעתקה ל-`updated_spec` מתבקשת בכל זאת —
+ * שהמודל יראה מפרט עקבי עם מה שהוא כותב — אבל הערך הסופי נאכף בשרת גם אם
+ * הוא סטה.
+ */
+const EDIT_CHOICE_BLOCK = `
+SHE SET THE CONTROLS
+
+Her last message set exact controls on screen. What she set:
+
+{CHOICE}
+
+These are her explicit decisions: carry each into "updated_spec" exactly as stated — the texts word for word, the ratio as the exact number — tagged "user" in "sources". They are frozen now; do not ask about these axes again, and later turns change them only if she explicitly asks. Then continue: ask about an axis still open, or summarise if enough is closed.
 `;
 
 /**
@@ -388,6 +416,12 @@ export interface InterviewTurnInput {
    * שהיא מגלה לתוך המפרט (‏inferred), והמפרט הוא שנושא את זה הלאה.
    */
   galleryChoice?: string | null;
+  /**
+   * dialogue mode — תיאור הקביעה בפקדים המדויקים (`describeEditChoice`),
+   * כשההודעה האחרונה היא קביעה. מוזרק פעם אחת, כמו בחירת גלריה; ההצבה
+   * במפרט עצמו נאכפת בשרת (`applyEditChoice`) אחרי הסבב.
+   */
+  editChoice?: string | null;
 }
 
 /**
@@ -416,6 +450,9 @@ export function buildInterviewTurnPrompt(input: InterviewTurnInput): string {
       : "",
     GALLERY_CHOICE_BLOCK: input.galleryChoice?.trim()
       ? fill(GALLERY_CHOICE_BLOCK, { CHOICE: input.galleryChoice.trim() })
+      : "",
+    EDIT_CHOICE_BLOCK: input.editChoice?.trim()
+      ? fill(EDIT_CHOICE_BLOCK, { CHOICE: input.editChoice.trim() })
       : "",
     CURRENT_SPEC: hasSpec(input.spec)
       ? describeSpec(input.spec, { sources: true })
@@ -462,14 +499,15 @@ function unfence(text: string): string {
 /**
  * סבב שיחה, אם הוא שמיש. `null` על כל דבר אחר.
  *
- * **תנאי הקבילות: בדיוק אחד מ-`ask`/`gallery`/`summary`.** בלעדיהם אין למסך
- * מה להציג — זה ה-`image_instruction` של השלב הזה. מפרט חסר או פסול אינו
+ * **תנאי הקבילות: בדיוק אחד מ-`ask`/`gallery`/`edit`/`summary`.** בלעדיהם אין
+ * למסך מה להציג — זה ה-`image_instruction` של השלב הזה. מפרט חסר או פסול אינו
  * פוסל: הקודם ממשיך כמו שהוא (`nextEditSpec` עם החלטה ריקה), כי סבב בלי
  * עדכון מפרט הוא מצב תקין — שאלה ראשונה על שיחה ריקה, למשל.
  *
- * כשהוחזר יותר מאחד — הקדימות היא סיכום, גלריה, שאלה: סיכום אומר שהמפרט
- * בשל, וכל תור נוסף הוא בדיוק "טופס" שהתקרה קיימת כדי למנוע; גלריה לפני
- * שאלה כי המודל שבחר להציג בחירה כבר אמר שמילים אזלו — השאלה היא הגיבוי.
+ * כשהוחזר יותר מאחד — הקדימות היא סיכום, מצב-מדויק, גלריה, שאלה: סיכום אומר
+ * שהמפרט בשל, וכל תור נוסף הוא בדיוק "טופס" שהתקרה קיימת כדי למנוע; מצב-מדויק
+ * לפני גלריה כי מודל שהחזיר אותו ענה לבקשה מפורשת לקבוע — הצעת בחירה היא כלי
+ * למי שמילים אזלו לה; וגלריה לפני שאלה מאותו נימוק — השאלה היא הגיבוי.
  */
 export function parseInterviewTurn(
   raw: string,
@@ -498,7 +536,13 @@ export function parseInterviewTurn(
   const lead = typeof galleryBox?.lead === "string" && galleryBox.lead.trim()
     ? galleryBox.lead.trim()
     : null;
-  if (!summary && !question && !lead) return null;
+  const editBox = box.edit && typeof box.edit === "object" && !Array.isArray(box.edit)
+    ? (box.edit as Record<string, unknown>)
+    : null;
+  const editLead = typeof editBox?.lead === "string" && editBox.lead.trim()
+    ? editBox.lead.trim()
+    : null;
+  if (!summary && !question && !lead && !editLead) return null;
 
   // צ'יפים הם בונוס ממשקי: מה שאינו מחרוזת נזרק, וריק הוא שאלה פתוחה.
   const chips = (Array.isArray(askBox?.chips) ? askBox.chips : [])
@@ -513,14 +557,25 @@ export function parseInterviewTurn(
     .map((t) => t.trim())
     .slice(0, 6);
 
+  // הפקדים — רק מהרשימה המוכרת, בלי כפילויות; ריק נקרא "הצג הכול": הזמנה
+  // למצב-מדויק בלי אף פקד הייתה משאירה את המסך בלי מה להציג.
+  const controls = [...new Set(
+    (Array.isArray(editBox?.controls) ? editBox.controls : [])
+      .filter((k): k is EditControlKey => (EDIT_CONTROL_KEYS as readonly unknown[]).includes(k)),
+  )];
+
   const update = coerceEditSpec(box.updated_spec);
   const spec = nextEditSpec(priorSpec, update ? { updated_spec: update } : {});
 
-  const gallery = !summary && lead ? { lead, tags } : null;
+  const edit = !summary && editLead
+    ? { lead: editLead, controls: controls.length ? controls : [...EDIT_CONTROL_KEYS] }
+    : null;
+  const gallery = !summary && !edit && lead ? { lead, tags } : null;
   const decision: InterviewTurnDecision = {
     spec,
-    ask: summary || gallery || !question ? null : { question, chips },
+    ask: summary || edit || gallery || !question ? null : { question, chips },
     gallery,
+    edit,
     summary,
     ...(typeof box.expectation === "string" && box.expectation.trim()
       ? { expectation: box.expectation.trim().slice(0, 40) }
