@@ -13,6 +13,12 @@ import { INTERVIEW_SKIP } from "@/lib/dialogue/mode";
 import {
   gallerySvgPath, selectGalleryDesigns, type CuratedDesign,
 } from "@/lib/dialogue/gallery";
+import {
+  defaultRatioFor, widthThirdOf,
+  type DensityChoice, type EditChoice, type EditControlsAsk, type SymmetryChoice,
+} from "@/lib/dialogue/editControls";
+import { ratioOf, type EditSpec } from "@/lib/dialogue/spec";
+import { ratioBandFor } from "@/lib/story/ratio";
 import { Eyebrow, ScreenTitle, OptionBtn, PrimaryBtn } from "@/components/create/ui";
 import { INITIAL, type Product } from "@/components/create/model";
 
@@ -34,6 +40,13 @@ import { INITIAL, type Product } from "@/components/create/model";
 // ציורים סטטיים מ-`public/gallery/`. בחירה נשלחת כתשובה רגילה בתמליל —
 // ה-concept כטקסט הבועה — בתוספת מזהה שהשרת מתרגם בעצמו לרשומה המאוצרת;
 // "אף אחד מהם" הוא תשובה במילים, כי דחייה של שישה היא מידע ולא דילוג.
+//
+// **וכך גם מצב-מדויק (תור `edit`) — החלטת גל 21.8: "השיחה היא המשטח היחיד".**
+// המודל מחליט להציע פקדים מדויקים — מחוון רוחב (היחס, עם תצוגה חיה של
+// הפרופורציה) וצ'יפים לסימטריה ולצפיפות — והקביעה חוזרת כתשובה בתמליל
+// (במילים שלה) בתוספת מטען מובנה שהשרת מנקה, מתרגם ומציב במפרט כ-`user`
+// (‏editControls.ts). הקביעה אינה חובה: אפשר לקבע רק חלק, לכתוב חופשי,
+// או לדלג — בדיוק כמו בגלריה.
 //
 // **כשל אינו נבלע.** אין כאן מסלול-של-היום ליפול אליו — הראיון הוא המסך.
 // שגיאה מציגה "לנסות שוב" (התמליל נשמר), והעורך הקיים פתוח תמיד כפעולה
@@ -61,6 +74,13 @@ export function DialogueCreate() {
   const [chips, setChips] = useState<string[]>([]);
   /** העיצובים שהגלריה מציגה כרגע — הסינון כבר רץ (`selectGalleryDesigns`). */
   const [gallery, setGallery] = useState<CuratedDesign[] | null>(null);
+  /** תור מצב-מדויק פתוח — אילו פקדים להציג. */
+  const [editAsk, setEditAsk] = useState<EditControlsAsk | null>(null);
+  /** מה נגעו בו בפאנל. `null` = לא נגעו — ולא נשלח: מה שלא נקבע נשאר
+   *  כפי שהשיחה השאירה אותו. */
+  const [editRatio, setEditRatio] = useState<number | null>(null);
+  const [editSymmetry, setEditSymmetry] = useState<SymmetryChoice | null>(null);
+  const [editDensity, setEditDensity] = useState<DensityChoice | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -85,13 +105,26 @@ export function DialogueCreate() {
     endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [turns, summary, busy]);
 
+  /** סגירת פאנל המצב-המדויק, כולל מה שסומן בו. */
+  const closeEditPanel = (): void => {
+    setEditAsk(null);
+    setEditRatio(null);
+    setEditSymmetry(null);
+    setEditDensity(null);
+  };
+
   /** קריאת סבב אחת. `nextTurns` כבר כולל את תשובת הלקוחה; `chosenId` נשלח
-   *  רק כשהתשובה הזו היא בחירה בגלריה. */
-  const runTurn = (chosen: Product, nextTurns: Bubble[], chosenId?: string): void => {
+   *  רק כשהתשובה הזו היא בחירה בגלריה, ו-`choice` רק כשהיא קביעה בפקדים. */
+  const runTurn = (
+    chosen: Product,
+    nextTurns: Bubble[],
+    chosenId?: string,
+    choice?: EditChoice,
+  ): void => {
     setBusy(true);
     setError(null);
     setErrorDetail(null);
-    retryRef.current = () => runTurn(chosen, nextTurns, chosenId);
+    retryRef.current = () => runTurn(chosen, nextTurns, chosenId, choice);
     api
       .interviewTurn({
         product: chosen,
@@ -99,6 +132,7 @@ export function DialogueCreate() {
         spec: spec ?? undefined,
         utm: utmRef.current,
         chosenVersionId: chosenId,
+        editChoice: choice,
       })
       .then((res) => {
         setSpec(res.spec);
@@ -108,6 +142,7 @@ export function DialogueCreate() {
           setSummary(res.summary);
           setChips([]);
           setGallery(null);
+          closeEditPanel();
           setPhase("summary");
         } else if (res.gallery) {
           // תור גלריה: ההזמנה נכנסת לתמליל כתור מראיינת — כך היא גם נספרת
@@ -117,11 +152,22 @@ export function DialogueCreate() {
           setChips([]);
           // רשימה מאוצרת ריקה (לא אמור לקרות) — ההזמנה נשארת שאלה פתוחה.
           setGallery(designs.length > 0 ? designs : null);
+          closeEditPanel();
+          setPhase("chat");
+        } else if (res.edit) {
+          // תור מצב-מדויק: ההזמנה נכנסת לתמליל כתור מראיינת — נספרת בתקרה
+          // בדיוק כמו גלריה. הפענוח בשרת מבטיח שרשימת הפקדים אינה ריקה.
+          setTurns([...nextTurns, { role: "interviewer", text: res.edit.lead }]);
+          setChips([]);
+          setGallery(null);
+          closeEditPanel();
+          setEditAsk(res.edit as EditControlsAsk);
           setPhase("chat");
         } else if (res.ask) {
           setTurns([...nextTurns, { role: "interviewer", text: res.ask.question }]);
           setChips(res.ask.chips ?? []);
           setGallery(null);
+          closeEditPanel();
           setPhase("chat");
         }
         setBusy(false);
@@ -174,6 +220,7 @@ export function DialogueCreate() {
     setSummary(null);
     setChips([]);
     setGallery(null);
+    closeEditPanel();
     runTurn(product, [...turns, { role: "customer", text: value.slice(0, 2000) }]);
   };
 
@@ -184,8 +231,41 @@ export function DialogueCreate() {
     setSummary(null);
     setChips([]);
     setGallery(null);
+    closeEditPanel();
     const text = d.concept ? c.galleryPicked(d.concept) : c.galleryPickedPlain;
     runTurn(product, [...turns, { role: "customer", text }], d.version_id);
+  };
+
+  /** קביעה בפקדים המדויקים: תשובה רגילה בתמליל — במילים שלה, בלי שפת
+   *  מפרט — בתוספת המטען המובנה, שהשרת מנקה ומציב במפרט בעצמו כ-`user`
+   *  (‏editControls.ts). נשלח רק מה שנגעו בו. */
+  const applyPrecise = (): void => {
+    if (!product || busy) return;
+    const choice: EditChoice = {};
+    const parts: string[] = [];
+    if (editRatio !== null) {
+      choice.ratio = Math.round(editRatio * 10) / 10;
+      parts.push(c.editWidthPart(c.editWidthQual[widthThirdOf(choice.ratio, ratioBandFor(product))]));
+    }
+    if (editSymmetry) {
+      choice.symmetry = editSymmetry;
+      parts.push(c.editSymmetryChips[editSymmetry]);
+    }
+    if (editDensity) {
+      choice.density = editDensity;
+      parts.push(c.editDensityChips[editDensity]);
+    }
+    if (!parts.length) return;
+    setSummary(null);
+    setChips([]);
+    setGallery(null);
+    closeEditPanel();
+    runTurn(
+      product,
+      [...turns, { role: "customer", text: c.editPicked(parts.join(" · ")) }],
+      undefined,
+      choice,
+    );
   };
 
   const pickProduct = (p: Product): void => {
@@ -338,6 +418,101 @@ export function DialogueCreate() {
                     {c.galleryNone}
                   </button>
                   <span className="text-[13px] text-ink60">{c.galleryHint}</span>
+                </div>
+              </div>
+            )}
+
+            {/* מצב-מדויק (תור edit) — הפקדים בתוך השיחה, לא קישור יציאה.
+                מחוון הרוחב רץ על סקלה לוגריתמית (הטווח 2.4–47.5 הוא יחסי,
+                ומסלול ליניארי היה נותן את רוב הדרך לקצה הצר), והתצוגה החיה
+                היא הפרופורציה עצמה — כהה הוא מתכת, כמו בפריסה ובגלריה.
+                שום פקד אינו חובה: נשלח רק מה שנגעו בו. */}
+            {phase === "chat" && !busy && !error && editAsk && product && (
+              <div className="mt-1 flex flex-col gap-5 self-stretch rounded-[2px] border border-graphite/15 bg-chalk p-4">
+                {editAsk.controls.includes("width") && (() => {
+                  const [wide, thin] = ratioBandFor(product);
+                  const shown = editRatio ?? ratioOf(spec as EditSpec | null) ?? defaultRatioFor(product);
+                  const span = Math.log(thin / wide);
+                  const t = Math.round((Math.log(shown / wide) / span) * 100);
+                  return (
+                    <div>
+                      <div className="text-[13px] font-semibold text-graphite">{c.editWidthLabel}</div>
+                      <div className="mt-2 flex items-center gap-3">
+                        <span className="text-[12px] text-ink60">{c.editWidthWide}</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={Math.min(100, Math.max(0, t))}
+                          aria-label={c.editWidthLabel}
+                          className="w-full accent-lapis"
+                          onChange={(e) => {
+                            const next = wide * Math.exp((Number(e.target.value) / 100) * span);
+                            setEditRatio(Math.round(next * 10) / 10);
+                          }}
+                        />
+                        <span className="text-[12px] text-ink60">{c.editWidthNarrow}</span>
+                      </div>
+                      <div className="mt-3 flex h-[96px] items-center justify-center">
+                        <div
+                          className="bg-graphite"
+                          style={{ width: 220, height: Math.max(4, Math.round(220 / shown)) }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+                {editAsk.controls.includes("symmetry") && (
+                  <div>
+                    <div className="text-[13px] font-semibold text-graphite">{c.editSymmetryLabel}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["symmetric", "asymmetric"] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-pressed={editSymmetry === k}
+                          className={`rounded-[2px] border px-3 py-1.5 text-[14px] text-lapis-ink ${
+                            editSymmetry === k ? "border-lapis bg-lapis/10" : "border-lapis/40 hover:bg-lapis/10"
+                          }`}
+                          onClick={() => setEditSymmetry(editSymmetry === k ? null : k)}
+                        >
+                          {c.editSymmetryChips[k]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {editAsk.controls.includes("density") && (
+                  <div>
+                    <div className="text-[13px] font-semibold text-graphite">{c.editDensityLabel}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["low", "medium", "high"] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-pressed={editDensity === k}
+                          className={`rounded-[2px] border px-3 py-1.5 text-[14px] text-lapis-ink ${
+                            editDensity === k ? "border-lapis bg-lapis/10" : "border-lapis/40 hover:bg-lapis/10"
+                          }`}
+                          onClick={() => setEditDensity(editDensity === k ? null : k)}
+                        >
+                          {c.editDensityChips[k]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={editRatio === null && !editSymmetry && !editDensity}
+                    className="rounded-[2px] bg-graphite px-4 py-2 text-[14px] font-semibold text-porcelain disabled:opacity-50"
+                    onClick={applyPrecise}
+                  >
+                    {c.editApply}
+                  </button>
+                  <span className="text-[13px] text-ink60">{c.editHint}</span>
                 </div>
               </div>
             )}
