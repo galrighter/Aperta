@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { RATIO_BAND, ratioBandFor } from "@/lib/story/ratio";
 import {
-  DENSITY_SPEC_TEXT, EDIT_CONTROL_KEYS, SYMMETRY_SPEC_TEXT,
-  applyEditChoice, coerceEditChoice, defaultRatioFor, describeEditChoice, widthThirdOf,
+  DENSITY_SPEC_TEXT, EDIT_CONTROL_KEYS, LETTERING_TEXT_MAX, SYMMETRY_SPEC_TEXT,
+  applyEditChoice, coerceEditChoice, coerceLettering, defaultRatioFor, describeEditChoice,
+  widthThirdOf,
 } from "../editControls";
 import type { EditSpec } from "../spec";
 
@@ -112,7 +113,29 @@ describe("שפת הבועה ונקודת הפתיחה", () => {
     }
   });
 
-  it("רשימת הפקדים סגורה — שלושה, ו-feel בכוונה אינו בהם", () => {
-    expect([...EDIT_CONTROL_KEYS]).toEqual(["width", "symmetry", "density"]);
+  it("רשימת הפקדים סגורה — ארבעה מאז סבב הכיתוב, ו-feel בכוונה אינו בהם", () => {
+    expect([...EDIT_CONTROL_KEYS]).toEqual(["width", "symmetry", "density", "lettering"]);
+  });
+});
+
+describe("coerceLettering — סבב הכיתוב", () => {
+  it("זבל אינו כיתוב — null על כל מה שאינו מחרוזת עם תוכן", () => {
+    for (const raw of [null, undefined, 7, {}, [], "", "   "]) {
+      expect(coerceLettering(raw)).toBeNull();
+    }
+  });
+
+  it("רווחים מכווצים ותו שורה יוצא — שורת פרומפט ושורת תמליל נשארות שורה", () => {
+    expect(coerceLettering("  ענבל   רייטר \n ")).toBe("ענבל רייטר");
+  });
+
+  it("נחתך לתקרת שדה text של היצירה — מה שהראיון נושא הוא מה שהיצירה תקבל", () => {
+    const long = "א".repeat(LETTERING_TEXT_MAX + 10);
+    expect(coerceLettering(long)).toHaveLength(LETTERING_TEXT_MAX);
+  });
+
+  it("אין תיקון איות ואין נרמול — הכיתוב נחתך כלשונו", () => {
+    expect(coerceLettering("appologize")).toBe("appologize");
+    expect(coerceLettering("שני מגידס")).toBe("שני מגידס");
   });
 });

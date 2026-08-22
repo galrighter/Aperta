@@ -7,7 +7,9 @@ import { DIALOGUE_INTERVIEW, INTERVIEW_SKIP } from "./mode";
 import type { LlmEffort } from "./editStage";
 import { coerceEditSpec, describeSpec, hasSpec, nextEditSpec, type EditSpec } from "./spec";
 import { galleryTagVocabulary, type GalleryAsk } from "./gallery";
-import { EDIT_CONTROL_KEYS, type EditControlKey, type EditControlsAsk } from "./editControls";
+import {
+  EDIT_CONTROL_KEYS, coerceLettering, type EditControlKey, type EditControlsAsk,
+} from "./editControls";
 
 // dialogue mode — הראיון (שלב B): שיחת החידוד שקודמת לרנדר הראשון.
 //
@@ -42,14 +44,18 @@ import { EDIT_CONTROL_KEYS, type EditControlKey, type EditControlsAsk } from "./
 // תרגום דרך מילון §4; היסוס → שאלה עקיפה אחת על המניע; ‏utm קיים ממיין עוד
 // קודם. הכול תוכן של פרומפט אחד, לא ענפים בקוד — והטיפוס נרשם ליומן בלבד.
 //
-// **כיתוב אינו נשאל כאן** אף שהוא ברשימת ה-slots של DIALOGUE_PLAN §3: מסלול
-// הכיתוב דורש חיתוך מהפונט ותמונת ייחוס, ויצירת dialogue רצה בלעדיהם
-// (כמו Story). האמת המכניקית (הערת גל, 21.8): הכיתוב נשלח למודל התמונה
-// כייחוס והעיצוב נבנה סביבו — קלט של הרנדר, לא תוספת על תוצאה. ולכן בהמשך
-// (דיוק של גל, 21.8) אין לו מקום קבוע בשיחה: האילוץ היחיד הוא "לפני השליחה
-// למודל". הוא ייכנס כחלק ממסך העריכה, לא כשדה נפרד, והראיון יוכל לשאול על
-// מראה האותיות ולקבוע לפי זה את הפונט שיישלח. עד אז מי שמבקשת כיתוב מקבלת
-// את האמת: העורך המלא, שם הוא חלק מהיצירה מהצעד הראשון.
+// **כיתוב נמסר בשיחה — דרך הפאנל, לא דרך מילים חופשיות** (סבב הכיתוב;
+// דיוק של גל 21.8 והכרעות 22.8): האמת המכניקית היא שהכיתוב נשלח למודל
+// התמונה כתמונת ייחוס שנחתכה מהפונט, והעיצוב נבנה סביבו — קלט של הרנדר,
+// לא תוספת על תוצאה. לכן אין לו מקום קבוע בשיחה (האילוץ היחיד: לפני השליחה
+// למודל), והוא שדה בפאנל המצב-המדויק (תור `edit`, פקד `lettering`) ולא
+// slot של הראיון: האותיות המדויקות הן בדיוק "מה שמילים עושות רע". הטקסט
+// שנקבע נוסע מהמסך בכל סבב (`lettering`), הפרומפט מקבל עליו שורת מצב —
+// המודל יודע שהוא קיים, מעצב סביבו, ואינו מכניס אותו למפרט (הכיתוב אינו
+// שדה מפרט: המפרט מודפס לפרומפט הביצוע, ותיאור מילולי של אותיות הוא בדיוק
+// מה שתמונת הייחוס קיימת למנוע) — והפונט נגזר דטרמיניסטית ממילות השיחה
+// (`stylesForBrief` על הסיכום והתמליל), בלי שהמודל בוחר פונט: מותר לו רק
+// לשאול על מראה האותיות במילים שלה, והתשובה בתמליל היא שמזינה את הטבלה.
 //
 // **כשל אינו נופל בשקט.** אין כאן מסלול-של-היום ליפול אליו — הראיון הוא
 // המסך. `ok: false` חוזר למסך, שמציע לנסות שוב או לעבור לעורך הקיים.
@@ -192,8 +198,8 @@ const INTERVIEW_SYSTEM =
 const INTERVIEW_TURN_PROMPT = `A customer is planning a custom piece of jewellery with you, in Hebrew. Your job in this turn: read the conversation, update the piece's specification with what you now know, and either ask ONE more question or — when the specification is ready — describe the piece back to her for confirmation.
 
 PRODUCT: "{PRODUCT_TYPE}"   (bracelet or ring)
-{UTM_LINE}
-THE MEDIUM — already told to her, and it binds you too: the piece is laser-cut from one flat sheet of metal. Openings and the outer contour are its entire language. No engraving, no stones, no colour, no texture, no relief. If she asks for something outside this, do not translate it into something-that-looks-like: use your question to say, warmly, what the medium can do instead and ask what matters to her about it. Cut lettering is decided at the START of a piece — the design is built around the letters — and this conversation does not support it yet. If she asks for text on the piece, say that honestly: lettering is possible in the full editor, where it is part of creation from the first step; it cannot be added to a finished piece afterwards. Then continue with the rest of her idea.
+{UTM_LINE}{LETTERING_LINE}
+THE MEDIUM — already told to her, and it binds you too: the piece is laser-cut from one flat sheet of metal. Openings and the outer contour are its entire language. No engraving, no stones, no colour, no texture, no relief. If she asks for something outside this, do not translate it into something-that-looks-like: use your question to say, warmly, what the medium can do instead and ask what matters to her about it. Cut lettering is decided at the START of a piece — the design is built around the letters — and it cannot be added to a finished piece afterwards. This conversation supports it: when she wants text on the piece, return an "edit" turn whose "controls" include "lettering" — the screen gives her an exact text field, and what she types there is cut from our own typefaces exactly as written. Never take the exact letters from free conversation, and never write them yourself: the text goes through that field only.
 
 THE CONVERSATION SO FAR
 
@@ -231,7 +237,7 @@ Then exactly one of:
 
 "gallery" — instead of a question, an invitation to choose: the screen will show her a handful of real pieces matching your "tags", and her pick (or "none of these") comes back as her next message. A gallery counts as one of your questions, exactly like "ask" — at zero remaining, summarise instead.
 
-"edit" — instead of a question, exact controls on screen: a width slider (the piece's length-to-width proportion) and one-tap choices for symmetry and cut density. Return a warm Hebrew "lead" inviting her to set things exactly, plus "controls" — which of "width" / "symmetry" / "density" to show ([] shows all). Use it when she talks in measures or asks to fix something exactly ("כמה רחב", "אני רוצה לקבוע בדיוק"), or when a summary correction keeps missing on one of these axes. What she sets returns as her next message and is her explicit, frozen decision. Do not offer it to someone still exploring in feelings, and not twice unless she asks. An edit counts as one of your questions, exactly like "ask" — at zero remaining, summarise instead.
+"edit" — instead of a question, exact controls on screen: a width slider (the piece's length-to-width proportion), one-tap choices for symmetry and cut density, and an exact text field for lettering. Return a warm Hebrew "lead" inviting her to set things exactly, plus "controls" — which of "width" / "symmetry" / "density" / "lettering" to show ([] shows all). Use it when she talks in measures or asks to fix something exactly ("כמה רחב", "אני רוצה לקבוע בדיוק"), when she wants text cut into the piece (then include "lettering"), or when a summary correction keeps missing on one of these axes. What she sets returns as her next message and is her explicit, frozen decision. Do not offer it to someone still exploring in feelings, and not twice unless she asks. An edit counts as one of your questions, exactly like "ask" — at zero remaining, summarise instead.
 
 "summary" — when what you know is enough to design from, or questions ran out: a short Hebrew paragraph, in her language rather than specification language, describing the piece as it will be — and ending by asking if that is right. This is the cheap verbal render: a gap between her mental image and the specification must surface here, not after a paid image. If her last message corrects a previous summary, update the specification and return a corrected summary rather than a new question.
 
@@ -256,11 +262,29 @@ Return ONLY valid JSON — no markdown, no explanation before or after it:
 },
 "ask": {"question": "…", "chips": ["…", "…"]},
 "gallery": {"lead": "…", "tags": ["…", "…"]},
-"edit": {"lead": "…", "controls": ["width", "symmetry", "density"]},
+"edit": {"lead": "…", "controls": ["width", "symmetry", "density", "lettering"]},
 "summary": null
 }
 
 Include in "updated_spec" only fields the conversation established. "length_to_width_ratio" is a plain number (length divided by width), only if her words imply one — {RATIO_LO} (widest) to {RATIO_HI} (narrowest). Exactly one of "ask" / "gallery" / "edit" / "summary" is non-null. "ask.question", "gallery.lead", "edit.lead" and "summary" are Hebrew; "gallery.tags" are labels from the gallery list; "updated_spec" fields are English.`;
+
+/**
+ * שורת מצב הכיתוב בפרומפט הסבב — נכנסת רק כשהכיתוב נקבע (סבב הכיתוב).
+ *
+ * שלוש ההכרעות של 22.8 (ב') יושבות בה:
+ *
+ *  - **הכיתוב אינו שדה מפרט** — המפרט מודפס לפרומפט הביצוע, ותיאור מילולי
+ *    של אותיות הוא בדיוק מה שתמונת הייחוס קיימת למנוע. השורה אומרת זאת
+ *    למודל במפורש, כי הרפלקס הטבעי שלו הוא לתעד כל דבר ב-`updated_spec`.
+ *  - **הפונט נגזר מהמילים שלה, לא נבחר על ידי המודל** (§1.2 — אין מודל
+ *    שלישי): `stylesForBrief` רץ על הסיכום והתמליל בשרת. מה שמותר למודל
+ *    הוא שאלה אחת על מראה האותיות — במילות היומיום שהטבלה מכירה — והתשובה
+ *    בתמליל היא שמזינה את הגזירה.
+ *  - **שאלת המראה נספרת כשאלה** (הכרעת ג): תור ask רגיל, מהתקרה — בלי
+ *    מנגנון ספירה שני.
+ */
+const LETTERING_LINE = `LETTERING — she has set the exact text to be cut into the piece: "{TEXT}". It is frozen: it will be cut from our own typefaces exactly as written and handed to the image model as a reference image — never described in words. The piece is designed AROUND the letters. Do not put the text in "updated_spec", do not re-ask for it, and do not spell it back letter by letter; changing or removing it happens only through the same "lettering" control. Which typeface is used is derived deterministically from her own Hebrew words about how the letters should feel; if nothing in the conversation implies a look for them and you still have questions left, one short "ask" about the look of the letters — with everyday chips like "עדין", "קלאסי", "נקי", "כתב יד" — is worth one of your questions.
+`;
 
 /**
  * פסקת הגלריה בפרומפט הסבב — נכנסת רק כשיש למוצר רשימה מאוצרת ({TAGS} אינו
@@ -350,7 +374,7 @@ Every decision must be closed (an axis left open is redrawn differently on every
 PROPORTION
 
 Each design carries its own "length_to_width_ratio" — a plain number between {RATIO_LO} (widest) and {RATIO_HI} (narrowest). If the specification already carries a [user] or [inferred] ratio, every direction keeps it; otherwise choose per direction, because width is a design decision she left to you.
-
+{LETTERING_BLOCK}
 MAKING
 
 Each design is laser-cut from one flat sheet of brass and then rolled. Whatever metal remains has to hold together as a single connected piece.
@@ -383,6 +407,21 @@ Return ONLY valid JSON — no markdown, no explanation before or after it — wi
 }
 
 "sources" tags every field of that direction: "user" and "inferred" carried from the specification above, "chosen" for what you decided here. "image_instruction" is the field that matters most — a literal drawing instruction, standing alone. All fields except "concept" are English; "concept" is Hebrew, for her.`;
+
+/**
+ * בלוק הכיתוב בפרומפט הסגירה — נכנס רק כשהכיתוב נקבע (סבב הכיתוב).
+ *
+ * הסגירה כותבת את מה שמודל התמונה יבצע, ולכן זה המקום שבו הגדר חייבת
+ * להיאמר: האותיות אינן של הכיוונים — הן מגיעות לרנדר כתמונת ייחוס (הפס
+ * נבנה ב-`letteringImage.ts`, פנים אחרות לכל שורה), וכל כיוון מעצב את
+ * המתכת סביבן. תיאור אותיות ב-`image_instruction` היה בדיוק "המודל ממציא
+ * את האותיות" שהייחוס קיים למנוע.
+ */
+const DIRECTIONS_LETTERING_BLOCK = `
+LETTERING
+
+The piece carries lettering: the exact text "{TEXT}", cut through the metal as openings. The image model receives it as a reference image cut from our own typefaces — the letters are not yours to describe or to draw. Design every direction around them: keep a continuous band of metal where the lettering sits, do not write the text into any field, do not describe letterforms, and do not count the letters among the design's elements. "image_instruction" describes only the metal around the lettering.
+`;
 
 /** `{TOKEN}` → ערך. מועתק מ-`editStage` ולא משותף — מסלול מקביל, מחיקתו
  *  מחיקת תיקייה. פונקציית החלפה: תשובה שמכילה `$&` הייתה משכתבת את עצמה. */
@@ -422,6 +461,13 @@ export interface InterviewTurnInput {
    * במפרט עצמו נאכפת בשרת (`applyEditChoice`) אחרי הסבב.
    */
   editChoice?: string | null;
+  /**
+   * הכיתוב שנקבע בפאנל, כפי שהמסך נושא אותו (סבב הכיתוב). נשלח **בכל
+   * סבב** ולא רק בסבב הקביעה — בניגוד ל-`editChoice`, הוא מצב מתמשך של
+   * הפריט ולא אירוע: המודל חייב לדעת עליו גם חמישה סבבים אחרי שנקבע.
+   * מנוקה ב-`coerceLettering`; `null`/ריק = אין כיתוב.
+   */
+  lettering?: string | null;
 }
 
 /**
@@ -438,11 +484,15 @@ export function buildInterviewTurnPrompt(input: InterviewTurnInput): string {
   // מוצר בלי רשימה מאוצרת אינו מקבל את הפסקה בכלל — הצעת כלי שאין מאחוריו
   // כלום הייתה מובילה לגלריה ריקה על המסך.
   const vocabulary = galleryTagVocabulary(input.productType);
+  const lettering = coerceLettering(input.lettering);
   return fill(INTERVIEW_TURN_PROMPT, {
     PRODUCT_TYPE: input.productType,
     UTM_LINE: input.utm?.trim()
       ? `SHE ARRIVED FROM AN AD — creative id "${input.utm.trim().replace(/\s+/g, " ").slice(0, 120)}". What that ad showed is her opening expectation.\n`
       : "",
+    // שורת המצב של הכיתוב — מתמשכת, לא חד-פעמית כמו בלוק הקביעה: הכיתוב
+    // הוא מצב של הפריט, והמודל חייב לראות אותו בכל סבב.
+    LETTERING_LINE: lettering ? fill(LETTERING_LINE, { TEXT: lettering }) : "",
     TRANSCRIPT: input.turns.map(transcriptLine).join("\n"),
     SKIP: INTERVIEW_SKIP,
     GALLERY_SECTION: vocabulary.length
@@ -472,14 +522,19 @@ export interface InterviewDirectionsInput {
   spec: EditSpec;
   /** הסיכום שאושר, בעברית — העוגן שהכיוונים חייבים לכבד. */
   summary: string;
+  /** הכיתוב שנקבע בפאנל (סבב הכיתוב) — הסגירה חייבת לדעת שהכיוונים
+   *  מעצבים סביבו. `null`/ריק = אין כיתוב. */
+  lettering?: string | null;
 }
 
 export function buildInterviewDirectionsPrompt(input: InterviewDirectionsInput): string {
   const [lo, hi] = ratioBandFor(input.productType);
+  const lettering = coerceLettering(input.lettering);
   return fill(INTERVIEW_DIRECTIONS_PROMPT, {
     PRODUCT_TYPE: input.productType,
     CURRENT_SPEC: describeSpec(input.spec, { sources: true }),
     SUMMARY: input.summary.trim().replace(/\s+/g, " "),
+    LETTERING_BLOCK: lettering ? fill(DIRECTIONS_LETTERING_BLOCK, { TEXT: lettering }) : "",
     COUNT_LO: String(DESIGN_COUNT_RANGE[0]),
     COUNT_HI: String(DESIGN_COUNT_RANGE[1]),
     RATIO_LO: `1:${lo}`,

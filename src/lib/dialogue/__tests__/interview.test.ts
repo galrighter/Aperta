@@ -65,9 +65,13 @@ describe("buildInterviewTurnPrompt", () => {
 
   it("חוזה המדיום בפרומפט — בקשה מחוץ למדיום הופכת לשאלה (§2.5)", () => {
     expect(prompt).toContain("No engraving, no stones");
-    // כיתוב מופנה לעורך ובאמת המכניקית: נקבע בתחילת יצירה, לא מתווסף אחר-כך.
-    expect(prompt).toContain("full editor");
+    // סבב הכיתוב: הקופי המפנה לעורך ירד — השיחה תומכת בכיתוב, דרך הפאנל.
+    expect(prompt).not.toContain("full editor");
+    expect(prompt).toContain("This conversation supports it");
+    // האמת המכניקית נשארת: נקבע בתחילת יצירה, לא מתווסף לפריט גמור.
     expect(prompt).toContain("cannot be added to a finished piece");
+    // והאותיות המדויקות עוברות רק דרך השדה — לא נאספות משיחה חופשית.
+    expect(prompt).toContain("the text goes through that field only");
   });
 
   it("דילוג לעולם אינו משאיר סבב בידיים ריקות — הכשל של הריצה החיה השנייה", () => {
@@ -80,7 +84,8 @@ describe("buildInterviewTurnPrompt", () => {
 
   it("תור המצב-המדויק בחוזה — פקדים בתוך השיחה, נספר בתקרה (החלטת גל 21.8)", () => {
     expect(prompt).toContain('"edit"');
-    expect(prompt).toContain('"width" / "symmetry" / "density"');
+    // ארבעה פקדים מאז סבב הכיתוב.
+    expect(prompt).toContain('"width" / "symmetry" / "density" / "lettering"');
     // נספר כשאלה — התקרה נשארת ספירה אחת, מהתמליל.
     expect(prompt).toContain("An edit counts as one of your questions");
     // לא כלי לחקירה רגשית — למי שמדברת במידות ומבקשת לקבוע.
@@ -125,6 +130,23 @@ describe("buildInterviewTurnPrompt", () => {
     expect(p).toContain("Concept: קו נודד");
     expect(p).toContain('as "inferred"');
     expect(p).toContain("it never overwrites her words");
+  });
+
+  it("שורת הכיתוב נכנסת רק כשנקבע — מצב מתמשך, לא שדה מפרט (סבב הכיתוב)", () => {
+    expect(prompt).not.toContain("LETTERING —");
+    const p = buildInterviewTurnPrompt({
+      productType: "bracelet",
+      turns,
+      spec: null,
+      asked: 2,
+      lettering: "  ענבל   רייטר ",
+    });
+    // הטקסט מנוקה ונכנס במרכאות — מה שנקבע הוא מה שהמודל רואה.
+    expect(p).toContain('"ענבל רייטר"');
+    // ההוראות שאסור שיאבדו: לא למפרט, לא לשאול שוב, והפונט נגזר מהמילים שלה.
+    expect(p).toContain('Do not put the text in "updated_spec"');
+    expect(p).toContain("designed AROUND the letters");
+    expect(p).toContain("derived deterministically from her own Hebrew words");
   });
 });
 
@@ -276,12 +298,20 @@ describe("parseInterviewTurn", () => {
     expect(out.decision.gallery).toBeNull();
   });
 
+  it("פקד הכיתוב הוא מפתח מוכר (סבב הכיתוב) — תור שמזמין את שדה הטקסט", () => {
+    const out = parseInterviewTurn(
+      JSON.stringify({ edit: { lead: "רוצה כיתוב?", controls: ["lettering"] } }),
+      null,
+    )!;
+    expect(out.decision.edit).toEqual({ lead: "רוצה כיתוב?", controls: ["lettering"] });
+  });
+
   it("רשימת פקדים ריקה נקראת 'הצג הכול' — הזמנה בלי פקדים אינה מסך ריק", () => {
     const out = parseInterviewTurn(
       JSON.stringify({ edit: { lead: "בואי נקבע", controls: [] } }),
       null,
     )!;
-    expect(out.decision.edit?.controls).toEqual(["width", "symmetry", "density"]);
+    expect(out.decision.edit?.controls).toEqual(["width", "symmetry", "density", "lettering"]);
   });
 
   it("קדימות התור הרביעי: סיכום גובר עליו, והוא גובר על גלריה ועל שאלה", () => {
@@ -418,6 +448,21 @@ describe("buildInterviewDirectionsPrompt", () => {
     expect(prompt).toContain("IDENTICAL, word for word, in every direction");
     // והדמיון בין כיוונים של מי שסגרה הכול הוא נכון, לא כשל (§3.1).
     expect(prompt).toContain("that is correct");
+  });
+
+  it("בלוק הכיתוב נכנס רק כשנקבע — והאותיות אינן של הכיוונים (סבב הכיתוב)", () => {
+    expect(prompt).not.toContain("The piece carries lettering");
+    const p = buildInterviewDirectionsPrompt({
+      productType: "bracelet",
+      spec,
+      summary: "צמיד עם השם — נכון?",
+      lettering: "ענבל",
+    });
+    expect(p).toContain('the exact text "ענבל"');
+    // הגדר: הכיתוב מגיע לרנדר כתמונת ייחוס — תיאור אותיות במפרט הוא בדיוק
+    // "המודל ממציא את האותיות" שהייחוס קיים למנוע.
+    expect(p).toContain("not yours to describe");
+    expect(p).toContain("do not describe letterforms");
   });
 });
 

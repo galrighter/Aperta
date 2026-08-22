@@ -396,7 +396,7 @@ Leave a clear, unbroken horizontal band of pure white between every two designs,
 
 WHAT THESE ARE
 
-Flat blanks as they come off the laser bed, before being rolled into the finished piece. Each one is cut from a single sheet of {THICKNESS_MM} mm brass, so the metal that remains has to hold together as one connected piece.
+Flat blanks as they come off the laser bed, before being rolled into the finished piece. Each one is cut from a single sheet of {THICKNESS_MM} mm brass, so the metal that remains has to hold together as one connected piece.{LETTERING}
 
 HOW TO DRAW THEM
 
@@ -418,6 +418,12 @@ export const buildStagedRenderPrompt = (
   canvas: Canvas,
   spec?: DesignSpec | null,
   thicknessMm: number = FAB.defaultThicknessMm,
+  // dialogue mode — יצירת ראיון עם כיתוב (סבב הכיתוב): תמונת הייחוס היא פס
+  // הכיתוב. `uniform` הוא מה שנחתך **בפועל** — פנים אחת לכל השורות או פנים
+  // לכל אחת — ולא מה שהתבקש: הפרומפט חייב לתאר את התמונה שצורפה, אחרת הוא
+  // מזמין את המודל להמציא מגוון שאינו שם. בלעדי הפרמטר הפרומפט זהה תו-בתו
+  // למה שהיה — מסלול Story לא נגוע.
+  lettering?: { uniform: boolean } | null,
 ): string => {
   const designs = spec?.designs ?? [];
   const count = designs.length || DESIGN_COUNT;
@@ -429,8 +435,37 @@ export const buildStagedRenderPrompt = (
     ROW_LIST: rowList(count),
     PROPORTIONS: proportionLines(ratios),
     THICKNESS_MM: String(thicknessMm),
+    LETTERING: lettering ? letteringBlock(count, lettering.uniform) : "",
   });
 };
+
+/**
+ * dialogue mode — בלוק הכיתוב של הפרומפט הדו-שלבי (סבב הכיתוב).
+ *
+ * הנוסח הוא הנוסח **המדוד** של `buildRenderPrompt` (‏imagegen.ts — הבלוק
+ * שהגן על האיות מאז 31/07), מותאם לשוני אחד: כאן כל שורה היא כיוון עיצוב
+ * אחר, ולכן ההוראה היא לעצב כל כיוון סביב הכיתוב של השורה שלו. המשפט
+ * האחרון הוא החריג היחיד ל-"no text" של HOW TO DRAW THEM — בלעדיו שתי
+ * ההוראות סותרות, והמודל בוחר בעצמו במי לפגוע.
+ */
+function letteringBlock(count: number, uniform: boolean): string {
+  const rows = count <= 1
+    ? ""
+    : uniform
+      // פנים אחת לכל השורות: המשפט אומר את זה במפורש, אחרת המודל "משלים"
+      // מגוון טיפוגרפי שהלקוחה לא ביקשה — היא בחרה אופי, וזה מה שנחתך.
+      ? ` The reference shows ${numberWord(count)} rows, and the lettering is drawn in the SAME typeface in every one of them — that typeface is what she asked for. Keep it identical across all rows; the rows differ in the design around the lettering, never in the letterforms.`
+      : ` The reference shows ${numberWord(count)} rows, and the lettering is drawn in a different typeface in each one. Keep every row's own lettering exactly as it is in that row — do not carry one row's letterforms over to another.`;
+  return (
+    "\n\nLETTERING\n\n" +
+    "The attached reference image already carries the lettering, cut into each band. " +
+    "Copy it across unchanged — the same glyphs in the same places, including the small bridges that hold the enclosed parts of letters in place. " +
+    "Do not redraw, restyle or move a letter, and do not replace a shape that looks unfamiliar: those bridged letterforms are deliberate. " +
+    "Each design is built around its row's lettering — design only in the empty metal around it." +
+    rows +
+    " This lettering is the one exception to the no-text rule below: keep it, and add no other text."
+  );
+}
 
 /** ‏"DESIGN 1 — top row / DESIGN 2 — second row / … / DESIGN n — bottom row". */
 function rowList(count: number): string {

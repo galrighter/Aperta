@@ -12,7 +12,7 @@ import { SPEC_FIELDS, coerceEditSpec, hasSpec, type EditSpec, type SpecSources }
 // **איזה מהם הלקוחה בחרה** — וזה מה ש-`VersionCandidate.designIndex` נושא
 // מאז שהוא נצמד לפאנל בזמן היצירה.
 //
-// **הכול טהור כאן.** השליפה עצמה יושבת ב-`lib/db/runs.ts#editSpecFor`; מה
+// **הכול טהור כאן.** השליפה עצמה יושבת ב-`lib/db/runs.ts#editChainFor`; מה
 // שנשאר כאן הוא הפענוח והבחירה, שהם מה שיכול להיות שגוי בשקט ולכן מה שנבדק.
 
 /**

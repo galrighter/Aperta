@@ -72,6 +72,23 @@ export function styleForBrief(brief: string): LetteringStyle {
 }
 
 /**
+ * dialogue mode — האם הבריף **בחר** אופי טיפוגרפי, או שנפל לברירת המחדל.
+ *
+ * ההבחנה הזו היא בדיוק "יש בחירה ברורה בסגנון" (החלטת גל): מי שכתבה "צמיד
+ * קלאסי עם השם" ביקשה סריף, ולהראות לה שלוש טיפוגרפיות שונות זה להתעלם ממה
+ * שאמרה. מי שכתבה "צמיד עם השם שלי" לא ביקשה כלום — ואז המגוון הוא התשובה
+ * הנכונה, כי הבחירה שלה תיאמר בבחירת החלופה.
+ *
+ * מוחזר בנפרד מ-`styleForBrief` ולא כ-`null` ממנו, כדי שהחתימה הקיימת —
+ * ומי שקורא לה במסלול הרגיל — לא ישתנו בכלל.
+ */
+export function briefPicksStyle(brief: string): boolean {
+  const text = normalize(brief);
+  if (!text.trim()) return false;
+  return TABLE.some((entry) => entry.words.some((w) => text.includes(w)));
+}
+
+/**
  * כל הטיפוגרפיות, בסדר ההעדפה שהבריף מכתיב.
  *
  * הצינור ממילא מחזיר `rows` מועמדים שהלקוחה בוחרת ביניהם (lib/render/panels.ts),

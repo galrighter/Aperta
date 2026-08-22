@@ -5,7 +5,9 @@ import { tooManyAttempts } from "@/lib/db/rateLimit";
 import { clientIp } from "@/lib/ip";
 import { coerceEditSpec } from "@/lib/dialogue/spec";
 import { curatedById, describeGalleryChoice } from "@/lib/dialogue/gallery";
-import { applyEditChoice, coerceEditChoice, describeEditChoice } from "@/lib/dialogue/editControls";
+import {
+  LETTERING_TEXT_MAX, applyEditChoice, coerceEditChoice, coerceLettering, describeEditChoice,
+} from "@/lib/dialogue/editControls";
 import {
   askedOf, coerceInterviewTurns, runInterviewDirections, runInterviewTurn,
 } from "@/lib/dialogue/interview";
@@ -57,6 +59,12 @@ const schema = z.object({
    * הטווח/הרשימה ממשיכים, וגוף בקשה אינו הצהרה.
    */
   editChoice: z.unknown().optional(),
+  /**
+   * dialogue mode — הכיתוב שנקבע בפאנל (סבב הכיתוב). נשלח בכל סבב, לא רק
+   * בסבב הקביעה: זה מצב מתמשך של הפריט, והמסך הוא שנושא אותו (אין מיגרציה).
+   * מנוקה ב-`coerceLettering`; התקרה זהה לשדה `text` של בקשת היצירה.
+   */
+  lettering: z.string().max(LETTERING_TEXT_MAX).optional(),
   /** לסגירה בלבד: הסיכום שהלקוחה אישרה. */
   summary: z.string().max(4000).optional(),
 });
@@ -84,6 +92,8 @@ export async function POST(req: Request) {
         productType: body.product,
         spec,
         summary: body.summary,
+        // dialogue mode — הכיוונים מעצבים סביב הכיתוב, והסגירה חייבת לדעת עליו.
+        lettering: coerceLettering(body.lettering),
       });
       if (!out.ok) {
         // הכשל חוזר למסך, לא נבלע: אין כאן מסלול-של-היום ליפול אליו, ומה
@@ -108,6 +118,8 @@ export async function POST(req: Request) {
       utm: body.utm ?? null,
       galleryChoice: chosen ? describeGalleryChoice(chosen) : null,
       editChoice: setting ? describeEditChoice(setting) : null,
+      // dialogue mode — שורת המצב של הכיתוב, בכל סבב (סבב הכיתוב).
+      lettering: coerceLettering(body.lettering),
     });
     if (!out.ok) {
       throw new ApiError("interview_failed", out.reason.slice(0, 300), 502);

@@ -25,6 +25,9 @@ export interface DialogueHandoff {
   utm?: string;
   /** מצב הידיעה שהראיון זיהה (§3.5). */
   expectation?: string;
+  /** הכיתוב שנקבע בפאנל (סבב הכיתוב) — נכנס ל-`CreateState.lettering`
+   *  ונוסע ליצירה בשדה `text` הקיים. התקרה כשל שדה `text` בשרת. */
+  lettering?: string;
 }
 
 /** תקינות מינימלית — מה שנקרא מהדיסק אינו בהכרח מה שנכתב אליו. */
@@ -35,7 +38,10 @@ function clean(raw: unknown): DialogueHandoff | null {
   const directions = typeof src.directions === "string" ? src.directions.slice(0, 64_000).trim() : "";
   const summary = typeof src.summary === "string" ? src.summary.slice(0, 4000).trim() : "";
   if (!product || !directions || !summary) return null;
-  const opt = (key: "transcript" | "utm" | "expectation", max: number): string | undefined => {
+  const opt = (
+    key: "transcript" | "utm" | "expectation" | "lettering",
+    max: number,
+  ): string | undefined => {
     const v = src[key];
     return typeof v === "string" && v.trim() ? v.slice(0, max) : undefined;
   };
@@ -46,6 +52,7 @@ function clean(raw: unknown): DialogueHandoff | null {
     transcript: opt("transcript", 20_000),
     utm: opt("utm", 200),
     expectation: opt("expectation", 40),
+    lettering: opt("lettering", 40),
   };
 }
 

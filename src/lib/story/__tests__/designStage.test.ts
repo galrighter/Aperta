@@ -112,6 +112,46 @@ describe("buildStagedRenderPrompt", () => {
     const wide = buildStagedRenderPrompt(SPEC(3), LANDSCAPE);
     expect(wide).toContain("Create ONE landscape / wide image");
   });
+
+  // dialogue mode — בלוק הכיתוב (סבב הכיתוב): יצירת ראיון עם כיתוב מקבלת
+  // את ההוראות המדודות של imagegen, ומסלול Story בלעדיו אינו זז בתו.
+  it("בלי כיתוב אין בלוק ואין סמן — פרומפט Story זהה למה שהיה", () => {
+    const p = buildStagedRenderPrompt(SPEC(3), storyCanvas());
+    expect(p).not.toContain("{LETTERING}");
+    expect(p).not.toContain("LETTERING\n");
+    expect(p).toBe(buildStagedRenderPrompt(SPEC(3), storyCanvas(), undefined, undefined, null));
+  });
+
+  it("עם כיתוב: להעתיק ולא לצייר, והחריג היחיד ל-no-text", () => {
+    const p = buildStagedRenderPrompt(
+      SPEC(3), storyCanvas(), undefined, undefined, { uniform: false },
+    );
+    expect(p).toContain("already carries the lettering");
+    expect(p).toContain("Copy it across unchanged");
+    // בלעדי המשפט הזה "no text" של HOW TO DRAW THEM סותר את הייחוס.
+    expect(p).toContain("the one exception to the no-text rule");
+  });
+
+  /**
+   * הפרומפט מתאר את התמונה **שצורפה**, לא את מה שהתבקש. משפט "פנים אחרות
+   * בכל שורה" מול ייחוס אחיד הוא הזמנה למודל להמציא מגוון שאינו שם — וזה
+   * בדיוק ההפך מ"היא בחרה אופי" (החלטת גל).
+   */
+  it("מגוון מול אחידות — שני המשפטים בלעדיים, ואף אחד מהם אינו הברירה השקטה", () => {
+    const varied = buildStagedRenderPrompt(
+      SPEC(3), storyCanvas(), undefined, undefined, { uniform: false },
+    );
+    expect(varied).toContain("a different typeface in each one");
+    expect(varied).toContain("do not carry one row's letterforms over to another");
+    expect(varied).not.toContain("SAME typeface");
+
+    const uniform = buildStagedRenderPrompt(
+      SPEC(3), storyCanvas(), undefined, undefined, { uniform: true },
+    );
+    expect(uniform).toContain("the SAME typeface in every one of them");
+    expect(uniform).toContain("never in the letterforms");
+    expect(uniform).not.toContain("a different typeface in each one");
+  });
 });
 
 describe("parseDesignSpec", () => {

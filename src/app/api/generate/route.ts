@@ -33,11 +33,13 @@ import { canvasFor, canvasOf, sizeParam } from "@/lib/render/canvas";
 import { pickClosestRatio, ratioGap } from "@/lib/render/ratioGap";
 import { buildBaseRenderSvg } from "@/lib/render/baseImage";
 import { buildLetteringRenderSvg } from "@/lib/render/letteringImage";
+// dialogue mode — "יש בחירה ברורה בסגנון": מה שמכריע פנים-אחת מול מגוון.
+import { briefPicksStyle } from "@/lib/text/style";
 import { runRenderJob } from "@/lib/render/service";
 import { frameCandidates } from "@/lib/render/frameClient";
 import { deriveAttemptId } from "@/lib/render/attemptId";
 import { persistRun, type PersistRunInput } from "@/lib/runs/persist";
-import { editSpecFor, noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
+import { editChainFor, noteRunVerdicts, verdictOf, type RunSource } from "@/lib/db/runs";
 import { describeFailure, markRunError } from "@/lib/db/runs";
 import { letteringBridgeCheck, type JobContext } from "@/lib/runs/complete";
 import { startJob, failJob, claimJobDone, setJobStage, setJobContext, JobConflictError } from "@/lib/db/jobs";
@@ -606,14 +608,21 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
      * **הכניסה היא הגרסה שנערכת ולא העיצוב.** כל בקשת שינוי יוצרת שורת עיצוב
      * חדשה (`createSampleDesign`), בזמן שההרצה נרשמת תחת העיצוב שממנו יצאה —
      * ולכן חיפוש לפי `design_id` לא היה מוצא את הסבב הקודם לעולם. הגרסה
-     * מחזיקה את השרשרת. ראה `editSpecFor`.
+     * מחזיקה את השרשרת. ראה `editChainFor`.
      *
      * `baseVersionId` הוא מה שהלקוחה באמת עורכת (היא יכולה לחזור לגרסה ישנה),
      * ולכן הוא קודם לגרסה הנוכחית של הרשומה.
+     *
+     * אותה קריאה מחזירה גם את **הכיתוב שהשרשרת נושאת** (סבב הכיתוב): הלקוח
+     * אינו שולח `text` בעריכות, והידיעה חייבת לבוא מהשרת — היא מה ששולל
+     * respec (הכיתוב חי בתמונה, לא במפרט) ומה שמועתק הלאה על ההרצה הזו.
      */
-    const priorSpec = editStageRuns
-      ? await editSpecFor(body.baseVersionId ?? design.current_version_id)
+    const priorChain = editStageRuns
+      ? await editChainFor(body.baseVersionId ?? design.current_version_id)
       : null;
+    const priorSpec = priorChain?.spec ?? null;
+    /** dialogue mode — הכיתוב על השרשרת הזו: מהבקשה (יצירה) או מהיומן (עריכה). */
+    const chainLettering = body.text?.trim() || priorChain?.lettering || null;
     const edit = editStageRuns
       ? await runEditStage({
           productType: design.product_type,
@@ -643,7 +652,9 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       ? runsRespec({
           decision: editStage.decision,
           priorSpec,
-          lettering: Boolean(body.text?.trim()),
+          // הכיתוב מהשרשרת ולא רק מהבקשה (סבב הכיתוב): עריכות אינן שולחות
+          // `text`, ו-respec על שרשרת עם כיתוב היה מאבד את האותיות.
+          lettering: Boolean(chainLettering),
         })
       : false;
     /**
@@ -729,10 +740,24 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
     // הכיתוב נחתך אצלנו ונמסר כתמונת ייחוס — **רק ביצירה מאפס**. בעריכה
     // תמונת הייחוס היא כבר העיצוב הקיים, והכיתוב יושב בתוכו; שתי תמונות אין
     // לאן לשלוח, ועדיף לשמר את מה שעל המסך.
+    // dialogue mode — הבריף שהטיפוגרפיה נגזרת ממנו (סבב הכיתוב): ביצירת
+    // ראיון `userPrompt` הוא הסיכום, אבל מילות האופי שקובעות פונט
+    // (`stylesForBrief` — "עדין", "קלאסי", "כתב יד") נאמרו בשיחה עצמה,
+    // ותשובת שאלת מראה-האותיות חיה בתמליל. הגזירה נשארת דטרמיניסטית —
+    // אותה שיחה, אותם פנים — רק הקלט שלה מלא.
+    const letteringBrief = interviewCreate && body.interview?.transcript
+      ? `${body.userPrompt}\n${body.interview.transcript}`
+      : body.userPrompt;
     const lettering = editSvg || !body.text?.trim()
       ? null
       : await buildLetteringRenderSvg(
-          body.text, dims, design.product_type, plan.rows, body.userPrompt, plan.cols, canvas,
+          body.text, dims, design.product_type, plan.rows, letteringBrief, plan.cols, canvas,
+          // dialogue mode — פנים אחת לכל השורות כשהשיחה בחרה אופי ברור
+          // (החלטת גל): מי שאמרה "קלאסי" ביקשה סריף, ושלוש טיפוגרפיות שונות
+          // הן התעלמות ממה שאמרה. בלי בחירה — המגוון נשאר, כי אז הבחירה
+          // הטיפוגרפית שלה היא בחירת החלופה. המסלול הרגיל אינו מעביר את
+          // הדגל, ולכן אינו משתנה.
+          { oneStyle: interviewCreate && briefPicksStyle(letteringBrief) },
         );
     if (!editSvg && body.text?.trim() && !lettering) {
       throw new ApiError(
@@ -742,6 +767,12 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
       );
     }
     const baseSvg = editSvg ?? lettering?.svg ?? null;
+    // dialogue mode — מה שנחתך **בפועל**: פנים אחת לכל השורות, או פנים לכל
+    // אחת. נגזר מהתוצר ולא מהבקשה, כי גם בלי `oneStyle` יכולה להתאים רק פנים
+    // אחת (טקסט ארוך על טבעת) — והפרומפט חייב לתאר את התמונה שצורפה.
+    const letteringUniform = lettering
+      ? new Set(lettering.rows.map((r) => r.fontId)).size === 1
+      : false;
     // למודל התמונה יש מקום לתמונת ייחוס אחת (`_reference` בקופסה בוחר את
     // base_svg על פני ההשראה). כשיש כיתוב הוא זה שנוסע — הוא ההבטחה הקשיחה
     // ללקוחה, וההשראה היא רוח שאפשר לתאר במילים. נאפס אותה כאן ולא נשאיר
@@ -786,10 +817,18 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         // dialogue mode — יצירה מתוצר הראיון: הכיוונים נכנסים לאותה תבנית
         // בדיוק של היצירה הדו-שלבית. `renderJson` — בלי `sources`: תיוגי
         // מקור אינם מגיעים לפרומפט הביצוע לעולם (‏PROMPT_SPEC §1.3).
+        // עם כיתוב (סבב הכיתוב) הפרומפט מקבל את בלוק ה-LETTERING — תמונת
+        // הייחוס היא פס הכיתוב, וכל כיוון מעצב סביב השורה שלו.
         : interview
-        ? buildStagedRenderPrompt(interview.renderJson, canvas, interview.spec, dims.thicknessMm)
+        ? buildStagedRenderPrompt(
+            interview.renderJson, canvas, interview.spec,
+            dims.thicknessMm, lettering ? { uniform: letteringUniform } : null,
+          )
         : designStage
-        ? buildStagedRenderPrompt(designStage.json, canvas, designStage.spec, dims.thicknessMm)
+        ? buildStagedRenderPrompt(
+            designStage.json, canvas, designStage.spec,
+            dims.thicknessMm, lettering ? { uniform: letteringUniform } : null,
+          )
         : storyCreate
           ? buildStoryRenderPrompt({
               story: body.userPrompt,
@@ -999,6 +1038,13 @@ async function runGeneration(body: GenerateBody, runId: string, jobId: string) {
         /** dialogue mode — המפרט המצטבר אחרי הסבב הזה. זה מה שהסבב הבא
          *  יקרא (`latestEditSpec`), ולכן זה גם מה שהופך את השרשרת לקריאה. */
         editSpec: editStage?.spec,
+        /** dialogue mode — הכיתוב שהשרשרת נושאת, מועתק הלאה על הרצת עריכה
+         *  (סבב הכיתוב): ביצירה הוא נרשם ב-`lettering.text`, ובעריכות זה
+         *  מה שמאפשר ל-hop הבא לדעת עליו בלי שהלקוח שולח `text`. ראה
+         *  `editChainFor`. */
+        chainLettering: editStageRuns && chainLettering
+          ? chainLettering.slice(0, 40)
+          : undefined,
       },
       // ה-base64 שכבר בידנו, לא בייטים: כאן נבנה קודם data URL חדש בשרשור
       // (עותק שלישי של המטען) רק כדי לפרק אותו מיד, והבייטים שיצאו הוחזקו עד

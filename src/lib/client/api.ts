@@ -477,12 +477,17 @@ export const api = {
       symmetry?: "symmetric" | "asymmetric";
       density?: "low" | "medium" | "high";
     };
+    /** הכיתוב שנקבע בפאנל — נשלח בכל סבב; המסך הוא שנושא את המצב. */
+    lettering?: string;
   }) =>
     call<{
       spec: unknown;
       ask: { question: string; chips: string[] } | null;
       gallery: { lead: string; tags: string[] } | null;
-      edit: { lead: string; controls: Array<"width" | "symmetry" | "density"> } | null;
+      edit: {
+        lead: string;
+        controls: Array<"width" | "symmetry" | "density" | "lettering">;
+      } | null;
       summary: string | null;
       expectation: string | null;
     }>("/api/dialogue/interview", {
@@ -496,6 +501,8 @@ export const api = {
     turns: Array<{ role: "interviewer" | "customer"; text: string }>;
     spec: unknown;
     summary: string;
+    /** הכיתוב שנקבע בפאנל — הכיוונים מעצבים סביבו. */
+    lettering?: string;
   }) =>
     call<{ directions: string; renderJson: string; designsCount: number }>(
       "/api/dialogue/interview",
